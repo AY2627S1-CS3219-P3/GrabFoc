@@ -24,6 +24,7 @@ PENDING → ACCEPTED → PICKED_UP → IN_PROGRESS → ARRIVED → COMPLETED
 - Timing window may change in later states only when both parties acknowledge.
 - System-assigned fields (order ID, requester ID, timestamps) are never taken from the request body. The requester ID comes from the authenticated token.
 - Creation requires the credit reservation to succeed **and** the pickup location to be `ACTIVE`.
+- **Pickup and drop-off must both be on campus.** The pickup point is an `ACTIVE` Supplier location, which is on campus by construction. The drop-off point is validated against the same configured campus bounding box that Supplier uses; a drop-off outside it is rejected. The same check applies when a `PENDING` order's drop-off is edited.
 
 **Events [Decided]**
 
@@ -33,6 +34,7 @@ PENDING → ACCEPTED → PICKED_UP → IN_PROGRESS → ARRIVED → COMPLETED
   - New state: Notification's N2.1.1 requires it and uses it to discard stale events (N1.3.2).
   - **[Open fix]** Backlog O6.1.1 lists only event type, order ID, requester ID, courier ID and timestamp; add event ID and new state there.
 - Publish only after the state change is committed. The transactional outbox pattern is the robust option.
+- **[Open, for discussion at D3]** Add an `OrderCreated` event so couriers' list of open orders updates without polling. The lecturer raised "how will couriers come to know about this order?" in D1 presentations as a typical event-driven case. Decide who consumes it (e.g. a real-time push to courier clients) and add it to backlog OSFR6. Until then, Notification remains the only consumer.
 
 ## Edge cases
 

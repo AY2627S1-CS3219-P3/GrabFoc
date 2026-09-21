@@ -31,7 +31,9 @@ This file holds **project-wide** context only. Service-specific rules, schemas, 
   - adds a new service or top-level folder.
 - A plan lists the files to change, the approach, any schema or API changes, how it will be tested, and open questions. **Wait for the human to approve it** before writing code.
 - Don't build silently on anything tagged **[Open]** or **[Proposed]**. Name the item in the plan and confirm it with the service owner (§3 Ownership) first.
+- Assumptions about what the **brief** requires (e.g. how the admin role works, which the brief leaves unspecified on purpose) must be validated with the **mentor**, not just the team. The lecturer: "If you make assumptions, get validated."
 - If the requirements are unclear, ask questions before planning instead of guessing.
+- **Attribute AI help.** The course requires a record of AI use and a one-line attribution per use. Every change an AI agent contributes carries an attribution, and a human reviews and understands it before it is merged. **[Open]** Attribution format (see §10).
 - Small changes inside one service that follow the documented rules (a bug fix, a test, a copy change) can go ahead without a separate plan.
 
 ---
@@ -55,7 +57,17 @@ FoC is a peer-to-peer campus errand web app for NUS students.
 - Roles are `ADMIN` and `USER`. "Requester" and "courier" are **modes of a USER**, not roles (see §5).
 - Order states are ALL CAPS: `PENDING`, `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS`, `ARRIVED`, `COMPLETED`, `CANCELLED`.
 - Location states: `ACTIVE`, `INACTIVE`.
-- Backlog wording: "The system shall …" (not "should"/"will"/"The service"). Requirements must not name other services — describe the service's own boundary (APIs it exposes, events it publishes/consumes) instead.
+- Backlog wording: "The system shall …" (not "should"/"will"/"The service"). Requirements must not name other services — describe the service's own boundary (APIs it exposes, events it publishes/consumes) instead. (Existing breach: OSFR6.1 says "The Order Service shall".)
+- Backlog content rules (lecturer's D1 feedback, L3–L4):
+  - **No user stories.** State what the system provides.
+  - **No technology, library or implementation names** (e.g. JWT, Kafka, Redis, Docker, a specific npm package). Naming an algorithm (bcrypt, AES-256) is fine. Technology choices belong in design docs such as this file.
+  - **No UI details** ("click", "button", "page").
+  - **Testable wording.** Not "secure", "proper", "fast"; give a measurable condition.
+  - **Every requirement has an ID, NFRs included.**
+  - **Don't make users or the browser responsible for system logic** (e.g. "the browser shall generate the ID" is a red flag).
+  - **Keep each requirement inside one service**; a check another service already owns is scope creep and coupling.
+  - **Cover every CRUD operation a heading implies.**
+  - **Use one term per concept** (see the terminology rules above).
 - Backlog ID prefixes: `OSFR`/`O` (Order), `USFR`/`U` (User), `CSFR`/`C` (Credit), `SUFR`/`S` (Supplier), `NTFR`/`N` (Notification), `NFRn` (non-functional). Every entry refines at least two levels (e.g. SUFR1 → SUFR1.1 → S1.1.1).
 
 ## 3. Architecture
@@ -157,6 +169,7 @@ Overall plan (from the Gantt chart):
 - The UI must use **live data from the Supplier API** — no mock or hard-coded suppliers.
 - It must not be admin-only: show the standard user's view too.
 - It must adapt between desktop and mobile layouts.
+- **[Open]** Choose a UI styling / component library for the frontend. The lecturer asked teams not to hand-write responsive layouts ("Please don't try to write code for all these things manually").
 
 ---
 
@@ -242,6 +255,8 @@ _Kept here until the `notification-service/` folder exists; then move this secti
 - Every environment variable a service reads must be listed in `.env.example` with a safe placeholder (template rule), so teammates know what to set. Real values go in the git-ignored `.env`.
 - Persist database data in Docker volumes, so it survives a container replacement.
 - Only the API Gateway publishes a port in `compose.yaml`.
+- **Layer each service.** Route handlers/controllers stay thin (parse, validate, call); business rules live in a service layer; database access lives in a repository layer. No business logic in controllers, and no spaghetti code. The lecturer checks that the implementation matches the design.
+- **Fail gracefully.** Every call to another service has a timeout. When a dependency is down or times out, return a clear error (**503** with a message) instead of crashing or hanging, and leave data unchanged.
 
 ## 9. D2 demo checks
 
@@ -255,6 +270,7 @@ Service-specific edge cases are in each service's `AGENTS.md`.
 - The same CRUD calls work from **Postman** with the UI stopped.
 - The UI shows live data and adapts from desktop to mobile.
 - Diagram of the full request path to present: browser → gateway (authenticate) → Supplier Service (authorize) → PostgreSQL.
+- Diagram rules the lecturer checks: one consistent notation (if a box means a process, every box means a process), a **legend**, the big picture rather than class diagrams, and FoC's actual services. **[Open]** Notation (see §10).
 
 ## 10. Known open items
 
@@ -273,3 +289,8 @@ Service-specific edge cases are in each service's `AGENTS.md`.
 - Give USFR6 (requester/courier toggle) a priority and sprint; D2 checks it.
 - Add a service name to every NFR row in the backlog.
 - Credit and Notification sprint weeks don't match the Gantt chart.
+- **For discussion (Order, D3):** add an `OrderCreated` event so couriers learn about new orders without polling; the lecturer called this "a typical use case for an event based communication". This would also mean Notification is no longer the only consumer. See `order-service/AGENTS.md`.
+- Add a backlog FR that pickup and drop-off points must be on campus (the Order rules require it).
+- Frontend UI styling / component library (§4).
+- AI attribution format for commits and PRs (How to work).
+- Architecture diagram notation (§9).
