@@ -42,16 +42,28 @@ FoC is a peer-to-peer campus errand web app for NUS students.
 
 ### Repository layout [Decided]
 
+The repo follows the template's **one-service-per-folder** rule (see `README.md`): every service is its own **top-level** folder. There is no `/backend` wrapper.
+
 ```
-/frontend
-/backend
-  /api-gateway
-  /user-service
-  /supplier-service
-  /order-service
-  /credit-service
-  /notification-service
+.
+├── user-service/          # core (template)
+├── supplier-service/      # core (template)
+├── order-service/         # core (template)
+├── credit-service/        # core (template)
+├── api-gateway/           # extra service, same level
+├── notification-service/  # extra service, same level
+├── frontend/
+├── data/
+│   ├── csv/supplier-seed-data.csv   # Supplier seed data (from the template)
+│   └── images/                      # location images for the seed data
+├── compose.yaml
+├── .env.example
+└── README.md
 ```
+
+- Each service folder has its own `Dockerfile`, `README.md` and `AGENTS.md`. Put service-specific agent notes in that service's `AGENTS.md`.
+- Any N2H that needs its own service (e.g. centralized logging, real-time chat) gets a new top-level folder, following the same structure.
+- Agent configs, prompts and skills may be added, but core code must stay inside the service folders.
 
 ### Ownership
 
@@ -197,7 +209,7 @@ PENDING → ACCEPTED → PICKED_UP → IN_PROGRESS → ARRIVED → COMPLETED
 - Updates use **optimistic concurrency**: the request sends the `version` it loaded, and a stale version returns 409.
 - Every write is audited (see `location_changes` below) and emits a structured log entry.
 - Seed data loads on first startup. It is all-or-nothing, and re-running it must not create duplicates (fixed IDs + `ON CONFLICT DO NOTHING`).
-- **[Decided]** Seed data comes from the **professor's template repository**. **[Open]** Reconcile the schema fields with that dataset's fields.
+- **[Decided]** Seed data comes from the **professor's template repository**: `data/csv/supplier-seed-data.csv`, with images in `data/images/`. **[Open]** Reconcile the schema fields with that dataset's fields.
 
 ### Schema [Decided: locations + indexes; Open: location_changes placement]
 
