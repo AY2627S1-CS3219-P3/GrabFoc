@@ -248,7 +248,8 @@ _Kept here until the `notification-service/` folder exists; then move this secti
 Service-specific edge cases are in each service's `AGENTS.md`.
 
 - An ADMIN can create, edit, deactivate and restore a location.
-- A USER can browse, search and filter locations, but gets **403** on `POST /locations` and `PATCH /locations/:id`, and can't open the admin screens.
+- A USER can browse, search and filter locations, but gets **403** on `POST /locations`, `PATCH /locations/:id` and `GET /locations?status=INACTIVE`, and can't open the admin screens.
+- An ADMIN can list deactivated locations (`status=INACTIVE` or `ALL`) and restore one from the UI.
 - No token → **401**. The Order Service doesn't exist until D3, so demo this against a Supplier endpoint (e.g. `GET /locations`).
 - A body containing `role` or `status` sent to a profile update → **400**. The role is unchanged.
 - The same CRUD calls work from **Postman** with the UI stopped.

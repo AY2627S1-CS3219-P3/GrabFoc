@@ -15,6 +15,7 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 - Admin-only create, update, deactivate and restore. Any authenticated user can list and look up.
 - Deletion is **soft**: the location is set `INACTIVE` and the row kept, so old orders can still show their pickup point.
 - Listing returns `ACTIVE` locations only by default. It is sorted by label A→Z and can be ordered by label, type or building.
+- An ADMIN can list deactivated locations with `status=INACTIVE`, or both with `status=ALL` (S4.2.3). A USER sending anything other than `ACTIVE` gets **403**, and the attempt is logged. The admin UI uses this for its status filter and the Restore button.
 - Label must be unique among `ACTIVE` locations, compared case-insensitively. It is at most 100 characters.
 - Coordinates must fall inside the configured campus bounding box (an application config value).
 - Updates use **optimistic concurrency**: the request sends the `version` it loaded, and a stale version returns 409.
@@ -105,13 +106,15 @@ CREATE INDEX ix_changes_time     ON location_changes (changed_at);
 
 | Method & path | Access |
 |---|---|
-| `GET /locations?type=&building=&q=&sort=&order=&page=&limit=` | any authenticated user |
+| `GET /locations?type=&building=&q=&status=&sort=&order=&page=&limit=` | any authenticated user; `status=INACTIVE` or `ALL` is ADMIN only (403 otherwise) |
 | `GET /locations/:locationId` | any authenticated user (returns `INACTIVE` too) |
 | `POST /locations` | ADMIN |
 | `PATCH /locations/:locationId` (body includes `version`) | ADMIN |
 | `POST /locations/:locationId/deactivate` | ADMIN |
 | `POST /locations/:locationId/restore` | ADMIN |
 | `GET /location-types` **[Proposed]** | any authenticated user (feeds the filter chips) |
+
+`status` is `ACTIVE` (default), `INACTIVE` or `ALL`. With `ALL`, two rows can share a label (uniqueness only applies among `ACTIVE` locations), so the UI should show each row's status. `INACTIVE` / `ALL` queries aren't covered by the `ACTIVE`-only partial indexes and scan the table, which is fine at this size.
 
 **Responses:**
 
