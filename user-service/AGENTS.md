@@ -28,6 +28,7 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 
 ## Tokens [Decided: JWT access + refresh]
 
+- **[Open]** Signing method: RS256/ES256 + JWKS (this design) or HS256 with the template's `JWT_SECRET`; see §6 of the root `AGENTS.md`.
 - Access token: a short-lived **JWT** (15 min, signed RS256/ES256) carrying only `sub`, `role`, `iat`, `exp`, `jti` — no personal data.
 - Refresh token: random, 7 days, stored **hashed**. It is rotated on every use; reusing an old one revokes the whole token family.
 - Browser storage: access token in memory; refresh token in an `HttpOnly`, `Secure`, `SameSite` cookie.
@@ -55,7 +56,7 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 ## Role lifecycle [Proposed]
 
 - **First admin.**
-  - Created on startup from `BOOTSTRAP_ADMIN_EMAIL`, only when no admin exists.
+  - Created on startup from `BOOTSTRAP_ADMIN_EMAIL` (listed in `.env.example`), only when no admin exists.
   - The account has no password until the owner sets one via OTP (the password-reset flow).
   - No password is ever stored in config. Creation is logged.
 - **Promotion (no developer involvement).**

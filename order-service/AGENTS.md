@@ -28,8 +28,10 @@ PENDING → ACCEPTED → PICKED_UP → IN_PROGRESS → ARRIVED → COMPLETED
 **Events [Decided]**
 
 - Event names: `OrderAccepted`, `OrderPickedUp`, `OrderInProgress`, `OrderArrived`, `OrderCompleted`, `OrderCancelled`.
-- Payload: event type, order ID, requester ID, courier ID, timestamp.
-- **[Open fix]** Also add a unique **event ID**. Notification deduplicates on it.
+- Payload: **event ID** (unique, e.g. UUID), event type, order ID, **new state**, requester ID, courier ID (`null` until assigned), timestamp.
+  - Event ID: Notification deduplicates on it (N1.2.1).
+  - New state: Notification's N2.1.1 requires it and uses it to discard stale events (N1.3.2).
+  - **[Open fix]** Backlog O6.1.1 lists only event type, order ID, requester ID, courier ID and timestamp; add event ID and new state there.
 - Publish only after the state change is committed. The transactional outbox pattern is the robust option.
 
 ## Edge cases

@@ -66,7 +66,8 @@ FoC is a peer-to-peer campus errand web app for NUS students.
 - Communication **[Decided]**:
   - Synchronous HTTP between services (e.g. Order → Credit to reserve/transfer/release, Order → Supplier to check a location).
   - **The only async flow:** Order Service **publishes** order-state events to a message broker; **Notification Service is the only consumer**. Order never waits on Notification.
-- **Database [Decided]:** PostgreSQL for User and Supplier. **[Proposed]** PostgreSQL for the other services too (a separate database per service). SQLite only for tests.
+- **Database [Decided]:** PostgreSQL for User and Supplier. **[Proposed]** PostgreSQL for the other services too (a separate database per service).
+- **Tests [Decided]:** run database tests against **PostgreSQL in Docker** (e.g. Testcontainers or a test service in `compose.yaml`), not SQLite. The schemas use PostgreSQL-only features (`INCLUDE` indexes, `TIMESTAMPTZ`, `TIME`, JSONB, regex `CHECK`s), so SQLite tests would not match production.
 - **Stack [Decided]:** TypeScript/Node with **Zod** for request validation and an ORM / parameterized queries for database access.
 - Containerised with Docker / Docker Compose (M7). Cloud deployment and CI/CD are N2Hs.
 
@@ -134,6 +135,7 @@ Overall plan (from the Gantt chart):
 - Database choice and schema.
 - Credential storage.
 - Authentication and RBAC.
+- **Role toggle between requester and courier mode.** The brief checks this explicitly ("role-toggle functionality between requester and courier"). Demo it as the UI mode switch in §5; backlog USFR6 still needs a priority and sprint.
 - Integration with Supplier.
 - Profile protection.
 - First-admin bootstrap, promotion workflow, and role edge cases.
@@ -183,12 +185,13 @@ Overall plan (from the Gantt chart):
 ## 6. Authentication & authorization (gateway + every service) [Decided]
 
 - **Authentication at the API Gateway.** Middleware verifies the JWT (signature, `exp`, `iss`, `aud`, pinned algorithm) using the User Service's public key (JWKS endpoint).
+  - **[Open] Signing method conflict.** This design assumes asymmetric signing (RS256/ES256 + JWKS), but the template's `.env.example` has `JWT_SECRET`, which implies a shared secret (HS256). The team must pick one before building auth; the choice changes `.env.example` and every verifier.
   - Missing or invalid token → **401**.
   - Public routes that skip it: register, login, OTP verify/resend, refresh.
 - **Authorization in every service.** Each service decides which roles may call which endpoints. It uses role middleware (e.g. `requireRole('ADMIN')` → **403**) plus ownership checks in handlers.
 - **[Open] How services receive identity from the gateway.**
   - **[Proposed]** Forward the original `Authorization` header and have each service verify it again with a shared auth module (defence in depth).
-  - If the gateway instead passes identity headers (`X-User-Id`, `X-User-Role`), services trust them blindly. Then **no service may publish a port** in `docker-compose.yml`, and the same isolation must be rebuilt in the cloud deployment.
+  - If the gateway instead passes identity headers (`X-User-Id`, `X-User-Role`), services trust them blindly. Then **no service may publish a port** in `compose.yaml`, and the same isolation must be rebuilt in the cloud deployment.
 
 ## 7. Notification Service
 
@@ -236,8 +239,9 @@ _Kept here until the `notification-service/` folder exists; then move this secti
 - Log unauthorised access attempts (401/403) in a consistent structured format, for the centralized logging N2H.
 - Never log passwords, tokens, OTPs, handover codes, credit balances or unmasked personal data.
 - Secrets live in environment variables or a secrets manager. **Never commit them.**
+- Every environment variable a service reads must be listed in `.env.example` with a safe placeholder (template rule), so teammates know what to set. Real values go in the git-ignored `.env`.
 - Persist database data in Docker volumes, so it survives a container replacement.
-- Only the API Gateway publishes a port in `docker-compose.yml`.
+- Only the API Gateway publishes a port in `compose.yaml`.
 
 ## 9. D2 demo checks
 
@@ -254,17 +258,17 @@ Service-specific edge cases are in each service's `AGENTS.md`.
 ## 10. Known open items
 
 - How services receive identity from the gateway: re-verify the JWT, or trust headers.
+- JWT signing method: RS256/ES256 + JWKS, or HS256 with the template's `JWT_SECRET` (§6).
 - Who owns the Supplier management UI for D2.
 - Whether `location_changes` stays in Supplier or moves to Centralized Logging.
-- How to store operating hours if the UI filters by opening/closing time.
-- Reconcile the Supplier schema with the professor's seed-data fields.
-- Add the event ID to the order event payload.
+- Add the event ID and the new order state to the order event payload (O6.1.1); Notification's N2.1.1 requires the state.
 - Add Supplier search, filter and pagination FRs to the backlog.
 - Change S1.2.2 to "unique among ACTIVE locations".
-- Allow overnight operating hours (S1.2.4).
+- Change S1.2.4 to allow overnight hours (closing time before opening time); the seed data has one such location.
 - Decide whether `floor` is required.
 - Change the OTP to 6 digits in the mockup.
 - Agree the lockout threshold (3 vs 5).
 - Assign Deanson an N2H.
+- Give USFR6 (requester/courier toggle) a priority and sprint; D2 checks it.
 - Add a service name to every NFR row in the backlog.
 - Credit and Notification sprint weeks don't match the Gantt chart.
