@@ -4,6 +4,36 @@ Context for AI coding agents and new contributors. Read this before changing cod
 
 Status legend: **[Decided]** agreed by the team / in the submitted backlog · **[Proposed]** design draft for D2/D3, confirm with the service owner before relying on it · **[Open]** undecided.
 
+## Where to find things
+
+This file holds **project-wide** context only. Service-specific rules, schemas, APIs and edge cases live in each service's own `AGENTS.md`. **Before changing a service, read its `AGENTS.md` as well as this one.**
+
+| Working on | Read |
+|---|---|
+| User Service: database, credentials, tokens, OTPs, role lifecycle | `user-service/AGENTS.md` |
+| Supplier (location) Service: schema, indexes, API | `supplier-service/AGENTS.md` |
+| Order Service: lifecycle, rules, events | `order-service/AGENTS.md` |
+| Credit Service: balances, reserve / transfer / release | `credit-service/AGENTS.md` |
+| API Gateway, how services authenticate and authorize | §6 below |
+| Notification Service | §7 below |
+| Seed data | `data/csv/supplier-seed-data.csv`, `data/images/` |
+| Anything spanning several services | this file: §5 roles, §6 auth, §8 cross-cutting rules |
+
+- Keep this file lean. New service-specific detail goes in that service's `AGENTS.md`; only project-wide decisions belong here.
+- When the `api-gateway/` or `notification-service/` folder is created, give it its own `AGENTS.md` and move its section there.
+
+## How to work: plan first
+
+- **Plan before writing code** for any change that:
+  - touches more than one service, or a contract between services (HTTP APIs, event payloads);
+  - changes a database schema or migration;
+  - changes authentication, authorization, credits or other security-sensitive logic;
+  - adds a new service or top-level folder.
+- A plan lists the files to change, the approach, any schema or API changes, how it will be tested, and open questions. **Wait for the human to approve it** before writing code.
+- Don't build silently on anything tagged **[Open]** or **[Proposed]**. Name the item in the plan and confirm it with the service owner (§3 Ownership) first.
+- If the requirements are unclear, ask questions before planning instead of guessing.
+- Small changes inside one service that follow the documented rules (a bug fix, a test, a copy change) can go ahead without a separate plan.
+
 ---
 
 ## 1. Product
@@ -32,7 +62,7 @@ FoC is a peer-to-peer campus errand web app for NUS students.
 
 - Microservices, each with its **own database** (no cross-service DB access or foreign keys).
 - Services: **API Gateway**, **User**, **Supplier**, **Order**, **Credit**, **Notification** (+ Frontend; Centralized Logging is an N2H).
-- **API Gateway [Decided]:** the single entry point for the frontend. It authenticates requests (JWT middleware) and routes them to services. See §10.
+- **API Gateway [Decided]:** the single entry point for the frontend. It authenticates requests (JWT middleware) and routes them to services. See §6.
 - Communication **[Decided]**:
   - Synchronous HTTP between services (e.g. Order → Credit to reserve/transfer/release, Order → Supplier to check a location).
   - **The only async flow:** Order Service **publishes** order-state events to a message broker; **Notification Service is the only consumer**. Order never waits on Notification.
@@ -150,145 +180,19 @@ Overall plan (from the Gantt chart):
 | View own credit balance | ❌ | ✅ | ✅ | Credit |
 | View any user's balance, all orders, audit logs (admin dashboard N2H) | ❌ | ❌ | ✅ | Credit / Order / Logging |
 
-## 6. Order Service
+## 6. Authentication & authorization (gateway + every service) [Decided]
 
-**Lifecycle [Decided]**
+- **Authentication at the API Gateway.** Middleware verifies the JWT (signature, `exp`, `iss`, `aud`, pinned algorithm) using the User Service's public key (JWKS endpoint).
+  - Missing or invalid token → **401**.
+  - Public routes that skip it: register, login, OTP verify/resend, refresh.
+- **Authorization in every service.** Each service decides which roles may call which endpoints. It uses role middleware (e.g. `requireRole('ADMIN')` → **403**) plus ownership checks in handlers.
+- **[Open] How services receive identity from the gateway.**
+  - **[Proposed]** Forward the original `Authorization` header and have each service verify it again with a shared auth module (defence in depth).
+  - If the gateway instead passes identity headers (`X-User-Id`, `X-User-Role`), services trust them blindly. Then **no service may publish a port** in `docker-compose.yml`, and the same isolation must be rebuilt in the cloud deployment.
 
-```
-PENDING → ACCEPTED → PICKED_UP → IN_PROGRESS → ARRIVED → COMPLETED
-```
+## 7. Notification Service
 
-- `PENDING → CANCELLED`: by the requester, or automatically when the timing window closes.
-- `ACCEPTED / PICKED_UP / IN_PROGRESS → CANCELLED`: only when **both** parties confirm, or automatically on timeout.
-- `ARRIVED → COMPLETED` and `ARRIVED → CANCELLED`: only when **both** parties confirm.
-- `COMPLETED` and `CANCELLED` are final.
-
-**Rules**
-
-- Only `PENDING` orders can be accepted.
-- A requester can't accept their own order.
-- At most one courier per order; a courier may hold at most one active order.
-- Requester may edit pickup, drop-off, description and timing window only while `PENDING`. The credit offer can't be edited.
-- Timing window may change in later states only when both parties acknowledge.
-- System-assigned fields (order ID, requester ID, timestamps) are never taken from the request body. The requester ID comes from the authenticated token.
-- Creation requires the credit reservation to succeed **and** the pickup location to be `ACTIVE`.
-
-**Events [Decided]**
-
-- Event names: `OrderAccepted`, `OrderPickedUp`, `OrderInProgress`, `OrderArrived`, `OrderCompleted`, `OrderCancelled`.
-- Payload: event type, order ID, requester ID, courier ID, timestamp.
-- **[Open fix]** Also add a unique **event ID**. Notification deduplicates on it.
-- Publish only after the state change is committed. The transactional outbox pattern is the robust option.
-
-## 7. Credit Service
-
-- One account per user, created at registration with 10 available credits.
-- Available and reserved balances are kept separately. The available balance may never go negative.
-- **Reserve** on order creation (only if the available balance is enough).
-- **Transfer** requester-reserved → courier-available on `COMPLETED`.
-- **Release** reserved → requester-available on `CANCELLED`.
-- **Invariant:** total credits in the system never change during a reserve, transfer or release.
-- Every operation is atomic and idempotent: applying the same operation twice must not change balances twice. For example, a completion processed twice must not pay the courier twice.
-- Users can see only their own balance; admins can see any.
-
-## 8. Supplier (Location) Service
-
-**Why PostgreSQL [Decided]**
-- The data is **structured**: every location has the same fields.
-- Query patterns are paginated listing plus filter and sort (by type, building, name, opening/closing time), with parameterized queries.
-- The catalogue is small and **read-heavy**.
-- Constraints and partial indexes enforce the business rules (see design notes).
-
-**Rules**
-
-- Admin-only create, update, deactivate and restore. Any authenticated user can list and look up.
-- Deletion is **soft**: the location is set `INACTIVE` and the row kept, so old orders can still show their pickup point.
-- Listing returns `ACTIVE` locations only by default. It is sorted by label A→Z and can be ordered by label, type or building.
-- Label must be unique among `ACTIVE` locations, compared case-insensitively. It is at most 100 characters.
-- Coordinates must fall inside the configured campus bounding box (an application config value).
-- Updates use **optimistic concurrency**: the request sends the `version` it loaded, and a stale version returns 409.
-- Every write is audited (see `location_changes` below) and emits a structured log entry.
-- Seed data loads on first startup. It is all-or-nothing, and re-running it must not create duplicates (fixed IDs + `ON CONFLICT DO NOTHING`).
-- **[Decided]** Seed data comes from the **professor's template repository**: `data/csv/supplier-seed-data.csv`, with images in `data/images/`. **[Open]** Reconcile the schema fields with that dataset's fields.
-
-### Schema [Decided: locations + indexes; Open: location_changes placement]
-
-```sql
-CREATE TABLE location_types (
-  code TEXT PRIMARY KEY, label TEXT NOT NULL, sort_order INT NOT NULL DEFAULT 0
-);  -- FOOD, PRINT, CONVENIENCE, VENDING, GENERAL
-
-CREATE TABLE locations (
-  id              UUID PRIMARY KEY,                       -- UUIDv7, app-generated
-  display_label   VARCHAR(100) NOT NULL CHECK (char_length(btrim(display_label)) BETWEEN 1 AND 100),
-  location_type   TEXT NOT NULL REFERENCES location_types(code),
-  building        TEXT NOT NULL,
-  floor           TEXT NOT NULL,                          -- [Open] may become nullable for outdoor spots
-  description     TEXT NOT NULL,
-  latitude        NUMERIC(8,6) NOT NULL CHECK (latitude  BETWEEN -90  AND 90),
-  longitude       NUMERIC(9,6) NOT NULL CHECK (longitude BETWEEN -180 AND 180),
-  operating_hours JSONB CHECK (operating_hours IS NULL OR jsonb_typeof(operating_hours) = 'object'),
-                                                          -- {"mon":[["08:00","21:00"]], ...}; overnight = split ranges
-  image_url       TEXT CHECK (image_url IS NULL OR image_url ~* '^https?://'),
-  status          TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','INACTIVE')),
-  version         INT  NOT NULL DEFAULT 1,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), created_by UUID NOT NULL,   -- user ID, no cross-service FK
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_by UUID NOT NULL
-);
-
--- [Open] May move to the Centralized Logging service instead of living here.
-CREATE TABLE location_changes (
-  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  location_id UUID NOT NULL REFERENCES locations(id),
-  action      TEXT NOT NULL CHECK (action IN ('CREATE','UPDATE','DEACTIVATE','RESTORE','SEED')),
-  changed_by  UUID NOT NULL,
-  changed_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  old_values  JSONB,
-  new_values  JSONB NOT NULL
-);  -- retain 90 days (purge job)
-
-CREATE UNIQUE INDEX uq_active_label ON locations (lower(display_label)) WHERE status = 'ACTIVE';
-CREATE INDEX ix_active_type_label ON locations (location_type, lower(display_label))
-  INCLUDE (building, image_url) WHERE status = 'ACTIVE';
-CREATE INDEX ix_changes_loc_time ON location_changes (location_id, changed_at);
-CREATE INDEX ix_changes_time     ON location_changes (changed_at);
-```
-
-**Design notes**
-
-- **Where to keep the change history.** If `location_changes` stays in this service, the change and its history commit in one transaction (NFR1.5.3). If it moves to Centralized Logging, that guarantee is lost. Logging is also an N2H, and a must-have FR (S3.3.2) shouldn't depend on it. Recommendation: keep the table here, and *also* emit log entries.
-- The uniqueness rule is enforced by the partial unique index, **not** by a check in application code. A check-then-insert allows write skew when two admins create the same label at once.
-- Don't index `status` or `location_type` on their own. Few distinct values means low selectivity.
-- Text search (`ILIKE '%term%'`) runs as a table-scan filter. Add a `pg_trgm` index only if the catalogue grows.
-- **[Open] Filtering by opening/closing time** doesn't work well with `operating_hours` as JSONB. If the UI filters by time, store hours in a `location_hours(location_id, day_of_week, opens, closes)` table, or in `opens_at` / `closes_at` columns.
-- The catalogue is roughly 200 rows (about 10 pages), so it stays in the buffer pool. **No Redis cache**: a second cache risks serving stale data (NFR3.3).
-- Pagination: OFFSET is acceptable at this size because the mockup has numbered pages. Keyset (`WHERE lower(display_label) > :last`) is the scalable option.
-
-### API [Decided]
-
-| Method & path | Access |
-|---|---|
-| `GET /locations?type=&building=&q=&sort=&order=&page=&limit=` | any authenticated user |
-| `GET /locations/:locationId` | any authenticated user (returns `INACTIVE` too) |
-| `POST /locations` | ADMIN |
-| `PATCH /locations/:locationId` (body includes `version`) | ADMIN |
-| `POST /locations/:locationId/deactivate` | ADMIN |
-| `POST /locations/:locationId/restore` | ADMIN |
-| `GET /location-types` **[Proposed]** | any authenticated user (feeds the filter chips) |
-
-**Responses:**
-
-| Status | When |
-|---|---|
-| 401 | No token, or an invalid one |
-| 403 | Authenticated, but the role isn't allowed |
-| 404 | Unknown ID |
-| 409 | Stale `version`, or a duplicate active label |
-| 400 | Zod validation failure (with field errors) |
-
-The service must be fully usable through Postman without the UI running (D2 point 3). Keep a Postman collection in the repo.
-
-## 9. Notification Service
+_Kept here until the `notification-service/` folder exists; then move this section to its `AGENTS.md`._
 
 - Email only. Consumes order-state events and emails the right party. Stores almost nothing.
 
@@ -312,85 +216,14 @@ The service must be fully usable through Postman without the UI running (D2 poin
 - **[Proposed]** Look up the recipient's email by account ID at send time, so no personal data travels through the broker.
 - **[Proposed]** Target: 95% of emails handed to the mail provider within 10 s of the event.
 
-## 10. User Service & authentication
+**Edge cases**
 
-### Database [Decided: PostgreSQL + these three tables]
-
-| Table | Key columns |
-|---|---|
-| `users` | id, email_lookup (unique), encrypted email/mobile, password_hash, role (`ADMIN`/`USER`), status, email_verified, failed_attempts, locked_until, timestamps |
-| `refresh_tokens` | id, user_id → users, token_hash (unique), family_id, expires_at, revoked_at |
-| `otps` | id, user_id → users, purpose, code_hash, attempts, expires_at, used_at, invalidated_at; partial unique index on (user_id, purpose) for live OTPs |
-
-- **Query pattern.** Almost everything is a **point lookup**: login by `email_lookup`, token refresh by `token_hash`, profile by `id`. B+-tree indexes on these lookup columns and on the `user_id` foreign keys serve them in about h + 1 I/Os.
-- **Read/write mix.** Reads dominate (logins, profile views). Writes come from registration, OTP issue/verify and refresh-token rotation.
-- **Scalability [Proposed].** A campus-sized user base fits comfortably in one PostgreSQL instance. Scale with indexes first, then read replicas. Sharding (e.g. by hash of user ID) isn't needed at this scale; name it as the next step only if asked.
-- Clean up expired OTPs, expired refresh tokens and unverified accounts older than 24 h with a scheduled job.
-
-### Credentials [Decided]
-
-- Passwords: **bcrypt** (salted, slow hash). Minimum 8 characters, with at least one uppercase letter, one lowercase letter and one digit.
-- Email and mobile: encrypted with AES-256-GCM.
-  - A random IV means an encrypted email can't be looked up, so also store a **blind index**: `email_lookup = HMAC-SHA256(lower(email))` with a unique index.
-  - Use it for registration uniqueness and login lookup.
-- OTPs: stored as an **HMAC** with a server secret. Not plain SHA-256: 6-digit codes are brute-forceable if the table leaks.
-- Emails must be on the NUS domain.
-
-### Tokens [Decided: JWT access + refresh]
-
-- Access token: a short-lived **JWT** (15 min, signed RS256/ES256) carrying only `sub`, `role`, `iat`, `exp`, `jti` — no personal data.
-- Refresh token: random, 7 days, stored **hashed**. It is rotated on every use; reusing an old one revokes the whole token family.
-- Browser storage: access token in memory; refresh token in an `HttpOnly`, `Secure`, `SameSite` cookie.
-
-### Authentication vs authorization [Decided]
-
-- **Authentication at the API Gateway.** Middleware verifies the JWT (signature, `exp`, `iss`, `aud`, pinned algorithm) using the User Service's public key (JWKS endpoint).
-  - Missing or invalid token → **401**.
-  - Public routes that skip it: register, login, OTP verify/resend, refresh.
-- **Authorization in every service.** Each service decides which roles may call which endpoints. It uses role middleware (e.g. `requireRole('ADMIN')` → **403**) plus ownership checks in handlers.
-- **[Open] How services receive identity from the gateway.**
-  - **[Proposed]** Forward the original `Authorization` header and have each service verify it again with a shared auth module (defence in depth).
-  - If the gateway instead passes identity headers (`X-User-Id`, `X-User-Role`), services trust them blindly. Then **no service may publish a port** in `docker-compose.yml`, and the same isolation must be rebuilt in the cloud deployment.
-
-### Profile protection [Decided]
-
-- Changing email, phone or password requires an **OTP** sent to the user's email.
-- **Zod schemas** list exactly the fields each endpoint may change, using `.strict()` or an explicit pick. A body containing `role`, `status`, `id` or other protected fields is rejected, which prevents mass assignment.
-- **Parameterized queries / the ORM** prevent SQL injection. Zod does not; it only validates shape.
-- The user being edited is always taken from the token (`sub`), never from the body or a path parameter, for self-service endpoints.
-
-### OTPs & lockout
-
-- **[Proposed]** OTPs:
-  - 6 digits. The mockup shows 4 — change the mockup; 4 digits is too easy to guess.
-  - Valid for 10 min, with at most 5 wrong entries per OTP and at most 3 OTP requests per account per 15 min.
-  - Requesting a new OTP invalidates the previous one.
-  - Verify and mark as used in a single atomic `UPDATE`.
-- **[Open]** Lockout threshold. Backlog U2.3.1 says 3 consecutive failures. The proposal is 5 failures → 15-minute lock (CIS benchmark; within the NIST SP 800-63B cap of 100).
-
-### Role lifecycle [Proposed]
-
-- **First admin.**
-  - Created on startup from `BOOTSTRAP_ADMIN_EMAIL`, only when no admin exists.
-  - The account has no password until the owner sets one via OTP (the password-reset flow).
-  - No password is ever stored in config. Creation is logged.
-- **Promotion (no developer involvement).**
-  1. An admin opens a user in the admin UI and chooses "Promote to admin".
-  2. The service asks the acting admin for OTP confirmation.
-  3. It sets `role = ADMIN` and logs who promoted whom, and when.
-  4. The promoted user gets the new role on their next token refresh (≤ 15 min).
-- **Demotion** works the same way, in reverse.
-- **An admin revoking their own privileges:** allowed only if another active admin exists. It takes effect at their next token refresh.
-- **The last admin demoting or deactivating themselves:** rejected (409) with a clear message. The system can never be left without an admin.
-- **Never** assign `role` from a registration or profile payload.
-
-### Integration
-
-- **[Open]** Registration → credit account creation: a synchronous call to Credit, or an outbox. Either way, define what happens when Credit is down.
+- Order events arrive out of order → no emails sent out of sequence.
+- The mail provider is down → events wait and are retried; order flows are unaffected.
 
 ---
 
-## 11. Cross-cutting rules for all code
+## 8. Cross-cutting rules for all code
 
 - **Identity comes from the verified token only.** Never take a user ID, requester ID, role or owner from the request body.
 - **Validate every request body with a strict Zod schema.** Unknown fields are rejected, not ignored.
@@ -406,9 +239,9 @@ The service must be fully usable through Postman without the UI running (D2 poin
 - Persist database data in Docker volumes, so it survives a container replacement.
 - Only the API Gateway publishes a port in `docker-compose.yml`.
 
-## 12. Edge cases & demo checks
+## 9. D2 demo checks
 
-### D2 demo checks
+Service-specific edge cases are in each service's `AGENTS.md`.
 
 - An ADMIN can create, edit, deactivate and restore a location.
 - A USER can browse, search and filter locations, but gets **403** on `POST /locations` and `PATCH /locations/:id`, and can't open the admin screens.
@@ -418,22 +251,7 @@ The service must be fully usable through Postman without the UI running (D2 poin
 - The UI shows live data and adapts from desktop to mobile.
 - Diagram of the full request path to present: browser → gateway (authenticate) → Supplier Service (authorize) → PostgreSQL.
 
-### General
-
-- Two couriers accept the same order at the same moment → exactly one succeeds.
-- A completion is processed twice → the courier is paid once.
-- A crash between debiting the requester and crediting the courier → no credits are lost.
-- A location is deactivated after the requester selects it but before the order is submitted → order creation is rejected.
-- Two admins edit the same location → the second gets 409.
-- Two admins create the same label at the same time → exactly one succeeds.
-- The admin's connection drops mid-create → no partial record; a retry is rejected as a duplicate.
-- Order events arrive out of order → no emails sent out of sequence.
-- The mail provider is down → events wait and are retried; order flows are unaffected.
-- An admin's role is revoked while their token is still valid → access continues until the token expires (≤ 15 min); the most sensitive actions re-check the role.
-- The last admin tries to demote or deactivate themselves → rejected.
-- A role field is sent in the registration payload → rejected by Zod; the role stays `USER`.
-
-## 13. Known open items
+## 10. Known open items
 
 - How services receive identity from the gateway: re-verify the JWT, or trust headers.
 - Who owns the Supplier management UI for D2.
