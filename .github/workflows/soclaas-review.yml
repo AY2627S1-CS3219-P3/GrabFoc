@@ -26,10 +26,12 @@ concurrency:
 
 jobs:
   review:
+    # Coarse comment filter; the Python gate trims whitespace, checks the exact
+    # command, and verifies write permission before the SoCLaaS step can run.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request_target' && vars.SOCLAAS_AUTO_REVIEW == 'true') ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.comment.body == '/soc-review')
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '/soc-review'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
