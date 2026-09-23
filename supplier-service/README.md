@@ -40,6 +40,12 @@ On startup the service creates its tables if they don't exist and, **only if the
 
 Import `postman/supplier.postman_collection.json`. Set the collection variable `baseUrl` if your port differs. Run **Create location** before the update, deactivate and restore requests; it stores the new `locationId` and `version`.
 
+**Re-seed before each collection run.** The collection creates a location with a fixed name, and names must be unique among ACTIVE locations, so a second run would hit 409. Empty the table, then restart the service so it seeds again:
+
+```bash
+docker exec foc-supplier-db psql -U postgres -d supplier -c "TRUNCATE locations RESTART IDENTITY;"
+```
+
 **Auth is DEV-ONLY for now:** every request needs `X-User-Id` (any value) and `X-User-Role` (`ADMIN` or `USER`). Missing or invalid → 401. This is temporary until the team decides how identity reaches the Supplier Service.
 
 ## Endpoints
