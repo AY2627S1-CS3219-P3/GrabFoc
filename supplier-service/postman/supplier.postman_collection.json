@@ -488,7 +488,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"version\": {{version}},\n  \"close_time\": \"2200hrs\"\n}"
+              "raw": "{\n  \"version\": {{version}},\n  \"open_time\": \"0800hrs\",\n  \"close_time\": \"2200hrs\"\n}"
             }
           }
         },
