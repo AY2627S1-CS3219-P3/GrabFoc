@@ -23,7 +23,7 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 - Redis for short-lived state, with AOF persistence (`everysec`).
 - Mail goes through a `MailService` interface with one SMTP implementation (nodemailer). In development it points at a **Mailpit** container, a fake inbox at `localhost:8025`, so OTPs can be read without sending real email.
 - **JSON field names are camelCase** (`userId`, `displayName`, `countryCode`, `mobileNumber`, `accessToken`, `expiresIn`); **database columns are snake_case** (`email_hash`, `password_hash`, `deactivated_at`). This differs from the Supplier Service, which mirrors its column names into its JSON — see [Open](#open).
-- Environment variables are prefixed `USER_` and read from the repo-root `.env` (the Supplier Service's convention, see `supplier-service/src/config.ts`). Every variable must also appear in the root `.env.example` with a safe placeholder.
+- Environment variables are prefixed `USER_` and read from the repo-root `.env` (the Supplier Service's convention, see `supplier-service/src/config.ts`). The exception is `LOG_LEVEL`, which is shared across services and lives in the Global section of `.env.example`. Every variable must appear in the root `.env.example` with a safe placeholder.
 - **Schema changes are migrations, not startup SQL.** Numbered files in `user-service/migrations/` applied in order by a small runner that records applied versions in a `schema_migrations` table. This is a deliberate divergence from the Supplier Service's startup `CREATE TABLE IF NOT EXISTS`, for two reasons: `CREATE TYPE` has no `IF NOT EXISTS` form (this service needs two enums), and `IF NOT EXISTS` silently skips a table that already exists in an *older* shape, so a column added later never appears on a teammate's database.
 - Run and test instructions: `README.md`. Postman collection: `user-service/postman/`.
 
@@ -317,9 +317,9 @@ Send the JWKS URL and the exact claim shape to the gateway and Supplier owners i
 
 _Origin: Team_
 
-All prefixed `USER_`, all listed in the root `.env.example` with placeholders, real values only in the git-ignored `.env`.
+All prefixed `USER_` except the shared `LOG_LEVEL`. All are listed in the root `.env.example` with placeholders; real values live only in the git-ignored `.env`.
 
-`USER_PORT` · `USER_DATABASE_URL` · `USER_REDIS_URL` · `USER_JWT_PRIVATE_KEY` (PEM) · `USER_JWT_KID` · `USER_AES_KEY` (32 bytes) · `USER_EMAIL_HMAC_KEY` · `USER_OTP_HMAC_KEY` · `USER_SMTP_HOST` · `USER_SMTP_PORT` · `USER_SMTP_USER` · `USER_SMTP_PASS` · `USER_SMTP_FROM` · `USER_BOOTSTRAP_ADMIN_EMAIL` · `USER_INTERNAL_SERVICE_KEY`
+`LOG_LEVEL` · `USER_PORT` · `USER_DATABASE_URL` · `USER_REDIS_URL` · `USER_JWT_PRIVATE_KEY` (PEM) · `USER_JWT_KID` · `USER_AES_KEY` (32 bytes) · `USER_EMAIL_HMAC_KEY` · `USER_OTP_HMAC_KEY` · `USER_SMTP_HOST` · `USER_SMTP_PORT` · `USER_SMTP_USER` · `USER_SMTP_PASS` · `USER_SMTP_FROM` · `USER_BOOTSTRAP_ADMIN_EMAIL` · `USER_INTERNAL_SERVICE_KEY`
 
 ## Open
 
