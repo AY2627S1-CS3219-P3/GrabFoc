@@ -25,7 +25,11 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 - **JSON field names are camelCase** (`userId`, `displayName`, `countryCode`, `mobileNumber`, `accessToken`, `expiresIn`); **database columns are snake_case** (`email_hash`, `password_hash`, `deactivated_at`). This differs from the Supplier Service, which mirrors its column names into its JSON — see [Open](#open).
 - Environment variables are prefixed `USER_` and read from the repo-root `.env` (the Supplier Service's convention, see `supplier-service/src/config.ts`). The exception is `LOG_LEVEL`, which is shared across services and lives in the Global section of `.env.example`. Every variable must appear in the root `.env.example` with a safe placeholder.
 - **Schema changes are migrations, not startup SQL.** Numbered files in `user-service/migrations/` applied in order by a small runner that records applied versions in a `schema_migrations` table. This is a deliberate divergence from the Supplier Service's startup `CREATE TABLE IF NOT EXISTS`, for two reasons: `CREATE TYPE` has no `IF NOT EXISTS` form (this service needs two enums), and `IF NOT EXISTS` silently skips a table that already exists in an *older* shape, so a column added later never appears on a teammate's database.
-- **Cryptography lives in `src/crypto` and nowhere else.** Nothing outside it imports `crypto` directly or reads a key from config, so there is one place to review when the marking asks how credentials are protected.
+- **Cryptography lives in exactly two places, and these are they.**
+  - `src/crypto` — credential and personal-data cryptography: password hashing, AES-256-GCM for the stored email and mobile, the keyed `email_hash` lookup, and the OTP and refresh-token hashes.
+  - `src/auth/jwt.service.ts` — access-token signing and verification, and the only other file that reads a signing key from config.
+
+  No other **production** file imports node's `crypto` or reads a key. (`src/test/env.setup.ts` generates a throwaway RS256 pair for the tests; it ships no key and runs only under Jest.) The point of the rule is a short, explicit list to audit when the marking asks how credentials are protected — two named files do that as well as one folder, and splitting `JwtService` across both would make the code worse without making the claim truer.
 - bcrypt is provided by `bcryptjs` (pure JavaScript) rather than the native `bcrypt`, which needs a compiler toolchain to build on Alpine. Slower per hash, but it installs identically on every teammate's machine and inside the Docker image. The cost factor is unaffected.
 - Run and test instructions: `README.md`. Postman collection: `user-service/postman/`.
 
@@ -56,7 +60,8 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 - Reloading on refresh is what makes demotion and deactivation take effect: a change lands within 15 minutes without any shared session store.
 - **Token reuse:** presenting an already-revoked token is treated as theft — every refresh token for that user is revoked.
 - **Revoke all** of a user's refresh tokens on password change, password reset and deactivation.
-- **Enforcement:** `JwtAuthGuard` verifies the token and attaches the caller; `RolesGuard` reads a `@Roles('ADMIN')` decorator and returns 403 plus an `UNAUTHORISED_ACCESS` log (U5.1.1); `@CurrentUser()` gives handlers the caller's id. **Identity comes from the verified token only** — never from the request body, a path parameter or an `X-User-Id` header (root `AGENTS.md` §8).
+- **Enforcement:** `JwtAuthGuard` is registered **globally**, so every route requires a token unless marked `@Public()` — forgetting the decorator closes an endpoint rather than exposing one. `RolesGuard` reads `@Roles('ADMIN')` and returns 403; `@CurrentUser()` gives handlers the caller. **Identity comes from the verified token only** — never from the request body, a path parameter or an `X-User-Id` header (root `AGENTS.md` §8). Denials are logged once, centrally, by `ErrorFilter`, so no guard can forget to (U5.1.1, U5.2.2).
+- `USER_JWT_PRIVATE_KEY` is a PKCS#8 PEM **base64-encoded onto one line**; a raw PEM spans many lines, which `.env` and compose do not handle. The public key is derived from it, not configured separately, so the pair cannot drift.
 
 ## Schema
 
@@ -348,6 +353,8 @@ All prefixed `USER_` except the shared `LOG_LEVEL`. All are listed in the root `
 - **Account enumeration via register** — 409 `EMAIL_TAKEN` reveals that an address has an account. U1.1.3 requires the check, so this is accepted. Login, forgot-password and reset deliberately do *not* leak it.
 - **Lockout as griefing** — anyone can lock another person out for 15 minutes by typing wrong passwords against their email. Accepted; it is the standard trade-off for a lockout policy.
 - **Mail is slow or down** — one retry with a 5 s timeout, then 503. The pending sign-up or OTP still exists, so the user can resend.
+- **Rotating the signing key logs everyone out.** The JWKS publishes only the current key, so a token carrying the previous `kid` stops verifying at once. Planned rotation normally avoids that by publishing the old and new keys together for one token lifetime — the `keys` array exists for exactly that — but **we do no planned rotation**, so the overlap is not implemented. For the reason we would actually rotate it is also the wrong behaviour: if the key leaks, an attacker can mint ADMIN tokens, and an overlap would keep honouring them for another 15 minutes. The hard cutover is correct.
+  - **If the key ever leaks:** generate a new key *and* a new `kid` and restart, then revoke every refresh token (`UPDATE refresh_tokens SET revoked_at = now()`). Treat a key that has ever reached git history as permanently compromised — this repository is public, so deleting it in a later commit does not help.
 
 ## D2 demo checklist
 

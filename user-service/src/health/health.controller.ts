@@ -6,6 +6,7 @@
  */
 import { Controller, Get, Inject } from '@nestjs/common';
 import { Pool } from 'pg';
+import { Public } from '../auth/decorators';
 import { AppError } from '../common/app-error';
 import { ErrorCode } from '../common/error-codes';
 import { PG_POOL } from '../db/database';
@@ -15,6 +16,7 @@ export class HealthController {
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
   /** Unauthenticated on purpose: compose and the gateway need it before anyone has a token. */
+  @Public()
   @Get()
   async check() {
     try {
