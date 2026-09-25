@@ -27,6 +27,8 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 - **Schema changes are migrations, not startup SQL.** Numbered files in `user-service/migrations/` applied in order by a small runner that records applied versions in a `schema_migrations` table. This is a deliberate divergence from the Supplier Service's startup `CREATE TABLE IF NOT EXISTS`, for two reasons: `CREATE TYPE` has no `IF NOT EXISTS` form (this service needs two enums), and `IF NOT EXISTS` silently skips a table that already exists in an *older* shape, so a column added later never appears on a teammate's database.
 - **Cryptography lives in `src/crypto` and nowhere else.** Nothing outside it imports `crypto` directly or reads a key from config, so there is one place to review when the marking asks how credentials are protected.
 - bcrypt is provided by `bcryptjs` (pure JavaScript) rather than the native `bcrypt`, which needs a compiler toolchain to build on Alpine. Slower per hash, but it installs identically on every teammate's machine and inside the Docker image. The cost factor is unaffected.
+- Redis access goes through `ioredis`; mail through `nodemailer` behind the `MailService` interface, so tests inject a fake and the destination can change without touching feature code.
+- **Tests are split.** `npm test` is unit-only and needs no containers. `npm run test:int` runs `*.int.spec.ts` against a real Redis, because the OTP Lua scripts are only meaningful when Redis executes them atomically (root `AGENTS.md` §3: database tests run against containers).
 - Run and test instructions: `README.md`. Postman collection: `user-service/postman/`.
 
 **Why PostgreSQL and Redis [Decided]** · _Origin: Team_
@@ -116,7 +118,8 @@ _Origin: Team_
 - **`subject`** is the `emailHash` for register, resend and forgot-password; the `userId` for `POST /users/me/otp`.
 - Keys are built from the `emailHash`, never the plaintext email, so a known and an unknown address behave identically and nothing leaks by timing or key inspection.
 - Issuing a new OTP **overwrites** the key, so the previous code stops working.
-- **Verification is one Lua script.** It compares the stored hash against the hash of the submitted code, increments `attempts` on a mismatch, deletes the key on the third wrong try, and deletes it on success. These must be atomic: as three separate commands, two parallel requests can interleave and grant more than three attempts.
+- **Verification is one Lua script.** It compares the stored hash against the hash of the submitted code, increments `attempts` on a mismatch, deletes the key on the third wrong try, and deletes it on success. These must be atomic: as three separate commands, two parallel requests can interleave and grant more than three attempts. A wrong guess re-writes the key with `KEEPTTL`, so guessing cannot extend a code's five-minute life.
+- **The request limit is also one Lua script**, for the same reason: reading the counter and deciding to block are separate steps, so three simultaneous requests could each see a count below the limit. Only the first request in a window sets the expiry, so the window cannot slide forward indefinitely.
 
 ## Rules
 

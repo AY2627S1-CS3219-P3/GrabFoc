@@ -89,13 +89,26 @@ To change the schema, **add a new file** (`002_….sql`) — never edit one that
 ## Tests
 
 ```bash
-npm test
+npm test          # unit tests, no containers needed
+npm run test:int  # integration tests, needs Redis
+```
+
+`npm test` is offline and fast. The integration tests (`*.int.spec.ts`) run the OTP Lua
+scripts against a real Redis, because their whole point is that Redis executes them
+atomically — no in-memory fake reproduces that. Start Redis first:
+
+```bash
+docker compose up -d user-redis
 ```
 
 ## What exists so far
 
-Phase 0 steps 1 to 3: the skeleton, configuration, the database and migrations, the error filter, the Zod pipe, the redacting logger, the crypto helpers in `src/crypto`, and access tokens with RBAC in `src/auth`.
+Phase 0 steps 1 to 4: the skeleton, configuration, the database and migrations, the error filter, the Zod pipe, the redacting logger, the crypto helpers in `src/crypto`, access tokens with RBAC in `src/auth`, and Redis-backed OTPs with email delivery in `src/otp` and `src/mail`.
 
-Routes so far: `GET /health` and `GET /.well-known/jwks.json`, both public. There are still no register or login endpoints, so tokens are minted in tests only. See the build order in `AGENTS.md`.
+Phase 0 step 4 adds Redis, `MailService` and `OtpService` on top.
+
+Routes so far: `GET /health` and `GET /.well-known/jwks.json`, both public. There are still no register or login endpoints, so OTPs and tokens are exercised from tests only. See the build order in `AGENTS.md`.
+
+Once an OTP is sent, read it at **http://localhost:8025** — Mailpit's inbox.
 
 **Authentication is on by default.** `JwtAuthGuard` is registered globally, so every route needs a bearer token unless it is marked `@Public()`. Forgetting the decorator leaves an endpoint closed rather than open.

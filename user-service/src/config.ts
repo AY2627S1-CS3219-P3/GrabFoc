@@ -55,6 +55,16 @@ const EnvSchema = z.object({
   // Names the key in the JWKS and in each token's `kid` header, so the key can be rotated
   // without every service rejecting tokens signed by the previous one.
   USER_JWT_KID: z.string().min(1, 'required; any stable identifier, e.g. a date like 2026-09'),
+
+  USER_REDIS_URL: z.string().min(1, 'required, e.g. redis://localhost:6379'),
+
+  // SMTP. In development these point at the Mailpit container, which accepts anything and
+  // delivers nowhere, so the credentials are optional.
+  USER_SMTP_HOST: z.string().min(1, 'required, e.g. mailpit in compose or localhost'),
+  USER_SMTP_PORT: z.coerce.number().int().positive().default(1025),
+  USER_SMTP_USER: z.string().optional(),
+  USER_SMTP_PASS: z.string().optional(),
+  USER_SMTP_FROM: z.string().min(1).default('FoC <no-reply@foc.local>'),
 });
 
 // `.env.example` ships every variable with an empty value, so a half-filled `.env` would
@@ -80,4 +90,12 @@ export const config = {
   otpHmacKey: Buffer.from(parsed.data.USER_OTP_HMAC_KEY, 'base64'),
   jwtPrivateKeyPem: Buffer.from(parsed.data.USER_JWT_PRIVATE_KEY, 'base64').toString('utf8'),
   jwtKid: parsed.data.USER_JWT_KID,
+  redisUrl: parsed.data.USER_REDIS_URL,
+  smtp: {
+    host: parsed.data.USER_SMTP_HOST,
+    port: parsed.data.USER_SMTP_PORT,
+    user: parsed.data.USER_SMTP_USER,
+    pass: parsed.data.USER_SMTP_PASS,
+    from: parsed.data.USER_SMTP_FROM,
+  },
 };
