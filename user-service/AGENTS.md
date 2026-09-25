@@ -351,6 +351,8 @@ All prefixed `USER_` except the shared `LOG_LEVEL`. All are listed in the root `
 - **Account enumeration via register** — 409 `EMAIL_TAKEN` reveals that an address has an account. U1.1.3 requires the check, so this is accepted. Login, forgot-password and reset deliberately do *not* leak it.
 - **Lockout as griefing** — anyone can lock another person out for 15 minutes by typing wrong passwords against their email. Accepted; it is the standard trade-off for a lockout policy.
 - **Mail is slow or down** — one retry with a 5 s timeout, then 503. The pending sign-up or OTP still exists, so the user can resend.
+- **Rotating the signing key logs everyone out.** The JWKS publishes only the current key, so a token carrying the previous `kid` stops verifying at once. Planned rotation normally avoids that by publishing the old and new keys together for one token lifetime — the `keys` array exists for exactly that — but **we do no planned rotation**, so the overlap is not implemented. For the reason we would actually rotate it is also the wrong behaviour: if the key leaks, an attacker can mint ADMIN tokens, and an overlap would keep honouring them for another 15 minutes. The hard cutover is correct.
+  - **If the key ever leaks:** generate a new key *and* a new `kid` and restart, then revoke every refresh token (`UPDATE refresh_tokens SET revoked_at = now()`). Treat a key that has ever reached git history as permanently compromised — this repository is public, so deleting it in a later commit does not help.
 
 ## D2 demo checklist
 
