@@ -84,6 +84,24 @@ describe('the 72-byte bound', () => {
     await expect(hashPassword(emoji)).rejects.toThrow(/truncate/);
   });
 
+  it('refuses a correct 72-byte password followed by extra bytes', async () => {
+    // bcrypt truncates on comparison too, so without the guard this returns true: the
+    // caller submits the real password plus anything and is let in.
+    const real = 'A'.repeat(72);
+    const stored = await hashPassword(real);
+    expect(await verifyPassword(real, stored)).toBe(true);
+    expect(await verifyPassword(real + 'ANYTHING-AT-ALL', stored)).toBe(false);
+  });
+
+  it('costs the same for an over-long candidate, so length is not detectable by timing', async () => {
+    const stored = await hashPassword('A'.repeat(72));
+    const started = Date.now();
+    await verifyPassword('A'.repeat(200), stored);
+    // A bare early return would be near-instant; a real bcrypt comparison at cost 12 is
+    // hundreds of milliseconds. The floor is deliberately loose to avoid flakiness.
+    expect(Date.now() - started).toBeGreaterThan(50);
+  });
+
   it('still accepts ordinary non-ASCII passwords under the limit', async () => {
     const ok = 'Contrase\u00f1a1Segura';
     expect(Buffer.byteLength(ok, 'utf8')).toBeLessThanOrEqual(72);
