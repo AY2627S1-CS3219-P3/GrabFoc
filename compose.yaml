@@ -18,9 +18,10 @@ services:
   user-db:
     image: postgres:17-alpine
     environment:
-      # Local development only. Nothing here reaches a deployed environment.
+      # Supplied by the git-ignored .env so no working credential lives in the repository.
+      # The fallback keeps `docker compose up` working on a fresh clone; override it in .env.
       POSTGRES_USER: foc
-      POSTGRES_PASSWORD: foc_dev_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-dotenv}
       POSTGRES_DB: users
     ports:
       - "5432:5432"
@@ -80,7 +81,7 @@ services:
       # These point at the containers above and override whatever .env says, because inside
       # the compose network the hostnames are the service names, not localhost.
       USER_PORT: 3001
-      USER_DATABASE_URL: postgres://foc:foc_dev_password@user-db:5432/users
+      USER_DATABASE_URL: postgres://foc:${POSTGRES_PASSWORD:-change-me-in-dotenv}@user-db:5432/users
       USER_REDIS_URL: redis://user-redis:6379
       USER_SMTP_HOST: mailpit
       USER_SMTP_PORT: 1025

@@ -54,7 +54,10 @@ export class ErrorFilter implements ExceptionFilter {
           status: error.status,
           code: error.code,
           method: req.method,
-          path: req.originalUrl,
+          // req.path, NOT req.originalUrl: originalUrl carries the query string, so a denied
+          // GET /admin/users?email=alex@u.nus.edu would write the address into the audit log.
+          // Redaction matches field names and cannot reach inside a URL string (NFR5.1).
+          path: req.path,
           // Set by JwtAuthGuard once step 3 lands; absent for an unauthenticated caller.
           userId: (req as Request & { caller?: { id: string } }).caller?.id ?? null,
         }),
