@@ -56,7 +56,8 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 - Reloading on refresh is what makes demotion and deactivation take effect: a change lands within 15 minutes without any shared session store.
 - **Token reuse:** presenting an already-revoked token is treated as theft — every refresh token for that user is revoked.
 - **Revoke all** of a user's refresh tokens on password change, password reset and deactivation.
-- **Enforcement:** `JwtAuthGuard` verifies the token and attaches the caller; `RolesGuard` reads a `@Roles('ADMIN')` decorator and returns 403 plus an `UNAUTHORISED_ACCESS` log (U5.1.1); `@CurrentUser()` gives handlers the caller's id. **Identity comes from the verified token only** — never from the request body, a path parameter or an `X-User-Id` header (root `AGENTS.md` §8).
+- **Enforcement:** `JwtAuthGuard` is registered **globally**, so every route requires a token unless marked `@Public()` — forgetting the decorator closes an endpoint rather than exposing one. `RolesGuard` reads `@Roles('ADMIN')` and returns 403; `@CurrentUser()` gives handlers the caller. **Identity comes from the verified token only** — never from the request body, a path parameter or an `X-User-Id` header (root `AGENTS.md` §8). Denials are logged once, centrally, by `ErrorFilter`, so no guard can forget to (U5.1.1, U5.2.2).
+- `USER_JWT_PRIVATE_KEY` is a PKCS#8 PEM **base64-encoded onto one line**; a raw PEM spans many lines, which `.env` and compose do not handle. The public key is derived from it, not configured separately, so the pair cannot drift.
 
 ## Schema
 

@@ -42,6 +42,19 @@ const EnvSchema = z.object({
   USER_AES_KEY: base64Key(32),
   USER_EMAIL_HMAC_KEY: base64Key(32),
   USER_OTP_HMAC_KEY: base64Key(32),
+
+  // The RS256 signing key, as a PKCS#8 PEM that has been base64-encoded so it fits on one
+  // line. A PEM pasted raw into a .env file spans many lines, which neither the .env parser
+  // nor compose handles reliably. Decoded in src/auth/jwt.service.ts and nowhere else.
+  USER_JWT_PRIVATE_KEY: z
+    .string()
+    .min(1, 'required; see the README for how to generate a key pair')
+    .refine((v) => Buffer.from(v, 'base64').toString('utf8').includes('BEGIN PRIVATE KEY'), {
+      message: 'must be a base64-encoded PKCS#8 PEM (openssl genpkey ... | base64)',
+    }),
+  // Names the key in the JWKS and in each token's `kid` header, so the key can be rotated
+  // without every service rejecting tokens signed by the previous one.
+  USER_JWT_KID: z.string().min(1, 'required; any stable identifier, e.g. a date like 2026-09'),
 });
 
 // `.env.example` ships every variable with an empty value, so a half-filled `.env` would
@@ -65,4 +78,6 @@ export const config = {
   aesKey: Buffer.from(parsed.data.USER_AES_KEY, 'base64'),
   emailHmacKey: Buffer.from(parsed.data.USER_EMAIL_HMAC_KEY, 'base64'),
   otpHmacKey: Buffer.from(parsed.data.USER_OTP_HMAC_KEY, 'base64'),
+  jwtPrivateKeyPem: Buffer.from(parsed.data.USER_JWT_PRIVATE_KEY, 'base64').toString('utf8'),
+  jwtKid: parsed.data.USER_JWT_KID,
 };

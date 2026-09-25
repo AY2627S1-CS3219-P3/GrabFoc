@@ -29,6 +29,18 @@ echo "USER_EMAIL_HMAC_KEY=$(openssl rand -base64 32)"
 echo "USER_OTP_HMAC_KEY=$(openssl rand -base64 32)"
 ```
 
+You also need an RS256 key pair for access tokens. Only the private half is configured — the
+public half is derived from it and published at `/.well-known/jwks.json`. It is base64-encoded
+onto one line because a raw PEM spans many lines, which `.env` and compose do not handle:
+
+```bash
+echo "USER_JWT_PRIVATE_KEY=$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | base64 | tr -d '\n')"
+echo "USER_JWT_KID=dev-$(date +%Y-%m)"
+```
+
+Never commit the PEM. `*.pem` and `*.key` are git-ignored, but the safest thing is not to
+write it to a file at all — pipe it straight into `.env` as above.
+
 Changing `USER_AES_KEY` later makes existing encrypted emails and mobile numbers
 undecryptable, and changing `USER_EMAIL_HMAC_KEY` makes existing accounts unfindable, so in
 development regenerate them together with the database.
@@ -82,6 +94,8 @@ npm test
 
 ## What exists so far
 
-Phase 0 steps 1 and 2: the skeleton, configuration, the database connection and migrations, the error filter, the Zod validation pipe, the redacting logger, and the crypto helpers in `src/crypto` (password hashing, encryption, the lookup hash, refresh tokens and OTP codes).
+Phase 0 steps 1 to 3: the skeleton, configuration, the database and migrations, the error filter, the Zod pipe, the redacting logger, the crypto helpers in `src/crypto`, and access tokens with RBAC in `src/auth`.
 
-There are no authentication or user endpoints yet — `GET /health` is the only route. See the build order in `AGENTS.md`.
+Routes so far: `GET /health` and `GET /.well-known/jwks.json`, both public. There are still no register or login endpoints, so tokens are minted in tests only. See the build order in `AGENTS.md`.
+
+**Authentication is on by default.** `JwtAuthGuard` is registered globally, so every route needs a bearer token unless it is marked `@Public()`. Forgetting the decorator leaves an endpoint closed rather than open.
