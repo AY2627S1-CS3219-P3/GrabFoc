@@ -8,9 +8,11 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from './auth/auth.module';
 import { DatabaseModule } from './db/database';
 import { HealthController } from './health/health.controller';
+import { OtpModule } from './otp/otp.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
-  imports: [DatabaseModule, AuthModule],
+  imports: [DatabaseModule, RedisModule, AuthModule, OtpModule],
   controllers: [HealthController],
 })
 export class AppModule {}

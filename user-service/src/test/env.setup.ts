@@ -15,6 +15,10 @@ import { generateKeyPairSync } from 'crypto';
  * values. They are test fixtures, not secrets, and are not used anywhere else.
  */
 process.env.USER_DATABASE_URL ||= 'postgres://test@127.0.0.1:5432/test';
+// Unit tests never open these; the integration tests override USER_REDIS_URL to the
+// compose container.
+process.env.USER_REDIS_URL ||= 'redis://127.0.0.1:6379';
+process.env.USER_SMTP_HOST ||= 'localhost';
 process.env.USER_AES_KEY ||= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 process.env.USER_EMAIL_HMAC_KEY ||= 'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=';
 process.env.USER_OTP_HMAC_KEY ||= 'QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8=';

@@ -31,6 +31,8 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 
   No other **production** file imports node's `crypto` or reads a key. (`src/test/env.setup.ts` generates a throwaway RS256 pair for the tests; it ships no key and runs only under Jest.) The point of the rule is a short, explicit list to audit when the marking asks how credentials are protected — two named files do that as well as one folder, and splitting `JwtService` across both would make the code worse without making the claim truer.
 - bcrypt is provided by `bcryptjs` (pure JavaScript) rather than the native `bcrypt`, which needs a compiler toolchain to build on Alpine. Slower per hash, but it installs identically on every teammate's machine and inside the Docker image. The cost factor is unaffected.
+- Redis access goes through `ioredis`; mail through `nodemailer` behind the `MailService` interface, so tests inject a fake and the destination can change without touching feature code.
+- **Tests are split.** `npm test` is unit-only and needs no containers. `npm run test:int` runs `*.int.spec.ts` against a real Redis, because the OTP Lua scripts are only meaningful when Redis executes them atomically (root `AGENTS.md` §3: database tests run against containers).
 - Run and test instructions: `README.md`. Postman collection: `user-service/postman/`.
 
 **Why PostgreSQL and Redis [Decided]** · _Origin: Team_
@@ -120,7 +122,8 @@ _Origin: Team_
 - **`subject`** is the `emailHash` for register, resend and forgot-password; the `userId` for `POST /users/me/otp`.
 - Keys are built from the `emailHash`, never the plaintext email, so a known and an unknown address behave identically and nothing leaks by timing or key inspection.
 - Issuing a new OTP **overwrites** the key, so the previous code stops working.
-- **Verification is one Lua script.** It compares the stored hash against the hash of the submitted code, increments `attempts` on a mismatch, deletes the key on the third wrong try, and deletes it on success. These must be atomic: as three separate commands, two parallel requests can interleave and grant more than three attempts.
+- **Verification is one Lua script.** It compares the stored hash against the hash of the submitted code, increments `attempts` on a mismatch, deletes the key on the third wrong try, and deletes it on success. These must be atomic: as three separate commands, two parallel requests can interleave and grant more than three attempts. A wrong guess re-writes the key with `KEEPTTL`, so guessing cannot extend a code's five-minute life.
+- **The request limit is also one Lua script**, for the same reason: reading the counter and deciding to block are separate steps, so three simultaneous requests could each see a count below the limit. Only the first request in a window sets the expiry, so the window cannot slide forward indefinitely.
 
 ## Rules
 

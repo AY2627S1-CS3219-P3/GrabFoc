@@ -73,11 +73,26 @@ That starts four containers: `user-service` (port 3001), `user-db` (PostgreSQL 1
 
 ## Run it locally without Docker
 
-You still need PostgreSQL. Point `USER_DATABASE_URL` at it in the repo-root `.env`:
+The service validates its whole environment at startup, so **PostgreSQL, Redis and an SMTP
+host must all be configured** — otherwise it exits with `Invalid environment` before
+listening. The simplest route is to run just the dependencies in Docker and the service
+on your machine:
+
+```bash
+docker compose up -d user-db user-redis mailpit
+```
+
+Then, in the repo-root `.env`:
 
 ```
-USER_DATABASE_URL=postgres://foc:<password>@localhost:5432/users
+USER_DATABASE_URL=postgres://foc:foc_dev_password@localhost:5432/users
+USER_REDIS_URL=redis://localhost:6379
+USER_SMTP_HOST=localhost
+USER_SMTP_PORT=1025
 ```
+
+(plus the keys from the previous section). If you are supplying your own PostgreSQL, Redis
+or SMTP server instead, point these at those.
 
 Then, from `user-service/`:
 
@@ -90,6 +105,22 @@ npm run start:dev
 
 `USER_PORT` defaults to 3001. Variables set in the real environment override the `.env` file, which is how compose points the service at the containers.
 
+### If the service cannot reach the database
+
+If you already run PostgreSQL on your machine — Postgres.app, a Homebrew install, another
+project's container — it owns `localhost:5432` and the compose container's published port
+loses to it. The service then connects to the wrong server and exits with something like
+`role "foc" does not exist`. Check with:
+
+```bash
+lsof -nP -iTCP:5432 -sTCP:LISTEN
+```
+
+Either stop the other server, or publish the container on a free port by adding
+`- "55432:5432"` to `user-db` in `compose.yaml` and pointing `USER_DATABASE_URL` at
+`localhost:55432`. `docker compose up` on its own is unaffected: inside the compose network
+the service talks to `user-db` directly and never touches the host's port.
+
 ## Migrations
 
 Schema changes are numbered SQL files in `migrations/`, applied in filename order and recorded in a `schema_migrations` table, so each runs exactly once per database.
@@ -101,13 +132,26 @@ To change the schema, **add a new file** (`002_….sql`) — never edit one that
 ## Tests
 
 ```bash
-npm test
+npm test          # unit tests, no containers needed
+npm run test:int  # integration tests, needs Redis
+```
+
+`npm test` is offline and fast. The integration tests (`*.int.spec.ts`) run the OTP Lua
+scripts against a real Redis, because their whole point is that Redis executes them
+atomically — no in-memory fake reproduces that. Start Redis first:
+
+```bash
+docker compose up -d user-redis
 ```
 
 ## What exists so far
 
-Phase 0 steps 1 to 3: the skeleton, configuration, the database and migrations, the error filter, the Zod pipe, the redacting logger, the crypto helpers in `src/crypto`, and access tokens with RBAC in `src/auth`.
+Phase 0 steps 1 to 4: the skeleton, configuration, the database and migrations, the error filter, the Zod pipe, the redacting logger, the crypto helpers in `src/crypto`, access tokens with RBAC in `src/auth`, and Redis-backed OTPs with email delivery in `src/otp` and `src/mail`.
 
-Routes so far: `GET /health` and `GET /.well-known/jwks.json`, both public. There are still no register or login endpoints, so tokens are minted in tests only. See the build order in `AGENTS.md`.
+Phase 0 step 4 adds Redis, `MailService` and `OtpService` on top.
+
+Routes so far: `GET /health` and `GET /.well-known/jwks.json`, both public. There are still no register or login endpoints, so OTPs and tokens are exercised from tests only. See the build order in `AGENTS.md`.
+
+Once an OTP is sent, read it at **http://localhost:8025** — Mailpit's inbox.
 
 **Authentication is on by default.** `JwtAuthGuard` is registered globally, so every route needs a bearer token unless it is marked `@Public()`. Forgetting the decorator leaves an endpoint closed rather than open.
