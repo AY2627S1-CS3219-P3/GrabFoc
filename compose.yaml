@@ -1,0 +1,87 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
+# Scope: Generated the first content of this file: the User Service and the three containers
+#        it needs (PostgreSQL, Redis, Mailpit).
+# Author review: Read in full; verified the full stack builds and runs, and that the database survives a down/up cycle.
+#
+# One compose file for the whole project (M7). Other services add themselves here, each with
+# its OWN database container — services must not share a database (root AGENTS.md §3).
+#
+#   cp .env.example .env     # then fill in the secrets
+#   docker compose up --build
+#
+# Mailpit's web inbox is on http://localhost:8025 — sign-up and password OTPs arrive there.
+
+name: foc
+
+services:
+  user-db:
+    image: postgres:17-alpine
+    environment:
+      # Local development only. Nothing here reaches a deployed environment.
+      POSTGRES_USER: foc
+      POSTGRES_PASSWORD: foc_dev_password
+      POSTGRES_DB: users
+    ports:
+      - "5432:5432"
+    volumes:
+      # Named volume, so the data survives `docker compose down` (root AGENTS.md §8).
+      - user-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foc -d users"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  user-redis:
+    image: redis:7-alpine
+    # AOF with everysec: at most one second of OTPs and counters is lost on a crash.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - user-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    # A fake SMTP server with a web inbox, so OTP emails can be read without sending real mail.
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"   # SMTP, what the service sends to
+      - "8025:8025"   # web inbox, what you open in a browser
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  user-service:
+    build: ./user-service
+    depends_on:
+      user-db:
+        condition: service_healthy
+      user-redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    # Secrets (keys, the bootstrap admin address) come from the git-ignored .env.
+    env_file:
+      - .env
+    environment:
+      # These point at the containers above and override whatever .env says, because inside
+      # the compose network the hostnames are the service names, not localhost.
+      USER_PORT: 3001
+      USER_DATABASE_URL: postgres://foc:foc_dev_password@user-db:5432/users
+      USER_REDIS_URL: redis://user-redis:6379
+      USER_SMTP_HOST: mailpit
+      USER_SMTP_PORT: 1025
+    ports:
+      - "3001:3001"
+
+volumes:
+  user-db-data:
+  user-redis-data:
