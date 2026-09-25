@@ -35,6 +35,12 @@ const SENSITIVE_FIELDS = [
   'mobilenumber',
   'privatekey',
   'secret',
+  // This service holds no credit data — balances live in the Credit Service — but the shared
+  // rule in the root AGENTS.md §8 names them, and one entry costs nothing if a future event
+  // ever carries one.
+  'balance',
+  'creditbalance',
+  'credits',
 ];
 
 const REDACTED = '[REDACTED]';
