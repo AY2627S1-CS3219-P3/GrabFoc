@@ -16,7 +16,24 @@ Stack: NestJS (TypeScript, Node.js), PostgreSQL via `pg` with plain parameterize
 From the repo root:
 
 ```bash
-cp .env.example .env      # fill in the USER_* secrets; the rest can stay empty for now
+cp .env.example .env
+```
+
+Then generate the three keys the service needs and put them in `.env`. They must each be
+exactly 32 bytes of base64, and each must be **different** — a separate key per purpose means
+compromising one does not compromise the others:
+
+```bash
+echo "USER_AES_KEY=$(openssl rand -base64 32)"
+echo "USER_EMAIL_HMAC_KEY=$(openssl rand -base64 32)"
+echo "USER_OTP_HMAC_KEY=$(openssl rand -base64 32)"
+```
+
+Changing `USER_AES_KEY` later makes existing encrypted emails and mobile numbers
+undecryptable, and changing `USER_EMAIL_HMAC_KEY` makes existing accounts unfindable, so in
+development regenerate them together with the database.
+
+```bash
 docker compose up --build
 ```
 
@@ -65,4 +82,6 @@ npm test
 
 ## What exists so far
 
-Phase 0 step 1 only: the skeleton, configuration, the database connection and migrations, the error filter, the Zod validation pipe and the redacting logger. There are no authentication or user endpoints yet — `GET /health` is the only route. See the build order in `AGENTS.md`.
+Phase 0 steps 1 and 2: the skeleton, configuration, the database connection and migrations, the error filter, the Zod validation pipe, the redacting logger, and the crypto helpers in `src/crypto` (password hashing, encryption, the lookup hash, refresh tokens and OTP codes).
+
+There are no authentication or user endpoints yet — `GET /health` is the only route. See the build order in `AGENTS.md`.

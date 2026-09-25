@@ -25,6 +25,8 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 - **JSON field names are camelCase** (`userId`, `displayName`, `countryCode`, `mobileNumber`, `accessToken`, `expiresIn`); **database columns are snake_case** (`email_hash`, `password_hash`, `deactivated_at`). This differs from the Supplier Service, which mirrors its column names into its JSON — see [Open](#open).
 - Environment variables are prefixed `USER_` and read from the repo-root `.env` (the Supplier Service's convention, see `supplier-service/src/config.ts`). The exception is `LOG_LEVEL`, which is shared across services and lives in the Global section of `.env.example`. Every variable must appear in the root `.env.example` with a safe placeholder.
 - **Schema changes are migrations, not startup SQL.** Numbered files in `user-service/migrations/` applied in order by a small runner that records applied versions in a `schema_migrations` table. This is a deliberate divergence from the Supplier Service's startup `CREATE TABLE IF NOT EXISTS`, for two reasons: `CREATE TYPE` has no `IF NOT EXISTS` form (this service needs two enums), and `IF NOT EXISTS` silently skips a table that already exists in an *older* shape, so a column added later never appears on a teammate's database.
+- **Cryptography lives in `src/crypto` and nowhere else.** Nothing outside it imports `crypto` directly or reads a key from config, so there is one place to review when the marking asks how credentials are protected.
+- bcrypt is provided by `bcryptjs` (pure JavaScript) rather than the native `bcrypt`, which needs a compiler toolchain to build on Alpine. Slower per hash, but it installs identically on every teammate's machine and inside the Docker image. The cost factor is unaffected.
 - Run and test instructions: `README.md`. Postman collection: `user-service/postman/`.
 
 **Why PostgreSQL and Redis [Decided]** · _Origin: Team_
@@ -123,7 +125,9 @@ _Origin: Team (Backlog USFR1–6, NFR5.1 and team decisions)_
 
 - Email must be a valid address on `u.nus.edu` or `nus.edu.sg`, normalised first (U1.1.1, U2.1.1).
 - An email already attached to any account — including DEACTIVATED and SUSPENDED — is rejected with 409 `EMAIL_TAKEN` (U1.1.3).
-- Password: 8–128 characters, at least one uppercase, one lowercase and one digit (U1.1.4, U3.2.2).
+- Password: 8–72 characters, at least one uppercase, one lowercase and one digit (U1.1.4, U3.2.2).
+  - **72, not 128.** bcrypt reads only the first 72 bytes and discards the rest, so two passwords sharing a 72-byte prefix would verify against the same hash. `hashPassword` enforces the bound in **bytes**, because UTF-8 uses 2–4 bytes per non-ASCII character — 24 Chinese characters or 18 emoji already reach 72 bytes, and a character-only check would let those truncate silently.
+  - The backlog sets only a **floor** — U1.1.4 says "at least 8 characters" and names no maximum — so the 72 ceiling is an implementation bound we add because of bcrypt, not a change to any requirement. (Our earlier planning notes said 8–128; that figure was ours, never the backlog's.)
 - Mobile number: validated with libphonenumber-js against the given country code, digits only (U1.1.5, U3.1.3).
 - Every request body is validated by a **strict** Zod schema; unknown fields are rejected with 400, not ignored (root `AGENTS.md` §8). This is what prevents a caller adding `"role": "ADMIN"` to a profile update.
 
