@@ -6,7 +6,7 @@ Scope: Transcribed the team's User Service design (roles, storage, credential ha
        following the structure of supplier-service/AGENTS.md. No design decisions were made by
        the AI: the choices recorded here, including RS256, the Postgres/Redis split, the schema
        and the endpoint shapes, were made by the team.
-Author review: pending — to be completed before merge.
+Author review: Read in full; checked against the team's work plan.
 -->
 
 # AGENTS.md — User Service
