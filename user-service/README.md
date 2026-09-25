@@ -61,11 +61,26 @@ That starts four containers: `user-service` (port 3001), `user-db` (PostgreSQL 1
 
 ## Run it locally without Docker
 
-You still need PostgreSQL. Point `USER_DATABASE_URL` at it in the repo-root `.env`:
+The service validates its whole environment at startup, so **PostgreSQL, Redis and an SMTP
+host must all be configured** — otherwise it exits with `Invalid environment` before
+listening. The simplest route is to run just the dependencies in Docker and the service
+on your machine:
+
+```bash
+docker compose up -d user-db user-redis mailpit
+```
+
+Then, in the repo-root `.env`:
 
 ```
-USER_DATABASE_URL=postgres://foc:<password>@localhost:5432/users
+USER_DATABASE_URL=postgres://foc:foc_dev_password@localhost:5432/users
+USER_REDIS_URL=redis://localhost:6379
+USER_SMTP_HOST=localhost
+USER_SMTP_PORT=1025
 ```
+
+(plus the keys from the previous section). If you are supplying your own PostgreSQL, Redis
+or SMTP server instead, point these at those.
 
 Then, from `user-service/`:
 
@@ -77,6 +92,22 @@ npm run start:dev
 ```
 
 `USER_PORT` defaults to 3001. Variables set in the real environment override the `.env` file, which is how compose points the service at the containers.
+
+### If the service cannot reach the database
+
+If you already run PostgreSQL on your machine — Postgres.app, a Homebrew install, another
+project's container — it owns `localhost:5432` and the compose container's published port
+loses to it. The service then connects to the wrong server and exits with something like
+`role "foc" does not exist`. Check with:
+
+```bash
+lsof -nP -iTCP:5432 -sTCP:LISTEN
+```
+
+Either stop the other server, or publish the container on a free port by adding
+`- "55432:5432"` to `user-db` in `compose.yaml` and pointing `USER_DATABASE_URL` at
+`localhost:55432`. `docker compose up` on its own is unaffected: inside the compose network
+the service talks to `user-db` directly and never touches the host's port.
 
 ## Migrations
 

@@ -2,6 +2,7 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
  * Scope: Generated the mail interface, its SMTP implementation and the retry policy.
+ *        Reworked the failure log after review found it interpolated the provider's message.
  * Author review: Read in full; `npm test` passes (73 tests), and an OTP email was delivered to Mailpit from the running stack.
  */
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
@@ -79,10 +80,18 @@ export class SmtpMailService extends MailService {
         await this.transporter.sendMail(message);
         return;
       } catch (error) {
-        // No address and no code in the log (NFR5.1) — only that a send failed.
-        this.logger.warn(
-          `OTP send attempt ${attempt} failed for ${purpose}: ${(error as Error).message}`,
-        );
+        // Log fixed categories, never the provider's own message. An SMTP rejection echoes
+        // the recipient back ("550 5.1.1 <alex@u.nus.edu> User unknown"), and redaction works
+        // on field names in structured data — it cannot reach inside an interpolated string
+        // (NFR5.1, and the warning at the top of common/logger.ts).
+        const { code, responseCode } = error as { code?: string; responseCode?: number };
+        this.logger.warn({
+          event: 'OTP_SEND_FAILED',
+          purpose,
+          attempt,
+          errorCode: code ?? 'UNKNOWN',
+          smtpResponseCode: responseCode ?? null,
+        });
       }
     }
 
