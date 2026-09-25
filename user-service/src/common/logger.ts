@@ -2,7 +2,8 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
  * Scope: Generated the redaction helper, the redacting logger and the structured audit events
- *        listed under "Logging" in user-service/AGENTS.md.
+ *        listed under "Logging" in user-service/AGENTS.md. Added the fatal() override after
+ *        review found it bypassed redaction.
  * Author review: Read in full; `npm test` passes (7 tests).
  */
 import { ConsoleLogger, LogLevel } from '@nestjs/common';
@@ -77,7 +78,18 @@ export class RedactingLogger extends ConsoleLogger {
   verbose(message: unknown, ...rest: unknown[]) {
     super.verbose(redact(message), ...rest.map((r) => redact(r)));
   }
+  fatal(message: unknown, ...rest: unknown[]) {
+    super.fatal(redact(message), ...rest.map((r) => redact(r)));
+  }
 }
+
+/**
+ * Every log level ConsoleLogger exposes. `RedactingLogger` must override all of them: any
+ * level left to the base class writes its payload verbatim, which is how `fatal` slipped
+ * through. `logger.spec.ts` asserts this list is fully covered, so a level added by a future
+ * Nest version fails the test rather than silently leaking.
+ */
+export const LOG_METHODS = ['log', 'error', 'warn', 'debug', 'verbose', 'fatal'] as const;
 
 /**
  * The structured events listed in AGENTS.md. They are emitted as single-line JSON so the
