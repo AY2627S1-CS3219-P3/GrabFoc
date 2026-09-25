@@ -3,12 +3,20 @@ dist/
 build/
 out/
 
-# Environment / secrets
+# Environment / secrets — NEVER commit real values; .env.example holds placeholders
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+# Private keys and certificates (the User Service's RS256 signing key lives in one).
+# Public keys are safe to commit; the JWKS endpoint publishes one.
 *.pem
 *.key
+*.p8
+*.p12
+*.pfx
+*.jks
+id_rsa*
+secrets.json
 
 # OS
 .DS_Store
