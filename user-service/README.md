@@ -19,27 +19,39 @@ From the repo root:
 cp .env.example .env
 ```
 
-Then generate the three keys the service needs and put them in `.env`. They must each be
-exactly 32 bytes of base64, and each must be **different** — a separate key per purpose means
-compromising one does not compromise the others:
+Then generate the keys. Run this **once**, from the repo root — each line appends to `.env`:
 
 ```bash
-echo "USER_AES_KEY=$(openssl rand -base64 32)"
-echo "USER_EMAIL_HMAC_KEY=$(openssl rand -base64 32)"
-echo "USER_OTP_HMAC_KEY=$(openssl rand -base64 32)"
+{
+  echo "USER_AES_KEY=$(openssl rand -base64 32)"
+  echo "USER_EMAIL_HMAC_KEY=$(openssl rand -base64 32)"
+  echo "USER_OTP_HMAC_KEY=$(openssl rand -base64 32)"
+  echo "USER_JWT_PRIVATE_KEY=$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | base64 | tr -d '\n')"
+  echo "USER_JWT_KID=dev-$(date +%Y-%m)"
+} >> .env
 ```
 
-You also need an RS256 key pair for access tokens. Only the private half is configured — the
-public half is derived from it and published at `/.well-known/jwks.json`. It is base64-encoded
-onto one line because a raw PEM spans many lines, which `.env` and compose do not handle:
+Check it worked — five lines, none of them empty:
 
 ```bash
-echo "USER_JWT_PRIVATE_KEY=$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | base64 | tr -d '\n')"
-echo "USER_JWT_KID=dev-$(date +%Y-%m)"
+grep -cE '^USER_(AES_KEY|EMAIL_HMAC_KEY|OTP_HMAC_KEY|JWT_PRIVATE_KEY|JWT_KID)=.+' .env
 ```
 
-Never commit the PEM. `*.pem` and `*.key` are git-ignored, but the safest thing is not to
-write it to a file at all — pipe it straight into `.env` as above.
+`.env` will now hold each of these twice: the empty placeholder from `.env.example` and the
+generated value below it. That is fine — Node and Docker Compose both take the **last**
+occurrence. Delete the empty ones if the duplication bothers you.
+
+About these keys:
+
+- The three 32-byte secrets must each be **different**. A separate key per purpose means
+  compromising one does not compromise the others.
+- `USER_JWT_PRIVATE_KEY` is an RS256 private key. Only the private half is configured; the
+  public half is derived from it and published at `/.well-known/jwks.json`. It is
+  base64-encoded onto one line because a raw PEM spans many lines, which `.env` and compose
+  do not handle.
+- **Never commit the PEM.** `*.pem` and `*.key` are git-ignored, but the safest thing is not
+  to write it to a file at all — the command above pipes it straight into `.env`, which is
+  also git-ignored.
 
 Changing `USER_AES_KEY` later makes existing encrypted emails and mobile numbers
 undecryptable, and changing `USER_EMAIL_HMAC_KEY` makes existing accounts unfindable, so in
