@@ -53,8 +53,11 @@ export class SmtpMailService extends MailService {
       createTransport({
         host: config.smtp.host,
         port: config.smtp.port,
-        // Mailpit accepts plaintext on 1025 and needs no credentials.
-        secure: false,
+        // Port 465 is implicit TLS: the connection must be wrapped before the SMTP
+        // greeting. Anything else (Mailpit on 1025, a provider on 587 with STARTTLS)
+        // begins in plaintext. Hardcoding false made every send to a 465 provider fail
+        // the handshake, so every OTP ended in 503.
+        secure: config.smtp.port === 465,
         auth: config.smtp.user ? { user: config.smtp.user, pass: config.smtp.pass } : undefined,
         connectionTimeout: SEND_TIMEOUT_MS,
         greetingTimeout: SEND_TIMEOUT_MS,

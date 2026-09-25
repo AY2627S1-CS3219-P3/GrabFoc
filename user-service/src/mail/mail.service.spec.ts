@@ -95,3 +95,33 @@ describe('SmtpMailService.sendOtp', () => {
     warn.mockRestore();
   });
 });
+
+describe('SMTP transport options', () => {
+  // Constructing without a transporter builds a real nodemailer transport from config, so
+  // these assert the wiring rather than sending anything.
+  const optionsFor = (port: number) => {
+    process.env.USER_SMTP_PORT = String(port);
+    jest.resetModules();
+    const { SmtpMailService: Fresh } = require('./mail.service');
+    const service = new Fresh();
+    return (service as unknown as { transporter: { options: { secure: boolean } } }).transporter
+      .options;
+  };
+
+  afterAll(() => {
+    process.env.USER_SMTP_PORT = '1025';
+    jest.resetModules();
+  });
+
+  it('uses implicit TLS on port 465, as real providers require', () => {
+    expect(optionsFor(465).secure).toBe(true);
+  });
+
+  it('starts in plaintext for Mailpit on 1025', () => {
+    expect(optionsFor(1025).secure).toBe(false);
+  });
+
+  it('starts in plaintext on 587, where TLS comes via STARTTLS', () => {
+    expect(optionsFor(587).secure).toBe(false);
+  });
+});
