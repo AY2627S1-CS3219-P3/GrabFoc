@@ -2,6 +2,7 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
  * Scope: Generated the bcrypt wrapper and the dummy hash used to equalise login timing.
+ *        Added the 72-byte bound after review found bcrypt truncates longer inputs.
  * Author review: Read in full; `npm test` passes (46 tests) and the service starts under docker compose with the keys set.
  */
 import { compare, hash } from 'bcryptjs';
@@ -13,8 +14,30 @@ import { compare, hash } from 'bcryptjs';
  */
 export const BCRYPT_COST = 12;
 
-/** Produces a 60-character bcrypt hash, which is what `users.password_hash` holds. */
-export function hashPassword(plaintext: string): Promise<string> {
+/**
+ * The password policy's upper bound (U1.1.4). Set to 72 because **bcrypt reads only the
+ * first 72 bytes** and silently discards the rest — two passwords sharing a 72-byte prefix
+ * would otherwise verify against the same hash.
+ */
+export const MAX_PASSWORD_LENGTH = 72;
+
+/**
+ * Produces a 60-character bcrypt hash, which is what `users.password_hash` holds.
+ *
+ * Rejects anything over 72 **bytes**, not 72 characters. They are the same for ASCII, but
+ * UTF-8 uses 2–4 bytes for anything else: 24 Chinese characters or 18 emoji already reach
+ * the limit. A character-only check would let those through and truncate them silently,
+ * which is the bug this bound exists to prevent.
+ */
+export async function hashPassword(plaintext: string): Promise<string> {
+  // `async`, so an over-long password REJECTS rather than throwing synchronously. A
+  // function that sometimes throws and sometimes rejects blows up in any caller that only
+  // writes `.catch(...)`.
+  if (Buffer.byteLength(plaintext, 'utf8') > MAX_PASSWORD_LENGTH) {
+    throw new Error(
+      `Password exceeds ${MAX_PASSWORD_LENGTH} bytes; bcrypt would silently truncate it.`,
+    );
+  }
   return hash(plaintext, BCRYPT_COST);
 }
 
