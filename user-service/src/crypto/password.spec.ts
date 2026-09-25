@@ -7,6 +7,7 @@
 import {
   BCRYPT_COST,
   DUMMY_PASSWORD_HASH,
+  MAX_PASSWORD_LENGTH,
   hashPassword,
   verifyPassword,
 } from './password';
@@ -51,5 +52,41 @@ describe('DUMMY_PASSWORD_HASH', () => {
   it('verifies against nothing a caller could send', async () => {
     expect(await verifyPassword('', DUMMY_PASSWORD_HASH)).toBe(false);
     expect(await verifyPassword('password', DUMMY_PASSWORD_HASH)).toBe(false);
+  });
+});
+
+describe('the 72-byte bound', () => {
+  it('is 72, matching what bcrypt actually reads', () => {
+    expect(MAX_PASSWORD_LENGTH).toBe(72);
+  });
+
+  it('accepts a password exactly at the limit', async () => {
+    await expect(hashPassword('A'.repeat(72))).resolves.toMatch(/^\$2[aby]\$12\$/);
+  });
+
+  it('rejects one character past it, rather than truncating', async () => {
+    // Without the bound, this hash would also verify a completely different 73+ character
+    // password sharing the first 72 bytes.
+    await expect(hashPassword('A'.repeat(73))).rejects.toThrow(/truncate/);
+  });
+
+  it('counts BYTES, so 24 Chinese characters are rejected', async () => {
+    // 3 bytes each = 72 bytes at 24 characters. A character-only check would pass this
+    // through and let bcrypt truncate it silently.
+    const chinese = '\u5bc6'.repeat(25);
+    expect(chinese.length).toBe(25);
+    expect(Buffer.byteLength(chinese, 'utf8')).toBe(75);
+    await expect(hashPassword(chinese)).rejects.toThrow(/truncate/);
+  });
+
+  it('counts BYTES, so a short emoji password is rejected', async () => {
+    const emoji = '\u{1F600}'.repeat(19); // 4 bytes each = 76 bytes
+    await expect(hashPassword(emoji)).rejects.toThrow(/truncate/);
+  });
+
+  it('still accepts ordinary non-ASCII passwords under the limit', async () => {
+    const ok = 'Contrase\u00f1a1Segura';
+    expect(Buffer.byteLength(ok, 'utf8')).toBeLessThanOrEqual(72);
+    await expect(hashPassword(ok)).resolves.toMatch(/^\$2[aby]\$12\$/);
   });
 });

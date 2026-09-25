@@ -130,7 +130,9 @@ _Origin: Team (Backlog USFR1–6, NFR5.1 and team decisions)_
 
 - Email must be a valid address on `u.nus.edu` or `nus.edu.sg`, normalised first (U1.1.1, U2.1.1).
 - An email already attached to any account — including DEACTIVATED and SUSPENDED — is rejected with 409 `EMAIL_TAKEN` (U1.1.3).
-- Password: 8–128 characters, at least one uppercase, one lowercase and one digit (U1.1.4, U3.2.2).
+- Password: 8–72 characters, at least one uppercase, one lowercase and one digit (U1.1.4, U3.2.2).
+  - **72, not 128.** bcrypt reads only the first 72 bytes and discards the rest, so two passwords sharing a 72-byte prefix would verify against the same hash. `hashPassword` enforces the bound in **bytes**, because UTF-8 uses 2–4 bytes per non-ASCII character — 24 Chinese characters or 18 emoji already reach 72 bytes, and a character-only check would let those truncate silently.
+  - The backlog sets only a **floor** — U1.1.4 says "at least 8 characters" and names no maximum — so the 72 ceiling is an implementation bound we add because of bcrypt, not a change to any requirement. (Our earlier planning notes said 8–128; that figure was ours, never the backlog's.)
 - Mobile number: validated with libphonenumber-js against the given country code, digits only (U1.1.5, U3.1.3).
 - Every request body is validated by a **strict** Zod schema; unknown fields are rejected with 400, not ignored (root `AGENTS.md` §8). This is what prevents a caller adding `"role": "ADMIN"` to a profile update.
 
