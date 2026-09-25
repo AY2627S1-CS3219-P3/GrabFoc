@@ -2,7 +2,8 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
  * Scope: Generated the bcrypt wrapper and the dummy hash used to equalise login timing.
- *        Added the 72-byte bound after review found bcrypt truncates longer inputs.
+ *        Added the 72-byte bound, on both hashing and verification, after review found
+ *        bcrypt truncates longer inputs at either end.
  * Author review: Read in full; `npm test` passes (46 tests) and the service starts under docker compose with the keys set.
  */
 import { compare, hash } from 'bcryptjs';
@@ -41,7 +42,16 @@ export async function hashPassword(plaintext: string): Promise<string> {
   return hash(plaintext, BCRYPT_COST);
 }
 
-export function verifyPassword(plaintext: string, passwordHash: string): Promise<boolean> {
+export async function verifyPassword(plaintext: string, passwordHash: string): Promise<boolean> {
+  // bcrypt truncates on comparison too, so without this a caller could submit a correct
+  // 72-byte password followed by any extra bytes and still be let in. hashPassword refuses
+  // to create such a hash; this refuses to honour one.
+  if (Buffer.byteLength(plaintext, 'utf8') > MAX_PASSWORD_LENGTH) {
+    // Compare against the dummy hash anyway, so an over-long candidate costs the same as a
+    // real one. Returning early would make length detectable by timing.
+    await compare(plaintext.slice(0, MAX_PASSWORD_LENGTH), DUMMY_PASSWORD_HASH);
+    return false;
+  }
   return compare(plaintext, passwordHash);
 }
 
