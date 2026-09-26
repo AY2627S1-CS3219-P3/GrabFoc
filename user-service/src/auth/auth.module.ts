@@ -10,6 +10,9 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwksController } from './jwks.controller';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { JwtService } from './jwt.service';
+import { LockoutService } from './lockout.service';
+import { LoginController } from './login.controller';
+import { LoginService } from './login.service';
 import { RegistrationController } from './registration.controller';
 import { RegistrationService } from './registration.service';
 import { RolesGuard } from './roles.guard';
@@ -17,11 +20,13 @@ import { SessionService } from './session.service';
 
 @Global()
 @Module({
-  controllers: [JwksController, RegistrationController],
+  controllers: [JwksController, RegistrationController, LoginController],
   providers: [
     JwtService,
     SessionService,
     RegistrationService,
+    LockoutService,
+    LoginService,
     // Order matters: Nest runs APP_GUARDs in the order they are provided, and RolesGuard
     // needs the caller that JwtAuthGuard attaches.
     { provide: APP_GUARD, useClass: JwtAuthGuard },

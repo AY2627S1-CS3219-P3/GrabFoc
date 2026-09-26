@@ -117,3 +117,16 @@ export type VerifyRegistrationInput = z.infer<typeof VerifyRegistrationSchema>;
 export const ResendOtpSchema = z.object({ email: EmailSchema }).strict();
 
 export type ResendOtpInput = z.infer<typeof ResendOtpSchema>;
+
+/**
+ * Login does **not** reuse `PasswordSchema`. The policy governs what a password may be *set*
+ * to, not what may be submitted: an account created before a rule changed must still be able
+ * to log in, and a 400 explaining that the submitted value lacks a digit both leaks the
+ * policy and answers differently from the 401 every other wrong password gets. Any non-empty
+ * string goes through to the bcrypt comparison.
+ */
+export const LoginSchema = z
+  .object({ email: EmailSchema, password: z.string().min(1, 'is required') })
+  .strict();
+
+export type LoginInput = z.infer<typeof LoginSchema>;

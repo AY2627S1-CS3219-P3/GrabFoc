@@ -169,7 +169,17 @@ That returns the access token, the refresh token and the new account. `POST
 /auth/register/resend-otp` with just the email puts a fresh code into a sign-up that is still
 waiting.
 
-There is no login endpoint yet, so this is currently the only way to obtain a token.
+Once the account exists, `POST /auth/login` gives you a fresh session:
+
+```bash
+curl -X POST http://localhost:3001/auth/login -H 'Content-Type: application/json' \
+  -d '{"email": "alex@u.nus.edu", "password": "Passw0rdSafe"}'
+```
+
+Five wrong passwords in a row lock the address for **15 minutes** (423 with
+`retryAfterSeconds`). An address with no account answers exactly as a wrong password does —
+same status, same body, same time — so use a different address per experiment rather than
+reading anything into the response.
 
 Three things worth knowing while testing:
 
@@ -195,8 +205,9 @@ with RBAC in `src/auth`, and Redis-backed OTPs with email delivery in `src/otp` 
 | `POST /auth/register` | public |
 | `POST /auth/register/verify` | public |
 | `POST /auth/register/resend-otp` | public |
+| `POST /auth/login` | public |
 
-Login, refresh, logout and password reset are the next steps; the profile and admin endpoints
-are Person B's track. See the build order in `AGENTS.md`.
+Refresh, logout and password reset are the next steps; the profile and admin endpoints are
+Person B's track. See the build order in `AGENTS.md`.
 
 **Authentication is on by default.** `JwtAuthGuard` is registered globally, so every route needs a bearer token unless it is marked `@Public()`. Forgetting the decorator leaves an endpoint closed rather than open.
