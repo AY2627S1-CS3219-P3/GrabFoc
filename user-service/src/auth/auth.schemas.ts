@@ -117,3 +117,29 @@ export type VerifyRegistrationInput = z.infer<typeof VerifyRegistrationSchema>;
 export const ResendOtpSchema = z.object({ email: EmailSchema }).strict();
 
 export type ResendOtpInput = z.infer<typeof ResendOtpSchema>;
+
+/**
+ * Login does **not** reuse `PasswordSchema`. The policy governs what a password may be *set*
+ * to, not what may be submitted: an account created before a rule changed must still be able
+ * to log in, and a 400 explaining that the submitted value lacks a digit both leaks the
+ * policy and answers differently from the 401 every other wrong password gets. Any non-empty
+ * string goes through to the bcrypt comparison.
+ */
+export const LoginSchema = z
+  .object({ email: EmailSchema, password: z.string().min(1, 'is required') })
+  .strict();
+
+export type LoginInput = z.infer<typeof LoginSchema>;
+
+/**
+ * The body of both `POST /auth/refresh` and `POST /auth/logout`.
+ *
+ * No shape validation beyond "a non-empty string": a token that is the wrong length or the
+ * wrong alphabet must get the same 401 as one that is merely unknown, and a 400 describing
+ * the expected format would tell a caller what a real token looks like.
+ */
+export const RefreshTokenBodySchema = z
+  .object({ refreshToken: z.string().min(1, 'is required') })
+  .strict();
+
+export type RefreshTokenBodyInput = z.infer<typeof RefreshTokenBodySchema>;

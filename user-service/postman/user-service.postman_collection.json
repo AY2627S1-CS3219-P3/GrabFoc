@@ -1,28 +1,48 @@
 {
   "info": {
     "name": "FoC User Service",
-    "description": "Sign-up flow for the FoC User Service. Set baseUrl and signupEmail in an environment; the OTP arrives in Mailpit at http://localhost:8025. AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. Author review: every request run against the compose stack.",
+    "description": "Sign-up, login and the session lifecycle for the FoC User Service. Set baseUrl and signupEmail in an environment; the OTP arrives in Mailpit at http://localhost:8025. AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. Author review: every request run against the compose stack.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:3001" },
-    { "key": "signupEmail", "value": "alex@u.nus.edu" },
-    { "key": "otp", "value": "" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001"
+    },
+    {
+      "key": "signupEmail",
+      "value": "alex@u.nus.edu"
+    },
+    {
+      "key": "otp",
+      "value": ""
+    }
   ],
   "item": [
     {
       "name": "Health",
-      "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/health"
+      }
     },
     {
       "name": "JWKS",
-      "request": { "method": "GET", "url": "{{baseUrl}}/.well-known/jwks.json" }
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/.well-known/jwks.json"
+      }
     },
     {
       "name": "Register",
       "request": {
         "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
         "url": "{{baseUrl}}/auth/register",
         "body": {
           "mode": "raw",
@@ -35,9 +55,17 @@
       "name": "Resend OTP",
       "request": {
         "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
         "url": "{{baseUrl}}/auth/register/resend-otp",
-        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{signupEmail}}\"\n}" },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{signupEmail}}\"\n}"
+        },
         "description": "202. Replaces the code inside a sign-up that is still waiting, without extending its 15-minute window. 404 if nothing is pending; 429 after three requests in ten minutes."
       }
     },
@@ -61,10 +89,109 @@
       ],
       "request": {
         "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
         "url": "{{baseUrl}}/auth/register/verify",
-        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{signupEmail}}\",\n  \"otp\": \"{{otp}}\"\n}" },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{signupEmail}}\",\n  \"otp\": \"{{otp}}\"\n}"
+        },
         "description": "200 with the auth response. The code is single-use, so replaying it gives OTP_EXPIRED."
+      }
+    },
+    {
+      "name": "Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Keeps the tokens in variables rather than in the file: nothing here is committed.",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.collectionVariables.set('accessToken', body.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{signupEmail}}\",\n  \"password\": \"Passw0rdSafe\"\n}"
+        },
+        "description": "200 with the auth response. 401 INVALID_CREDENTIALS for a wrong password AND for an address with no account - the two are deliberately identical. Five failures in a row give 423 ACCOUNT_LOCKED with retryAfterSeconds, for 15 minutes."
+      }
+    },
+    {
+      "name": "Refresh",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Rotation invalidates the old token, so the stored pair must be replaced or the next",
+              "// refresh looks like reuse and revokes every session.",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.collectionVariables.set('accessToken', body.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/refresh",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        },
+        "description": "200 with a new pair. Single use: sending the same refreshToken twice is treated as theft and revokes every session that user has. An unknown, an expired and a reused token all answer with the same 401."
+      }
+    },
+    {
+      "name": "Logout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/logout",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        },
+        "description": "204, always - an unknown or already-revoked token still means you are logged out. Needs the access token: the caller's identity comes from it, so you can only end your own session. Ends this session only; other devices keep theirs."
       }
     }
   ]

@@ -58,8 +58,9 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 
 - **Access token:** JWT, **RS256**, 15 minutes, claims `{ sub, role, iat, exp }`, `kid` in the header. The public key is served at `GET /.well-known/jwks.json`.
 - **Why RS256 and not HS256:** HS256 uses one shared secret, which would have to sit in the environment of every service that verifies a token — meaning any of them (or anyone who reads their configuration) could *mint* an ADMIN token. With RS256 only the User Service holds the private key; everyone else holds the public key and can only verify (NFR5.3).
-- **Refresh token:** 32 random bytes, returned once, valid 7 days, stored only as SHA-256. `POST /auth/refresh` runs in one transaction: revoke the presented token (`UPDATE … WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now() RETURNING user_id`), **reload the user**, reject anyone not ACTIVE, then issue a new pair carrying the user's *current* role.
+- **Refresh token:** 32 random bytes, returned once, valid **90 days**, stored only as SHA-256. `POST /auth/refresh` runs in one transaction: revoke the presented token (`UPDATE … WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now() RETURNING user_id`), **reload the user**, reject anyone not ACTIVE, then issue a new pair carrying the user's *current* role.
 - Reloading on refresh is what makes demotion and deactivation take effect: a change lands within 15 minutes without any shared session store.
+- **Why 90 days.** The window slides — every rotation issues a fresh token — so it sets how long a user may stay away before logging in again, not how long a session lasts. Long for a bearer credential, and acceptable only because the token is single use: rotation plus reuse detection stops a stolen copy as soon as either party refreshes, and a password change, reset or deactivation revokes every token. What it does leave exposed is a device abandoned without logging out.
 - **Token reuse:** presenting an already-revoked token is treated as theft — every refresh token for that user is revoked.
 - **Revoke all** of a user's refresh tokens on password change, password reset and deactivation.
 - **Enforcement:** `JwtAuthGuard` is registered **globally**, so every route requires a token unless marked `@Public()` — forgetting the decorator closes an endpoint rather than exposing one. `RolesGuard` reads `@Roles('ADMIN')` and returns 403; `@CurrentUser()` gives handlers the caller. **Identity comes from the verified token only** — never from the request body, a path parameter or an `X-User-Id` header (root `AGENTS.md` §8). Denials are logged once, centrally, by `ErrorFilter`, so no guard can forget to (U5.1.1, U5.2.2).
@@ -95,7 +96,7 @@ CREATE TABLE refresh_tokens (
     id          UUID        PRIMARY KEY,
     user_id     UUID        NOT NULL REFERENCES users(id),
     token_hash  CHAR(64)    NOT NULL UNIQUE,                     -- SHA-256 of the token
-    expires_at  TIMESTAMPTZ NOT NULL,                            -- created + 7 days
+    expires_at  TIMESTAMPTZ NOT NULL,                            -- created + REFRESH_TOKEN_TTL_SECONDS
     revoked_at  TIMESTAMPTZ,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
