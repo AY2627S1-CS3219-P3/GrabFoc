@@ -124,16 +124,18 @@ were fixed (`logger.fatal` bypassing redaction; SMTP error messages interpolated
 line; the inaccurate `src/crypto` boundary claim; the key-rotation limit; the local startup
 instructions). The sixth was this log.
 
-### 2026-09-26 — User Service Phase 0 steps 5–8: the auth flows (PRs #15, #16, #17)
+### 2026-09-26 to 2026-09-27 — User Service Phase 1 steps 5–9: credentials and sessions (PRs #15, #16, #17, #18)
 
-**Tool:** Claude Code (Claude Opus 5) · **Mode:** generate, debug, explain
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** generate, debug, explain, verify
 **Files:** `user-service/src/auth/**`, `user-service/src/users/**`, `user-service/src/otp/**`,
-`user-service/README.md`, `user-service/AGENTS.md`, `user-service/postman/`
+`user-service/src/config.ts`, `user-service/README.md`, `user-service/AGENTS.md`,
+`user-service/postman/`, `.env.example`
 
-**Scenario.** Implemented the four public auth flows from the rules already recorded in
+**Scenario.** All five steps of Person A's Phase 1 track, from the rules already recorded in
 `user-service/AGENTS.md`: sign-up (register / verify / resend), login with lockout, refresh and
-logout, and forgot/reset password. The rules were ours; the code, tests and doc expansions were
-generated against them.
+logout, forgot/reset password, and the first-admin bootstrap. The rules were ours; the code, the
+tests and the doc expansions were generated against them. One branch and one PR per step, each
+stacked on the previous one.
 
 **Prompts (exact):**
 
@@ -147,11 +149,6 @@ generated against them.
 
 > teach me the steps to do testing on my own
 
-> is this review important? [pasted review comment asking for the user insert and the refresh-token
-> creation to be wrapped in one transaction]
-
-> yes implement it, and add the test
-
 > on a new branch, i want to implement login,lockout,refresh,and logout. but lets implement login
 > and lockout first
 
@@ -164,6 +161,11 @@ generated against them.
 
 > on a new branch, i want to implement forget and reset password
 
+> currently, how does the account get locked out and what happens to the user? and how is the
+> lockout lifted? also explain simply more on what the decoy record is for
+
+> implement admin bootstrap
+
 **Decisions I made, not the AI:**
 
 - **`OTP_EXPIRED`, not 404, for `/auth/register/verify`** when no sign-up is waiting. The AI
@@ -172,10 +174,33 @@ generated against them.
 - **Refresh tokens last 90 days, not 7.** I asked what the 7 days meant for a user, then decided
   we would rather people stayed logged in for three months.
 - **Five failures, not three, before a lockout** — already ours from D1, kept here.
-- **Two choices under "Forgot and reset password" were the AI's suggestion, and I adopted them
-  after reading the reasoning**: writing a decoy OTP record for an address with no account (so
-  reset cannot be used to find out who has an account), and lifting a login lockout after a
-  successful reset. Both are recorded in `AGENTS.md` and noted in its header.
+- **The whole admin-bootstrap rule**, which was in `AGENTS.md` before step 9 started: keyed on an
+  environment variable rather than an `ADMIN_PASSWORD`; runs only while the table is empty, so
+  changing the variable later cannot add an admin; the row carries a NULL password; the account is
+  claimed through forgot-password. Deciding it must be claimable that way is also what fixes how
+  the address has to be stored.
+- **I ran the testing myself** rather than taking the AI's verification runs as the record. It
+  found a bug in its own instructions that way: two steps told me to put the variable in front of
+  `docker compose up`, which silently does nothing because `compose.yaml` does not forward it.
+
+**AI-proposed, and I adopted them after reading the reasoning.** All four are marked in
+`AGENTS.md` and in its disclosure header:
+
+- A **decoy OTP record** for an address with no account, so `POST /auth/password/reset` cannot be
+  used to find out who has an account.
+- **Lifting a login lockout** after a successful reset.
+- The **`'Administrator'` display name** for the bootstrap row. `display_name` is NOT NULL and our
+  plan never named one.
+- A **startup warning** when `users` has rows but no ACTIVE admin. Our plan describes that state
+  as needing a manual database change but asks for no warning. I took it because the state is
+  otherwise invisible until someone hits a 403.
+
+One more I want recorded as a judgement call rather than a bare acceptance: validating
+`USER_BOOTSTRAP_ADMIN_EMAIL` at startup and **refusing to boot** on a bad value. Our plan does not
+say what to do with a malformed address. The argument for failing loudly is that forgot-password
+only accepts NUS addresses, so any other domain would silently create an admin account nobody
+could ever claim. I agreed, but it changes startup behaviour, so it is called out in `AGENTS.md`
+and in the README's troubleshooting list.
 
 **What I changed or rejected:**
 
@@ -185,25 +210,52 @@ generated against them.
 
 - Read every generated file before committing; each file header's `Author review:` line records
   what I checked.
-- `npm test` (197 unit tests) and `npm run test:int` (41 integration tests against a real Redis).
-- Ran all four flows against the compose stack with codes read from Mailpit: sign-up, five wrong
-  passwords into a 423, refresh rotation, token reuse revoking every session, and a full password
-  reset.
+- `npm test` (213 unit tests) and `npm run test:int` (41 integration tests against a real Redis).
+- Ran all five flows against the compose stack with codes read from Mailpit: sign-up, five wrong
+  passwords into a 423, refresh rotation, token reuse revoking every session, a full password
+  reset, and the bootstrap admin claiming its account.
 - **Checked the enumeration rules by measuring, not by reading the code.** An unknown address and
   a wrong password returned byte-identical 401s at 237 ms and 225 ms. `POST /auth/password/reset`
   returned byte-identical 400s for a real account and a made-up address, `attemptsRemaining` and
   all. Confirmed in `psql` that a reset revoked every refresh token (1 live → 0) and in Redis that
   an address with no account still gets an OTP record.
-- Confirmed the tests actually catch what they claim, by breaking the service on purpose: removing
-  the decoy record, letting the mail 503 through, dropping the status check and moving the lockout
-  clear before the commit each failed the matching test.
-- Grepped the service logs for a plaintext `u.nus.edu` address: none.
+- For step 9, rehearsed the guarded `INSERT … SELECT … WHERE NOT EXISTS … ON CONFLICT DO NOTHING`
+  in `psql` against PostgreSQL 17 before trusting it, then checked the concurrency claim with two
+  real psql sessions, the first holding its transaction open while the second ran the same
+  statement. No duplicate-key error and exactly one row afterwards, so two containers starting
+  together cannot crash the boot.
+- Ran the bootstrap on a **scratch database**, so the dev data was not wiped: migrations applied,
+  then `ADMIN_BOOTSTRAPPED`, then a row with `role=ADMIN`, `status=ACTIVE` and NULL password,
+  country code and mobile. Login before claiming gave 401; forgot → code from Mailpit → reset
+  (204) → login returned `"role":"ADMIN"`, and the token decoded to the bootstrapped `sub`.
+  Restarted twice more, once with a different address: both skipped, still one row.
+- Confirmed step 9's three failure paths: an invalid or non-NUS address stops the boot with a
+  message naming the variable and exit code 1; an unset variable boots normally and inserts
+  nothing; demoting the only admin then restarting produced the "No ACTIVE admin exists" warning.
+- Confirmed the tests actually catch what they claim, by breaking the service on purpose each
+  time. Steps 5–8: removing the decoy record, letting the mail 503 through, dropping the status
+  check, moving the lockout clear before the commit. Step 9: skipping normalisation, accepting a
+  non-NUS address, putting the address in the audit event, running the no-admin query on the
+  success path. Each failed the matching test and only that one.
+- Grepped the service and startup logs for a plaintext `u.nus.edu` address: none.
+
+**Mistakes worth recording.**
+
+- A mutation written as `if (false)` stopped the file compiling, so Jest reported `Tests: 0 total`
+  and that briefly read as "nothing caught it". A mutation has to stay compilable to prove
+  anything. It happened twice, in step 8 and again in step 9.
+- One `npm test` run reported 2 failures in 1 suite and was never reproduced — 11 later runs,
+  including under CPU load, were clean, and the suite name was not captured. Recorded here rather
+  than treated as fixed.
 
 **Review findings acted on.** One finding on PR #15 (account creation and session issuance were
 not atomic) — fixed by wrapping the insert and the first refresh token in one transaction, with a
 test. One CodeQL alert (`js/insufficient-password-hash` on `hashOtp`) was a false positive: the
 "password" it saw is the literal enum member name `PASSWORD_CHANGE`. Traced every call site before
 dismissing it.
+
+<!-- TODO Zi Yi: confirm the PR numbers in the heading — #17 and #18 were guessed before GitHub
+     assigned them. -->
 
 ---
 

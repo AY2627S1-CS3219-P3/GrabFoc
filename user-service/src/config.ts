@@ -65,6 +65,16 @@ const EnvSchema = z.object({
   USER_SMTP_USER: z.string().optional(),
   USER_SMTP_PASS: z.string().optional(),
   USER_SMTP_FROM: z.string().min(1).default('FoC <no-reply@foc.local>'),
+
+  // The address that becomes the first ADMIN, on the first start against an empty `users`
+  // table (AGENTS.md, "First admin"). Optional: a deployment that already has an admin does
+  // not need it, and leaving it unset must not stop the service booting.
+  //
+  // Deliberately NOT validated here as an email. The domain allowlist lives in
+  // `auth.schemas.ts`, which reaches `config` through the crypto helpers, so importing it
+  // back would be circular. `AdminBootstrapService` validates it at startup instead, which
+  // is still before the first request.
+  USER_BOOTSTRAP_ADMIN_EMAIL: z.string().optional(),
 });
 
 // `.env.example` ships every variable with an empty value, so a half-filled `.env` would
@@ -98,4 +108,5 @@ export const config = {
     pass: parsed.data.USER_SMTP_PASS,
     from: parsed.data.USER_SMTP_FROM,
   },
+  bootstrapAdminEmail: parsed.data.USER_BOOTSTRAP_ADMIN_EMAIL,
 };

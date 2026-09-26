@@ -9,8 +9,10 @@ Scope: Transcribed the team's User Service design (roles, storage, credential ha
        Later edits, per implementation step, expand the rules the team had already recorded with
        the reasoning behind them. Two choices under "Forgot and reset password" were NOT in the
        team's plan and were proposed by the AI: writing a decoy OTP record for an address with no
-       account, and lifting a login lockout after a successful reset. Both are adopted as team
-       decisions by the author review below.
+       account, and lifting a login lockout after a successful reset. Two more under "First
+       admin" were also AI-proposed: the 'Administrator' display name, and the startup warning
+       when rows exist but no ACTIVE admin does. All four are adopted as team decisions by the
+       author review below.
 Author review: Read in full; checked against the team's work plan.
 -->
 
@@ -283,6 +285,15 @@ _Origin: Team (Backlog USFR5); role capabilities are in root `AGENTS.md` §5_
 Why this rather than an `ADMIN_PASSWORD` environment variable: no secret sits in configuration, only the owner of that inbox can claim the account, and the password follows the same policy as everyone else's.
 
 Note: if anyone registers before the service first starts with the variable set, the bootstrap never runs. Set it before the first deploy; in development, wipe the database.
+
+How it is implemented (`src/users/admin-bootstrap.service.ts`):
+
+- It runs from Nest's **`onApplicationBootstrap`** hook, not `onModuleInit`. The migrations that create `users` run in `onModuleInit` (`DatabaseLifecycle`), so anything earlier could find no table. It still finishes before `app.listen()`, so no request is ever served by a deployment whose admin has not been considered.
+- **"Only if the table is empty" is one SQL statement**, `INSERT … SELECT … WHERE NOT EXISTS (SELECT 1 FROM users) ON CONFLICT (email_hash) DO NOTHING`. A separate `SELECT count(*)` followed by an `INSERT` would leave a window for a registration to land in between. Two containers starting together would both find the table empty and both insert; `ON CONFLICT DO NOTHING` makes the loser a no-op rather than a duplicate-key error that would crash the boot. No advisory lock is needed, unlike the migrator.
+- The address is stored exactly as a registered user's is — AES-256-GCM in `email_encrypted`, keyed HMAC in `email_hash` — because forgot-password finds the row by that hash. It is **normalised** first, so `Admin@U.NUS.EDU` in the environment reaches the same row as `admin@u.nus.edu`.
+- `USER_BOOTSTRAP_ADMIN_EMAIL` is **validated at startup with the same `EmailSchema` the endpoints use, and an invalid value stops the boot** naming the variable. A non-NUS address would otherwise create an admin account that `POST /auth/password/forgot` refuses to accept, so nobody could ever claim it — a silent dead end, discovered only by whoever tried to log in.
+- `display_name` is `'Administrator'`. The owner can change it with `PATCH /users/me` once they hold the account. **AI-proposed:** the team's plan fixes the role, the status and the NULL password for this row but not the name, and the column is NOT NULL.
+- If the table has rows but **no ACTIVE admin**, startup logs a warning. Nothing can repair that state automatically — the bootstrap will not run again, so recovery means editing the database by hand — so the point is only that it is visible at startup rather than discovered later through a 403. **AI-proposed:** the team's plan names this state but asks for no warning.
 
 ### Promotion
 

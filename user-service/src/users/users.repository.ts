@@ -54,6 +54,19 @@ export interface NewUser {
   passwordHash: string;
 }
 
+/**
+ * What `insertBootstrapAdminIfFirst` needs. Far less than `NewUser`: the first admin is created
+ * from an environment variable, not from a filled-in form, so there is no mobile number to
+ * store and no password to hash — the account is claimed through "forgot password" (AGENTS.md,
+ * "First admin").
+ */
+export interface NewBootstrapAdmin {
+  id: string;
+  displayName: string;
+  emailHash: string;
+  emailEncrypted: Buffer;
+}
+
 /** Every column that is read back, in one place, so the SELECT list and the mapping cannot drift apart. */
 const COLUMNS = `id, display_name, email_encrypted, country_code, mobile_encrypted,
                  password_hash, role, status, created_at, updated_at, deactivated_at`;
@@ -159,6 +172,49 @@ export class UsersRepository {
       ],
     );
     return rows[0] ? toRecord(rows[0]) : null;
+  }
+
+  /**
+   * Inserts the first ADMIN, but **only while `users` is completely empty** (AGENTS.md, "First
+   * admin"). Returns the row it created, or null if it created nothing — which is the normal
+   * case on every start after the first.
+   *
+   * One statement, deliberately. `WHERE NOT EXISTS` and the INSERT share a snapshot, so there
+   * is no window between checking and writing for a registration to slip into. Two containers
+   * starting together would both find the table empty and both try to insert; `ON CONFLICT DO
+   * NOTHING` turns the loser into a no-op instead of a 23505 that would crash the boot. That is
+   * why no advisory lock is needed here, unlike the migrator.
+   *
+   * `country_code`, `mobile_encrypted` and `password_hash` are left to their NULL defaults. The
+   * schema permits NULL in those three columns for exactly this row.
+   */
+  async insertBootstrapAdminIfFirst(
+    admin: NewBootstrapAdmin,
+    client?: PoolClient,
+  ): Promise<UserRecord | null> {
+    const { rows } = await (client ?? this.pool).query<UserRow>(
+      `INSERT INTO users (id, display_name, email_hash, email_encrypted, role, status)
+       SELECT $1, $2, $3, $4, 'ADMIN', 'ACTIVE'
+       WHERE NOT EXISTS (SELECT 1 FROM users)
+       ON CONFLICT (email_hash) DO NOTHING
+       RETURNING ${COLUMNS}`,
+      [admin.id, admin.displayName, admin.emailHash, admin.emailEncrypted],
+    );
+    return rows[0] ? toRecord(rows[0]) : null;
+  }
+
+  /**
+   * Whether the deployment has at least one ACTIVE admin. Read-only and unlocked, so it is only
+   * good for a diagnostic — the last-admin rule needs `SELECT … FOR UPDATE` inside the same
+   * transaction as its change (AGENTS.md, "The last-admin lock"), which this is not.
+   *
+   * `LIMIT 1` because the count is never wanted, only whether the set is empty.
+   */
+  async hasActiveAdmin(client?: PoolClient): Promise<boolean> {
+    const { rowCount } = await (client ?? this.pool).query(
+      "SELECT 1 FROM users WHERE role = 'ADMIN' AND status = 'ACTIVE' LIMIT 1",
+    );
+    return rowCount !== null && rowCount > 0;
   }
 
   /**

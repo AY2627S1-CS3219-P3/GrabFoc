@@ -1,15 +1,16 @@
 <!--
 AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
-Scope: Generated the run and test instructions for the User Service.
-Author review: Read in full; checked against the team's work plan.
+Scope: Generated the run and test instructions for the User Service, and the per-step
+       walkthroughs added with each build step (sign-up, password reset, the first admin).
+Author review: Read in full; every command in it was run against the compose stack.
 -->
 
 # User Service
 
 Accounts, credentials, sessions, profile management and the admin role lifecycle. **Design decisions are in [`AGENTS.md`](AGENTS.md)** — read that before changing anything here.
 
-Stack: NestJS (TypeScript, Node.js), PostgreSQL via `pg` with plain parameterized SQL, Zod for validation. Redis and email arrive in later Phase 0 steps.
+Stack: NestJS (TypeScript, Node.js), PostgreSQL via `pg` with plain parameterized SQL, Zod for validation, Redis for the short-lived state (OTPs, lockouts, rate limits), and SMTP for email — Mailpit in development.
 
 ## Run it with Docker (recommended)
 
@@ -56,6 +57,16 @@ About these keys:
 Changing `USER_AES_KEY` later makes existing encrypted emails and mobile numbers
 undecryptable, and changing `USER_EMAIL_HMAC_KEY` makes existing accounts unfindable, so in
 development regenerate them together with the database.
+
+**Now set the first admin, before you start anything.** This one is read only while the `users`
+table is still empty, so if you register an account first you have missed the window:
+
+```bash
+echo "USER_BOOTSTRAP_ADMIN_EMAIL=focadmin@u.nus.edu" >> .env
+```
+
+It must be an `@u.nus.edu` or `@nus.edu.sg` address. See [The first admin](#the-first-admin) for
+how to claim the account once the service is up.
 
 ```bash
 docker compose up --build
@@ -240,13 +251,73 @@ Three things worth knowing while testing:
   `reg:{emailHash}` key in Redis, holding the address and mobile number encrypted and the
   password already hashed.
 
+## The first admin
+
+There is no admin until you make one, and there is no way to promote yourself. Set the address
+in the git-ignored `.env`:
+
+```dotenv
+USER_BOOTSTRAP_ADMIN_EMAIL=focadmin@u.nus.edu
+```
+
+On the **next start against an empty `users` table**, the service creates that account as ADMIN
+and logs it:
+
+```
+[AdminBootstrap] {"event":"ADMIN_BOOTSTRAPPED","timestamp":"...","userId":"558c5824-..."}
+[AdminBootstrap] First admin created with no password. It is claimed through POST /auth/password/forgot.
+```
+
+The account has **no password**, so nobody can log into it yet — not even you. Claim it the same
+way you would a forgotten password: ask for a code, read it in Mailpit at
+<http://localhost:8025>, and set one.
+
+```bash
+curl -X POST http://localhost:3001/auth/password/forgot -H 'Content-Type: application/json' \
+  -d '{"email": "focadmin@u.nus.edu"}'
+
+curl -i -X POST http://localhost:3001/auth/password/reset -H 'Content-Type: application/json' \
+  -d '{"email": "focadmin@u.nus.edu", "otp": "123456", "newPassword": "AdminPassw0rd"}'
+
+curl -X POST http://localhost:3001/auth/login -H 'Content-Type: application/json' \
+  -d '{"email": "focadmin@u.nus.edu", "password": "AdminPassw0rd"}'
+```
+
+The login response carries `"role": "ADMIN"`, and so does the access token. That is the whole
+"first admin" item on the D2 checklist.
+
+Why there is no `USER_BOOTSTRAP_ADMIN_PASSWORD`: an admin password in configuration is a
+credential sitting in a file, shared with everyone who can read the deployment. This way the
+only thing configuration names is an inbox, and whoever reads that inbox sets the password —
+under the same policy as everyone else's.
+
+**If nothing happens**, check these in order:
+
+- **`Users already exist; skipping the admin bootstrap`** — the table is not empty, so the
+  bootstrap will not run, and it never will again. This is the trap worth knowing about: if
+  anyone registered before you first set the variable, you have missed the window. In
+  development, wipe it and start over:
+  `docker compose down -v && docker compose up -d`.
+- **The service refuses to start, naming `USER_BOOTSTRAP_ADMIN_EMAIL`** — the address is not a
+  valid `@u.nus.edu` or `@nus.edu.sg` one. That is deliberate rather than a skipped bootstrap:
+  forgot-password only accepts NUS addresses, so any other domain would create an admin account
+  that could never be claimed.
+- **`No ACTIVE admin exists`** (a warning) — there are users but none of them is an active
+  admin. Nobody can promote anyone or reactivate an account from here, and the bootstrap cannot
+  help because the table has rows. In development, wipe it; in a real deployment this needs a
+  manual `UPDATE`.
+- Changing the variable later does nothing at all. It is read only while the table is empty, so
+  it cannot be used to add a second admin — promotion is `PATCH /admin/users/:userId/role`.
+
 ## What exists so far
 
-Phase 0 steps 1 to 4 — the skeleton, configuration, the database and migrations, the error
+**Phase 0** (steps 1 to 4) — the skeleton, configuration, the database and migrations, the error
 filter, the Zod pipe, the redacting logger, the crypto helpers in `src/crypto`, access tokens
-with RBAC in `src/auth`, and Redis-backed OTPs with email delivery in `src/otp` and `src/mail`
-— plus **step 5: sign-up**, **step 6: login and lockout**, **step 7: refresh and logout** and
-**step 8: forgot/reset password**.
+with RBAC in `src/auth`, and Redis-backed OTPs with email delivery in `src/otp` and `src/mail`.
+
+**Phase 1, Person A's track** (steps 5 to 9) — **step 5: sign-up**, **step 6: login and
+lockout**, **step 7: refresh and logout**, **step 8: forgot/reset password** and **step 9: the
+admin bootstrap**. That completes this side of Phase 1.
 
 | Route | |
 |---|---|
@@ -261,7 +332,10 @@ with RBAC in `src/auth`, and Redis-backed OTPs with email delivery in `src/otp` 
 | `POST /auth/password/reset` | public |
 | `POST /auth/logout` | needs an access token |
 
-The admin bootstrap is next; the profile and admin endpoints are Person B's track. See the
-build order in `AGENTS.md`.
+There is one startup task with no route of its own: the **admin bootstrap**, which creates the
+first ADMIN from `USER_BOOTSTRAP_ADMIN_EMAIL` — see [The first admin](#the-first-admin).
+
+The profile and admin endpoints (`/users/**`, `/admin/**`) are Person B's track. See the build
+order in `AGENTS.md`.
 
 **Authentication is on by default.** `JwtAuthGuard` is registered globally, so every route needs a bearer token unless it is marked `@Public()`. Forgetting the decorator leaves an endpoint closed rather than open.
