@@ -124,6 +124,87 @@ were fixed (`logger.fatal` bypassing redaction; SMTP error messages interpolated
 line; the inaccurate `src/crypto` boundary claim; the key-rotation limit; the local startup
 instructions). The sixth was this log.
 
+### 2026-09-26 — User Service Phase 0 steps 5–8: the auth flows (PRs #15, #16, #17)
+
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** generate, debug, explain
+**Files:** `user-service/src/auth/**`, `user-service/src/users/**`, `user-service/src/otp/**`,
+`user-service/README.md`, `user-service/AGENTS.md`, `user-service/postman/`
+
+**Scenario.** Implemented the four public auth flows from the rules already recorded in
+`user-service/AGENTS.md`: sign-up (register / verify / resend), login with lockout, refresh and
+logout, and forgot/reset password. The rules were ours; the code, tests and doc expansions were
+generated against them.
+
+**Prompts (exact):**
+
+> implement register, verify and resend otp
+
+> in users.repostiory.ts, is emailhash not required?
+
+> explain the issue simply for POST /auth/register/verify
+
+> keep 400 OTP_EXPIRED
+
+> teach me the steps to do testing on my own
+
+> is this review important? [pasted review comment asking for the user insert and the refresh-token
+> creation to be wrapped in one transaction]
+
+> yes implement it, and add the test
+
+> on a new branch, i want to implement login,lockout,refresh,and logout. but lets implement login
+> and lockout first
+
+> implement refresh and logout
+
+> for refresh, what does it mean from a user perspective? like the user will be logged out after a
+> period of time?
+
+> let user be logged out after 3months instead of 7days
+
+> on a new branch, i want to implement forget and reset password
+
+**Decisions I made, not the AI:**
+
+- **`OTP_EXPIRED`, not 404, for `/auth/register/verify`** when no sign-up is waiting. The AI
+  found the conflict between two lines of our own `AGENTS.md` and explained both sides; I chose
+  the 400 and had the rule written down.
+- **Refresh tokens last 90 days, not 7.** I asked what the 7 days meant for a user, then decided
+  we would rather people stayed logged in for three months.
+- **Five failures, not three, before a lockout** — already ours from D1, kept here.
+- **Two choices under "Forgot and reset password" were the AI's suggestion, and I adopted them
+  after reading the reasoning**: writing a decoy OTP record for an address with no account (so
+  reset cannot be used to find out who has an account), and lifting a login lockout after a
+  successful reset. Both are recorded in `AGENTS.md` and noted in its header.
+
+**What I changed or rejected:**
+
+<!-- TODO Zi Yi: add anything you edited by hand before committing. -->
+
+**Verification.**
+
+- Read every generated file before committing; each file header's `Author review:` line records
+  what I checked.
+- `npm test` (197 unit tests) and `npm run test:int` (41 integration tests against a real Redis).
+- Ran all four flows against the compose stack with codes read from Mailpit: sign-up, five wrong
+  passwords into a 423, refresh rotation, token reuse revoking every session, and a full password
+  reset.
+- **Checked the enumeration rules by measuring, not by reading the code.** An unknown address and
+  a wrong password returned byte-identical 401s at 237 ms and 225 ms. `POST /auth/password/reset`
+  returned byte-identical 400s for a real account and a made-up address, `attemptsRemaining` and
+  all. Confirmed in `psql` that a reset revoked every refresh token (1 live → 0) and in Redis that
+  an address with no account still gets an OTP record.
+- Confirmed the tests actually catch what they claim, by breaking the service on purpose: removing
+  the decoy record, letting the mail 503 through, dropping the status check and moving the lockout
+  clear before the commit each failed the matching test.
+- Grepped the service logs for a plaintext `u.nus.edu` address: none.
+
+**Review findings acted on.** One finding on PR #15 (account creation and session issuance were
+not atomic) — fixed by wrapping the insert and the first refresh token in one transaction, with a
+test. One CodeQL alert (`js/insufficient-password-hash` on `hashOtp`) was a false positive: the
+"password" it saw is the literal enum member name `PASSWORD_CHANGE`. Traced every call site before
+dismissing it.
+
 ---
 
 ## Deanson

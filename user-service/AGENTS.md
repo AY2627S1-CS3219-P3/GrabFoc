@@ -6,6 +6,11 @@ Scope: Transcribed the team's User Service design (roles, storage, credential ha
        following the structure of supplier-service/AGENTS.md. No design decisions were made by
        the AI: the choices recorded here, including RS256, the Postgres/Redis split, the schema
        and the endpoint shapes, were made by the team.
+       Later edits, per implementation step, expand the rules the team had already recorded with
+       the reasoning behind them. Two choices under "Forgot and reset password" were NOT in the
+       team's plan and were proposed by the AI: writing a decoy OTP record for an address with no
+       account, and lifting a login lockout after a successful reset. Both are adopted as team
+       decisions by the author review below.
 Author review: Read in full; checked against the team's work plan.
 -->
 
@@ -113,7 +118,7 @@ _Origin: Team_
 | Key | Value | TTL | Purpose |
 |---|---|---|---|
 | `reg:{emailHash}` | JSON: userId, displayName, encrypted email and mobile, countryCode, passwordHash, otpHash, otpExpiresAt, attempts | 15 min | pending sign-up (no `users` row yet) |
-| `otp:{purpose}:{userId}` | JSON: otpHash, attempts, and for `NEW_EMAIL_VERIFY` the encrypted new email | 5 min | the OTP for one action |
+| `otp:{purpose}:{subject}` | JSON: otpHash, attempts, and for `NEW_EMAIL_VERIFY` the encrypted new email | 5 min | the OTP for one action |
 | `otpreq:{subject}` | counter | 10 min | OTP requests made |
 | `otpblock:{subject}` | flag | 15 min | request block; remaining TTL becomes `retryAfterSeconds` |
 | `loginfail:{emailHash}` | counter | 15 min | consecutive failed logins |
@@ -170,11 +175,15 @@ Account status is revealed **only after a correct password**, so the endpoint ca
 - **An email with no sign-up waiting answers 400 `OTP_EXPIRED`, never 404.** Whether the code was wrong, the code was stale, or nothing was pending at all, the response is identical — otherwise a caller could submit `000000` against any address and read 404 as "not registering" and 400 as "registering right now", which discloses who is signing up without ever guessing a code. This is the same reasoning as the dummy bcrypt compare on login.
 - `POST /auth/register/resend-otp` does still answer 404 when nothing is pending: it submits no code, and it counts against the request limit *before* the lookup, so the 404 cannot be probed more than three times in ten minutes.
 
-**Forgot and reset password**
+**Forgot and reset password** (U3.2.1)
 
-- `POST /auth/password/forgot` always returns the same 202 and the same message, whether or not the account exists. An OTP is sent only if the account exists and is ACTIVE.
-- `POST /auth/password/reset` returns the same `OTP_INVALID` for an unknown email as for a wrong code.
-- A new password that matches the current one is rejected (skipped when the current hash is NULL).
+- `POST /auth/password/forgot` always returns the same 202 and the same message, whether or not the account exists. An OTP is sent only if the account exists and is ACTIVE — a DEACTIVATED or SUSPENDED account gets no code, or deactivation would be reversible by the person it was applied to.
+- **An OTP record is written either way, even when there is no account.** `otp:PASSWORD_RESET:{emailHash}` is created for every accepted request, and for an address with no active account the code it holds is simply never mailed anywhere. This is what lets reset answer identically for a known and an unknown address: reset is answered by that record, so without one an unknown address would come back `OTP_EXPIRED` ("no record") where a known one comes back `OTP_INVALID` ("wrong code") — an enumeration oracle needing no guessing at all. Writing a real record with a real unguessable code closes it through the same code path rather than a special case, so the attempt cap, the five-minute expiry and the wording all match by construction.
+- `POST /auth/password/reset` therefore returns the same `OTP_INVALID` for an unknown email as for a wrong code, with the same `attemptsRemaining`.
+- **`forgot` never returns 503.** A mail failure is logged and still answered 202 (the endpoint table lists 429 as its only error): a 503 could only happen for an address that has an account, so returning it would answer the question the uniform 202 exists to refuse. The code is already in Redis, so the user can ask again.
+- A new password that matches the current one is rejected with 400 `VALIDATION_ERROR` (skipped when the current hash is NULL — the bootstrap admin, which has no current password to differ from).
+- A reset **revokes every refresh token** and returns 204 with no session: the user logs in again with the new password, here and on every other device. The password write and the revoke are one transaction.
+- A successful reset also **lifts any login lockout**. Forgetting a password is the usual way to get locked out, so leaving the lock standing would refuse the password just set for up to fifteen minutes. A correct password does *not* lift a lock — reading the account's inbox is proof that guessing is not; see step 1 of [Login](#rules).
 
 **Requester / courier mode (USFR6)**
 
@@ -183,7 +192,8 @@ A **UI-only** toggle. Every USER may both request and deliver; the backend never
 **Logging** (U5.1.1, U5.2.2, NFR5.1)
 
 - Never log passwords, tokens, OTPs, email addresses or mobile numbers. The logger redacts these fields.
-- Structured events: `UNAUTHORISED_ACCESS` `{userId, method, path, timestamp}`, `ADMIN_ACTION` `{actorId, targetId, action, from, to, timestamp}`, `ADMIN_BOOTSTRAPPED` `{userId, timestamp}`.
+- Structured events: `UNAUTHORISED_ACCESS` `{userId, method, path, timestamp}`, `ADMIN_ACTION` `{actorId, targetId, action, from, to, timestamp}`, `ADMIN_BOOTSTRAPPED` `{userId, timestamp}`, `REFRESH_TOKEN_REUSED` `{userId, revoked}`, `OTP_SEND_FAILED` `{purpose, attempt, errorCode, smtpResponseCode}`.
+- The password-reset events carry **no subject at all** — `PASSWORD_RESET_NOT_SENT` `{reason}` and `PASSWORD_RESET_MAIL_FAILED` `{otpExpiresAt}`. Not even the `emailHash`: these two fire precisely for addresses that have no active account, so a log line naming the subject would record exactly the enumeration answer the endpoints refuse to give. They are counters, not an audit trail.
 - Admin actions are logged **after** the transaction commits.
 
 ## API
@@ -358,6 +368,9 @@ All prefixed `USER_` except the shared `LOG_LEVEL`. All are listed in the root `
 - **A stale ADMIN token** stays valid for up to 15 minutes after a demotion. Admin endpoints re-read the role from the database inside the lock, so it cannot be used to change roles.
 - **Redis data loss** resets counters and drops in-flight OTPs and pending sign-ups. Users retry; AOF `everysec` keeps this rare.
 - **Account enumeration via register** — 409 `EMAIL_TAKEN` reveals that an address has an account. U1.1.3 requires the check, so this is accepted. Login, forgot-password and reset deliberately do *not* leak it.
+- **Forgot-password timing** — a real account sends an email and an unknown address does not, so the 202 comes back measurably sooner for an address with no account. The body, status and Redis state are identical, and the 3-per-10-minutes limit bounds how often it can be measured, but the timing itself is a residual leak. Closing it needs the send moved off the request, which is the deferred outbox; accepted until then.
+- **A reset costs the code even when it is refused** for reusing the current password, because the OTP is consumed before the comparison. Verifying without consuming would mean splitting the Lua script that makes the attempt cap unraceable, which is the worse trade; the user asks for another code.
+- **A reset against an account deactivated in the last five minutes** is refused with the same `OTP_INVALID` as a wrong code, so a valid code cannot bring an account back.
 - **Lockout as griefing** — anyone can lock another person out for 15 minutes by typing wrong passwords against their email. Accepted; it is the standard trade-off for a lockout policy.
 - **Mail is slow or down** — one retry with a 5 s timeout, then 503. The pending sign-up or OTP still exists, so the user can resend.
 - **Rotating the signing key logs everyone out.** The JWKS publishes only the current key, so a token carrying the previous `kid` stops verifying at once. Planned rotation normally avoids that by publishing the old and new keys together for one token lifetime — the `keys` array exists for exactly that — but **we do no planned rotation**, so the overlap is not implemented. For the reason we would actually rotate it is also the wrong behaviour: if the key leaks, an attacker can mint ADMIN tokens, and an overlap would keep honouring them for another 15 minutes. The hard cutover is correct.

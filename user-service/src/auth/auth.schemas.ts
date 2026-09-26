@@ -1,8 +1,9 @@
 /*
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26
- * Scope: Generated the Zod schemas for the register, verify and resend bodies, expressing the
- *        field rules recorded under "Rules" in user-service/AGENTS.md.
+ * Scope: Generated the Zod schemas for the register, verify, resend, login, refresh and
+ *        password-reset bodies, expressing the field rules recorded under "Rules" in
+ *        user-service/AGENTS.md.
  * Author review: Read in full; each rule checked against the backlog IDs it cites, and
  *                `npm test` covers every branch.
  */
@@ -143,3 +144,18 @@ export const RefreshTokenBodySchema = z
   .strict();
 
 export type RefreshTokenBodyInput = z.infer<typeof RefreshTokenBodySchema>;
+
+/** `POST /auth/password/forgot`. Just the address; the answer is the same either way. */
+export const ForgotPasswordSchema = z.object({ email: EmailSchema }).strict();
+
+export type ForgotPasswordInput = z.infer<typeof ForgotPasswordSchema>;
+
+/**
+ * `POST /auth/password/reset`. This one *does* reuse `PasswordSchema`, where login does not:
+ * the policy governs what a password may be **set** to, and this sets one.
+ */
+export const ResetPasswordSchema = z
+  .object({ email: EmailSchema, otp: OtpSchema, newPassword: PasswordSchema })
+  .strict();
+
+export type ResetPasswordInput = z.infer<typeof ResetPasswordSchema>;
