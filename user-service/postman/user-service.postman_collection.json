@@ -1,0 +1,71 @@
+{
+  "info": {
+    "name": "FoC User Service",
+    "description": "Sign-up flow for the FoC User Service. Set baseUrl and signupEmail in an environment; the OTP arrives in Mailpit at http://localhost:8025. AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. Author review: every request run against the compose stack.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001" },
+    { "key": "signupEmail", "value": "alex@u.nus.edu" },
+    { "key": "otp", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+    },
+    {
+      "name": "JWKS",
+      "request": { "method": "GET", "url": "{{baseUrl}}/.well-known/jwks.json" }
+    },
+    {
+      "name": "Register",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/register",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"displayName\": \"Alex Tan\",\n  \"email\": \"{{signupEmail}}\",\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"91234567\",\n  \"password\": \"Passw0rdSafe\"\n}"
+        },
+        "description": "201 with the new userId and when the code expires. No users row exists yet. Read the code in Mailpit, then set the `otp` variable."
+      }
+    },
+    {
+      "name": "Resend OTP",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/register/resend-otp",
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{signupEmail}}\"\n}" },
+        "description": "202. Replaces the code inside a sign-up that is still waiting, without extending its 15-minute window. 404 if nothing is pending; 429 after three requests in ten minutes."
+      }
+    },
+    {
+      "name": "Verify registration",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Keeps the tokens in variables rather than in the file: nothing here is committed.",
+              "if (pm.response.code === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.collectionVariables.set('accessToken', body.accessToken);",
+              "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/auth/register/verify",
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{signupEmail}}\",\n  \"otp\": \"{{otp}}\"\n}" },
+        "description": "200 with the auth response. The code is single-use, so replaying it gives OTP_EXPIRED."
+      }
+    }
+  ]
+}

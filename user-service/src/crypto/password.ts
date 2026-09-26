@@ -23,6 +23,13 @@ export const BCRYPT_COST = 12;
 export const MAX_PASSWORD_LENGTH = 72;
 
 /**
+ * The policy's lower bound, in **characters** (U1.1.4: "at least 8 characters"). Unlike the
+ * ceiling this is a plain character count, because the requirement is about how much the
+ * user typed, not how many bytes it encodes to.
+ */
+export const MIN_PASSWORD_LENGTH = 8;
+
+/**
  * Produces a 60-character bcrypt hash, which is what `users.password_hash` holds.
  *
  * Rejects anything over 72 **bytes**, not 72 characters. They are the same for ASCII, but

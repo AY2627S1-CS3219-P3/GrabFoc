@@ -10,9 +10,10 @@ import { DatabaseModule } from './db/database';
 import { HealthController } from './health/health.controller';
 import { OtpModule } from './otp/otp.module';
 import { RedisModule } from './redis/redis.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
-  imports: [DatabaseModule, RedisModule, AuthModule, OtpModule],
+  imports: [DatabaseModule, RedisModule, UsersModule, OtpModule, AuthModule],
   controllers: [HealthController],
 })
 export class AppModule {}
