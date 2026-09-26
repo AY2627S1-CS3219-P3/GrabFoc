@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "FoC Supplier (Location) Service",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "build": "nest build",
     "start": "node dist/main.js",

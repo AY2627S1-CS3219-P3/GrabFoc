@@ -4,13 +4,21 @@
  * Scope: Generated configuration loading (environment variables, .env file).
  * Author review: pending — to be completed by the reviewing team member.
  */
+import { existsSync } from 'fs';
 import * as path from 'path';
 
 // Load the repo-root .env if it exists (it is git-ignored). Real env vars take precedence.
-try {
-  process.loadEnvFile(path.resolve(__dirname, '../../.env'));
-} catch {
-  // no .env file: rely on the environment
+// process.loadEnvFile needs Node 22.12+, so say so plainly instead of failing later with a
+// confusing "missing environment variable".
+const ENV_PATH = path.resolve(__dirname, '../../.env');
+if (existsSync(ENV_PATH)) {
+  if (typeof process.loadEnvFile !== 'function') {
+    throw new Error(
+      `Node ${process.version} cannot read ${ENV_PATH}: reading .env files needs Node 22.12 or newer. ` +
+        'Upgrade Node, or set the variables in your environment instead (see .env.example).',
+    );
+  }
+  process.loadEnvFile(ENV_PATH);
 }
 
 function required(name: string): string {
