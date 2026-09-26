@@ -3,13 +3,16 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26
  * Scope: Generated the register / verify / resend flow over the existing OTP, mail, crypto and
  *        session pieces, following the "Register and verify" rules in user-service/AGENTS.md.
+ *        Put the account insert and the first session in one transaction after review.
  * Author review: Read in full; each step checked against the backlog IDs it cites, and the
  *                whole flow was run against the compose stack with the code read from Mailpit.
  */
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { Pool } from 'pg';
 import { AppError } from '../common/app-error';
 import { ErrorCode } from '../common/error-codes';
 import { OtpPurpose, encrypt, generateId, hashEmail, hashPassword } from '../crypto';
+import { PG_POOL, withTransaction } from '../db/database';
 import { MailService } from '../mail/mail.service';
 import { OtpService } from '../otp/otp.service';
 import { UsersRepository } from '../users/users.repository';
@@ -55,6 +58,7 @@ export class RegistrationService {
     private readonly otp: OtpService,
     private readonly mail: MailService,
     private readonly sessions: SessionService,
+    @Inject(PG_POOL) private readonly pool: Pool,
   ) {}
 
   /**
@@ -106,6 +110,15 @@ export class RegistrationService {
   /**
    * `POST /auth/register/verify`. Consumes the code and creates the account, then starts a
    * session so the user lands logged in rather than at a login form.
+   *
+   * The account row and the first refresh token are written in **one transaction**. Without
+   * it, a failure between the two statements would leave an account nobody asked for: the
+   * caller sees an error and assumes the sign-up failed, then re-registers and is told the
+   * address is already taken. Rolling back means they simply register again.
+   *
+   * It cannot be made atomic with the code, though — the OTP was consumed in Redis before any
+   * SQL ran, and a Postgres rollback does not put it back. A rollback therefore costs the user
+   * a fresh code, not their account.
    */
   async verify(input: VerifyRegistrationInput): Promise<AuthResponse> {
     const emailHash = hashEmail(input.email);
@@ -124,23 +137,32 @@ export class RegistrationService {
       input.otp,
     );
 
-    const user = await this.users.insertIfAbsent({
-      id: pending.userId,
-      displayName: pending.displayName,
-      emailHash,
-      emailEncrypted: Buffer.from(pending.emailEncrypted, 'base64'),
-      countryCode: pending.countryCode,
-      mobileEncrypted: Buffer.from(pending.mobileEncrypted, 'base64'),
-      passwordHash: pending.passwordHash,
+    return withTransaction(this.pool, async (client) => {
+      const user = await this.users.insertIfAbsent(
+        {
+          id: pending.userId,
+          displayName: pending.displayName,
+          emailHash,
+          emailEncrypted: Buffer.from(pending.emailEncrypted, 'base64'),
+          countryCode: pending.countryCode,
+          mobileEncrypted: Buffer.from(pending.mobileEncrypted, 'base64'),
+          passwordHash: pending.passwordHash,
+        },
+        client,
+      );
+
+      if (!user) {
+        // The address was claimed between register and verify — the code was valid, but the
+        // account is not ours to create. No session is issued for a row we did not insert.
+        throw new AppError(
+          409,
+          ErrorCode.EMAIL_TAKEN,
+          'An account with this email already exists.',
+        );
+      }
+
+      return this.sessions.issue(user, client);
     });
-
-    if (!user) {
-      // The address was claimed between register and verify — the code was valid, but the
-      // account is not ours to create. No session is issued for a row we did not insert.
-      throw new AppError(409, ErrorCode.EMAIL_TAKEN, 'An account with this email already exists.');
-    }
-
-    return this.sessions.issue(user);
   }
 
   /**

@@ -2,10 +2,11 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26
  * Scope: Generated the register / verify / resend tests against fake OTP, mail, repository and
- *        session collaborators.
+ *        session collaborators, including the transaction around account creation.
  * Author review: Read in full; the ordering and leak assertions were each confirmed to fail
  *                against a deliberately broken version of the service.
  */
+import { Pool, PoolClient } from 'pg';
 import { AppError } from '../common/app-error';
 import { ErrorCode } from '../common/error-codes';
 import { OtpPurpose, decrypt } from '../crypto';
@@ -37,7 +38,7 @@ function build() {
       record('existsByEmailHash');
       return false;
     }),
-    insertIfAbsent: jest.fn<Promise<UserRecord | null>, [NewUser]>(async (user) => {
+    insertIfAbsent: jest.fn<Promise<UserRecord | null>, [NewUser, PoolClient?]>(async (user) => {
       record('insertIfAbsent');
       return {
         id: user.id,
@@ -72,19 +73,33 @@ function build() {
   };
 
   const sessions = {
-    issue: jest.fn<Promise<AuthResponse>, [unknown]>(
+    issue: jest.fn<Promise<AuthResponse>, [unknown, PoolClient?]>(
       async () => ({ accessToken: 'a', refreshToken: 'r' }) as AuthResponse,
     ),
   };
+
+  // `withTransaction` checks out one client, wraps the work in BEGIN/COMMIT and releases it.
+  // Recording the statements is how these tests see whether a failure rolled back.
+  const statements: string[] = [];
+  const client = {
+    query: jest.fn<Promise<unknown>, [string]>(async (sql: string) => {
+      statements.push(sql);
+      record(`sql:${sql}`);
+      return { rows: [] };
+    }),
+    release: jest.fn(),
+  };
+  const pool = { connect: jest.fn(async () => client) };
 
   const service = new RegistrationService(
     users as unknown as UsersRepository,
     otp as unknown as OtpService,
     mail as unknown as MailService,
     sessions as unknown as SessionService,
+    pool as unknown as Pool,
   );
 
-  return { service, users, otp, mail, sessions, calls };
+  return { service, users, otp, mail, sessions, calls, statements, client };
 }
 
 /** The value handed to Redis, i.e. everything `reg:{emailHash}` will hold. */
@@ -229,8 +244,39 @@ describe('verify', () => {
     expect(sessions.issue).not.toHaveBeenCalled();
   });
 
+  it('writes the account and the first session in one transaction', async () => {
+    const { service, users, otp, sessions, statements, client } = build();
+    otp.verifyRecord.mockResolvedValueOnce(pending);
+
+    await service.verify({ email: INPUT.email, otp: '123456' });
+
+    expect(statements).toEqual(['BEGIN', 'COMMIT']);
+    // Both halves must run on the client the transaction was opened on, or the COMMIT and
+    // ROLLBACK above cover nothing.
+    expect(users.insertIfAbsent.mock.calls[0][1]).toBe(client);
+    expect(sessions.issue.mock.calls[0][1]).toBe(client);
+    expect(client.release).toHaveBeenCalled();
+  });
+
+  it('rolls the account back when the session cannot be created', async () => {
+    // Otherwise the caller sees an error, assumes the sign-up failed, registers again and is
+    // told the address is taken — an account nobody knows they have.
+    const { service, otp, sessions, statements, client } = build();
+    otp.verifyRecord.mockResolvedValueOnce(pending);
+    sessions.issue.mockRejectedValueOnce(new Error('connection terminated'));
+
+    await expect(service.verify({ email: INPUT.email, otp: '123456' })).rejects.toThrow(
+      'connection terminated',
+    );
+
+    expect(statements).toEqual(['BEGIN', 'ROLLBACK']);
+    expect(statements).not.toContain('COMMIT');
+    // The client goes back to the pool either way; leaking it would exhaust the pool.
+    expect(client.release).toHaveBeenCalled();
+  });
+
   it('issues no session when the address was claimed between register and verify', async () => {
-    const { service, users, otp, sessions } = build();
+    const { service, users, otp, sessions, statements } = build();
     otp.verifyRecord.mockResolvedValueOnce(pending);
     users.insertIfAbsent.mockResolvedValueOnce(null);
 
@@ -239,6 +285,7 @@ describe('verify', () => {
       status: 409,
     });
     expect(sessions.issue).not.toHaveBeenCalled();
+    expect(statements).toEqual(['BEGIN', 'ROLLBACK']);
   });
 });
 
