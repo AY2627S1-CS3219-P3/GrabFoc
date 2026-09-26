@@ -28,7 +28,7 @@ CREATE TABLE refresh_tokens (
     id          UUID        PRIMARY KEY,
     user_id     UUID        NOT NULL REFERENCES users(id),
     token_hash  CHAR(64)    NOT NULL UNIQUE,                     -- SHA-256 of the token
-    expires_at  TIMESTAMPTZ NOT NULL,                            -- created + 7 days
+    expires_at  TIMESTAMPTZ NOT NULL,                            -- created + REFRESH_TOKEN_TTL_SECONDS
     revoked_at  TIMESTAMPTZ,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -17,8 +17,17 @@ import { Role } from './caller';
 import { ACCESS_TOKEN_TTL_SECONDS, JwtService } from './jwt.service';
 import { RefreshTokensRepository } from './refresh-tokens.repository';
 
-/** AGENTS.md, "Tokens and RBAC". Long, because the access token it renews is short. */
-export const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+/**
+ * AGENTS.md, "Tokens and RBAC". Ninety days, and it slides: every rotation issues a fresh
+ * one, so this is how long a user may stay away before having to log in again, not how long
+ * a session lasts.
+ *
+ * Long for a bearer credential. What makes it acceptable is that the token is single-use:
+ * rotation plus reuse detection means a stolen copy stops working the moment either party
+ * refreshes, and a password change, reset or deactivation revokes every token outright. The
+ * exposure it does leave is a device the user abandons without logging out.
+ */
+export const REFRESH_TOKEN_TTL_SECONDS = 90 * 24 * 60 * 60;
 
 /** What a rotation returns. No `user` block — the fresh access token already carries the role. */
 export interface RefreshedSession {
@@ -58,7 +67,7 @@ export class SessionService {
   ) {}
 
   /**
-   * Starts a session: a 15-minute access token, and a refresh token valid for 7 days.
+   * Starts a session: a 15-minute access token, and a refresh token valid for 90 days.
    *
    * The refresh token is returned to the caller exactly once and stored only as SHA-256, so a
    * leaked database yields no usable token. It does not need bcrypt the way a password does —
