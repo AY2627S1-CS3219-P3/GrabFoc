@@ -1,7 +1,8 @@
 /*
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
- * Scope: Generated the two Lua scripts that make OTP verification and rate limiting atomic.
+ * Scope: Generated the Lua scripts that make OTP verification, reissue and rate limiting
+ *        atomic.
  * Author review: Read in full; `npm run test:int` passes (18 tests against a real Redis), including the concurrency cases the scripts exist for.
  */
 
@@ -14,9 +15,10 @@
  * policy allows (U2.3.2). A Lua script runs to completion without interruption, so the cap
  * cannot be raced and a correct code cannot be used twice.
  *
- * KEYS[1] the otp:{purpose}:{userId} key
+ * KEYS[1] the record: otp:{purpose}:{subject}, or reg:{emailHash} for a pending sign-up
  * ARGV[1] the HMAC of the submitted code
  * ARGV[2] the maximum number of attempts
+ * ARGV[3] the current time in epoch milliseconds
  *
  * Returns { status, attemptsRemaining, payload }
  *   status 'OK'      correct; the key is deleted and the stored payload returned
@@ -30,6 +32,18 @@ if not raw then
 end
 
 local data = cjson.decode(raw)
+
+-- A pending sign-up outlives its code: reg:{emailHash} lives 15 minutes so the code can be
+-- resent, while each code is valid for 5. One key TTL cannot express both, so the code's own
+-- deadline travels inside the record. For otp:* keys the two coincide and this never fires.
+--
+-- The record is deliberately NOT deleted: letting a code lapse must not throw away a sign-up
+-- that is still inside its window, or the user would have to start over instead of asking for
+-- a new code. Nothing is guessable here either, because this runs before the hash comparison
+-- and so answers identically whatever was submitted.
+if data.otpExpiresAt and tonumber(data.otpExpiresAt) <= tonumber(ARGV[3]) then
+  return {'EXPIRED', 0, ''}
+end
 
 if data.otpHash == ARGV[1] then
   redis.call('DEL', KEYS[1])
@@ -79,4 +93,33 @@ if count > tonumber(ARGV[1]) then
 end
 
 return {'OK', 0}
+`;
+
+/**
+ * Put a fresh code into a record that already exists, for `POST /auth/register/resend-otp`.
+ *
+ * Lua again: read, modify and write back is three commands, and a resend arriving alongside a
+ * verify could otherwise resurrect a record the verify had just consumed.
+ *
+ * KEYS[1] the record   ARGV[1] the HMAC of the new code   ARGV[2] its deadline, epoch ms
+ *
+ * Returns 1 if the record was found and updated, 0 if there was nothing to resend.
+ */
+export const REISSUE_OTP_LUA = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+  return 0
+end
+
+local data = cjson.decode(raw)
+data.otpHash = ARGV[1]
+data.otpExpiresAt = tonumber(ARGV[2])
+-- A new code starts with a full set of attempts; the old code's failures do not carry over.
+data.attempts = 0
+
+-- KEEPTTL: the sign-up window belongs to the record, not to the code. Resending replaces the
+-- code inside the window; it cannot extend the window, which would otherwise let a caller keep
+-- a pending sign-up alive indefinitely.
+redis.call('SET', KEYS[1], cjson.encode(data), 'KEEPTTL')
+return 1
 `;

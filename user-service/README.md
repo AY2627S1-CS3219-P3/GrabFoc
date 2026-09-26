@@ -144,14 +144,59 @@ atomically — no in-memory fake reproduces that. Start Redis first:
 docker compose up -d user-redis
 ```
 
+## Trying the sign-up flow
+
+With the stack running, and **http://localhost:8025** open in a browser:
+
+```bash
+curl -X POST http://localhost:3001/auth/register -H 'Content-Type: application/json' -d '{
+  "displayName": "Alex Tan",
+  "email": "alex@u.nus.edu",
+  "countryCode": "+65",
+  "mobileNumber": "91234567",
+  "password": "Passw0rdSafe"
+}'
+```
+
+The six-digit code arrives in the Mailpit inbox. Send it back with the same address:
+
+```bash
+curl -X POST http://localhost:3001/auth/register/verify -H 'Content-Type: application/json' \
+  -d '{"email": "alex@u.nus.edu", "otp": "123456"}'
+```
+
+That returns the access token, the refresh token and the new account. `POST
+/auth/register/resend-otp` with just the email puts a fresh code into a sign-up that is still
+waiting.
+
+There is no login endpoint yet, so this is currently the only way to obtain a token.
+
+Three things worth knowing while testing:
+
+- A code is good for **5 minutes**; the sign-up itself lasts **15**, so you can resend into it.
+  A resend replaces the code without extending the fifteen minutes.
+- Three wrong codes destroy the sign-up. Three sign-up or resend requests for the same address
+  in ten minutes start a **15-minute block** (429), so use a different address per experiment.
+- No `users` row exists until the code comes back. Until then the sign-up is only a
+  `reg:{emailHash}` key in Redis, holding the address and mobile number encrypted and the
+  password already hashed.
+
 ## What exists so far
 
-Phase 0 steps 1 to 4: the skeleton, configuration, the database and migrations, the error filter, the Zod pipe, the redacting logger, the crypto helpers in `src/crypto`, access tokens with RBAC in `src/auth`, and Redis-backed OTPs with email delivery in `src/otp` and `src/mail`.
+Phase 0 steps 1 to 4 — the skeleton, configuration, the database and migrations, the error
+filter, the Zod pipe, the redacting logger, the crypto helpers in `src/crypto`, access tokens
+with RBAC in `src/auth`, and Redis-backed OTPs with email delivery in `src/otp` and `src/mail`
+— plus **step 5: sign-up**.
 
-Phase 0 step 4 adds Redis, `MailService` and `OtpService` on top.
+| Route | |
+|---|---|
+| `GET /health` | public |
+| `GET /.well-known/jwks.json` | public |
+| `POST /auth/register` | public |
+| `POST /auth/register/verify` | public |
+| `POST /auth/register/resend-otp` | public |
 
-Routes so far: `GET /health` and `GET /.well-known/jwks.json`, both public. There are still no register or login endpoints, so OTPs and tokens are exercised from tests only. See the build order in `AGENTS.md`.
-
-Once an OTP is sent, read it at **http://localhost:8025** — Mailpit's inbox.
+Login, refresh, logout and password reset are the next steps; the profile and admin endpoints
+are Person B's track. See the build order in `AGENTS.md`.
 
 **Authentication is on by default.** `JwtAuthGuard` is registered globally, so every route needs a bearer token unless it is marked `@Public()`. Forgetting the decorator leaves an endpoint closed rather than open.

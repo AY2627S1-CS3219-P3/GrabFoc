@@ -1,7 +1,8 @@
 /*
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
- * Scope: Generated integration tests running the Lua scripts against a real Redis.
+ * Scope: Generated integration tests running the Lua scripts against a real Redis, including
+ *        the record variants a pending sign-up uses.
  * Author review: Read in full; `npm run test:int` passes (18 tests against a real Redis), including the concurrency cases the scripts exist for.
  */
 import { Redis } from 'ioredis';
@@ -193,5 +194,173 @@ describe('assertWithinRequestLimit', () => {
       ),
     );
     expect(results.filter((r) => r === 'allowed')).toHaveLength(OTP_MAX_REQUESTS);
+  });
+});
+
+/**
+ * A pending sign-up keeps its code inside its own reg:{emailHash} record, so the record can
+ * outlive the code it is waiting for and a resend has something to resend into.
+ */
+describe('records', () => {
+  const PENDING = { userId: 'u-1', displayName: 'Alex Tan', passwordHash: '$2b$12$hash' };
+  const regKey = (subject: string) => `reg:${subject}`;
+  const RECORD_TTL = 15 * 60;
+
+  it('stores the extra fields alongside the code, and none of the code itself', async () => {
+    const subject = userId();
+    const { code } = await otp.issueRecord(
+      regKey(subject),
+      OtpPurpose.REGISTRATION,
+      subject,
+      PENDING,
+      RECORD_TTL,
+    );
+
+    const stored = JSON.parse((await redis.get(regKey(subject)))!);
+    expect(stored).toMatchObject(PENDING);
+    expect(stored.otpHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(stored)).not.toContain(code);
+  });
+
+  it('gives the record a longer life than the code inside it', async () => {
+    const subject = userId();
+    await otp.issueRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, PENDING, RECORD_TTL);
+
+    expect(await redis.ttl(regKey(subject))).toBeGreaterThan(OTP_TTL_SECONDS);
+    const stored = JSON.parse((await redis.get(regKey(subject)))!);
+    const codeLife = (stored.otpExpiresAt - Date.now()) / 1000;
+    expect(codeLife).toBeLessThanOrEqual(OTP_TTL_SECONDS);
+  });
+
+  it('returns everything that was stored, and consumes the record', async () => {
+    const subject = userId();
+    const { code } = await otp.issueRecord(
+      regKey(subject),
+      OtpPurpose.REGISTRATION,
+      subject,
+      PENDING,
+      RECORD_TTL,
+    );
+
+    await expect(
+      otp.verifyRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, code),
+    ).resolves.toMatchObject(PENDING);
+    expect(await redis.exists(regKey(subject))).toBe(0);
+  });
+
+  it('refuses a code past its own deadline even while the record is still alive', async () => {
+    const subject = userId();
+    const { code } = await otp.issueRecord(
+      regKey(subject),
+      OtpPurpose.REGISTRATION,
+      subject,
+      PENDING,
+      RECORD_TTL,
+    );
+
+    // The record's TTL cannot express the code's shorter life, so the deadline lives inside
+    // it. Age the code by rewriting that field rather than waiting five minutes.
+    const stored = JSON.parse((await redis.get(regKey(subject)))!);
+    await redis.set(
+      regKey(subject),
+      JSON.stringify({ ...stored, otpExpiresAt: Date.now() - 1000 }),
+      'KEEPTTL',
+    );
+
+    await expect(
+      otp.verifyRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, code),
+    ).rejects.toMatchObject({ code: 'OTP_EXPIRED' });
+
+    // ...and the sign-up survives, so the user can ask for a new code instead of starting over.
+    expect(await redis.exists(regKey(subject))).toBe(1);
+  });
+
+  it('reports a record that is not there as expired, not as missing', async () => {
+    // AGENTS.md, "Register and verify": /auth/register/verify must answer the same way whether
+    // the code was wrong or no sign-up was ever waiting, or the response tells a caller which
+    // addresses are mid-sign-up.
+    const subject = userId();
+
+    await expect(
+      otp.verifyRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, '123456'),
+    ).rejects.toMatchObject({ code: 'OTP_EXPIRED' });
+  });
+
+  it('reissue replaces the code and keeps the record', async () => {
+    const subject = userId();
+    const first = await otp.issueRecord(
+      regKey(subject),
+      OtpPurpose.REGISTRATION,
+      subject,
+      PENDING,
+      RECORD_TTL,
+    );
+
+    const second = await otp.reissueRecord(regKey(subject), OtpPurpose.REGISTRATION, subject);
+
+    await expect(
+      otp.verifyRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, first.code),
+    ).rejects.toMatchObject({ code: 'OTP_INVALID' });
+    await expect(
+      otp.verifyRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, second!.code),
+    ).resolves.toMatchObject(PENDING);
+  });
+
+  it('reissue does not extend the sign-up window (KEEPTTL)', async () => {
+    const subject = userId();
+    await otp.issueRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, PENDING, RECORD_TTL);
+    await redis.expire(regKey(subject), 60);
+
+    await otp.reissueRecord(regKey(subject), OtpPurpose.REGISTRATION, subject);
+
+    expect(await redis.ttl(regKey(subject))).toBeLessThanOrEqual(60);
+  });
+
+  it('reissue gives the new code a full set of attempts', async () => {
+    const subject = userId();
+    await otp.issueRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, PENDING, RECORD_TTL);
+    for (let i = 0; i < OTP_MAX_ATTEMPTS - 1; i++) {
+      await otp
+        .verifyRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, '000000')
+        .catch(() => undefined);
+    }
+
+    await otp.reissueRecord(regKey(subject), OtpPurpose.REGISTRATION, subject);
+
+    await expect(
+      otp.verifyRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, '000000'),
+    ).rejects.toMatchObject({ details: { attemptsRemaining: OTP_MAX_ATTEMPTS - 1 } });
+  });
+
+  it('reissue returns null when there is no record, rather than creating one', async () => {
+    const subject = userId();
+
+    await expect(
+      otp.reissueRecord(regKey(subject), OtpPurpose.REGISTRATION, subject),
+    ).resolves.toBeNull();
+    expect(await redis.exists(regKey(subject))).toBe(0);
+  });
+
+  it('caps attempts on a record just as on a standalone code', async () => {
+    const subject = userId();
+    const { code } = await otp.issueRecord(
+      regKey(subject),
+      OtpPurpose.REGISTRATION,
+      subject,
+      PENDING,
+      RECORD_TTL,
+    );
+
+    await Promise.all(
+      Array.from({ length: 10 }, () =>
+        otp
+          .verifyRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, '000000')
+          .catch(() => undefined),
+      ),
+    );
+
+    await expect(
+      otp.verifyRecord(regKey(subject), OtpPurpose.REGISTRATION, subject, code),
+    ).rejects.toMatchObject({ code: 'OTP_EXPIRED' });
   });
 });

@@ -166,6 +166,8 @@ Account status is revealed **only after a correct password**, so the endpoint ca
 
 - `POST /auth/register` writes a pending sign-up to Redis and creates **no** `users` row (U1.1.2). Registering again for the same email overwrites the pending entry.
 - `POST /auth/register/verify` inserts the user with `ON CONFLICT (email_hash) DO NOTHING`, so a double submit is safe, then deletes the Redis key.
+- **An email with no sign-up waiting answers 400 `OTP_EXPIRED`, never 404.** Whether the code was wrong, the code was stale, or nothing was pending at all, the response is identical — otherwise a caller could submit `000000` against any address and read 404 as "not registering" and 400 as "registering right now", which discloses who is signing up without ever guessing a code. This is the same reasoning as the dummy bcrypt compare on login.
+- `POST /auth/register/resend-otp` does still answer 404 when nothing is pending: it submits no code, and it counts against the request limit *before* the lookup, so the 404 cannot be probed more than three times in ten minutes.
 
 **Forgot and reset password**
 
@@ -196,7 +198,7 @@ _Origin: Team_
 | Endpoint | Body → Response | Main errors |
 |---|---|---|
 | `POST /auth/register` | displayName, email, countryCode, mobileNumber, password → 201 `{ userId, otpExpiresAt }` | 400, 409 `EMAIL_TAKEN`, 429, 503 |
-| `POST /auth/register/verify` | email, otp → 200 auth response | OTP errors, 404 |
+| `POST /auth/register/verify` | email, otp → 200 auth response | OTP errors (a missing sign-up is `OTP_EXPIRED`, not 404), 409 `EMAIL_TAKEN` |
 | `POST /auth/register/resend-otp` | email → 202 `{ otpExpiresAt }` | 404, 429, 503 |
 | `POST /auth/login` | email, password → 200 auth response | 401, 403, 423 |
 | `POST /auth/refresh` | refreshToken → 200 `{ accessToken, refreshToken, expiresIn }` | 401 |
@@ -242,7 +244,7 @@ _Origin: Team_
 | **400** | `VALIDATION_ERROR` (with the failing fields); `OTP_INVALID` (with `attemptsRemaining`); `OTP_EXPIRED` — a missing or used-up code counts as expired |
 | **401** | Missing, invalid or expired token; `INVALID_CREDENTIALS` on login |
 | **403** | Wrong role (logged, U5.1.1); not the owner (logged, U5.2.2); `ACCOUNT_DEACTIVATED`; `ACCOUNT_SUSPENDED` |
-| **404** | No such user or pending sign-up |
+| **404** | No such user; or no sign-up waiting for `/auth/register/resend-otp`. **Not** `/auth/register/verify`, which answers `OTP_EXPIRED` instead — see "Register and verify" |
 | **409** | `EMAIL_TAKEN`, `LAST_ADMIN`, `CANNOT_MODIFY_SELF`, `USER_NOT_ACTIVE`, `NOT_DEACTIVATED` |
 | **423** | `ACCOUNT_LOCKED`, with `retryAfterSeconds` |
 | **429** | `RATE_LIMITED`, with `retryAfterSeconds` |
@@ -349,6 +351,7 @@ All prefixed `USER_` except the shared `LOG_LEVEL`. All are listed in the root `
 
 - **Last-admin race** — two admins demoting each other at once, or the last two both deactivating. Handled by the locked transaction above. Demo it with two `psql` sessions and show the second one waiting.
 - **Double verify** — a repeated `POST /auth/register/verify` inserts nothing, thanks to `ON CONFLICT (email_hash) DO NOTHING`.
+- **A sign-up left too long** is told its code expired rather than that no sign-up exists, which is vaguer than it could be. Accepted: resend then says plainly that there is nothing to resend, so nobody is stuck.
 - **Two browser tabs refreshing at once** — the second presents an already-revoked token, which is indistinguishable from theft, so the user is logged out. The frontend must serialise refreshes.
 - **Bootstrap never runs** if anyone registers before the service first starts with `USER_BOOTSTRAP_ADMIN_EMAIL` set.
 - **A stale ADMIN token** stays valid for up to 15 minutes after a demotion. Admin endpoints re-read the role from the database inside the lock, so it cannot be used to change roles.

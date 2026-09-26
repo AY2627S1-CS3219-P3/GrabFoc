@@ -11,10 +11,18 @@
  * review when the marking asks how credentials are protected.
  */
 export { normalizeEmail, hashEmail } from './email';
-export { BCRYPT_COST, DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password';
+export {
+  BCRYPT_COST,
+  DUMMY_PASSWORD_HASH,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  hashPassword,
+  verifyPassword,
+} from './password';
 export { encrypt, decrypt } from './encryption';
 export {
   OtpPurpose,
+  generateId,
   generateRefreshToken,
   hashRefreshToken,
   generateOtpCode,
