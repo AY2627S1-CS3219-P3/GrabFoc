@@ -87,4 +87,16 @@ export class LockoutService {
   async clearFailures(emailHash: string): Promise<void> {
     await this.redis.del(failKey(emailHash));
   }
+
+  /**
+   * Lifts a lockout outright, counter and all. Called after a successful password reset.
+   *
+   * Separate from `clearFailures` because a correct password must **not** cut a lock short: the
+   * lock is what stops the guessing, and a guesser who finally guesses right is precisely who
+   * should still be locked out. A password reset is different — it proves the caller reads the
+   * account's inbox, which no amount of guessing does.
+   */
+  async clear(emailHash: string): Promise<void> {
+    await this.redis.del(failKey(emailHash), lockKey(emailHash));
+  }
 }

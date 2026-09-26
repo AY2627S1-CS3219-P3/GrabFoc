@@ -138,6 +138,42 @@
       }
     },
     {
+      "name": "Forgot password",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/password/forgot",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{signupEmail}}\"\n}"
+        },
+        "description": "202 with a fixed message for any NUS address, whether or not it has an account. The code arrives in Mailpit only if the account exists and is ACTIVE. 429 after three requests in ten minutes. Never 503: a mail failure is logged and still answered 202, because a 503 could only happen for an address that has an account."
+      }
+    },
+    {
+      "name": "Reset password",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/password/reset",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{signupEmail}}\",\n  \"otp\": \"000000\",\n  \"newPassword\": \"Newpassw0rd\"\n}"
+        },
+        "description": "204, and no tokens: every refresh token is revoked, so each device logs in again. Any login lockout is lifted. Paste the code from Mailpit over the 000000 above. A made-up address answers exactly as a wrong code does (OTP_INVALID with attemptsRemaining), and reusing the current password is a 400 that still costs you the code."
+      }
+    },
+    {
       "name": "Refresh",
       "event": [
         {

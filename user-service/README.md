@@ -200,6 +200,36 @@ Refreshing also reloads the user, so a role or status change takes effect within
 You can see it without any admin endpoint: change `role` with `psql`, refresh, and decode the
 new access token.
 
+## Resetting a forgotten password
+
+Ask for a code, read it in Mailpit, and send it back with the new password:
+
+```bash
+curl -X POST http://localhost:3001/auth/password/forgot -H 'Content-Type: application/json' \
+  -d '{"email": "alex@u.nus.edu"}'
+
+curl -i -X POST http://localhost:3001/auth/password/reset -H 'Content-Type: application/json' \
+  -d '{"email": "alex@u.nus.edu", "otp": "123456", "newPassword": "Newpassw0rd"}'
+```
+
+`forgot` answers **202 with the same message for any NUS address**, including one that has no
+account — so there is nothing to read into it either way. Try it with a made-up address and
+compare: same status, same body. The difference is only that no email arrives.
+
+`reset` answers **204 and gives you no tokens**. It revokes every refresh token the account had,
+so every device has to log in again — which is the point, since a reset is what you do when
+someone else may have had your password. It also clears any login lockout, so the new password
+works immediately.
+
+Two things that surprise people while testing:
+
+- Reusing your **current** password is a 400, and it still costs you the code (the code is
+  consumed before the comparison). Ask for another one.
+- A reset against a made-up address behaves exactly like a wrong code — `OTP_INVALID` with
+  `attemptsRemaining`, not "no such account". `forgot` writes an OTP record for *every* address
+  it accepts, precisely so those two cannot be told apart. Nobody can use the unmailed code:
+  it is one of a million and dies after three guesses.
+
 Three things worth knowing while testing:
 
 - A code is good for **5 minutes**; the sign-up itself lasts **15**, so you can resend into it.
@@ -215,7 +245,8 @@ Three things worth knowing while testing:
 Phase 0 steps 1 to 4 — the skeleton, configuration, the database and migrations, the error
 filter, the Zod pipe, the redacting logger, the crypto helpers in `src/crypto`, access tokens
 with RBAC in `src/auth`, and Redis-backed OTPs with email delivery in `src/otp` and `src/mail`
-— plus **step 5: sign-up**.
+— plus **step 5: sign-up**, **step 6: login and lockout**, **step 7: refresh and logout** and
+**step 8: forgot/reset password**.
 
 | Route | |
 |---|---|
@@ -226,9 +257,11 @@ with RBAC in `src/auth`, and Redis-backed OTPs with email delivery in `src/otp` 
 | `POST /auth/register/resend-otp` | public |
 | `POST /auth/login` | public |
 | `POST /auth/refresh` | public |
+| `POST /auth/password/forgot` | public |
+| `POST /auth/password/reset` | public |
 | `POST /auth/logout` | needs an access token |
 
-Forgot/reset password and the admin bootstrap are next; the profile and admin endpoints are
-Person B's track. See the build order in `AGENTS.md`.
+The admin bootstrap is next; the profile and admin endpoints are Person B's track. See the
+build order in `AGENTS.md`.
 
 **Authentication is on by default.** `JwtAuthGuard` is registered globally, so every route needs a bearer token unless it is marked `@Public()`. Forgetting the decorator leaves an endpoint closed rather than open.

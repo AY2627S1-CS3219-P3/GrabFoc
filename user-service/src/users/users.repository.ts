@@ -160,4 +160,24 @@ export class UsersRepository {
     );
     return rows[0] ? toRecord(rows[0]) : null;
   }
+
+  /**
+   * Replaces a password (U3.2.1 reset, U3.2.2 change). Returns whether a row matched, so a
+   * caller can tell "changed" from "there is no such user any more".
+   *
+   * `updated_at` is set here rather than by a trigger: the column defaults to `now()` on
+   * insert, but nothing in `001_init.sql` maintains it afterwards, so every UPDATE has to
+   * carry it or the timestamp would claim the row was last touched at sign-up.
+   */
+  async updatePasswordHash(
+    userId: string,
+    passwordHash: string,
+    client?: PoolClient,
+  ): Promise<boolean> {
+    const { rowCount } = await (client ?? this.pool).query(
+      'UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1',
+      [userId, passwordHash],
+    );
+    return rowCount !== null && rowCount > 0;
+  }
 }
