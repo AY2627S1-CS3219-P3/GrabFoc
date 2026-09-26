@@ -8,6 +8,7 @@
  */
 import { AppError } from '../common/app-error';
 import { ErrorCode } from '../common/error-codes';
+import * as crypto from '../crypto';
 import { DUMMY_PASSWORD_HASH, hashPassword } from '../crypto';
 import { UserRecord, UserStatus, UsersRepository } from '../users/users.repository';
 import { Role } from './caller';
@@ -139,15 +140,17 @@ describe('step 2: an unknown address is indistinguishable from a wrong password'
     expect(unknown.message).toBe(wrongPassword.message);
   });
 
-  it('still pays for a bcrypt comparison when there is no account', async () => {
+  it('still runs a bcrypt comparison, against the dummy hash, when there is no account', async () => {
     // Skipping it would return in a millisecond instead of ~250, and that gap alone says
-    // whether the address is registered.
+    // whether the address is registered. Asserted on the call rather than on elapsed time,
+    // because a wall-clock threshold fails on a loaded machine for reasons unrelated to this.
+    const compare = jest.spyOn(crypto, 'verifyPassword');
     const { service } = build(null);
 
-    const started = Date.now();
     await service.login(INPUT).catch(() => undefined);
 
-    expect(Date.now() - started).toBeGreaterThan(50);
+    expect(compare).toHaveBeenCalledWith(INPUT.password, DUMMY_PASSWORD_HASH);
+    compare.mockRestore();
   });
 
   it('counts an unknown address against the lockout too', async () => {

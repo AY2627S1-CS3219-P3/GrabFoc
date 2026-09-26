@@ -15,15 +15,18 @@ import { LoginController } from './login.controller';
 import { LoginService } from './login.service';
 import { RegistrationController } from './registration.controller';
 import { RegistrationService } from './registration.service';
+import { RefreshTokensRepository } from './refresh-tokens.repository';
 import { RolesGuard } from './roles.guard';
+import { SessionController } from './session.controller';
 import { SessionService } from './session.service';
 
 @Global()
 @Module({
-  controllers: [JwksController, RegistrationController, LoginController],
+  controllers: [JwksController, RegistrationController, LoginController, SessionController],
   providers: [
     JwtService,
     SessionService,
+    RefreshTokensRepository,
     RegistrationService,
     LockoutService,
     LoginService,
@@ -32,6 +35,6 @@ import { SessionService } from './session.service';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  exports: [JwtService, SessionService],
+  exports: [JwtService, SessionService, RefreshTokensRepository],
 })
 export class AuthModule {}

@@ -130,3 +130,16 @@ export const LoginSchema = z
   .strict();
 
 export type LoginInput = z.infer<typeof LoginSchema>;
+
+/**
+ * The body of both `POST /auth/refresh` and `POST /auth/logout`.
+ *
+ * No shape validation beyond "a non-empty string": a token that is the wrong length or the
+ * wrong alphabet must get the same 401 as one that is merely unknown, and a 400 describing
+ * the expected format would tell a caller what a real token looks like.
+ */
+export const RefreshTokenBodySchema = z
+  .object({ refreshToken: z.string().min(1, 'is required') })
+  .strict();
+
+export type RefreshTokenBodyInput = z.infer<typeof RefreshTokenBodySchema>;

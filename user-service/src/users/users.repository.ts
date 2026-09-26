@@ -112,6 +112,19 @@ export class UsersRepository {
     return rowCount !== null && rowCount > 0;
   }
 
+  /**
+   * Used by `POST /auth/refresh`, which reloads the user on every rotation. That reload is
+   * what makes a demotion or a deactivation take effect within 15 minutes without any shared
+   * session store — the role in the next access token comes from here, not from the old one.
+   */
+  async findById(id: string, client?: PoolClient): Promise<UserRecord | null> {
+    const { rows } = await (client ?? this.pool).query<UserRow>(
+      `SELECT ${COLUMNS} FROM users WHERE id = $1`,
+      [id],
+    );
+    return rows[0] ? toRecord(rows[0]) : null;
+  }
+
   async findByEmailHash(emailHash: string, client?: PoolClient): Promise<UserRecord | null> {
     const { rows } = await (client ?? this.pool).query<UserRow>(
       `SELECT ${COLUMNS} FROM users WHERE email_hash = $1`,
