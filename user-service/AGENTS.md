@@ -366,7 +366,6 @@ All prefixed `USER_` except the shared `LOG_LEVEL`. All are listed in the root `
 - **Frontend token storage** — where the access and refresh tokens are kept.
 - **SMTP provider** for real mail. Test delivery to `@u.nus.edu` early; Mailpit only proves the service sends.
 - **Message broker** — blocks the outbox and `UserRegistered`.
-- **Person A / Person B split** for the build order.
 - These files have not been checked against `project.md`. Three things differ from it: `ACCOUNT_NOT_VERIFIED` removed, the `PENDING_VERIFICATION` status removed, `SUSPENDED` added.
 
 ## Edge cases
@@ -386,6 +385,38 @@ All prefixed `USER_` except the shared `LOG_LEVEL`. All are listed in the root `
 - **Mail is slow or down** — one retry with a 5 s timeout, then 503. The pending sign-up or OTP still exists, so the user can resend.
 - **Rotating the signing key logs everyone out.** The JWKS publishes only the current key, so a token carrying the previous `kid` stops verifying at once. Planned rotation normally avoids that by publishing the old and new keys together for one token lifetime — the `keys` array exists for exactly that — but **we do no planned rotation**, so the overlap is not implemented. For the reason we would actually rotate it is also the wrong behaviour: if the key leaks, an attacker can mint ADMIN tokens, and an overlap would keep honouring them for another 15 minutes. The hard cutover is correct.
   - **If the key ever leaks:** generate a new key *and* a new `kid` and restart, then revoke every refresh token (`UPDATE refresh_tokens SET revoked_at = now()`). Treat a key that has ever reached git history as permanently compromised — this repository is public, so deleting it in a later commit does not help.
+
+## Build order
+
+_Origin: Team_
+
+**Phase 0 — foundation** (done): config validation, migrations, the error filter, the Zod pipe, the redacting logger, the crypto helpers, the JWT/RBAC skeleton, and Redis-backed OTPs with mail delivery.
+
+**Phase 1 — split two ways**, each track independent once Phase 0 lands.
+
+*Person A: credentials and sessions* (done)
+
+- [x] Step 5: sign-up — `POST /auth/register`, `/auth/register/verify`, `/auth/register/resend-otp`
+- [x] Step 6: login and lockout — `POST /auth/login`
+- [x] Step 7: refresh and logout — `POST /auth/refresh`, `POST /auth/logout`
+- [x] Step 8: forgot/reset password — `POST /auth/password/forgot`, `/auth/password/reset`
+- [x] Step 9: the admin bootstrap — see [First admin](#first-admin)
+
+*Person B: profile and admin* (not started)
+
+- [ ] Step 10: admin list, role change, last-admin lock — `GET /admin/users`, `PATCH /admin/users/:userId/role` (see [The last-admin lock](#the-last-admin-lock))
+- [ ] Step 11: `GET /users/me`, `PATCH /users/me`, `GET /users/:userId`
+- [ ] Step 12: OTP-protected changes (password, email, mobile, deactivate) — `POST /users/me/otp`, `POST /users/me/email` + `/email/verify`, `PATCH /users/me/mobile`, `POST /users/me/password`, `POST /users/me/deactivate`
+- [ ] Step 13: reactivate — `POST /admin/users/:userId/reactivate`
+- [ ] Step 14: `GET /internal/users/:userId`
+
+Person B, while waiting on Phase 0: draft the Zod schemas and the last-admin SQL, so nothing here sits idle.
+
+**Phase 2 — Integration (together)**
+
+- [ ] Step 15: gateway routes, block `/internal/**`, end-to-end test
+- [ ] Rehearse the D2 demo checklist
+- [ ] Both can explain every part, including the foundation
 
 ## D2 demo checklist
 

@@ -1,9 +1,13 @@
 /*
  * AI Assistance Disclosure:
- * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26
+ * Tool: Claude Code (model: Claude Opus 5; Claude Sonnet 5 for the 2026-09-27 addition),
+ *       date: 2026-09-26, updated 2026-09-27
  * Scope: Generated the parameterized SQL for the `users` table and the row-to-record mapping.
+ *        2026-09-27: added `listUsers` for GET /admin/users (Step 10).
  * Author review: Read in full; every column checked against migrations/001_init.sql, and the
- *                register → verify flow was run against the compose stack.
+ *                register → verify flow was run against the compose stack. `listUsers` was
+ *                verified via Postman on 2026-09-27 (role/status filters, ordering) — see
+ *                /ai/usage-log.md.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -65,6 +69,12 @@ export interface NewBootstrapAdmin {
   displayName: string;
   emailHash: string;
   emailEncrypted: Buffer;
+}
+
+/** Optional filters for `listUsers` (Step 10's `GET /admin/users`). Both are exact matches. */
+export interface AdminUserFilter {
+  role?: Role;
+  status?: UserStatus;
 }
 
 /** Every column that is read back, in one place, so the SELECT list and the mapping cannot drift apart. */
@@ -235,5 +245,34 @@ export class UsersRepository {
       [userId, passwordHash],
     );
     return rowCount !== null && rowCount > 0;
+  }
+
+  /**
+   * Every user, optionally narrowed by role and/or status (`GET /admin/users`, Step 10). No
+   * pagination yet (a deliberate scope cut, see `users.schemas.ts`) — the conditions are still
+   * built dynamically so adding it back later is additive rather than a rewrite.
+   *
+   * Both filters are passed as query parameters, never interpolated into the SQL string, so
+   * this stays injection-safe even though the WHERE clause itself is assembled in code.
+   */
+  async listUsers(filter: AdminUserFilter, client?: PoolClient): Promise<UserRecord[]> {
+    const conditions: string[] = [];
+    const params: string[] = [];
+
+    if (filter.role) {
+      params.push(filter.role);
+      conditions.push(`role = $${params.length}`);
+    }
+    if (filter.status) {
+      params.push(filter.status);
+      conditions.push(`status = $${params.length}`);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const { rows } = await (client ?? this.pool).query<UserRow>(
+      `SELECT ${COLUMNS} FROM users ${where} ORDER BY created_at DESC`,
+      params,
+    );
+    return rows.map(toRecord);
   }
 }

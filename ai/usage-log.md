@@ -261,7 +261,82 @@ dismissing it.
 
 ## Deanson
 
-<!-- Add your entries here. -->
+### 2026-09-27 — Step 10 planning and GET /admin/users (branch `feature/user-service-admin-endpoints`, PR not yet opened)
+
+**Tool:** Claude Code (Claude Sonnet 5) · **Mode:** explain, generate
+**Files:** `user-service/src/users/users.schemas.ts` (new), `user-service/src/users/profile.mapper.ts` (new),
+`user-service/src/users/admin.service.ts` (new), `user-service/src/users/admin.controller.ts` (new),
+`user-service/src/users/users.repository.ts`, `user-service/src/users/users.module.ts`
+
+**Scenario.** I own Person B's track (profile/admin endpoints, Steps 10–14 of
+`user-service/AGENTS.md`'s build order), which was entirely unimplemented. Used Claude Code
+first to get oriented on what was already built, then to plan Step 10 (`GET /admin/users`,
+`PATCH /admin/users/:userId/role`) in detail before writing any code, then to implement only
+the first endpoint (`GET /admin/users`) so I can verify it manually via Postman before the
+second.
+
+**Prompts (exact):**
+
+> Read agents.md and readme.md and get the sense of the current's project's progress
+
+> I am person B, let's go through the plan together and what to implement and ensure we are on
+> the same page. DO NOT start on phase 2 at all.
+
+> Run me through the steps of how you plan to implement step 10. What endpoints, what you plan
+> to do under each endpoint including payload and response. Afterwards, let me know how I shall
+> test it.
+
+> - All four filters (role, status, email) are optional; page/pageSize default to 1/20 if
+> omitted. How did you figure this?
+
+> Don't implement yet.
+> - For GET /admin/users, only filter by role and status. no pagination needed as of now
+
+> Go ahead and implement step 10 for me. Start with endpoint 1. Do not start with endpoint 2
+> until i have finished verifying and testing endpoint 1.
+
+> I am person B and implementing User service. Read AGENTS.md, README.md, sessions folder
+> under the user-service folder as well as other relevant files under the user-service folder.
+> After you get a better understanding, pause and wait for the next instruction from me.
+
+> steps to test endpoint 1 for step 10
+
+> Let me be the one testing it via Postman. Give me the instructions
+
+> [pasted user-service container log line showing ADMIN_BOOTSTRAPPED] Can you confirm mail
+> service is up. not getting an email
+
+> I have verified endpoint 1, all is working well. Document it under usage-log.md and other
+> relevant files.
+
+**What it produced:** a written plan for Steps 10–14 (repository methods, the shared
+last-admin-lock service, service/controller split, Zod schemas, module wiring), cross-checked
+against the actual source rather than taken on faith; then, scoped to endpoint 1 only, a new
+`listUsers` repository method, `toProfileResponse` mapper, `AdminService`, and `AdminController`
+gated by the existing global `@Roles('ADMIN')`/`RolesGuard`. Later in the same branch: a
+Postman/curl test plan for `GET /admin/users` (happy path, `role`/`status` filters alone and
+combined, `.strict()`-schema rejection of an unknown `email` param and of an invalid `role`
+enum value, 403 for a non-admin, 401 for no/garbage token), and help diagnosing a "not
+receiving the OTP email" report.
+
+**What I changed or rejected:**
+- Rejected the AI's first draft of `GET /admin/users`, which assumed pagination and an
+  `email`-hash filter because AGENTS.md's endpoint table lists them; I cut both — filters by
+  `role`/`status` only, response is `{ items }` with no `page`/`pageSize`/`total`. This is a
+  deliberate deviation from AGENTS.md's documented shape, not yet reflected back into that file.
+- Had it confirm, rather than assume, that nothing in `AGENTS.md` grants it authority to commit
+  on my behalf — it does not; commits remain something I trigger explicitly each time.
+
+**Verification:** `npm run build` (clean) and `npm test` (213/213, 15 suites, no regressions)
+after the code change. Manually verified `GET /admin/users` via Postman/curl against the
+compose stack: happy-path listing, `role` and `status` filters (individually and combined),
+an unknown `email` query param and an invalid `role` value both rejected with 400 (confirms
+the `.strict()` schema and the deliberate no-pagination/no-email-filter scope cut), a non-admin
+token gets 403, and a missing or invalid token gets 401. All passed. Along the way, resolved
+confusion where OTP "reset password" emails weren't visibly arriving: Mailpit intercepts all
+outbound SMTP in dev and never delivers to a real inbox, so the bootstrap admin's real-looking
+`@u.nus.edu` address had its codes sitting in the Mailpit web UI (localhost:8025) rather than
+any real mailbox — not a service outage.
 
 ## Cole Lin
 
