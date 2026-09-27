@@ -1,12 +1,15 @@
 /*
  * AI Assistance Disclosure:
- * Tool: Claude Code (model: Claude Opus 5; Claude Sonnet 5 for the 2026-09-27 addition),
+ * Tool: Claude Code (model: Claude Opus 5; Claude Sonnet 5 for the 2026-09-27 additions),
  *       date: 2026-09-26, updated 2026-09-27
  * Scope: Generated the parameterized SQL for the `users` table and the row-to-record mapping.
- *        2026-09-27: added `listUsers` for GET /admin/users (Step 10).
+ *        2026-09-27: added `listUsers` for GET /admin/users (Step 10, endpoint 1); added
+ *        `findByIdForUpdate`, `selectActiveAdminIdsForUpdate` and `updateRole` for
+ *        PATCH /admin/users/:userId/role (Step 10, endpoint 2).
  * Author review: Read in full; every column checked against migrations/001_init.sql, and the
  *                register → verify flow was run against the compose stack. `listUsers` was
- *                verified via Postman on 2026-09-27 (role/status filters, ordering) — see
+ *                verified via Postman on 2026-09-27 (role/status filters, ordering). The
+ *                role-change additions were verified via Postman on 2026-09-28 — see
  *                /ai/usage-log.md.
  */
 import { Inject, Injectable } from '@nestjs/common';
@@ -274,5 +277,45 @@ export class UsersRepository {
       params,
     );
     return rows.map(toRecord);
+  }
+
+  /**
+   * Same as `findById`, but under `FOR UPDATE`. Only ever called on the caller's own row, from
+   * inside `AdminLockService.run`'s transaction — this is what closes the stale-token window:
+   * a demoted or deactivated admin's still-valid access token cannot act on stale authority,
+   * because the role and status checked here are read fresh, inside a lock a concurrent role
+   * change cannot slip past (AGENTS.md, "The last-admin lock").
+   */
+  async findByIdForUpdate(id: string, client: PoolClient): Promise<UserRecord | null> {
+    const { rows } = await client.query<UserRow>(`SELECT ${COLUMNS} FROM users WHERE id = $1 FOR UPDATE`, [id]);
+    return rows[0] ? toRecord(rows[0]) : null;
+  }
+
+  /**
+   * Every currently active admin's id, locked for the rest of the caller's transaction. Only
+   * called from `AdminLockService.run`, and only once the caller's own row has confirmed they
+   * currently qualify as one — a non-admin's request never contends for this lock.
+   *
+   * `ORDER BY id` makes every transaction lock these rows in the same order, so two concurrent
+   * role changes (or a role change and a self-deactivation) cannot deadlock on each other.
+   */
+  async selectActiveAdminIdsForUpdate(client: PoolClient): Promise<string[]> {
+    const { rows } = await client.query<{ id: string }>(
+      "SELECT id FROM users WHERE role = 'ADMIN' AND status = 'ACTIVE' ORDER BY id FOR UPDATE",
+    );
+    return rows.map((row) => row.id);
+  }
+
+  /**
+   * Promotes or demotes a user (`PATCH /admin/users/:userId/role`, Step 10). The last-admin
+   * invariant is enforced by the caller (`AdminService.changeRole`, inside the lock) — this
+   * method only writes, the same division of responsibility as `updatePasswordHash`.
+   */
+  async updateRole(userId: string, role: Role, client: PoolClient): Promise<boolean> {
+    const { rowCount } = await client.query('UPDATE users SET role = $2, updated_at = now() WHERE id = $1', [
+      userId,
+      role,
+    ]);
+    return rowCount !== null && rowCount > 0;
   }
 }

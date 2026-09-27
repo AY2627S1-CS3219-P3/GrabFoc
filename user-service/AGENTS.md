@@ -402,9 +402,9 @@ _Origin: Team_
 - [x] Step 8: forgot/reset password — `POST /auth/password/forgot`, `/auth/password/reset`
 - [x] Step 9: the admin bootstrap — see [First admin](#first-admin)
 
-*Person B: profile and admin* (not started)
+*Person B: profile and admin* (in progress)
 
-- [ ] Step 10: admin list, role change, last-admin lock — `GET /admin/users`, `PATCH /admin/users/:userId/role` (see [The last-admin lock](#the-last-admin-lock))
+- [x] Step 10: admin list, role change, last-admin lock — `GET /admin/users`, `PATCH /admin/users/:userId/role` (see [The last-admin lock](#the-last-admin-lock))
 - [ ] Step 11: `GET /users/me`, `PATCH /users/me`, `GET /users/:userId`
 - [ ] Step 12: OTP-protected changes (password, email, mobile, deactivate) — `POST /users/me/otp`, `POST /users/me/email` + `/email/verify`, `PATCH /users/me/mobile`, `POST /users/me/password`, `POST /users/me/deactivate`
 - [ ] Step 13: reactivate — `POST /admin/users/:userId/reactivate`

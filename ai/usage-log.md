@@ -261,6 +261,94 @@ dismissing it.
 
 ## Deanson
 
+### 2026-09-27 to 2026-09-28 — Step 10 endpoint 2: PATCH /admin/users/:userId/role (branch `feature/user-service-admin-endpoints`, PR not yet opened)
+
+**Tool:** Claude Code (Claude Sonnet 5) · **Mode:** generate, explain, debug, verify
+**Files:** `user-service/src/users/admin-lock.service.ts` (new),
+`user-service/src/users/admin-lock.service.spec.ts` (new),
+`user-service/src/users/admin.service.spec.ts` (new), `user-service/src/users/admin.service.ts`,
+`user-service/src/users/admin.controller.ts`, `user-service/src/users/users.repository.ts`,
+`user-service/src/users/users.schemas.ts`, `user-service/src/users/users.module.ts`
+
+**Scenario.** Continuing Step 10 after endpoint 1 (previous entry below): the role-change
+endpoint and its shared last-admin lock. Had it walk through and explain the design before
+writing code, asked clarifying questions on three specific ambiguities, then implemented, then
+manually verified.
+
+**Prompts (exact):**
+
+> Run though ur plan of implementing this endpoint
+
+> Summarize endpoint 2 plan
+
+> Explain the logic behind implementing this endpoint
+
+> Explain AdminLockService
+
+> Ask me any clarifying questions before proceeding
+
+> Continue to implement step 10 endpoint 2. When you are done, do the following:
+> - List the files you have edited
+
+> when and where is AdminLockService ran?
+
+> {{baseUrl}}/admin/users/82663fb1-e431-4750-9f38-c8b5585b9bd3/role
+>
+> is this not the correct endpoint?
+
+> Give me the steps to test endpoint 2
+
+> What's the steps to test endpoint 2 via postman
+
+> just tell me verbally
+
+> how to register Alex?
+
+> I tested the endpoint via Postman. Update usage-log-md, AGENTS.md and other relevant files,
+> marking step 10 as complete
+
+(Also asked it to explain, separately and without changing any code, two existing files —
+`auth/decorators.ts` and the JWT-extraction chain in `auth/jwt-auth.guard.ts` — while getting
+oriented; omitted here since nothing was generated or changed by those.)
+
+**What it produced:** the design for `AdminLockService` (locks the caller row, then
+conditionally the full active-admin set, inside one transaction) and `AdminService.changeRole`'s
+branch logic; the three new repository methods, the `ChangeRoleSchema`, the route, the module
+wiring, and two new spec files (`admin-lock.service.spec.ts`, and the first-ever
+`admin.service.spec.ts`, which also backfilled coverage for the already-shipped `listUsers`).
+
+**What I changed or rejected:**
+- Three clarifying-question decisions, picking: `ParseUUIDPipe` for a malformed `:userId`
+  (400, not folded into 404); a true short-circuit for the self-reaffirm no-op (no DB write, no
+  audit log — not just "don't error"); and backfilling `listUsers` test coverage now rather
+  than leaving it out of scope.
+- **Caught a real logic bug that its own tests did not.** While working out how to manually
+  demonstrate `LAST_ADMIN` for the test plan, realised the branch could never fire: the check
+  compared the locked active-admin list against a target that, by construction, can never be
+  its sole entry unless the target is the caller — but self-targeting was already routed to
+  `CANNOT_MODIFY_SELF` earlier in the same function, every time. The two unit tests that
+  supposedly covered `LAST_ADMIN` only passed because they hand-constructed a mock state
+  (`activeAdminIds` excluding the caller) that `AdminLockService` can never actually produce —
+  they asserted a scenario, not the real invariant. Had it explain the flaw back to me, confirm
+  the fix (move the sole-admin check into the self-demotion branch, since AGENTS.md's own
+  reasoning for `CANNOT_MODIFY_SELF` — "another admin must do it" — stops applying once you
+  *are* the only admin), and rewrite the two invalid tests against a realistic mock state.
+
+**Verification.**
+- `npm run build` (clean) and `npm test`: the two new spec files pass 17/17; the rest of the
+  suite is unaffected by this branch — the 2 pre-existing `jwt.service.spec.ts` failures were
+  confirmed via `git stash` to already fail on the base branch (environment leakage between
+  test files sharing a Jest worker, once `.env` holds real generated keys — unrelated to this
+  work, not investigated further here).
+- Manually verified `PATCH /admin/users/:userId/role` via Postman against the compose stack:
+  promoted a USER to ADMIN (200, `ADMIN_ACTION` logged); self re-affirm is a true no-op (200,
+  unchanged profile, confirmed no new `ADMIN_ACTION` log line); self-demote with another admin
+  present → `CANNOT_MODIFY_SELF`; demoting a distinct admin succeeds; self-demote as the sole
+  admin → `LAST_ADMIN` (the exact branch the bug had hidden — confirmed this is a genuinely
+  different response from the `CANNOT_MODIFY_SELF` case, not just different in the source);
+  404 for a nonexistent id; 400 for a malformed UUID and for an invalid `role` value; 403 for a
+  non-admin token; 401 for a missing and for a garbage token. All passed.
+
 ### 2026-09-27 — Step 10 planning and GET /admin/users (branch `feature/user-service-admin-endpoints`, PR not yet opened)
 
 **Tool:** Claude Code (Claude Sonnet 5) · **Mode:** explain, generate
