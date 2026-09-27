@@ -261,6 +261,96 @@ dismissing it.
 
 ## Deanson
 
+### 2026-09-28 — Step 11: GET /users/me, PATCH /users/me (branch `feature/user-service-admin-endpoints`, PR not yet opened)
+
+**Tool:** Claude Code (Claude Sonnet 5) · **Mode:** explain, generate, debug, verify
+**Files:** `user-service/src/users/profile.mapper.ts`,
+`user-service/src/users/profile.mapper.spec.ts` (new), `user-service/src/users/users.repository.ts`,
+`user-service/src/users/users.schemas.ts`, `user-service/src/users/users.controller.ts` (new),
+`user-service/src/users/users.service.ts` (new), `user-service/src/users/users.service.spec.ts`
+(new), `user-service/src/users/users.module.ts`, `user-service/AGENTS.md`,
+`user-service/README.md`, `user-service/postman/user-service.postman_collection.json`
+
+**Scenario.** Continuing Person B's track after Step 10: Step 11 (`GET /users/me`,
+`PATCH /users/me`), the first of the self-service profile endpoints. Had it read the existing
+code first, then discussed and settled two response-shape/auth points before any code was
+written, then implemented, then manually verified.
+
+**Prompts (exact):**
+
+> I am person B implementing user service. I am Deanson. Under the user-service, read
+> AGENTS.md, README.md and all relevant files.
+
+> Let's discuss the plan together first before implementing anything.
+
+> Remove GET/user/:userId, if needed, we can always add on query/params to GETadmin/users.
+
+> Let's focus on discussing step 11 purely.
+
+> Stop. Based on purely AGENTS.md, let's discuss step 11 which is to implement GET /users/me,
+> PATCH /users/me.
+>
+> Under the GET endpoint, we can return all fields except the user's password, created_at /
+> updated_at and deactiviated_at, status and role.
+> Under the patch endpoint, no authentication is required, the user is only allowed to change
+> their name under this endpoint.
+>
+> Ask me any clarifying questions.
+
+> Do the following, edit the current AGENTS.md accordingly based on the discussed plan.
+
+> Let's start on step 11. after finishing implementing the two endpoints. List the files /
+> functions added for each endpoint. DO NOT go on to step 12 without my approval.
+
+> so selfprofielresponse is for our public endpoint while toprofielresponse is reserved for
+> admin ednpoints?
+
+> Tell me the steps to test both endpoints on postman.
+
+> Can I clarify that the the register endpoint pre-checked that a user's display name is
+> unique?
+
+> flag non-unique display_name under step 11 in agents.md just as a note
+
+> I ran tests through Postman, step 11 looks good. Edit usage-log.md, agents.MD and other
+> relevant files accordingly.
+
+**What it produced:** a walkthrough of the existing codebase and design questions before any
+code; then, once the two shape/auth questions below were settled, the implementation —
+`toSelfProfileResponse`/`SelfProfileResponse` in `profile.mapper.ts` (with `toProfileResponse`
+refactored to build on it rather than duplicate the decrypt calls), `UsersRepository.
+updateDisplayName`, `UpdateSelfProfileSchema`, the new `UsersController`/`UsersService` pair,
+module wiring, two new spec files, the AGENTS.md/README updates, and two new Postman requests.
+
+**Decisions I made, which it did not:**
+
+- **Dropped `GET /users/:userId` from Step 11 entirely.** AGENTS.md's documented table had it
+  as a third endpoint of this step; I cut it because a by-id lookup, if it's ever needed, is a
+  filter on `GET /admin/users` instead — no separate route.
+- **`PATCH /users/me` needs no OTP, but still requires the JWT.** My first phrasing ("no
+  authentication required") was ambiguous with dropping the JWT guard entirely; it flagged the
+  contradiction with the route sitting under `JwtAuthGuard` and the "Logged in" section, and I
+  confirmed I meant no OTP step only.
+- **`GET /users/me`/`PATCH /users/me` return a narrower "self profile" shape** — no `role`,
+  `status` or `createdAt` — distinct from the admin-facing `Profile` shape `GET /admin/users`
+  still uses. This is a documented interface change, so it's recorded in AGENTS.md, not just in
+  this log.
+- Found, independently of anything it proposed, that `display_name` has no `UNIQUE` constraint
+  and `PATCH /users/me` does not check for a duplicate name; had it flag this as a note in
+  AGENTS.md rather than silently accept the gap.
+
+**What I changed or rejected:** none of the generated code itself; the two design decisions
+above were resolved as clarifying questions before code was written, not corrections after.
+
+**Verification.**
+- `npm run build` (clean) and `npm test` (237/237, 19 suites — the two new spec files pass and
+  the rest of the suite is unaffected).
+- Manually verified both endpoints via Postman against the compose stack: `GET /users/me`
+  returns exactly `{ userId, displayName, email, countryCode, mobileNumber }` with no
+  `role`/`status`/`createdAt`; `PATCH /users/me` renames the caller and a follow-up `GET`
+  reflects the new name; a body with an extra field (e.g. `role`) is rejected 400 by the
+  `.strict()` schema; a missing token gets 401.
+
 ### 2026-09-27 to 2026-09-28 — Step 10 endpoint 2: PATCH /admin/users/:userId/role (branch `feature/user-service-admin-endpoints`, PR not yet opened)
 
 **Tool:** Claude Code (Claude Sonnet 5) · **Mode:** generate, explain, debug, verify

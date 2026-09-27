@@ -229,6 +229,42 @@
         },
         "description": "204, always - an unknown or already-revoked token still means you are logged out. Needs the access token: the caller's identity comes from it, so you can only end your own session. Ends this session only; other devices keep theirs."
       }
+    },
+    {
+      "name": "Get my profile",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/users/me",
+        "description": "200 with the self profile: userId, displayName, email, countryCode, mobileNumber - no role, status or createdAt (that's the admin-facing shape returned by GET /admin/users instead). 401 with no token."
+      }
+    },
+    {
+      "name": "Update my display name",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/users/me",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"displayName\": \"Alex T.\"\n}"
+        },
+        "description": "200 with the updated self profile. No OTP needed - displayName is the one profile field that isn't OTP-protected. Any field other than displayName (e.g. role, email) is rejected with 400, since the body schema is strict."
+      }
     }
   ]
 }

@@ -204,7 +204,9 @@ _Origin: Team_
 
 **Auth response:** `{ accessToken, refreshToken, expiresIn: 900, user: { userId, displayName, role } }`
 
-**Profile:** `{ userId, displayName, email, countryCode, mobileNumber, role, status, createdAt }`
+**Profile (admin-facing):** `{ userId, displayName, email, countryCode, mobileNumber, role, status, createdAt }`. Returned by `GET /admin/users` and `PATCH /admin/users/:userId/role`.
+
+**Self profile:** `{ userId, displayName, email, countryCode, mobileNumber }`. Returned by `GET /users/me` and `PATCH /users/me` — narrower than the admin-facing Profile: a user does not need their own `role`, `status` or `createdAt` echoed back by their own endpoint. **[Open]** whether the Step 12 OTP-protected endpoints below (`/users/me/email/verify`, `/users/me/mobile`) should also switch to this shape instead of the admin-facing one — not yet decided, since Step 12 isn't built.
 
 ### Public
 
@@ -224,15 +226,14 @@ _Origin: Team_
 | Endpoint | Body → Response | Main errors |
 |---|---|---|
 | `POST /auth/logout` | refreshToken → 204 | |
-| `GET /users/me` | → profile | |
-| `PATCH /users/me` | displayName → profile (any other field → 400) | 400 |
+| `GET /users/me` | → self profile | |
+| `PATCH /users/me` | displayName → self profile (any other field → 400); no OTP required | 400 |
 | `POST /users/me/otp` | purpose (`EMAIL_CHANGE`, `MOBILE_CHANGE`, `PASSWORD_CHANGE`, `DEACTIVATION`) → 202 `{ otpExpiresAt }` | 400, 409 `LAST_ADMIN` (DEACTIVATION only), 429, 503 |
 | `POST /users/me/email` | newEmail, otp → 202; sends an OTP to the new address | OTP errors, 409 `EMAIL_TAKEN`, 429 |
 | `POST /users/me/email/verify` | otp → profile | OTP errors, 409 |
 | `PATCH /users/me/mobile` | countryCode, mobileNumber, otp → profile | OTP errors, 400 |
 | `POST /users/me/password` | otp, newPassword → 204 | OTP errors, 400 |
 | `POST /users/me/deactivate` | otp → 204 | OTP errors, 409 `LAST_ADMIN` |
-| `GET /users/:userId` | → profile; only the user themselves or an ADMIN | 403 + log, 404 |
 
 `/users/me*` always resolves the caller from the token's `sub` (U5.2.1).
 
@@ -405,7 +406,7 @@ _Origin: Team_
 *Person B: profile and admin* (in progress)
 
 - [x] Step 10: admin list, role change, last-admin lock — `GET /admin/users`, `PATCH /admin/users/:userId/role` (see [The last-admin lock](#the-last-admin-lock))
-- [ ] Step 11: `GET /users/me`, `PATCH /users/me`, `GET /users/:userId`
+- [x] Step 11: `GET /users/me`, `PATCH /users/me` (self profile shape, no OTP; a by-id lookup wasn't needed here — if one ever is, it's a filter on `GET /admin/users`, not a new route). Note: `display_name` has no uniqueness constraint (schema: `VARCHAR(100) NOT NULL`, no `UNIQUE`) and `PATCH /users/me` does not check for a duplicate name — only `email_hash` is unique, so two accounts may share the same display name.
 - [ ] Step 12: OTP-protected changes (password, email, mobile, deactivate) — `POST /users/me/otp`, `POST /users/me/email` + `/email/verify`, `PATCH /users/me/mobile`, `POST /users/me/password`, `POST /users/me/deactivate`
 - [ ] Step 13: reactivate — `POST /admin/users/:userId/reactivate`
 - [ ] Step 14: `GET /internal/users/:userId`

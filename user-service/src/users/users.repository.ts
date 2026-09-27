@@ -251,6 +251,19 @@ export class UsersRepository {
   }
 
   /**
+   * Renames a user (`PATCH /users/me`, Step 11). Same shape as `updatePasswordHash`: the
+   * caller's id comes from the verified token, never the body, so there is no ownership check
+   * to make here beyond the `WHERE id = $1`.
+   */
+  async updateDisplayName(userId: string, displayName: string, client?: PoolClient): Promise<boolean> {
+    const { rowCount } = await (client ?? this.pool).query(
+      'UPDATE users SET display_name = $2, updated_at = now() WHERE id = $1',
+      [userId, displayName],
+    );
+    return rowCount !== null && rowCount > 0;
+  }
+
+  /**
    * Every user, optionally narrowed by role and/or status (`GET /admin/users`, Step 10). No
    * pagination yet (a deliberate scope cut, see `users.schemas.ts`) — the conditions are still
    * built dynamically so adding it back later is additive rather than a rewrite.

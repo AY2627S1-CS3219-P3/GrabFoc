@@ -335,7 +335,16 @@ admin bootstrap**. That completes this side of Phase 1.
 There is one startup task with no route of its own: the **admin bootstrap**, which creates the
 first ADMIN from `USER_BOOTSTRAP_ADMIN_EMAIL` — see [The first admin](#the-first-admin).
 
-The profile and admin endpoints (`/users/**`, `/admin/**`) are Person B's track. See the build
-order in `AGENTS.md`.
+**Phase 1, Person B's track** (steps 10 to 11 so far) — **step 10: admin list, role change and
+the last-admin lock**, and **step 11: self profile (get and update)**. Steps 12–14
+(OTP-protected profile changes, admin reactivation, and the internal lookup for the
+Notification Service) are still to come — see the build order in `AGENTS.md`.
+
+| Route | |
+|---|---|
+| `GET /admin/users` | admin only |
+| `PATCH /admin/users/:userId/role` | admin only |
+| `GET /users/me` | needs an access token |
+| `PATCH /users/me` | needs an access token; renames the caller only — `display_name` has no uniqueness check, see AGENTS.md's Step 11 note |
 
 **Authentication is on by default.** `JwtAuthGuard` is registered globally, so every route needs a bearer token unless it is marked `@Public()`. Forgetting the decorator leaves an endpoint closed rather than open.
