@@ -62,6 +62,14 @@ const positiveInt = z
   .regex(/^[1-9]\d{0,8}$/, 'must be a positive whole number')
   .transform(Number);
 
+// Decimal degrees, as a phone's GPS reports them (e.g. lat=1.296600&lon=103.776400).
+const degrees = (min: number, max: number) =>
+  z
+    .string()
+    .regex(/^-?\d{1,3}(\.\d+)?$/, 'must be a decimal number of degrees')
+    .transform(Number)
+    .refine((n) => n >= min && n <= max, `must be between ${min} and ${max}`);
+
 export const listQuerySchema = z
   .object({
     name: z.string().optional(),
@@ -69,11 +77,21 @@ export const listQuerySchema = z
     building: z.string().optional(),
     time: hhmm.optional(),
     includeInactive: z.enum(['true', 'false']).optional(),
-    order: z.enum(['asc', 'desc']).default('asc'),
+    lat: degrees(-90, 90).optional(),
+    lon: degrees(-180, 180).optional(),
+    order: z.enum(['asc', 'desc', 'distance']).default('asc'),
     page: positiveInt.default('1'),
     pageSize: positiveInt.default('20'),
   })
-  .strict();
+  .strict()
+  .superRefine((q, ctx) => {
+    if ((q.lat === undefined) !== (q.lon === undefined)) {
+      ctx.addIssue({ code: 'custom', message: 'lat and lon must be given together' });
+    }
+    if (q.order === 'distance' && q.lat === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'order=distance needs lat and lon' });
+    }
+  });
 
 export type CreateLocation = z.infer<typeof createLocationSchema>;
 export type UpdateLocation = z.infer<typeof updateLocationSchema>;

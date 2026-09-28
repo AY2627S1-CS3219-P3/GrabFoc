@@ -55,7 +55,7 @@ docker exec foc-supplier-db psql -U postgres -d supplier -c "TRUNCATE locations 
 
 | Method & path | Access |
 |---|---|
-| `GET /locations?name=&type=&building=&time=&includeInactive=&order=&page=&pageSize=` | any authenticated user; `includeInactive=true` is ADMIN only |
+| `GET /locations?name=&type=&building=&time=&lat=&lon=&includeInactive=&order=&page=&pageSize=` | any authenticated user; `includeInactive=true` is ADMIN only |
 | `GET /location-types` | any authenticated user |
 | `GET /locations/:locationId` | any authenticated user |
 | `POST /locations` | ADMIN |
@@ -63,4 +63,4 @@ docker exec foc-supplier-db psql -U postgres -d supplier -c "TRUNCATE locations 
 | `POST /locations/:locationId/deactivate` | ADMIN |
 | `POST /locations/:locationId/restore` | ADMIN |
 
-`GET /locations` returns `{ items, page, pageSize, total }` (20 per page by default). `order=asc` (default) sorts by name A→Z, `order=desc` gives Z→A. Errors are returned as Problem Details (`application/problem+json`).
+`GET /locations` returns `{ items, page, pageSize, total }` (20 per page by default). `order=asc` (default) sorts by name A→Z, `order=desc` gives Z→A. Pass a GPS coordinate as `lat`/`lon` (decimal degrees) to get `distance_m` on each item, and `order=distance` for nearest first. Errors are returned as Problem Details (`application/problem+json`).

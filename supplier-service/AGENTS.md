@@ -101,7 +101,7 @@ _Origin: Team_
 | `POST /locations/:locationId/deactivate` | ADMIN |
 | `POST /locations/:locationId/restore` | ADMIN |
 
-**`GET /locations` response:** a wrapped object, `{ "items": [...], "page": 1, "pageSize": 20, "total": 21 }`, so the UI can show numbered pages.
+**`GET /locations` response:** a wrapped object, `{ "items": [...], "page": 1, "pageSize": 20, "total": 21 }`, so the UI can show numbered pages. When `lat`/`lon` are given, each item also carries **`distance_m`**, whole metres from that coordinate (great-circle distance, mean Earth radius 6 371 km, computed in SQL so the database can order by it). Without a coordinate the field is absent.
 
 **Query parameters for `GET /locations`:**
 
@@ -112,7 +112,8 @@ _Origin: Team_
 | `building` | exact match |
 | `time` | open at that time, in `HHMMhrs` format (rule below) |
 | `includeInactive=true` | also return `INACTIVE` locations (ADMIN only) |
-| `order` | `asc` (default, A→Z) or `desc` (Z→A) on `name`; any other value is 400 (S2.2.3) |
+| `lat`, `lon` | the caller's coordinate in decimal degrees, as a phone's GPS reports it (e.g. `lat=1.296600&lon=103.776400`). Must be given together; they filter nothing, they add `distance_m` to each item |
+| `order` | `asc` (default, A→Z) or `desc` (Z→A) on `name`, or `distance` (nearest first, needs `lat`/`lon`); any other value is 400 (S2.2.3) |
 | `page`, `pageSize` | paging, e.g. `?page=2&pageSize=20`; defaults `page=1`, `pageSize=20`; no upper limit on `pageSize` |
 
 Name search, as a parameterized query:

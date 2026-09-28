@@ -38,6 +38,8 @@ export interface LocationPage {
 }
 
 export interface LocationDto {
+  /** Metres from the coordinate the caller supplied; absent when they didn't supply one. */
+  distance_m?: number;
   id: number;
   name: string;
   type: string;
@@ -53,8 +55,11 @@ export interface LocationDto {
   version: number;
 }
 
-function toDto(row: LocationRow): LocationDto {
+function toDto(row: LocationRow & { distance_m?: string | null }): LocationDto {
   return {
+    ...(row.distance_m === undefined || row.distance_m === null
+      ? {}
+      : { distance_m: Math.round(Number(row.distance_m)) }),
     id: row.id,
     name: row.name,
     type: row.type,
@@ -138,12 +143,27 @@ export class LocationsService {
     const whereSql = where.length ? ` WHERE ${where.join(' AND ')}` : '';
     const countResult = await this.pool.query<{ n: string }>(`SELECT count(*) AS n FROM locations${whereSql}`, params);
 
+    // Great-circle distance in metres (haversine, mean Earth radius). Computed in SQL so the
+    // database can order by it; the columns are NUMERIC, so cast for the trigonometry.
+    let distanceSql = '';
+    if (query.lat !== undefined && query.lon !== undefined) {
+      const lat = param(query.lat);
+      const lon = param(query.lon);
+      distanceSql =
+        `, 2 * 6371000 * asin(sqrt(` +
+        `power(sin(radians(${lat} - lat::double precision) / 2), 2)` +
+        ` + cos(radians(${lat})) * cos(radians(lat::double precision))` +
+        ` * power(sin(radians(${lon} - lon::double precision) / 2), 2)` +
+        `)) AS distance_m`;
+    }
+
     const limit = param(query.pageSize);
     const offset = param((query.page - 1) * query.pageSize);
-    // Fixed SQL keywords chosen by the enum, never interpolated from raw input.
-    const direction = query.order === 'desc' ? 'DESC' : 'ASC';
-    const { rows } = await this.pool.query<LocationRow>(
-      `SELECT * FROM locations${whereSql} ORDER BY lower(name) ${direction}, id LIMIT ${limit} OFFSET ${offset}`,
+    // Fixed SQL chosen by the enum, never interpolated from raw input.
+    const orderSql =
+      query.order === 'distance' ? 'distance_m ASC' : `lower(name) ${query.order === 'desc' ? 'DESC' : 'ASC'}`;
+    const { rows } = await this.pool.query<LocationRow & { distance_m?: string }>(
+      `SELECT *${distanceSql} FROM locations${whereSql} ORDER BY ${orderSql}, id LIMIT ${limit} OFFSET ${offset}`,
       params,
     );
     return { items: rows.map(toDto), page: query.page, pageSize: query.pageSize, total: Number(countResult.rows[0].n) };
