@@ -1,3 +1,9 @@
+#
+# AI Assistance Disclosure:
+# Tool: GitHub Copilot Coding Agent (model: GPT-5), date: 2026-09-28
+# Scope: Added non-blocking behavior for pull_request_target SoCLaaS review step when external service is unavailable.
+# Author review: Pending human verification of workflow behavior and required-check policy.
+#
 name: SoCLaaS PR Review
 
 'on':
@@ -90,6 +96,7 @@ jobs:
 
       - name: Check SoCLaaS or review the PR
         if: steps.gate.outputs.run == 'true'
+        continue-on-error: ${{ github.event_name == 'pull_request_target' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SOCLAAS_API_KEY: ${{ secrets.SOCLAAS_API_KEY }}
