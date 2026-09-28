@@ -53,6 +53,82 @@ Template:
 
 ## Jie Yang
 
+### 2026-09-28 — BFF protected-request refresh (feature/frontend-user-service-integration)
+
+**Tool:** Codex (GPT-6) · **Mode:** generate, debug
+**Files:** `frontend/lib/protected-gateway.ts`, `frontend/lib/session-client.ts`, `frontend/app/api/session/{profile,status,refresh}/route.ts`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `ai/usage-log.md`
+
+**Scenario:** Implement the approved plan to move protected-request refresh and single-use token coordination into Next.js. User Service and gateway contracts were inspected but not changed.
+
+**Prompt (exact):**
+
+~~~text
+PLEASE IMPLEMENT THIS PLAN:
+# Move protected-request refresh into the Next.js BFF
+
+## Current request flow
+
+The frontend uses the Next.js App Router and Next.js 16.3.5. The User Service implementation is available on `origin/feature/user-service-admin-reactivate`; its source is not present on the current branch.
+
+```text
+Sign-in:
+Browser form → Next.js /api/session/login → Gateway /auth/login
+             → User Service → token pair
+Next.js stores both tokens in HttpOnly cookies → browser receives { ok: true }
+
+Protected profile request:
+Browser → Next.js /api/session/status → Gateway /users/me
+Browser → Next.js /api/session/profile → Gateway /users/me
+Gateway verifies the access JWT using cached JWKS → forwards bearer token
+
+Expired or absent access cookie:
+Browser session-client.ts → /api/session/status → 428
+Browser, coordinated by Web Locks → /api/session/refresh
+Next.js → Gateway /auth/refresh → User Service rotates refresh token
+Next.js replaces both cookies → browser retries its intended request
+
+Logout:
+Browser → Next.js /api/session/logout → Gateway /auth/logout
+Next.js clears both cookies even if remote logout fails
+```
+
+## What matches, and what needs changing
+
+- [Session handlers](/C:/Users/njyang/Desktop/Uni/CS3219/GrabFoc/frontend/lib/session-server.ts) keep tokens in HttpOnly, SameSite=Lax cookies. Login and verification responses do not include token values. The `sessionStorage` uses found are for email and a logout notice, not tokens.
+- [Gateway verification](/C:/Users/njyang/Desktop/Uni/CS3219/GrabFoc/api-gateway/src/auth.ts) checks signature, `exp`, and `nbf`, plus issuer and audience when configured. It caches JWKS for 60 seconds; it does not call User Service for each protected request. [The proxy](/C:/Users/njyang/Desktop/Uni/CS3219/GrabFoc/api-gateway/src/proxy.ts) forwards `Authorization`. Invalid tokens produce 401; unavailable JWKS produces 503.
+- The User Service signs RS256 access tokens valid for **15 minutes** and rotates **single-use** refresh tokens valid for **90 days**. Reusing a rotated token revokes that user’s refresh sessions. Its JWT currently has `sub`, `role`, `iat`, and `exp`; it does not set `iss` or `aud`. Accordingly, the gateway’s optional issuer and audience settings must remain unset until the User Service contract changes.
+- The main gap is ownership of refresh: [the browser wrapper](/C:/Users/njyang/Desktop/Uni/CS3219/GrabFoc/frontend/lib/session-client.ts) checks status and calls refresh. [The profile handler](/C:/Users/njyang/Desktop/Uni/CS3219/GrabFoc/frontend/app/api/session/profile/route.ts) forwards a 401 without refreshing or retrying. Its browser caller can subsequently refresh and retry, but the BFF does not yet provide the requested one-refresh, one-retry behavior.
+- Web Locks coordinate the current browser flow across tabs. There is no Next.js process-level coordination for simultaneous server requests. Without Web Locks, the current browser wrapper refuses to refresh. The access cookie expires after 15 minutes, so its absence normally triggers refresh through status rather than through an upstream 401.
+- Browser-to-Next.js session mutations already require a matching `Origin`. The public registration and recovery forms use a same-origin gateway rewrite and do not carry the session cookies to the gateway as credentials. Keep CSRF checks on cookie-authenticated Next.js mutation routes; do not add them to Next.js-to-gateway bearer calls. Logout already clears local cookies after remote failure.
+
+## Implementation changes
+
+1. Add a shared **server-only protected gateway request** helper beside `session-server.ts`. It sends the access cookie as a bearer token. On an upstream 401, it attempts `POST /auth/refresh` once, replaces both cookies, and retries the original request once. A second 401 ends that request as unauthenticated. A refresh 401 clears both cookies; a refresh 500/503 returns an unavailable response without retrying. Never place tokens in the response body or logs.
+2. Add process-level single-flight coordination keyed by a hash of the presented refresh token. Concurrent requests carrying the same cookie pair await one rotation and receive the resulting cookie pair before retrying. Keep completed rotation results briefly so an already-started request with the old cookie does not submit it again. Do not persist or log raw refresh tokens. Retain Web Locks around browser session mutations and refresh-triggering calls to coordinate tabs; document that process-local coordination alone does not cover multiple Next.js instances.
+3. Migrate `/api/session/profile` to that helper. Make `/api/session/status` use the same server-side session recovery path so root and Home navigation can recover without a browser-issued refresh call. Simplify `session-client.ts` to request status or protected data and handle authenticated, unauthenticated, and unavailable responses; remove browser ownership of `/api/session/refresh` once all callers have migrated. Preserve the existing login, verification, and logout contracts.
+4. Keep both cookies HttpOnly, SameSite=Lax, Secure on HTTPS, and scoped to `/`. Keep the access cookie lifetime aligned with the User Service’s `expiresIn` and the refresh cookie at 90 days; JWT `exp` and User Service refresh validation remain authoritative. The shared path is needed because status, profile, and logout read these cookies. A narrower refresh-cookie path would require a larger session-routing change.
+5. Update the frontend README and AI usage log. Leave the gateway verifier, token forwarding, User Service rotation and RBAC ownership unchanged.
+
+## Tests and acceptance
+
+- Extend browser tests to confirm login sets HttpOnly cookies and no token appears in browser-readable storage or response JSON; a valid access token causes no refresh; an expired or invalid token causes one refresh, both cookies rotate, and the original protected request retries exactly once.
+- Cover refresh 401 clearing cookies and redirecting protected pages to `/signin`; refresh 500/503 returning an unavailable state without a loop; a second protected-request 401 stopping after one retry; concurrent requests and two tabs submitting a single-use refresh token only once; and logout clearing cookies after remote failure.
+- Retain gateway tests proving expired tokens return 401, valid tokens use local verification and cached JWKS, issuer/audience checks apply only when configured, and bearer authorization reaches downstream services.
+- Run frontend route tests, lint, build, and gateway tests. Use the existing mock gateway first, then perform a live User Service check when it is available.
+
+## Assumptions and implementation order
+
+Use one Next.js process for the university demo, with Web Locks for tab coordination and process-local single-flight for concurrent server requests. A multi-instance deployment would need shared coordination or a different session design. Implement the shared BFF request and coordination first, migrate profile and status, simplify the browser wrapper, then run the tests and live check.
+
+**Highest risk:** accidentally submitting a rotated refresh token twice, or allowing an older response to overwrite newer cookies. Preserve explicit tests for both races. The token cookie settings, gateway JWT verification and forwarding, and local-cookie clearing on failed logout already behave as intended.
+~~~
+
+**What it produced:** A server-only protected gateway helper, shared process refresh coordination, status/profile migration, browser wrapper simplification, and expanded browser tests.
+
+**What I changed or rejected:** Human review pending. The gateway and User Service were left unchanged. The explicit refresh route remains as a compatible path, but the browser no longer calls it.
+
+**Verification:** `npm run test:routes` passed 11 browser tests, frontend lint/build passed, and `api-gateway/npm test` passed 19 tests. The User Service was unavailable on localhost:3001, so live verification remains pending.
+
 ### 2026-09-28 — Frontend User Service integration (feature/frontend-user-service-integration)
 
 **Tool:** Codex (GPT-6) · **Mode:** generate, debug
@@ -100,7 +176,7 @@ Run relevant browser route tests, frontend lint/build, and gateway tests for eac
 
 **What I changed or rejected:** Human review pending. The implementation does not modify User Service or Supplier Service and does not expose returned token values in browser JSON.
 
-**Verification:** `npm run test:routes` passed six browser tests after the Codex review follow-up; `npm run build` and `npm run lint` passed. Live User Service verification remains pending.
+**Verification:** `npm run test:routes` passed seven browser tests after the Codex review follow-up; `npm run build` and `npm run lint` passed. Live User Service verification remains pending.
 
 ### 2026-09-28 — Gateway-local .env configuration (feature/api-gateway-refactor)
 
