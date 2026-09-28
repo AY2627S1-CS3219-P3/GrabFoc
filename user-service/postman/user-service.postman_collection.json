@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FoC User Service",
-    "description": "Sign-up, login and the session lifecycle for the FoC User Service. Set baseUrl and signupEmail in an environment; the OTP arrives in Mailpit at http://localhost:8025. AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. Author review: every request run against the compose stack.",
+    "description": "Every route of the User Service, ordered so the whole collection runs top to bottom in the Collection Runner with no manual step: the OTPs are read out of Mailpit's HTTP API by a pre-request script.\n\nNeeds the compose stack up (`docker compose up`) - the service on baseUrl and Mailpit on mailpitUrl.\n\nEach address gets three OTP requests per ten minutes, shared across register, resend and forgot - so every folder here owns its own address and spends that budget deliberately. Every address is generated fresh per run, so the runner is safe to press repeatedly.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated the requests, the assertions and the Mailpit OTP lookup. Author review: the full collection run green against the compose stack.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,225 +10,1119 @@
       "value": "http://localhost:3001"
     },
     {
+      "key": "mailpitUrl",
+      "value": "http://localhost:8025"
+    },
+    {
+      "key": "password",
+      "value": "Passw0rdSafe"
+    },
+    {
+      "key": "newPassword",
+      "value": "Newpassw0rd"
+    },
+    {
       "key": "signupEmail",
-      "value": "alex@u.nus.edu"
+      "value": ""
+    },
+    {
+      "key": "resetEmail",
+      "value": ""
     },
     {
       "key": "otp",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
       "value": ""
     }
   ],
   "item": [
     {
-      "name": "Health",
-      "request": {
-        "method": "GET",
-        "url": "{{baseUrl}}/health"
-      }
-    },
-    {
-      "name": "JWKS",
-      "request": {
-        "method": "GET",
-        "url": "{{baseUrl}}/.well-known/jwks.json"
-      }
-    },
-    {
-      "name": "Register",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": "{{baseUrl}}/auth/register",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"displayName\": \"Alex Tan\",\n  \"email\": \"{{signupEmail}}\",\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"91234567\",\n  \"password\": \"Passw0rdSafe\"\n}"
-        },
-        "description": "201 with the new userId and when the code expires. No users row exists yet. Read the code in Mailpit, then set the `otp` variable."
-      }
-    },
-    {
-      "name": "Resend OTP",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": "{{baseUrl}}/auth/register/resend-otp",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"{{signupEmail}}\"\n}"
-        },
-        "description": "202. Replaces the code inside a sign-up that is still waiting, without extending its 15-minute window. 404 if nothing is pending; 429 after three requests in ten minutes."
-      }
-    },
-    {
-      "name": "Verify registration",
-      "event": [
+      "name": "Public",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "// Keeps the tokens in variables rather than in the file: nothing here is committed.",
-              "if (pm.response.code === 200) {",
-              "  const body = pm.response.json();",
-              "  pm.collectionVariables.set('accessToken', body.accessToken);",
-              "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
-              "}"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": "{{baseUrl}}/auth/register/verify",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"{{signupEmail}}\",\n  \"otp\": \"{{otp}}\"\n}"
-        },
-        "description": "200 with the auth response. The code is single-use, so replaying it gives OTP_EXPIRED."
-      }
-    },
-    {
-      "name": "Login",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "// Keeps the tokens in variables rather than in the file: nothing here is committed.",
-              "if (pm.response.code === 200) {",
-              "  const body = pm.response.json();",
-              "  pm.collectionVariables.set('accessToken', body.accessToken);",
-              "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
-              "}"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": "{{baseUrl}}/auth/login",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"{{signupEmail}}\",\n  \"password\": \"Passw0rdSafe\"\n}"
-        },
-        "description": "200 with the auth response. 401 INVALID_CREDENTIALS for a wrong password AND for an address with no account - the two are deliberately identical. Five failures in a row give 423 ACCOUNT_LOCKED with retryAfterSeconds, for 15 minutes."
-      }
-    },
-    {
-      "name": "Forgot password",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": "{{baseUrl}}/auth/password/forgot",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"{{signupEmail}}\"\n}"
-        },
-        "description": "202 with a fixed message for any NUS address, whether or not it has an account. The code arrives in Mailpit only if the account exists and is ACTIVE. 429 after three requests in ten minutes. Never 503: a mail failure is logged and still answered 202, because a 503 could only happen for an address that has an account."
-      }
-    },
-    {
-      "name": "Reset password",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": "{{baseUrl}}/auth/password/reset",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"{{signupEmail}}\",\n  \"otp\": \"000000\",\n  \"newPassword\": \"Newpassw0rd\"\n}"
-        },
-        "description": "204, and no tokens: every refresh token is revoked, so each device logs in again. Any login lockout is lifted. Paste the code from Mailpit over the 000000 above. A made-up address answers exactly as a wrong code does (OTP_INVALID with attemptsRemaining), and reusing the current password is a 400 that still costs you the code."
-      }
-    },
-    {
-      "name": "Refresh",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "// Rotation invalidates the old token, so the stored pair must be replaced or the next",
-              "// refresh looks like reuse and revokes every session.",
-              "if (pm.response.code === 200) {",
-              "  const body = pm.response.json();",
-              "  pm.collectionVariables.set('accessToken', body.accessToken);",
-              "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
-              "}"
-            ]
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": "{{baseUrl}}/auth/refresh",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
-        },
-        "description": "200 with a new pair. Single use: sending the same refreshToken twice is treated as theft and revokes every session that user has. An unknown, an expired and a reused token all answer with the same 401."
-      }
-    },
-    {
-      "name": "Logout",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "Unauthenticated on purpose: compose and the gateway need it before anyone has a token. 503 if the database is unreachable."
           },
-          {
-            "key": "Authorization",
-            "value": "Bearer {{accessToken}}"
-          }
-        ],
-        "url": "{{baseUrl}}/auth/logout",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('reports ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+                ]
+              }
+            }
+          ]
         },
-        "description": "204, always - an unknown or already-revoked token still means you are logged out. Needs the access token: the caller's identity comes from it, so you can only end your own session. Ends this session only; other devices keep theirs."
-      }
+        {
+          "name": "JWKS",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/.well-known/jwks.json",
+            "description": "The public half of the signing key, derived from USER_JWT_PRIVATE_KEY. Other services verify access tokens against this, so only this service ever holds the private key - which is why tokens are RS256 and not HS256."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('publishes at least one RSA key', () => {",
+                  "  const keys = pm.response.json().keys;",
+                  "  pm.expect(keys).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(keys[0]).to.include.keys('kid', 'kty', 'n', 'e');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sign-up",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Alex Tan\",\n  \"email\": \"{{signupEmail}}\",\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"91234567\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "201. No `users` row exists yet - the sign-up is only a Redis key holding the address and mobile encrypted and the password already hashed. This spends the first of this address's three OTP requests."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A throwaway address, fresh every run, so this never collides with another folder's",
+                  "// account or eats into anyone's rate limit.",
+                  "pm.collectionVariables.set(",
+                  "  'signupEmail',",
+                  "  `alex.${Date.now().toString(36)}@u.nus.edu`,",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('names the account and when the code expires', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.userId).to.be.a('string');",
+                  "  pm.expect(Date.parse(body.otpExpiresAt)).to.be.greaterThan(Date.now());",
+                  "  pm.collectionVariables.set('userId', body.userId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register/resend-otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{signupEmail}}\"\n}"
+            },
+            "description": "202, not 200: the code has been handed to the mail server, not yet read by anyone. Replaces the code inside a sign-up that is still waiting, without extending its 15-minute window - so Verify below uses this newer code. Request two of three."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('gives the new code an expiry', () => {",
+                  "  pm.expect(Date.parse(pm.response.json().otpExpiresAt)).to.be.greaterThan(Date.now());",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify registration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register/verify",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{signupEmail}}\",\n  \"otp\": \"{{otp}}\"\n}"
+            },
+            "description": "200 with the auth response. The account row and its first refresh token are written in one transaction, and the user lands logged in rather than at a login form. The code is single-use, so replaying it gives OTP_EXPIRED. Verifying submits a code rather than requesting one, so it costs nothing against the limit."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Mailpit is a real inbox with an HTTP API, so the runner reads its own code instead",
+                  "// of you copying one out of the browser. The six digits are already in the search",
+                  "// result's Snippet, so one call is enough.",
+                  "//",
+                  "// Filtering by subject keeps the sign-up code and the reset code apart when both are",
+                  "// in the same inbox; sorting by Created takes the newest, which is what a resend",
+                  "// leaves behind.",
+                  "const subject = \"Verify your FoC account\";",
+                  "const email = pm.collectionVariables.get('signupEmail');",
+                  "const query = encodeURIComponent('to:' + email);",
+                  "",
+                  "pm.sendRequest(",
+                  "  `${pm.collectionVariables.get('mailpitUrl')}/api/v1/search?query=${query}`,",
+                  "  (err, res) => {",
+                  "    if (err) { throw new Error('Mailpit is unreachable at mailpitUrl: ' + err); }",
+                  "    const message = res.json().messages",
+                  "      .filter((m) => m.Subject === subject)",
+                  "      .sort((a, b) => b.Created.localeCompare(a.Created))[0];",
+                  "    if (!message) { throw new Error(`No \"${subject}\" email for ${email}`); }",
+                  "    pm.collectionVariables.set('otp', message.Snippet.match(/\\b(\\d{6})\\b/)[1]);",
+                  "  },",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('returns a session and a USER account', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.accessToken).to.be.a('string');",
+                  "  pm.expect(body.refreshToken).to.be.a('string');",
+                  "  pm.expect(body.expiresIn).to.eql(900);",
+                  "  pm.expect(body.user.role).to.eql('USER');",
+                  "  pm.expect(body.user.userId).to.eql(pm.collectionVariables.get('userId'));",
+                  "});",
+                  "pm.test('never echoes the email or mobile back', () => {",
+                  "  pm.expect(pm.response.text()).to.not.include(pm.collectionVariables.get('signupEmail'));",
+                  "  pm.expect(pm.response.text()).to.not.include('91234567');",
+                  "});",
+                  "",
+                  "// Kept in variables, never in the file: nothing here is committed.",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "409 the address is now taken",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Alex Tan\",\n  \"email\": \"{{signupEmail}}\",\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"91234567\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "409 EMAIL_TAKEN. Told plainly rather than hidden, because a sign-up form has to be able to say the address is taken - which is an account-enumeration oracle by definition, and the reason the rate limit is counted *before* this check. This is request three of three, so a fourth OTP request for this address inside ten minutes would be 429 instead."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
+                  "pm.test('the error code is EMAIL_TAKEN', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('EMAIL_TAKEN');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Session",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{signupEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "200 rather than 201 - a session is not a resource you can address afterwards. Login is not rate-limited by the OTP counter; it has its own five-failure lockout."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('returns a fresh pair', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.accessToken).to.be.a('string');",
+                  "  pm.expect(body.refreshToken).to.not.eql(pm.collectionVariables.get('refreshToken'));",
+                  "});",
+                  "",
+                  "// Kept in variables, never in the file: nothing here is committed.",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "description": "200 with a new pair. Refreshing reloads the user from the database, so a role change or a deactivation takes effect within 15 minutes without any shared session store."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('rotates the refresh token', () => {",
+                  "  pm.expect(pm.response.json().refreshToken).to.not.eql(",
+                  "    pm.collectionVariables.get('refreshToken'),",
+                  "  );",
+                  "});",
+                  "",
+                  "// Rotation kills the old token, so the stored pair MUST be replaced - otherwise the",
+                  "// next refresh looks like reuse and revokes every session this user has.",
+                  "// Kept in variables, never in the file: nothing here is committed.",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/logout",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "description": "204, always - an unknown or already-revoked token still means you are logged out. The caller's id comes from the access token and never from the body, so you can only ever end your own session. Ends this session only; other devices keep theirs."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh after logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "description": "401. The logout above revoked this token. An unknown, an expired and a revoked token all answer identically, so nothing can be learned from which one you hold."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('the error code is TOKEN_INVALID', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('TOKEN_INVALID');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Password reset",
+      "item": [
+        {
+          "name": "Register a second account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Alex Tan\",\n  \"email\": \"{{resetEmail}}\",\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"91234567\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "Its own address, because the sign-up one has already spent its three OTP requests and forgot-password would answer 429. Request one of three."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A throwaway address, fresh every run, so this never collides with another folder's",
+                  "// account or eats into anyone's rate limit.",
+                  "pm.collectionVariables.set(",
+                  "  'resetEmail',",
+                  "  `reset.${Date.now().toString(36)}@u.nus.edu`,",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register/verify",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{resetEmail}}\",\n  \"otp\": \"{{otp}}\"\n}"
+            },
+            "description": "200. Now there is an ACTIVE account to reset the password of."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Mailpit is a real inbox with an HTTP API, so the runner reads its own code instead",
+                  "// of you copying one out of the browser. The six digits are already in the search",
+                  "// result's Snippet, so one call is enough.",
+                  "//",
+                  "// Filtering by subject keeps the sign-up code and the reset code apart when both are",
+                  "// in the same inbox; sorting by Created takes the newest, which is what a resend",
+                  "// leaves behind.",
+                  "const subject = \"Verify your FoC account\";",
+                  "const email = pm.collectionVariables.get('resetEmail');",
+                  "const query = encodeURIComponent('to:' + email);",
+                  "",
+                  "pm.sendRequest(",
+                  "  `${pm.collectionVariables.get('mailpitUrl')}/api/v1/search?query=${query}`,",
+                  "  (err, res) => {",
+                  "    if (err) { throw new Error('Mailpit is unreachable at mailpitUrl: ' + err); }",
+                  "    const message = res.json().messages",
+                  "      .filter((m) => m.Subject === subject)",
+                  "      .sort((a, b) => b.Created.localeCompare(a.Created))[0];",
+                  "    if (!message) { throw new Error(`No \"${subject}\" email for ${email}`); }",
+                  "    pm.collectionVariables.set('otp', message.Snippet.match(/\\b(\\d{6})\\b/)[1]);",
+                  "  },",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Forgot password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/password/forgot",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{resetEmail}}\"\n}"
+            },
+            "description": "202 with a fixed message for any NUS address, whether or not it has an account - so there is nothing to read into the answer either way. No otpExpiresAt here, unlike resend-otp: that field would be a straight answer to \"does this address have an account\". This is also how the bootstrap admin claims its passwordless account. Request two of three."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('says the same thing it would for an unknown address', () => {",
+                  "  pm.expect(pm.response.json().message).to.include('If an account exists');",
+                  "});",
+                  "pm.test('does not hint at an expiry', () => {",
+                  "  pm.expect(pm.response.json()).to.not.have.property('otpExpiresAt');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reset password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/password/reset",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{resetEmail}}\",\n  \"otp\": \"{{otp}}\",\n  \"newPassword\": \"{{newPassword}}\"\n}"
+            },
+            "description": "204, and deliberately no tokens: every refresh token is revoked, so every device logs in again - which is the point, since a reset is what you do when someone else may have had your password. It also lifts any login lockout, because forgetting your password is the usual way to get locked out."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Mailpit is a real inbox with an HTTP API, so the runner reads its own code instead",
+                  "// of you copying one out of the browser. The six digits are already in the search",
+                  "// result's Snippet, so one call is enough.",
+                  "//",
+                  "// Filtering by subject keeps the sign-up code and the reset code apart when both are",
+                  "// in the same inbox; sorting by Created takes the newest, which is what a resend",
+                  "// leaves behind.",
+                  "const subject = \"Reset your FoC password\";",
+                  "const email = pm.collectionVariables.get('resetEmail');",
+                  "const query = encodeURIComponent('to:' + email);",
+                  "",
+                  "pm.sendRequest(",
+                  "  `${pm.collectionVariables.get('mailpitUrl')}/api/v1/search?query=${query}`,",
+                  "  (err, res) => {",
+                  "    if (err) { throw new Error('Mailpit is unreachable at mailpitUrl: ' + err); }",
+                  "    const message = res.json().messages",
+                  "      .filter((m) => m.Subject === subject)",
+                  "      .sort((a, b) => b.Created.localeCompare(a.Created))[0];",
+                  "    if (!message) { throw new Error(`No \"${subject}\" email for ${email}`); }",
+                  "    pm.collectionVariables.set('otp', message.Snippet.match(/\\b(\\d{6})\\b/)[1]);",
+                  "  },",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));",
+                  "pm.test('hands back no session', () => pm.expect(pm.response.text()).to.be.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login with the new password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{resetEmail}}\",\n  \"password\": \"{{newPassword}}\"\n}"
+            },
+            "description": "200. Proves the reset took, and that the account is usable immediately rather than sitting behind a lockout."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "// Kept in variables, never in the file: nothing here is committed.",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 the old password is dead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{resetEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "401. One failure out of the five that would lock the address - harmless on its own."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('the error code is INVALID_CREDENTIALS', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('INVALID_CREDENTIALS');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Errors",
+      "item": [
+        {
+          "name": "400 not an NUS address",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Alex Tan\",\n  \"email\": \"alex@gmail.com\",\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"91234567\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "Only @u.nus.edu and @nus.edu.sg may hold an account. Subdomains are not accepted either: evil.u.nus.edu is a domain we do not control, so the match is exact. Validation runs in a pipe, before the service, so a 400 never touches the rate limiter - which is why the fixed addresses in this folder are safe to reuse every run."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('the error code is VALIDATION_ERROR', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});",
+                  "pm.test('names the offending field', () => {",
+                  "  const fields = pm.response.json().error.details.fields;",
+                  "  pm.expect(fields.map((f) => f.field)).to.include('email');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 password without a digit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Alex Tan\",\n  \"email\": \"weak.password@u.nus.edu\",\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"91234567\",\n  \"password\": \"Passwordsafe\"\n}"
+            },
+            "description": "At least 8 characters with a lowercase letter, an uppercase letter and a digit. The ceiling is 72 bytes, because that is all bcrypt reads - two passwords sharing a 72-byte prefix would otherwise verify against the same hash."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('the error code is VALIDATION_ERROR', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 mobile does not fit the country code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Alex Tan\",\n  \"email\": \"bad.mobile@u.nus.edu\",\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"12345678\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "+65 is a real prefix and 12345678 is eight digits, but together they are not a valid Singapore number. libphonenumber knows each country's numbering plan; a regex cannot."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('the error code is VALIDATION_ERROR', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});",
+                  "pm.test('names mobileNumber, not countryCode', () => {",
+                  "  const fields = pm.response.json().error.details.fields;",
+                  "  pm.expect(fields.map((f) => f.field)).to.include('mobileNumber');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 unknown field",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Alex Tan\",\n  \"email\": \"smuggler@u.nus.edu\",\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"91234567\",\n  \"password\": \"{{password}}\",\n  \"role\": \"ADMIN\"\n}"
+            },
+            "description": "Every body is strict, so an unknown field is a 400 and never silently dropped. That is what stops a caller smuggling a role into a sign-up."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('the error code is VALIDATION_ERROR', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 verify with nothing pending",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register/verify",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ghostEmail}}\",\n  \"otp\": \"000000\"\n}"
+            },
+            "description": "OTP_EXPIRED, deliberately not 404. A wrong code, a stale code and no sign-up at all answer identically - otherwise submitting 000000 against any address would read 404 as \"not registering\" and 400 as \"registering right now\", which discloses who is signing up without ever guessing a code."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A throwaway address, fresh every run, so this never collides with another folder's",
+                  "// account or eats into anyone's rate limit.",
+                  "pm.collectionVariables.set(",
+                  "  'ghostEmail',",
+                  "  `ghost.${Date.now().toString(36)}@u.nus.edu`,",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('the error code is OTP_EXPIRED', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('OTP_EXPIRED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 wrong password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{signupEmail}}\",\n  \"password\": \"Wrongpassw0rd\"\n}"
+            },
+            "description": "Compare this response with the next one: identical status, code, message and timing. The comparison runs against a dummy bcrypt hash even when there is no account, so the ~250ms cost cannot be read either."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('the error code is INVALID_CREDENTIALS', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('INVALID_CREDENTIALS');",
+                  "});",
+                  "",
+                  "pm.collectionVariables.set('wrongPasswordMessage', pm.response.json().error.message);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 address with no account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{noAccountEmail}}\",\n  \"password\": \"Wrongpassw0rd\"\n}"
+            },
+            "description": "Byte for byte the same as a wrong password. Login is not a way to find out who has an NUS account here."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A throwaway address, fresh every run, so this never collides with another folder's",
+                  "// account or eats into anyone's rate limit.",
+                  "pm.collectionVariables.set(",
+                  "  'noAccountEmail',",
+                  "  `no.account.${Date.now().toString(36)}@u.nus.edu`,",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('the error code is INVALID_CREDENTIALS', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('INVALID_CREDENTIALS');",
+                  "});",
+                  "pm.test('identical to the wrong-password answer', () => {",
+                  "  pm.expect(pm.response.json().error.message).to.eql(",
+                  "    pm.collectionVariables.get('wrongPasswordMessage'),",
+                  "  );",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 logout without a token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/logout",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"whatever\"\n}"
+            },
+            "description": "JwtAuthGuard is registered globally, so every route needs a bearer token unless it is marked @Public. Forgetting the decorator leaves an endpoint closed rather than open."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('the error code is TOKEN_INVALID', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('TOKEN_INVALID');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 resend with nothing pending",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register/resend-otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{nothingPendingEmail}}\"\n}"
+            },
+            "description": "404, unlike verify above: resend submits no code, and it counts against the request limit before the lookup, so this 404 cannot be probed more than three times in ten minutes."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A throwaway address, fresh every run, so this never collides with another folder's",
+                  "// account or eats into anyone's rate limit.",
+                  "pm.collectionVariables.set(",
+                  "  'nothingPendingEmail',",
+                  "  `nothing.pending.${Date.now().toString(36)}@u.nus.edu`,",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('the error code is NOT_FOUND', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "423 locked after five failures",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{lockEmail}}\",\n  \"password\": \"Wrongpassw0rd\"\n}"
+            },
+            "description": "Five wrong passwords in a row lock an address for 15 minutes. A locked address is refused before the database is touched and before bcrypt runs, which is most of the point of having a lockout. Anyone can lock anyone else out this way; that is the accepted trade-off."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The lockout counts failures per address whether or not an account exists, so a",
+                  "// throwaway address locks exactly as a real one does and costs the run's own",
+                  "// accounts nothing. Fresh each time, because a locked address stays locked for",
+                  "// fifteen minutes.",
+                  "const email = `locked.${Date.now().toString(36)}@u.nus.edu`;",
+                  "pm.collectionVariables.set('lockEmail', email);",
+                  "",
+                  "// Four failures here; the request itself is the fifth, the one that locks.",
+                  "const fail = (remaining, done) => {",
+                  "  if (remaining === 0) { return done(); }",
+                  "  pm.sendRequest({",
+                  "    url: `${pm.collectionVariables.get('baseUrl')}/auth/login`,",
+                  "    method: 'POST',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ email, password: 'Wrongpassw0rd' }) },",
+                  "  }, () => fail(remaining - 1, done));",
+                  "};",
+                  "fail(4, () => {});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('423 Locked', () => pm.response.to.have.status(423));",
+                  "pm.test('the error code is ACCOUNT_LOCKED', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('ACCOUNT_LOCKED');",
+                  "});",
+                  "pm.test('says how long to wait', () => {",
+                  "  pm.expect(pm.response.json().error.details.retryAfterSeconds).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }
