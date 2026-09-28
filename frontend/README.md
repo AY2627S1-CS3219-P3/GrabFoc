@@ -1,3 +1,22 @@
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-09-27
+Scope: Documented the frontend's current gateway connection for public registration requests.
+Author review: Pending team review and live integration test.
+-->
+
+# GrabFoc frontend
+
+The frontend runs on port 3000 by default. Sign-up and OTP resend use a same-origin `/api/gateway/*` rewrite to the API Gateway at `http://localhost:3003`. Set `FRONTEND_GATEWAY_URL` in the frontend process environment if the gateway has another address. The root `.env.example` lists the setting; when running Next.js from `frontend/`, put the value in `frontend/.env.local` or set it in your shell.
+
+Start the gateway and User Service, then run `npm install` and `npm run dev` from this folder. Sign-up calls `POST /auth/register` through the gateway. OTP resend calls `POST /auth/register/resend-otp`. Verification, sign-in, session storage, and protected data are pending the team-approved token flow. The verification UI uses six digits to match User Service.
+
+## Check button destinations
+
+Run `npm run test:routes` from `frontend/`. The browser test uses an installed Microsoft Edge, starts an isolated Next.js instance and a fake gateway, clicks the controls, and asserts which requests arrive at the gateway. It does not require the real User or Supplier services or interrupt an existing Next.js dev server. Sign-in and Confirm currently make no gateway request; sign-up and Resend OTP do.
+
+For a manual check, open the frontend in Edge, press F12, select **Network**, enable **Preserve log**, and click a button. Filter for `gateway`. Sign-up should show `POST /api/gateway/auth/register`; Resend OTP should show `POST /api/gateway/auth/register/resend-otp`. The browser sees the frontend path because Next.js rewrites it; the upstream gateway receives `/auth/register` or `/auth/register/resend-otp`. Never share a Network export containing passwords or tokens.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
