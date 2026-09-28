@@ -69,6 +69,7 @@ export const listQuerySchema = z
     building: z.string().optional(),
     time: hhmm.optional(),
     includeInactive: z.enum(['true', 'false']).optional(),
+    order: z.enum(['asc', 'desc']).default('asc'),
     page: positiveInt.default('1'),
     pageSize: positiveInt.default('20'),
   })

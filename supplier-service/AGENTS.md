@@ -20,7 +20,7 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 
 - Admin-only create, update, deactivate and restore. Any authenticated user can list and look up.
 - Deletion is **soft**: the location is set `INACTIVE` and the row kept, so old orders can still show their pickup point.
-- Listing returns `ACTIVE` locations only by default. Results are always ordered by `name` A→Z. Letting the caller choose the order (backlog S2.2.2–S2.2.3) is **PENDING**.
+- Listing returns `ACTIVE` locations only by default. Results are ordered by `name`, A→Z by default; the caller can ask for Z→A with `order=desc`. Ordering by type or building (backlog S2.2.2) is **PENDING**.
 - **Inactive locations:** admins see them on a separate admin dashboard, which uses the same `GET /locations` endpoint with `?includeInactive=true`. If a USER sends `includeInactive=true`, the service checks the token, finds the user isn't authorised, returns **403** and logs the attempt.
 - `name` must be unique among `ACTIVE` locations, compared case-insensitively (backlog S1.2.2, which calls it the display label). It is at most 100 characters.
 - Coordinates must fall inside the configured campus boundary (S1.2.3).
@@ -111,6 +111,7 @@ _Origin: Team_
 | `building` | exact match |
 | `time` | open at that time, in `HHMMhrs` format (rule below) |
 | `includeInactive=true` | also return `INACTIVE` locations (ADMIN only) |
+| `order` | `asc` (default, A→Z) or `desc` (Z→A) on `name`; any other value is 400 (S2.2.3) |
 | `page`, `pageSize` | paging, e.g. `?page=2&pageSize=20`; defaults `page=1`, `pageSize=20`; no upper limit on `pageSize` |
 
 Name search, as a parameterized query:
@@ -149,7 +150,7 @@ _Origin: Team_
 
 ## Open
 
-- Caller-chosen sorting (backlog S2.2.2–S2.2.3) is pending; results are ordered by `name` A→Z for now.
+- Ordering by type or building (backlog S2.2.2) is pending; `order=asc|desc` on `name` is supported.
 - Whether error responses add an `errors` extension listing each invalid field (pending; `detail` covers it for now).
 - Whether `image_url` should only allow GitHub-hosted images is pending; for now any `http://` or `https://` URL is accepted.
 - Created / last-modified timestamps and creator columns (S1.3.1, S1.3.2, S2.3.2) are pending.
