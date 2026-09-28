@@ -56,7 +56,7 @@ Template:
 ### 2026-09-28 — Frontend User Service integration (feature/frontend-user-service-integration)
 
 **Tool:** Codex (GPT-6) · **Mode:** generate, debug
-**Files:** `frontend/app/**`, `frontend/lib/**`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `frontend/.env.example`, `frontend/.gitignore`, `.env.example`, `docs/frontend-gateway-implementation-plan.md`, `ai/usage-log.md`
+**Files:** `frontend/app/**`, `frontend/lib/**`, `frontend/test/routes.test.mjs`, `frontend/package.json`, `frontend/package-lock.json`, `frontend/README.md`, `frontend/.env.example`, `frontend/.gitignore`, `.env.example`, `docs/frontend-gateway-implementation-plan.md`, `ai/usage-log.md`
 
 **Scenario:** Implement the approved User-first frontend integration with reviewable PRs. The user selected a Next.js server session with HttpOnly cookies, complete registration and password recovery, and no Supplier Service changes.
 
@@ -92,11 +92,15 @@ Run relevant browser route tests, frontend lint/build, and gateway tests for eac
 
 **Review follow-up:** The user supplied a SoCLaaS review of commit `35ca6ee` as an attachment. It asked to verify cookie flags, refresh handling for HTTP 428, token-response validation, and optional phone formatting. Codex inspected the omitted session modules, added browser assertions for HttpOnly/SameSite cookie attributes, cookie clearing, malformed token responses and concurrent refresh, and adjusted phone formatting.
 
+**Further prompt (exact):** `can you check the codex review comments in the PR`
+
+**Codex PR review response:** Codex checked the five inline comments on PR #24. It added strict Zod validation for login and verification bodies, structured logging for profile requests without an access cookie, and serialized login, verification and logout with refresh. It tested rejection of extra fields and a simultaneous refresh/login race. The user chose to keep the local session when remote logout fails, so logout can retry. No-Web-Locks behavior remains under discussion.
+
 **What it produced:** User integration branch with login, OTP verification, password recovery, profile, logout, server session cookies, refresh coordination and browser tests. Supplier work follows after review and merge of this branch.
 
 **What I changed or rejected:** Human review pending. The implementation does not modify User Service or Supplier Service and does not expose returned token values in browser JSON.
 
-**Verification:** `npm run test:routes` passed four browser tests after the review follow-up; `npm run build` and `npm run lint` passed. Live User Service verification remains pending.
+**Verification:** `npm run test:routes` passed six browser tests after the Codex review follow-up; `npm run build` and `npm run lint` passed. Live User Service verification remains pending.
 
 ### 2026-09-28 — Gateway-local .env configuration (feature/api-gateway-refactor)
 

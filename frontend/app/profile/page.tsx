@@ -9,7 +9,7 @@ Author review: Pending team review; no Figma profile frame exists.
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../components/app-shell";
-import { ensureSession, sessionFetch } from "@/lib/session-client";
+import { ensureSession, sessionFetch, withSessionMutation } from "@/lib/session-client";
 
 type Profile = { userId: string; displayName: string; email: string; countryCode: string | null; mobileNumber: string | null };
 
@@ -39,7 +39,7 @@ export default function ProfilePage() {
     setError("");
     try {
       if (!await ensureSession()) { router.replace("/signin"); return; }
-      const response = await fetch("/api/session/logout", { method: "POST" });
+      const response = await withSessionMutation(() => fetch("/api/session/logout", { method: "POST" }));
       if (!response.ok) throw new Error();
       router.replace("/signin");
     } catch { setError("Could not log out. Please try again."); }

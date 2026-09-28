@@ -1,12 +1,18 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Added browser session checks and serialized refresh for single-use refresh tokens.
+Scope: Added browser session checks and serialized refresh and session mutation for single-use tokens.
 Author review: Pending frontend owner review.
 */
 'use client';
 
 let pendingRefresh: Promise<boolean> | undefined;
+
+// AI-generated (pending human review)
+export async function withSessionMutation<T>(action: () => Promise<T>): Promise<T> {
+  if (!navigator.locks) return action();
+  return navigator.locks.request('foc-refresh', action);
+}
 
 async function status(): Promise<'authenticated' | 'refresh' | 'signed-out'> {
   const response = await fetch('/api/session/status', { cache: 'no-store' });
@@ -33,7 +39,7 @@ export async function ensureSession(): Promise<boolean> {
   if (!pendingRefresh) {
     const run = async () => {
       if (!navigator.locks) throw new Error('This browser cannot coordinate session refresh across tabs');
-      return navigator.locks.request('foc-refresh', refreshOnce);
+      return withSessionMutation(refreshOnce);
     };
     pendingRefresh = run().finally(() => { pendingRefresh = undefined; });
   }

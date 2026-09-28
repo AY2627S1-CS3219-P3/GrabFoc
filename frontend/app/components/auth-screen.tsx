@@ -9,6 +9,7 @@ Author review: Pending team review and visual verification.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent, type ClipboardEvent } from "react";
+import { withSessionMutation } from "@/lib/session-client";
 
 type View = "signin" | "signup" | "verify";
 
@@ -108,10 +109,10 @@ export function AuthScreen({ view }: { view: View }) {
       setSubmitting(true);
       setMessage("");
       try {
-        const response = await fetch("/api/session/verify", {
+        const response = await withSessionMutation(() => fetch("/api/session/verify", {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ email: pendingEmail, otp }),
-        });
+        }));
         if (!response.ok) { setMessage(await errorMessage(response, "Could not verify your code.")); return; }
         sessionStorage.removeItem("pendingRegistrationEmail");
         router.replace("/home");
@@ -123,10 +124,10 @@ export function AuthScreen({ view }: { view: View }) {
       setSubmitting(true);
       setMessage("");
       try {
-        const response = await fetch("/api/session/login", {
+        const response = await withSessionMutation(() => fetch("/api/session/login", {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ email: String(data.get("email") ?? "").trim().toLowerCase(), password: String(data.get("password") ?? "") }),
-        });
+        }));
         if (!response.ok) { setMessage(await errorMessage(response, "Could not sign in.")); return; }
         router.replace("/home");
       } catch { setMessage("Could not reach the service. Please try again."); }

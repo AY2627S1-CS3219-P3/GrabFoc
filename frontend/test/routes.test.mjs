@@ -14,13 +14,15 @@ import { chromium } from "playwright-core";
 
 // AI-generated (pending human review)
 const requests = [];
+let refreshDelay;
+let refreshStarted;
 const gateway = createServer(async (request, response) => {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
   requests.push({ method: request.method, path: request.url, body, authorization: request.headers.authorization });
   if (request.url === "/users/me") {
-    response.writeHead(request.headers.authorization === "Bearer test-access" ? 200 : 401, { "content-type": "application/json" });
+    response.writeHead(["Bearer test-access", "Bearer new-access"].includes(request.headers.authorization) ? 200 : 401, { "content-type": "application/json" });
     response.end(JSON.stringify({ userId: "user-1", displayName: "Alex Tan", email: "alex@u.nus.edu", countryCode: "+65", mobileNumber: "91234567" }));
     return;
   }
@@ -35,8 +37,10 @@ const gateway = createServer(async (request, response) => {
     return;
   }
   if (["/auth/login", "/auth/register/verify", "/auth/refresh"].includes(request.url)) {
+    if (request.url === "/auth/refresh" && refreshDelay) { refreshStarted?.(); await refreshDelay; }
+    const otherUser = request.url === "/auth/login" && body.email === "new@u.nus.edu";
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ accessToken: "test-access", refreshToken: "test-refresh", expiresIn: 900 }));
+    response.end(JSON.stringify({ accessToken: otherUser ? "new-access" : "test-access", refreshToken: otherUser ? "new-refresh" : "test-refresh", expiresIn: 900 }));
     return;
   }
   response.writeHead(request.url === "/auth/register" ? 201 : request.url === "/auth/password/reset" || request.url === "/auth/logout" ? 204 : 202, { "content-type": "application/json" });
@@ -189,6 +193,23 @@ test("malformed token response does not create a browser session", async () => {
   } finally { await page.close(); }
 });
 
+test("session handlers reject unknown login and verification fields before reaching the gateway", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    const before = requests.length;
+    const statuses = await page.evaluate(async () => {
+      const options = (body) => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      return Promise.all([
+        fetch("/api/session/login", options({ email: "alex@u.nus.edu", password: "Passw0rdSafe", role: "ADMIN" })).then((response) => response.status),
+        fetch("/api/session/verify", options({ email: "alex@u.nus.edu", otp: "123456", userId: "forged" })).then((response) => response.status),
+      ]);
+    });
+    assert.deepEqual(statuses, [400, 400]);
+    assert.equal(requests.length, before);
+  } finally { await page.close(); }
+});
+
 test("expired access cookie refreshes once across simultaneous tabs", async () => {
   const context = await browser.newContext();
   const login = await context.newPage();
@@ -208,4 +229,42 @@ test("expired access cookie refreshes once across simultaneous tabs", async () =
     await Promise.all([login.getByRole("heading", { name: "Alex Tan" }).waitFor(), second.getByRole("heading", { name: "Alex Tan" }).waitFor()]);
     assert.equal(requests.filter((request) => request.path === "/auth/refresh").length - before, 1);
   } finally { await context.close(); }
+});
+
+test("sign-in waits for an in-progress refresh before replacing the session", async () => {
+  const context = await browser.newContext();
+  const oldTab = await context.newPage();
+  let release;
+  try {
+    await oldTab.goto(`${baseUrl}/signin`);
+    await oldTab.getByLabel("Email").fill("alex@u.nus.edu");
+    await oldTab.getByLabel("Password").fill("Passw0rdSafe");
+    await oldTab.getByRole("button", { name: "Sign In" }).click();
+    await oldTab.waitForURL("**/home");
+    const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
+    assert.ok(refreshCookie);
+    await context.clearCookies();
+    await context.addCookies([refreshCookie]);
+    refreshDelay = new Promise((resolve) => { release = resolve; });
+    const started = new Promise((resolve) => { refreshStarted = resolve; });
+    const oldNavigation = oldTab.goto(`${baseUrl}/profile`);
+    await started;
+    const newTab = await context.newPage();
+    await newTab.goto(`${baseUrl}/signin`);
+    await newTab.getByLabel("Email").fill("new@u.nus.edu");
+    await newTab.getByLabel("Password").fill("Passw0rdSafe");
+    const click = newTab.getByRole("button", { name: "Sign In" }).click();
+    await delay(300);
+    assert.equal(requests.some((request) => request.path === "/auth/login" && request.body.email === "new@u.nus.edu"), false);
+    release();
+    await click;
+    await oldNavigation;
+    await newTab.waitForURL("**/home");
+    assert.equal((await context.cookies()).find((cookie) => cookie.name === "foc_access")?.value, "new-access");
+  } finally {
+    release?.();
+    refreshDelay = undefined;
+    refreshStarted = undefined;
+    await context.close();
+  }
 });
