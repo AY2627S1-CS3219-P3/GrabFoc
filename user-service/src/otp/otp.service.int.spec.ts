@@ -4,6 +4,12 @@
  * Scope: Generated integration tests running the Lua scripts against a real Redis, including
  *        the record variants a pending sign-up uses.
  * Author review: Read in full; `npm run test:int` passes (18 tests against a real Redis), including the concurrency cases the scripts exist for.
+ *                2026-09-28: added a `check` describe block covering CHECK_OTP_LUA/checkRecord
+ *                — same cases as `verify`, but asserting a match does NOT delete the record,
+ *                and that `discard` afterward is what actually does.
+ * Author review: Read in full; `npm run test:int` passes (50 tests total across this file and
+ *                lockout.service.int.spec.ts) against a real Redis via `docker compose up -d
+ *                user-redis`.
  */
 import { Redis } from 'ioredis';
 import { OtpPurpose } from '../crypto';
@@ -144,6 +150,94 @@ describe('verify', () => {
       ),
     );
     await expect(otp.verify(OtpPurpose.REGISTRATION, id, code)).rejects.toMatchObject({
+      code: 'OTP_EXPIRED',
+    });
+  });
+});
+
+describe('check', () => {
+  it('accepts the right code without deleting the record', async () => {
+    const id = userId();
+    const { code } = await otp.issue(OtpPurpose.EMAIL_CHANGE, id);
+
+    await expect(otp.check(OtpPurpose.EMAIL_CHANGE, id, code)).resolves.toBeUndefined();
+    expect(await redis.exists(`otp:EMAIL_CHANGE:${id}`)).toBe(1);
+  });
+
+  it('the same correct code can be checked again — it is not single-use until discarded', async () => {
+    const id = userId();
+    const { code } = await otp.issue(OtpPurpose.EMAIL_CHANGE, id);
+
+    await otp.check(OtpPurpose.EMAIL_CHANGE, id, code);
+
+    await expect(otp.check(OtpPurpose.EMAIL_CHANGE, id, code)).resolves.toBeUndefined();
+  });
+
+  it('discard() is what actually spends it', async () => {
+    const id = userId();
+    const { code } = await otp.issue(OtpPurpose.EMAIL_CHANGE, id);
+
+    await otp.check(OtpPurpose.EMAIL_CHANGE, id, code);
+    await otp.discard(OtpPurpose.EMAIL_CHANGE, id);
+
+    await expect(otp.check(OtpPurpose.EMAIL_CHANGE, id, code)).rejects.toMatchObject({
+      code: 'OTP_EXPIRED',
+    });
+  });
+
+  it('returns the stored payload, same as verify', async () => {
+    const id = userId();
+    const { code } = await otp.issue(OtpPurpose.NEW_EMAIL_VERIFY, id, 'encrypted-new-email');
+    await expect(otp.check(OtpPurpose.NEW_EMAIL_VERIFY, id, code)).resolves.toBe(
+      'encrypted-new-email',
+    );
+  });
+
+  it('counts down attemptsRemaining on each wrong guess, same as verify', async () => {
+    const id = userId();
+    await otp.issue(OtpPurpose.PASSWORD_CHANGE, id);
+    for (const remaining of [2, 1]) {
+      await expect(otp.check(OtpPurpose.PASSWORD_CHANGE, id, '000000')).rejects.toMatchObject({
+        code: 'OTP_INVALID',
+        details: { attemptsRemaining: remaining },
+      });
+    }
+  });
+
+  it('destroys the code on the third wrong guess, exactly as verify does', async () => {
+    const id = userId();
+    const { code } = await otp.issue(OtpPurpose.PASSWORD_CHANGE, id);
+    for (let i = 0; i < OTP_MAX_ATTEMPTS; i++) {
+      await otp.check(OtpPurpose.PASSWORD_CHANGE, id, '000000').catch(() => undefined);
+    }
+    await expect(otp.check(OtpPurpose.PASSWORD_CHANGE, id, code)).rejects.toMatchObject({
+      code: 'OTP_EXPIRED',
+    });
+  });
+
+  it('a wrong guess does not extend the code’s life (KEEPTTL)', async () => {
+    const id = userId();
+    await otp.issue(OtpPurpose.PASSWORD_CHANGE, id);
+    await redis.expire(`otp:PASSWORD_CHANGE:${id}`, 30);
+    await otp.check(OtpPurpose.PASSWORD_CHANGE, id, '000000').catch(() => undefined);
+    expect(await redis.ttl(`otp:PASSWORD_CHANGE:${id}`)).toBeLessThanOrEqual(30);
+  });
+
+  it('reports a missing code as expired, not as wrong', async () => {
+    await expect(otp.check(OtpPurpose.EMAIL_CHANGE, userId(), '123456')).rejects.toMatchObject({
+      code: 'OTP_EXPIRED',
+    });
+  });
+
+  it('caps attempts even when guesses arrive at the same moment', async () => {
+    const id = userId();
+    const { code } = await otp.issue(OtpPurpose.PASSWORD_CHANGE, id);
+    await Promise.all(
+      Array.from({ length: 10 }, () =>
+        otp.check(OtpPurpose.PASSWORD_CHANGE, id, '000000').catch(() => undefined),
+      ),
+    );
+    await expect(otp.check(OtpPurpose.PASSWORD_CHANGE, id, code)).rejects.toMatchObject({
       code: 'OTP_EXPIRED',
     });
   });

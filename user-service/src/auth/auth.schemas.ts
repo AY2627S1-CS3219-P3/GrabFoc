@@ -6,6 +6,10 @@
  *        user-service/AGENTS.md.
  * Author review: Read in full; each rule checked against the backlog IDs it cites, and
  *                `npm test` covers every branch.
+ *                2026-09-28: exported `attachMobileCheck` (Step 12) so users.schemas.ts's
+ *                `PATCH /users/me/mobile` body can reuse the same libphonenumber-js check
+ *                rather than a second copy of it. No behaviour change to the existing schemas
+ *                that already used it.
  */
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import { z } from 'zod';
@@ -76,7 +80,7 @@ export const MobileNumberSchema = z
  * eight digits, but together they are not a valid Singapore number. libphonenumber-js knows
  * each country's real numbering plan, which a regex cannot (U1.1.5, U3.1.3).
  */
-function attachMobileCheck<T extends z.ZodTypeAny>(schema: T) {
+export function attachMobileCheck<T extends z.ZodTypeAny>(schema: T) {
   return schema.superRefine(
     (body: { countryCode: string; mobileNumber: string }, ctx: z.RefinementCtx) => {
       const parsed = parsePhoneNumberFromString(`${body.countryCode}${body.mobileNumber}`);

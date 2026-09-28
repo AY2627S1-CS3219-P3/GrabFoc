@@ -335,7 +335,24 @@ admin bootstrap**. That completes this side of Phase 1.
 There is one startup task with no route of its own: the **admin bootstrap**, which creates the
 first ADMIN from `USER_BOOTSTRAP_ADMIN_EMAIL` — see [The first admin](#the-first-admin).
 
-The profile and admin endpoints (`/users/**`, `/admin/**`) are Person B's track. See the build
-order in `AGENTS.md`.
+**Phase 1, Person B's track** (steps 10 to 13 so far) — **step 10: admin list, role change and
+the last-admin lock**, **step 11: self profile (get and update)**, **step 12: the
+OTP-protected profile changes** (email, mobile, password, deactivate), and **step 13:
+reactivation**. Step 14 (the internal lookup for the Notification Service) is deferred until
+that service exists — see the build order in `AGENTS.md`.
+
+| Route | |
+|---|---|
+| `GET /admin/users` | admin only |
+| `PATCH /admin/users/:userId/role` | admin only |
+| `POST /admin/users/:userId/reactivate` | admin only; 409 `NOT_DEACTIVATED` unless the target is currently DEACTIVATED |
+| `GET /users/me` | needs an access token |
+| `PATCH /users/me` | needs an access token; renames the caller only — `display_name` has no uniqueness check, see AGENTS.md's Step 11 note |
+| `POST /users/me/otp` | needs an access token; mails a code to the caller's current email for `EMAIL_CHANGE`, `MOBILE_CHANGE`, `PASSWORD_CHANGE` or `DEACTIVATION` |
+| `POST /users/me/email` | needs an access token; consumes the `EMAIL_CHANGE` code, mails a `NEW_EMAIL_VERIFY` code to the new address |
+| `POST /users/me/email/verify` | needs an access token; commits the address change |
+| `PATCH /users/me/mobile` | needs an access token |
+| `POST /users/me/password` | needs an access token; revokes every refresh token |
+| `POST /users/me/deactivate` | needs an access token; 409 `LAST_ADMIN` for the sole active admin |
 
 **Authentication is on by default.** `JwtAuthGuard` is registered globally, so every route needs a bearer token unless it is marked `@Public()`. Forgetting the decorator leaves an endpoint closed rather than open.

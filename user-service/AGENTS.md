@@ -161,6 +161,8 @@ _Origin: Team (Backlog USFR1–6, NFR5.1 and team decisions)_
 
 The OTP is **submitted together with the action**, never verified in a separate call. A separate `/otp/verify` would mean the server had to remember "this user is verified" and leave a gap between the two requests.
 
+- **Two exceptions to "single use, consumed the instant it's checked":** the `EMAIL_CHANGE` code on `POST /users/me/email` and the `PASSWORD_CHANGE` code on `POST /users/me/password` are checked for correctness first, but not actually spent until that endpoint's own business validation (`EMAIL_TAKEN`; "must differ from current password") also passes — so a caller who submits a taken new email, or resubmits their current password by mistake, can retry with the *same* code instead of requesting a new one. This is deliberately different from `POST /auth/password/reset`, which does consume its code even on the equivalent rejection: reset's version of that check sits behind a code tied to reading a real inbox, so there's nothing to gain by probing it for free. `changePassword` calls no request-limiter of its own, so if its reuse check ran *before* the code check instead, anyone holding a valid access token — including a leaked one — could submit throwaway codes with guessed passwords and read from the rejection whether a guess matches the account's real password, with no rate limit and no lockout. Checking the code first closes that off, at the cost of `OtpService` needing a non-consuming check (`check`/`checkRecord`, via `CHECK_OTP_LUA`) alongside the consuming one (`verify`/`verifyRecord`), plus an explicit `discard()` once the caller decides it's safe to spend it.
+
 **Login** (U2.1.2, U2.1.3, U2.3.1)
 
 1. If `loginlock:{emailHash}` exists → 423 `ACCOUNT_LOCKED` with `retryAfterSeconds`.
@@ -204,7 +206,9 @@ _Origin: Team_
 
 **Auth response:** `{ accessToken, refreshToken, expiresIn: 900, user: { userId, displayName, role } }`
 
-**Profile:** `{ userId, displayName, email, countryCode, mobileNumber, role, status, createdAt }`
+**Profile (admin-facing):** `{ userId, displayName, email, countryCode, mobileNumber, role, status, createdAt }`. Returned by `GET /admin/users` and `PATCH /admin/users/:userId/role`.
+
+**Self profile:** `{ userId, displayName, email, countryCode, mobileNumber }`. Returned by `GET /users/me` and `PATCH /users/me` — narrower than the admin-facing Profile: a user does not need their own `role`, `status` or `createdAt` echoed back by their own endpoint. **[Open]** whether the Step 12 OTP-protected endpoints below (`/users/me/email/verify`, `/users/me/mobile`) should also switch to this shape instead of the admin-facing one — not yet decided, since Step 12 isn't built.
 
 ### Public
 
@@ -224,15 +228,14 @@ _Origin: Team_
 | Endpoint | Body → Response | Main errors |
 |---|---|---|
 | `POST /auth/logout` | refreshToken → 204 | |
-| `GET /users/me` | → profile | |
-| `PATCH /users/me` | displayName → profile (any other field → 400) | 400 |
+| `GET /users/me` | → self profile | |
+| `PATCH /users/me` | displayName → self profile (any other field → 400); no OTP required | 400 |
 | `POST /users/me/otp` | purpose (`EMAIL_CHANGE`, `MOBILE_CHANGE`, `PASSWORD_CHANGE`, `DEACTIVATION`) → 202 `{ otpExpiresAt }` | 400, 409 `LAST_ADMIN` (DEACTIVATION only), 429, 503 |
 | `POST /users/me/email` | newEmail, otp → 202; sends an OTP to the new address | OTP errors, 409 `EMAIL_TAKEN`, 429 |
 | `POST /users/me/email/verify` | otp → profile | OTP errors, 409 |
 | `PATCH /users/me/mobile` | countryCode, mobileNumber, otp → profile | OTP errors, 400 |
 | `POST /users/me/password` | otp, newPassword → 204 | OTP errors, 400 |
 | `POST /users/me/deactivate` | otp → 204 | OTP errors, 409 `LAST_ADMIN` |
-| `GET /users/:userId` | → profile; only the user themselves or an ADMIN | 403 + log, 404 |
 
 `/users/me*` always resolves the caller from the token's `sub` (U5.2.1).
 
@@ -366,8 +369,8 @@ All prefixed `USER_` except the shared `LOG_LEVEL`. All are listed in the root `
 - **Frontend token storage** — where the access and refresh tokens are kept.
 - **SMTP provider** for real mail. Test delivery to `@u.nus.edu` early; Mailpit only proves the service sends.
 - **Message broker** — blocks the outbox and `UserRegistered`.
-- **Person A / Person B split** for the build order.
 - These files have not been checked against `project.md`. Three things differ from it: `ACCOUNT_NOT_VERIFIED` removed, the `PENDING_VERIFICATION` status removed, `SUSPENDED` added.
+- **Step 12's OTP request limit is one shared bucket per user, across every purpose.** `otpreq:{userId}` (root `AGENTS.md` §"Redis keys") counts EMAIL_CHANGE, MOBILE_CHANGE, PASSWORD_CHANGE and DEACTIVATION requests together, and email change alone costs two codes against it (`EMAIL_CHANGE` then `NEW_EMAIL_VERIFY`). A user legitimately changing several fields in one sitting — email, then mobile, then password — can hit the 3-per-10-minutes block (429 `RATE_LIMITED`) without ever mistyping a code. Worth reconsidering before this reads as a bug report: options include a per-purpose bucket, or a higher limit for this authenticated self-service track than for the anonymous registration/reset flows the same limit was designed around.
 
 ## Edge cases
 
@@ -386,6 +389,46 @@ All prefixed `USER_` except the shared `LOG_LEVEL`. All are listed in the root `
 - **Mail is slow or down** — one retry with a 5 s timeout, then 503. The pending sign-up or OTP still exists, so the user can resend.
 - **Rotating the signing key logs everyone out.** The JWKS publishes only the current key, so a token carrying the previous `kid` stops verifying at once. Planned rotation normally avoids that by publishing the old and new keys together for one token lifetime — the `keys` array exists for exactly that — but **we do no planned rotation**, so the overlap is not implemented. For the reason we would actually rotate it is also the wrong behaviour: if the key leaks, an attacker can mint ADMIN tokens, and an overlap would keep honouring them for another 15 minutes. The hard cutover is correct.
   - **If the key ever leaks:** generate a new key *and* a new `kid` and restart, then revoke every refresh token (`UPDATE refresh_tokens SET revoked_at = now()`). Treat a key that has ever reached git history as permanently compromised — this repository is public, so deleting it in a later commit does not help.
+
+## Build order
+
+_Origin: Team_
+
+**Phase 0 — foundation** (done): config validation, migrations, the error filter, the Zod pipe, the redacting logger, the crypto helpers, the JWT/RBAC skeleton, and Redis-backed OTPs with mail delivery.
+
+**Phase 1 — split two ways**, each track independent once Phase 0 lands.
+
+*Person A: credentials and sessions* (done)
+
+- [x] Step 5: sign-up — `POST /auth/register`, `/auth/register/verify`, `/auth/register/resend-otp`
+- [x] Step 6: login and lockout — `POST /auth/login`
+- [x] Step 7: refresh and logout — `POST /auth/refresh`, `POST /auth/logout`
+- [x] Step 8: forgot/reset password — `POST /auth/password/forgot`, `/auth/password/reset`
+- [x] Step 9: the admin bootstrap — see [First admin](#first-admin)
+
+*Person B: profile and admin* (in progress)
+
+- [x] Step 10: admin list, role change, last-admin lock — `GET /admin/users`, `PATCH /admin/users/:userId/role` (see [The last-admin lock](#the-last-admin-lock))
+- [x] Step 11: `GET /users/me`, `PATCH /users/me` (self profile shape, no OTP; a by-id lookup wasn't needed here — if one ever is, it's a filter on `GET /admin/users`, not a new route). Note: `display_name` has no uniqueness constraint (schema: `VARCHAR(100) NOT NULL`, no `UNIQUE`) and `PATCH /users/me` does not check for a duplicate name — only `email_hash` is unique, so two accounts may share the same display name.
+- [x] Step 12: OTP-protected changes (password, email, mobile, deactivate) — `POST /users/me/otp`, `POST /users/me/email` + `/email/verify`, `PATCH /users/me/mobile`, `POST /users/me/password`, `POST /users/me/deactivate`. Resolved the response-shape `[Open]` item in favour of the self profile shape (matching Step 11). `POST /users/me/email` and `POST /users/me/password` check their code for correctness before spending it, and only spend it once the endpoint's own business validation (`EMAIL_TAKEN`; "must differ from current password") also passes — see the **OTP** section above for why, and `OtpService.check`/`checkRecord`/`discard`.
+- [x] Step 13: reactivate — `POST /admin/users/:userId/reactivate`. No `AdminLockService` here,
+      unlike `changeRole`/`deactivateSelf`: this endpoint only ever adds an active admin back,
+      never removes one, so it cannot break the last-admin invariant — confirmed with the
+      service owner rather than assumed, given `roles.guard.ts`'s note that any endpoint
+      changing an account should otherwise re-read the caller's role fresh.
+- [ ] Step 14: `GET /internal/users/:userId` — **deferred.** Its only caller is the Notification
+      Service, which doesn't exist yet, so there's nothing to integration-test it against right
+      now. Building it early would mean carrying an untested endpoint (and an
+      `USER_INTERNAL_SERVICE_KEY` nothing yet reads) until Notification lands. Picking this back
+      up once `notification-service/` exists.
+
+Person B, while waiting on Phase 0: draft the Zod schemas and the last-admin SQL, so nothing here sits idle.
+
+**Phase 2 — Integration (together)**
+
+- [ ] Step 15: gateway routes, block `/internal/**`, end-to-end test
+- [ ] Rehearse the D2 demo checklist
+- [ ] Both can explain every part, including the foundation
 
 ## D2 demo checklist
 
