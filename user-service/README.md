@@ -74,6 +74,15 @@ docker compose up --build
 
 That starts four containers: `user-service` (port 3001), `user-db` (PostgreSQL 17), `user-redis` and `mailpit`. Migrations run automatically at startup.
 
+These four are defined in `user-service/compose.yaml`; the root `compose.yaml` includes it, so the
+command above starts every service in the project. To start only this one, from the repo root:
+
+```bash
+docker compose -f user-service/compose.yaml --env-file .env up --build
+```
+
+Both use the same containers and the same database volume.
+
 | What | Where |
 |---|---|
 | The service | http://localhost:3001 |
@@ -128,7 +137,7 @@ lsof -nP -iTCP:5432 -sTCP:LISTEN
 ```
 
 Either stop the other server, or publish the container on a free port by adding
-`- "55432:5432"` to `user-db` in `compose.yaml` and pointing `USER_DATABASE_URL` at
+`- "55432:5432"` to `user-db` in `user-service/compose.yaml` and pointing `USER_DATABASE_URL` at
 `localhost:55432`. `docker compose up` on its own is unaffected: inside the compose network
 the service talks to `user-db` directly and never touches the host's port.
 
