@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FoC Supplier Service",
-    "description": "Requests for the Supplier (Location) Service. Auth is DEV-ONLY for now: X-User-Id / X-User-Role headers (see supplier-service/AGENTS.md). Set baseUrl for your machine. Run \"Create location\" before the update/deactivate/restore requests; it stores locationId and version.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22. Scope: generated this collection from the endpoints and error codes in supplier-service/AGENTS.md. Author review: pending.",
+    "description": "Requests for the Supplier (Location) Service. Auth: every request sends Authorization: Bearer {{adminToken}} or {{userToken}} — get those by logging in through the User Service, which also has to be running so this service can fetch its JWKS. Set baseUrl for your machine. Run \"Create location\" before the update/deactivate/restore requests; it stores locationId and version.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated this collection from the endpoints and error codes in supplier-service/AGENTS.md. Author review: pending.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,20 +10,20 @@
       "value": "http://localhost:3002"
     },
     {
-      "key": "adminId",
-      "value": "admin-1"
-    },
-    {
-      "key": "userId",
-      "value": "user-1"
-    },
-    {
       "key": "locationId",
       "value": ""
     },
     {
       "key": "version",
       "value": "1"
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "userToken",
+      "value": ""
     }
   ],
   "item": [
@@ -47,12 +47,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -83,12 +79,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -120,12 +112,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -162,12 +150,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -204,12 +188,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -246,12 +226,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -288,12 +264,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -330,12 +302,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{adminId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "ADMIN"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -372,12 +340,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -410,12 +374,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -462,12 +422,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{adminId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "ADMIN"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               },
               {
                 "key": "Content-Type",
@@ -507,12 +463,8 @@
             "method": "PATCH",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{adminId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "ADMIN"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               },
               {
                 "key": "Content-Type",
@@ -552,12 +504,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{adminId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "ADMIN"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -590,12 +538,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{adminId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "ADMIN"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -617,7 +561,7 @@
       "name": "Errors",
       "item": [
         {
-          "name": "401 no credentials",
+          "name": "401 no token",
           "event": [
             {
               "listen": "test",
@@ -660,12 +604,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -702,12 +642,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               },
               {
                 "key": "Content-Type",
@@ -746,12 +682,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -788,12 +720,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -830,12 +758,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -867,12 +791,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{adminId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "ADMIN"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               },
               {
                 "key": "Content-Type",
@@ -911,12 +831,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{adminId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "ADMIN"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               },
               {
                 "key": "Content-Type",
@@ -955,12 +871,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -992,12 +904,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{adminId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "ADMIN"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               },
               {
                 "key": "Content-Type",
@@ -1036,12 +944,8 @@
             "method": "PATCH",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{adminId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "ADMIN"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               },
               {
                 "key": "Content-Type",
@@ -1081,12 +985,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{adminId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "ADMIN"
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
               }
             ],
             "url": {
@@ -1119,12 +1019,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
@@ -1161,12 +1057,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-User-Id",
-                "value": "{{userId}}"
-              },
-              {
-                "key": "X-User-Role",
-                "value": "USER"
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
               }
             ],
             "url": {
