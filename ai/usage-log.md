@@ -90,11 +90,13 @@ Each PR will include a concise summary, affected routes, the service contract it
 Run relevant browser route tests, frontend lint/build, and gateway tests for each branch. Test User flows against the live User Service when available. Test Supplier UI against mocks first, then verify browser → gateway → Supplier with valid and missing tokens after the Supplier guard is updated. Update documentation and the AI usage log on each branch.
 ~~~
 
+**Review follow-up:** The user supplied a SoCLaaS review of commit `35ca6ee` as an attachment. It asked to verify cookie flags, refresh handling for HTTP 428, token-response validation, and optional phone formatting. Codex inspected the omitted session modules, added browser assertions for HttpOnly/SameSite cookie attributes, cookie clearing, malformed token responses and concurrent refresh, and adjusted phone formatting.
+
 **What it produced:** User integration branch with login, OTP verification, password recovery, profile, logout, server session cookies, refresh coordination and browser tests. Supplier work follows after review and merge of this branch.
 
 **What I changed or rejected:** Human review pending. The implementation does not modify User Service or Supplier Service and does not expose returned token values in browser JSON.
 
-**Verification:** `npm run test:routes` passed three browser tests; `npm run build` and `npm run lint` passed. Live User Service verification remains pending.
+**Verification:** `npm run test:routes` passed four browser tests after the review follow-up; `npm run build` and `npm run lint` passed. Live User Service verification remains pending.
 
 ### 2026-09-28 — Gateway-local .env configuration (feature/api-gateway-refactor)
 

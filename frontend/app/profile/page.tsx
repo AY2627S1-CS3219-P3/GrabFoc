@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Loaded self profile through the server session and connected logout.
+Scope: Loaded self profile through the server session, connected logout, and formatted optional phone fields.
 Author review: Pending team review; no Figma profile frame exists.
 */
 "use client";
@@ -54,7 +54,7 @@ export default function ProfilePage() {
           <div className="profile-avatar" aria-hidden="true">{profile?.displayName.slice(0, 1).toUpperCase() ?? "?"}</div>
           <h2 id="profile-name">{profile?.displayName ?? (loading ? "Loading profile…" : "Your profile")}</h2>
           <p className="profile-email">{profile?.email ?? ""}</p>
-          {profile?.mobileNumber && <p>{profile.countryCode} {profile.mobileNumber}</p>}
+          {profile?.mobileNumber && <p>{[profile.countryCode, profile.mobileNumber].filter(Boolean).join(" ")}</p>}
           {error && <p className="auth-message" role="status">{error}</p>}
           <div className="profile-divider" />
           <button className="outline-link" type="button" disabled={loggingOut} onClick={logout}>{loggingOut ? "Logging out…" : "Log Out"}</button>

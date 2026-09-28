@@ -29,6 +29,11 @@ const gateway = createServer(async (request, response) => {
     response.end(JSON.stringify({ error: { message: "Invalid email or password." } }));
     return;
   }
+  if (request.url === "/auth/login" && body.email === "malformed@u.nus.edu") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ accessToken: "test-access", expiresIn: 900 }));
+    return;
+  }
   if (["/auth/login", "/auth/register/verify", "/auth/refresh"].includes(request.url)) {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ accessToken: "test-access", refreshToken: "test-refresh", expiresIn: 900 }));
@@ -93,6 +98,15 @@ test("login, profile, logout, registration, recovery and Home navigation reach t
     await page.getByLabel("Password").fill("Passw0rdSafe");
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
+    const cookies = await page.context().cookies();
+    for (const name of ["foc_access", "foc_refresh"]) {
+      const cookie = cookies.find((item) => item.name === name);
+      assert.ok(cookie, `${name} cookie exists`);
+      assert.equal(cookie.httpOnly, true);
+      assert.equal(cookie.sameSite, "Lax");
+      assert.equal(cookie.path, "/");
+      assert.equal(cookie.secure, false, "local HTTP development uses non-Secure cookies");
+    }
     assert.deepEqual(requests.find((request) => request.path === "/auth/login")?.body,
       { email: "alex@u.nus.edu", password: "Passw0rdSafe" });
     await page.getByRole("link", { name: "Profile" }).click();
@@ -101,6 +115,7 @@ test("login, profile, logout, registration, recovery and Home navigation reach t
     assert.ok(requests.some((request) => request.path === "/users/me" && request.authorization === "Bearer test-access"));
     await page.getByRole("button", { name: "Log Out" }).click();
     await page.waitForURL("**/signin");
+    assert.equal((await page.context().cookies()).some((cookie) => cookie.name === "foc_access" || cookie.name === "foc_refresh"), false);
     assert.deepEqual(requests.find((request) => request.path === "/auth/logout")?.body, { refreshToken: "test-refresh" });
 
     await page.getByRole("link", { name: "Sign Up" }).click();
@@ -159,6 +174,18 @@ test("invalid credentials stay on Sign In and show the service error", async () 
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.getByRole("status").getByText("Invalid email or password.").waitFor();
     assert.equal(new URL(page.url()).pathname, "/signin");
+  } finally { await page.close(); }
+});
+
+test("malformed token response does not create a browser session", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("malformed@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.getByRole("status").getByText("Gateway unavailable. Please try again.").waitFor();
+    assert.equal((await page.context().cookies()).some((cookie) => cookie.name === "foc_access" || cookie.name === "foc_refresh"), false);
   } finally { await page.close(); }
 });
 
