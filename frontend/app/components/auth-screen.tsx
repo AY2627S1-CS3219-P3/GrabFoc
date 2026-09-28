@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
-Scope: Created shared authentication UI; connected registration, login and verification through the gateway and server session on 2026-09-28.
+Scope: Created shared authentication UI; connected registration, login and verification and displayed unconfirmed remote logout notices.
 Author review: Pending team review and visual verification.
 */
 "use client";
@@ -15,6 +15,7 @@ type View = "signin" | "signup" | "verify";
 
 function noSubscription() { return () => {}; }
 function pendingEmailSnapshot() { return sessionStorage.getItem("pendingRegistrationEmail") ?? ""; }
+function logoutNoticeSnapshot() { return sessionStorage.getItem("logoutNotice") ?? ""; }
 function emptySnapshot() { return ""; }
 
 // AI-generated (pending human review)
@@ -98,6 +99,7 @@ export function AuthScreen({ view }: { view: View }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const pendingEmail = useSyncExternalStore(noSubscription, pendingEmailSnapshot, emptySnapshot);
+  const logoutNotice = useSyncExternalStore(noSubscription, logoutNoticeSnapshot, emptySnapshot);
   const [submitting, setSubmitting] = useState(false);
   const [otp, setOtp] = useState("");
 
@@ -129,6 +131,7 @@ export function AuthScreen({ view }: { view: View }) {
           body: JSON.stringify({ email: String(data.get("email") ?? "").trim().toLowerCase(), password: String(data.get("password") ?? "") }),
         }));
         if (!response.ok) { setMessage(await errorMessage(response, "Could not sign in.")); return; }
+        sessionStorage.removeItem("logoutNotice");
         router.replace("/home");
       } catch { setMessage("Could not reach the service. Please try again."); }
       finally { setSubmitting(false); }
@@ -224,6 +227,7 @@ export function AuthScreen({ view }: { view: View }) {
           </form>
         )}
 
+        {view === "signin" && logoutNotice && <p className="auth-message" role="status">{logoutNotice}</p>}
         {message && <p className="auth-message" role="status">{message}</p>}
         {view !== "verify" && (
           <p className="auth-footer">

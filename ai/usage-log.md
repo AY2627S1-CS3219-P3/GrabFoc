@@ -94,7 +94,7 @@ Run relevant browser route tests, frontend lint/build, and gateway tests for eac
 
 **Further prompt (exact):** `can you check the codex review comments in the PR`
 
-**Codex PR review response:** Codex checked the five inline comments on PR #24. It added strict Zod validation for login and verification bodies, structured logging for profile requests without an access cookie, and serialized login, verification and logout with refresh. It tested rejection of extra fields and a simultaneous refresh/login race. The user chose to keep the local session when remote logout fails, so logout can retry. No-Web-Locks behavior remains under discussion.
+**Codex PR review response:** Codex checked the five inline comments on PR #24. It added strict Zod validation for login and verification bodies, structured logging for profile requests without an access cookie, and serialized login, verification and logout with refresh. It tested rejection of extra fields and a simultaneous refresh/login race. The later exact prompt was: "failed remote logout should remove the local cookies, explain the other browser choice". The logout handler now clears local cookies even when User Service revocation fails, and Sign In displays that revocation was not confirmed. No-Web-Locks behavior remains under discussion.
 
 **What it produced:** User integration branch with login, OTP verification, password recovery, profile, logout, server session cookies, refresh coordination and browser tests. Supplier work follows after review and merge of this branch.
 

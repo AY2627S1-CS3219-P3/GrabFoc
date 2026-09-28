@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Loaded self profile through the server session, connected logout, and formatted optional phone fields.
+Scope: Loaded self profile, connected logout including remote-failure notices, and formatted optional phone fields.
 Author review: Pending team review; no Figma profile frame exists.
 */
 "use client";
@@ -41,6 +41,9 @@ export default function ProfilePage() {
       if (!await ensureSession()) { router.replace("/signin"); return; }
       const response = await withSessionMutation(() => fetch("/api/session/logout", { method: "POST" }));
       if (!response.ok) throw new Error();
+      const result: { remoteRevoked?: boolean } = await response.json();
+      if (result.remoteRevoked === false) sessionStorage.setItem("logoutNotice", "Signed out here, but the service could not confirm remote logout.");
+      else sessionStorage.removeItem("logoutNotice");
       router.replace("/signin");
     } catch { setError("Could not log out. Please try again."); }
     finally { setLoggingOut(false); }

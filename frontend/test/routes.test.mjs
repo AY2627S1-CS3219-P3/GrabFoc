@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified User auth, profile, recovery and navigation through the gateway rewrite and server session.
+Scope: Verified User auth, profile, recovery, navigation, and local sign-out after remote logout failure.
 Author review: Pending team review and local browser verification.
 */
 import assert from "node:assert/strict";
@@ -16,6 +16,7 @@ import { chromium } from "playwright-core";
 const requests = [];
 let refreshDelay;
 let refreshStarted;
+let failLogout = false;
 const gateway = createServer(async (request, response) => {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
@@ -29,6 +30,11 @@ const gateway = createServer(async (request, response) => {
   if (request.url === "/auth/login" && body.email === "wrong@u.nus.edu") {
     response.writeHead(401, { "content-type": "application/json" });
     response.end(JSON.stringify({ error: { message: "Invalid email or password." } }));
+    return;
+  }
+  if (request.url === "/auth/logout" && failLogout) {
+    response.writeHead(503, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: { message: "Service unavailable" } }));
     return;
   }
   if (request.url === "/auth/login" && body.email === "malformed@u.nus.edu") {
@@ -165,6 +171,27 @@ test("login, profile, logout, registration, recovery and Home navigation reach t
     assert.deepEqual(requests.find((request) => request.path === "/auth/password/reset")?.body,
       { email: "alex@u.nus.edu", otp: "123456", newPassword: "NewPassw0rd" });
   } finally {
+    await page.close();
+  }
+});
+
+test("remote logout failure still clears browser cookies and shows a warning", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/home");
+    await page.getByRole("link", { name: "Profile" }).click();
+    await page.waitForURL("**/profile");
+    failLogout = true;
+    await page.getByRole("button", { name: "Log Out" }).click();
+    await page.waitForURL("**/signin");
+    await page.getByRole("status").getByText("Signed out here, but the service could not confirm remote logout.").waitFor();
+    assert.equal((await page.context().cookies()).some((cookie) => cookie.name === "foc_access" || cookie.name === "foc_refresh"), false);
+  } finally {
+    failLogout = false;
     await page.close();
   }
 });

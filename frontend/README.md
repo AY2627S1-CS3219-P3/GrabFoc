@@ -11,7 +11,7 @@ The frontend runs on port 3000 by default. Copy `frontend/.env.example` to `fron
 
 Start the gateway and User Service, then run `npm install` and `npm run dev` from this folder. The sign-in screen is `/signin`, the app Home is `/home`, and `/` checks the session before redirecting. `/locations` redirects to `/home`.
 
-Registration, resend, and password recovery use the same-origin `/api/gateway/*` rewrite. Sign-in and registration verification call Next.js `/api/session/*` handlers, which call the gateway and put tokens in HttpOnly, SameSite cookies. Protected profile reads go through these handlers with a bearer access token. Refresh rotates the cookie token through `POST /auth/refresh`; browser tabs coordinate refresh with Web Locks. The six-digit registration code is sent to `/auth/register/verify`. Profile displays User Service data; credit and order totals remain pending their own services.
+Registration, resend, and password recovery use the same-origin `/api/gateway/*` rewrite. Sign-in and registration verification call Next.js `/api/session/*` handlers, which call the gateway and put tokens in HttpOnly, SameSite cookies. Protected profile reads go through these handlers with a bearer access token. Refresh rotates the cookie token through `POST /auth/refresh`; browser tabs coordinate refresh with Web Locks. Logout clears local cookies even if User Service logout fails; Sign In then warns that remote token revocation was not confirmed. The six-digit registration code is sent to `/auth/register/verify`. Profile displays User Service data; credit and order totals remain pending their own services.
 
 ## Check button destinations
 
