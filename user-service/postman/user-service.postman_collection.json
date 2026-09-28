@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FoC User Service",
-    "description": "Every route of the User Service, ordered so the whole collection runs top to bottom in the Collection Runner with no manual step: the OTPs are read out of Mailpit's HTTP API by a pre-request script.\n\nNeeds the compose stack up (`docker compose up`) - the service on baseUrl and Mailpit on mailpitUrl.\n\nEach address gets three OTP requests per ten minutes, shared across register, resend and forgot - so every folder here owns its own address and spends that budget deliberately. Every address is generated fresh per run, so the runner is safe to press repeatedly.\n\nThe exception is the two '(manual OTP)' folders at the end - the admin user/role lifecycle and the OTP-protected self-service profile changes. They still need an ADMIN accessToken, targetUserId and each OTP pasted by hand. Exclude them from the runner.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated the requests, the assertions and the Mailpit OTP lookup. Author review: the full collection run green against the compose stack.\n\nAI Assistance Disclosure (the manual folders): Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. 2026-09-28 (model: Claude Sonnet 5): added List users (admin) and Change role (admin) (Step 10 - these routes were marked Postman-verified in admin.controller.ts/admin.service.ts, but the requests used for that were never saved into this collection), the six Step 12 requests (Request OTP through Deactivate account), and Reactivate user (admin) (Step 13). Author review: the six Step 12 requests were exercised via Postman against the compose stack on 2026-09-28 (all endpoints, including the retry-with-the-same-code behaviour on Change email - request and Change password) - see /ai/usage-log.md. Reactivate user (admin) was exercised the same way on 2026-09-28 (deactivate then reactivate, 404 for an unknown id, 409 NOT_DEACTIVATED for an already-ACTIVE target). List users (admin) and Change role (admin) (Step 10) are still unverified through this file specifically, even though the routes themselves were separately confirmed working via ad hoc Postman requests when Step 10 was built.",
+    "description": "Every route of the User Service, ordered so the whole collection runs top to bottom in the Collection Runner with no manual step: the OTPs are read out of Mailpit's HTTP API by a pre-request script.\n\nNeeds the compose stack up (`docker compose up`) - the service on baseUrl and Mailpit on mailpitUrl.\n\nEach address gets three OTP requests per ten minutes, shared across register, resend and forgot - so every folder here owns its own address and spends that budget deliberately. Every address is generated fresh per run, so the runner is safe to press repeatedly.\n\nThe Admin folder claims the bootstrap admin: set adminEmail to USER_BOOTSTRAP_ADMIN_EMAIL, and start the service on an empty database so the bootstrap has run. It resets that admin's password every run (the new one is left in adminPassword), which spends the admin address's OTP budget, so the full collection runs at most three times per ten minutes.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated the requests, the assertions and the Mailpit OTP lookup. Author review: the full collection run green against the compose stack.\n\n2026-09-28 (model: Claude Opus 5.5): automated the Profile and Admin folders - Mailpit OTP lookups, assertions, a fresh account per folder, and claiming the bootstrap admin. Author review: the full collection run green under newman against the compose stack (70 requests, 101 assertions).\n\nAI Assistance Disclosure (the Profile and Admin requests): Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. 2026-09-28 (model: Claude Sonnet 5): added List users (admin) and Change role (admin) (Step 10 - these routes were marked Postman-verified in admin.controller.ts/admin.service.ts, but the requests used for that were never saved into this collection), the six Step 12 requests (Request OTP through Deactivate account), and Reactivate user (admin) (Step 13). Author review: the six Step 12 requests were exercised via Postman against the compose stack on 2026-09-28 (all endpoints, including the retry-with-the-same-code behaviour on Change email - request and Change password) - see /ai/usage-log.md. Reactivate user (admin) was exercised the same way on 2026-09-28 (deactivate then reactivate, 404 for an unknown id, 409 NOT_DEACTIVATED for an already-ACTIVE target). List users (admin) and Change role (admin) (Step 10) are still unverified through this file specifically, even though the routes themselves were separately confirmed working via ad hoc Postman requests when Step 10 was built.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -44,12 +44,34 @@
     {
       "key": "targetUserId",
       "value": "",
-      "description": "For 'Change role (admin)' and 'Reactivate user (admin)': the id of the target user, not the caller."
+      "description": "Set by the run: the account the Admin folder deactivates and reactivates."
     },
     {
       "key": "newEmail",
       "value": "alex.new@u.nus.edu",
-      "description": "For the email-change flow. Must not already belong to another account."
+      "description": "Set by the run: the address the Profile folder changes to."
+    },
+    {
+      "key": "profileEmail",
+      "value": ""
+    },
+    {
+      "key": "targetEmail",
+      "value": ""
+    },
+    {
+      "key": "adminEmail",
+      "value": "",
+      "description": "Must equal USER_BOOTSTRAP_ADMIN_EMAIL in .env. The Admin folder resets this account's password on every run."
+    },
+    {
+      "key": "adminPassword",
+      "value": "",
+      "description": "Set by the run. After a run, the bootstrap admin's current password."
+    },
+    {
+      "key": "adminAccessToken",
+      "value": ""
     }
   ],
   "item": [
@@ -1135,9 +1157,117 @@
       ]
     },
     {
-      "name": "Profile (manual OTP)",
-      "description": "Not yet part of the automated run - exclude this folder in the Collection Runner. Paste each OTP from Mailpit into the otp variable by hand.",
+      "name": "Profile",
       "item": [
+        {
+          "name": "Register a third account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Alex Tan\",\n  \"email\": \"{{profileEmail}}\",\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"91234567\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "Its own address, because the sign-up one has already spent its three OTP requests and forgot-password would answer 429. Request one of three."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A throwaway address, fresh every run, so this never collides with another folder's",
+                  "// account or eats into anyone's rate limit.",
+                  "pm.collectionVariables.set(",
+                  "  'profileEmail',",
+                  "  `profile.${Date.now().toString(36)}@u.nus.edu`,",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register/verify",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{profileEmail}}\",\n  \"otp\": \"{{otp}}\"\n}"
+            },
+            "description": "200. Now there is an ACTIVE account to reset the password of."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Mailpit is a real inbox with an HTTP API, so the runner reads its own code instead",
+                  "// of you copying one out of the browser. The six digits are already in the search",
+                  "// result's Snippet, so one call is enough.",
+                  "//",
+                  "// Filtering by subject keeps the sign-up code and the reset code apart when both are",
+                  "// in the same inbox; sorting by Created takes the newest, which is what a resend",
+                  "// leaves behind.",
+                  "const subject = \"Verify your FoC account\";",
+                  "const email = pm.collectionVariables.get('profileEmail');",
+                  "const query = encodeURIComponent('to:' + email);",
+                  "",
+                  "pm.sendRequest(",
+                  "  `${pm.collectionVariables.get('mailpitUrl')}/api/v1/search?query=${query}`,",
+                  "  (err, res) => {",
+                  "    if (err) { throw new Error('Mailpit is unreachable at mailpitUrl: ' + err); }",
+                  "    const message = res.json().messages",
+                  "      .filter((m) => m.Subject === subject)",
+                  "      .sort((a, b) => b.Created.localeCompare(a.Created))[0];",
+                  "    if (!message) { throw new Error(`No \"${subject}\" email for ${email}`); }",
+                  "    pm.collectionVariables.set('otp', message.Snippet.match(/\\b(\\d{6})\\b/)[1]);",
+                  "  },",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "// Kept in variables, never in the file: nothing here is committed.",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "Get my profile",
           "request": {
@@ -1150,7 +1280,23 @@
             ],
             "url": "{{baseUrl}}/users/me",
             "description": "200 with the self profile: userId, displayName, email, countryCode, mobileNumber - no role, status or createdAt (that's the admin-facing shape returned by GET /admin/users instead). 401 with no token."
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('returns the self profile, and nothing an admin sees', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.all.keys('userId', 'displayName', 'email', 'countryCode', 'mobileNumber');",
+                  "  pm.expect(body.email).to.eql(pm.collectionVariables.get('profileEmail'));",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Update my display name",
@@ -1172,10 +1318,58 @@
               "raw": "{\n  \"displayName\": \"Alex T.\"\n}"
             },
             "description": "200 with the updated self profile. No OTP needed - displayName is the one profile field that isn't OTP-protected. Any field other than displayName (e.g. role, email) is rejected with 400, since the body schema is strict."
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('the new name is saved', () => pm.expect(pm.response.json().displayName).to.eql('Alex T.'));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Request OTP",
+          "name": "400 set my own role",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/me",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"ADMIN\"\n}"
+            },
+            "description": "The body schema is strict, so a USER cannot promote themselves through their own profile."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('the error code is VALIDATION_ERROR', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request OTP (email change)",
           "request": {
             "method": "POST",
             "header": [
@@ -1194,7 +1388,34 @@
               "raw": "{\n  \"purpose\": \"EMAIL_CHANGE\"\n}"
             },
             "description": "202 with { otpExpiresAt }. purpose is one of EMAIL_CHANGE, MOBILE_CHANGE, PASSWORD_CHANGE, DEACTIVATION - swap the value above for whichever flow you're testing next. Always mails the code to the CURRENT email, even for MOBILE_CHANGE (every OTP in this service goes out by email). For DEACTIVATION, 409 LAST_ADMIN before any code is issued if the caller is the sole active admin. 429 after three requests in ten minutes."
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A fresh address every run, so the change never collides with an existing account.",
+                  "pm.collectionVariables.set(",
+                  "  'newEmail',",
+                  "  `profile.new.${Date.now().toString(36)}@u.nus.edu`,",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('says when the code expires', () => {",
+                  "  pm.expect(pm.response.json().otpExpiresAt).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Change email - request",
@@ -1216,7 +1437,48 @@
               "raw": "{\n  \"newEmail\": \"{{newEmail}}\",\n  \"otp\": \"{{otp}}\"\n}"
             },
             "description": "202 with { otpExpiresAt }. Run 'Request OTP' with purpose EMAIL_CHANGE first and paste that code (from the CURRENT address's inbox) into otp here. On success, mails a SECOND code to newEmail - paste that one into otp before 'Change email - verify'. 409 EMAIL_TAKEN if newEmail already belongs to another account (the first code is still consumed even then). OTP errors otherwise."
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Mailpit is a real inbox with an HTTP API, so the runner reads its own code instead",
+                  "// of you copying one out of the browser. The six digits are already in the search",
+                  "// result's Snippet, so one call is enough.",
+                  "//",
+                  "// Filtering by subject keeps the sign-up code and the reset code apart when both are",
+                  "// in the same inbox; sorting by Created takes the newest, which is what a resend",
+                  "// leaves behind.",
+                  "const subject = \"Confirm your FoC email change\";",
+                  "const email = pm.collectionVariables.get('profileEmail');",
+                  "const query = encodeURIComponent('to:' + email);",
+                  "",
+                  "pm.sendRequest(",
+                  "  `${pm.collectionVariables.get('mailpitUrl')}/api/v1/search?query=${query}`,",
+                  "  (err, res) => {",
+                  "    if (err) { throw new Error('Mailpit is unreachable at mailpitUrl: ' + err); }",
+                  "    const message = res.json().messages",
+                  "      .filter((m) => m.Subject === subject)",
+                  "      .sort((a, b) => b.Created.localeCompare(a.Created))[0];",
+                  "    if (!message) { throw new Error(`No \"${subject}\" email for ${email}`); }",
+                  "    pm.collectionVariables.set('otp', message.Snippet.match(/\\b(\\d{6})\\b/)[1]);",
+                  "  },",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Change email - verify",
@@ -1238,7 +1500,87 @@
               "raw": "{\n  \"otp\": \"{{otp}}\"\n}"
             },
             "description": "200 with the refreshed self profile - email is now newEmail. Uses the SECOND code, mailed to newEmail by 'Change email - request', not the first one. 409 EMAIL_TAKEN if newEmail was claimed by someone else in the meantime. No refresh tokens are revoked - existing sessions stay logged in."
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Mailpit is a real inbox with an HTTP API, so the runner reads its own code instead",
+                  "// of you copying one out of the browser. The six digits are already in the search",
+                  "// result's Snippet, so one call is enough.",
+                  "//",
+                  "// Filtering by subject keeps the sign-up code and the reset code apart when both are",
+                  "// in the same inbox; sorting by Created takes the newest, which is what a resend",
+                  "// leaves behind.",
+                  "const subject = \"Verify your new FoC email\";",
+                  "const email = pm.collectionVariables.get('newEmail');",
+                  "const query = encodeURIComponent('to:' + email);",
+                  "",
+                  "pm.sendRequest(",
+                  "  `${pm.collectionVariables.get('mailpitUrl')}/api/v1/search?query=${query}`,",
+                  "  (err, res) => {",
+                  "    if (err) { throw new Error('Mailpit is unreachable at mailpitUrl: ' + err); }",
+                  "    const message = res.json().messages",
+                  "      .filter((m) => m.Subject === subject)",
+                  "      .sort((a, b) => b.Created.localeCompare(a.Created))[0];",
+                  "    if (!message) { throw new Error(`No \"${subject}\" email for ${email}`); }",
+                  "    pm.collectionVariables.set('otp', message.Snippet.match(/\\b(\\d{6})\\b/)[1]);",
+                  "  },",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('the account now has the new address', () => {",
+                  "  pm.expect(pm.response.json().email).to.eql(pm.collectionVariables.get('newEmail'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request OTP (mobile change)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/me/otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"MOBILE_CHANGE\"\n}"
+            },
+            "description": "202 with { otpExpiresAt }. purpose is one of EMAIL_CHANGE, MOBILE_CHANGE, PASSWORD_CHANGE, DEACTIVATION - swap the value above for whichever flow you're testing next. Always mails the code to the CURRENT email, even for MOBILE_CHANGE (every OTP in this service goes out by email). For DEACTIVATION, 409 LAST_ADMIN before any code is issued if the caller is the sole active admin. 429 after three requests in ten minutes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('says when the code expires', () => {",
+                  "  pm.expect(pm.response.json().otpExpiresAt).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Change mobile",
@@ -1260,7 +1602,206 @@
               "raw": "{\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"98765432\",\n  \"otp\": \"{{otp}}\"\n}"
             },
             "description": "200 with the refreshed self profile. Run 'Request OTP' with purpose MOBILE_CHANGE first. countryCode and mobileNumber must be a valid pair together (libphonenumber-js), not just individually well-formed. OTP errors otherwise; 400 for an invalid number."
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Mailpit is a real inbox with an HTTP API, so the runner reads its own code instead",
+                  "// of you copying one out of the browser. The six digits are already in the search",
+                  "// result's Snippet, so one call is enough.",
+                  "//",
+                  "// Filtering by subject keeps the sign-up code and the reset code apart when both are",
+                  "// in the same inbox; sorting by Created takes the newest, which is what a resend",
+                  "// leaves behind.",
+                  "const subject = \"Confirm your new FoC mobile number\";",
+                  "const email = pm.collectionVariables.get('newEmail');",
+                  "const query = encodeURIComponent('to:' + email);",
+                  "",
+                  "pm.sendRequest(",
+                  "  `${pm.collectionVariables.get('mailpitUrl')}/api/v1/search?query=${query}`,",
+                  "  (err, res) => {",
+                  "    if (err) { throw new Error('Mailpit is unreachable at mailpitUrl: ' + err); }",
+                  "    const message = res.json().messages",
+                  "      .filter((m) => m.Subject === subject)",
+                  "      .sort((a, b) => b.Created.localeCompare(a.Created))[0];",
+                  "    if (!message) { throw new Error(`No \"${subject}\" email for ${email}`); }",
+                  "    pm.collectionVariables.set('otp', message.Snippet.match(/\\b(\\d{6})\\b/)[1]);",
+                  "  },",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('the new number is saved', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.countryCode).to.eql('+65');",
+                  "  pm.expect(body.mobileNumber).to.eql('98765432');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Register the account to deactivate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"Alex Tan\",\n  \"email\": \"{{targetEmail}}\",\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"91234567\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "description": "Its own address, because the sign-up one has already spent its three OTP requests and forgot-password would answer 429. Request one of three."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A throwaway address, fresh every run, so this never collides with another folder's",
+                  "// account or eats into anyone's rate limit.",
+                  "pm.collectionVariables.set(",
+                  "  'targetEmail',",
+                  "  `target.${Date.now().toString(36)}@u.nus.edu`,",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify it",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/register/verify",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{targetEmail}}\",\n  \"otp\": \"{{otp}}\"\n}"
+            },
+            "description": "200. Now there is an ACTIVE account to reset the password of."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Mailpit is a real inbox with an HTTP API, so the runner reads its own code instead",
+                  "// of you copying one out of the browser. The six digits are already in the search",
+                  "// result's Snippet, so one call is enough.",
+                  "//",
+                  "// Filtering by subject keeps the sign-up code and the reset code apart when both are",
+                  "// in the same inbox; sorting by Created takes the newest, which is what a resend",
+                  "// leaves behind.",
+                  "const subject = \"Verify your FoC account\";",
+                  "const email = pm.collectionVariables.get('targetEmail');",
+                  "const query = encodeURIComponent('to:' + email);",
+                  "",
+                  "pm.sendRequest(",
+                  "  `${pm.collectionVariables.get('mailpitUrl')}/api/v1/search?query=${query}`,",
+                  "  (err, res) => {",
+                  "    if (err) { throw new Error('Mailpit is unreachable at mailpitUrl: ' + err); }",
+                  "    const message = res.json().messages",
+                  "      .filter((m) => m.Subject === subject)",
+                  "      .sort((a, b) => b.Created.localeCompare(a.Created))[0];",
+                  "    if (!message) { throw new Error(`No \"${subject}\" email for ${email}`); }",
+                  "    pm.collectionVariables.set('otp', message.Snippet.match(/\\b(\\d{6})\\b/)[1]);",
+                  "  },",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('targetUserId', pm.response.json().user.userId);",
+                  "}",
+                  "",
+                  "// Kept in variables, never in the file: nothing here is committed.",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request OTP (password change)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/me/otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"PASSWORD_CHANGE\"\n}"
+            },
+            "description": "202 with { otpExpiresAt }. purpose is one of EMAIL_CHANGE, MOBILE_CHANGE, PASSWORD_CHANGE, DEACTIVATION - swap the value above for whichever flow you're testing next. Always mails the code to the CURRENT email, even for MOBILE_CHANGE (every OTP in this service goes out by email). For DEACTIVATION, 409 LAST_ADMIN before any code is issued if the caller is the sole active admin. 429 after three requests in ten minutes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('says when the code expires', () => {",
+                  "  pm.expect(pm.response.json().otpExpiresAt).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Change password",
@@ -1279,10 +1820,119 @@
             "url": "{{baseUrl}}/users/me/password",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"otp\": \"{{otp}}\",\n  \"newPassword\": \"AnotherPassw0rd\"\n}"
+              "raw": "{\n  \"otp\": \"{{otp}}\",\n  \"newPassword\": \"{{newPassword}}\"\n}"
             },
             "description": "204, no tokens back. Run 'Request OTP' with purpose PASSWORD_CHANGE first. Revokes every refresh token, so this session's accessToken still works (up to 15 min) but refreshToken no longer does - log in again to get a fresh pair. 400 VALIDATION_ERROR if newPassword matches the current one (still costs you the code). OTP errors otherwise."
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Mailpit is a real inbox with an HTTP API, so the runner reads its own code instead",
+                  "// of you copying one out of the browser. The six digits are already in the search",
+                  "// result's Snippet, so one call is enough.",
+                  "//",
+                  "// Filtering by subject keeps the sign-up code and the reset code apart when both are",
+                  "// in the same inbox; sorting by Created takes the newest, which is what a resend",
+                  "// leaves behind.",
+                  "const subject = \"Confirm your new FoC password\";",
+                  "const email = pm.collectionVariables.get('targetEmail');",
+                  "const query = encodeURIComponent('to:' + email);",
+                  "",
+                  "pm.sendRequest(",
+                  "  `${pm.collectionVariables.get('mailpitUrl')}/api/v1/search?query=${query}`,",
+                  "  (err, res) => {",
+                  "    if (err) { throw new Error('Mailpit is unreachable at mailpitUrl: ' + err); }",
+                  "    const message = res.json().messages",
+                  "      .filter((m) => m.Subject === subject)",
+                  "      .sort((a, b) => b.Created.localeCompare(a.Created))[0];",
+                  "    if (!message) { throw new Error(`No \"${subject}\" email for ${email}`); }",
+                  "    pm.collectionVariables.set('otp', message.Snippet.match(/\\b(\\d{6})\\b/)[1]);",
+                  "  },",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 refresh after a password change",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "description": "401. The logout above revoked this token. An unknown, an expired and a revoked token all answer identically, so nothing can be learned from which one you hold."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('the error code is TOKEN_INVALID', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('TOKEN_INVALID');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request OTP (deactivation)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/users/me/otp",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"purpose\": \"DEACTIVATION\"\n}"
+            },
+            "description": "202 with { otpExpiresAt }. purpose is one of EMAIL_CHANGE, MOBILE_CHANGE, PASSWORD_CHANGE, DEACTIVATION - swap the value above for whichever flow you're testing next. Always mails the code to the CURRENT email, even for MOBILE_CHANGE (every OTP in this service goes out by email). For DEACTIVATION, 409 LAST_ADMIN before any code is issued if the caller is the sole active admin. 429 after three requests in ten minutes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('says when the code expires', () => {",
+                  "  pm.expect(pm.response.json().otpExpiresAt).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Deactivate account",
@@ -1304,16 +1954,386 @@
               "raw": "{\n  \"otp\": \"{{otp}}\"\n}"
             },
             "description": "204. Run 'Request OTP' with purpose DEACTIVATION first. Sets status DEACTIVATED and revokes every refresh token; logging in afterward gives 403 ACCOUNT_DEACTIVATED. 409 LAST_ADMIN if the caller is the sole active admin - promote another admin via 'Change role (admin)' first to test the success path instead. An admin can undo this with 'Reactivate user (admin)'."
-          }
-        }
-      ]
-    },
-    {
-      "name": "Admin (manual OTP)",
-      "description": "Not yet part of the automated run - exclude this folder in the Collection Runner. accessToken must belong to an ADMIN, and targetUserId must be set by hand.",
-      "item": [
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Mailpit is a real inbox with an HTTP API, so the runner reads its own code instead",
+                  "// of you copying one out of the browser. The six digits are already in the search",
+                  "// result's Snippet, so one call is enough.",
+                  "//",
+                  "// Filtering by subject keeps the sign-up code and the reset code apart when both are",
+                  "// in the same inbox; sorting by Created takes the newest, which is what a resend",
+                  "// leaves behind.",
+                  "const subject = \"Confirm deactivating your FoC account\";",
+                  "const email = pm.collectionVariables.get('targetEmail');",
+                  "const query = encodeURIComponent('to:' + email);",
+                  "",
+                  "pm.sendRequest(",
+                  "  `${pm.collectionVariables.get('mailpitUrl')}/api/v1/search?query=${query}`,",
+                  "  (err, res) => {",
+                  "    if (err) { throw new Error('Mailpit is unreachable at mailpitUrl: ' + err); }",
+                  "    const message = res.json().messages",
+                  "      .filter((m) => m.Subject === subject)",
+                  "      .sort((a, b) => b.Created.localeCompare(a.Created))[0];",
+                  "    if (!message) { throw new Error(`No \"${subject}\" email for ${email}`); }",
+                  "    pm.collectionVariables.set('otp', message.Snippet.match(/\\b(\\d{6})\\b/)[1]);",
+                  "  },",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "403 login while deactivated",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{targetEmail}}\",\n  \"password\": \"{{newPassword}}\"\n}"
+            },
+            "description": "200 rather than 201 - a session is not a resource you can address afterwards. Login is not rate-limited by the OTP counter; it has its own five-failure lockout."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.to.have.status(403));",
+                  "pm.test('the error code is ACCOUNT_DEACTIVATED', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('ACCOUNT_DEACTIVATED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin: forgot password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/password/forgot",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\"\n}"
+            },
+            "description": "202 with a fixed message for any NUS address, whether or not it has an account - so there is nothing to read into the answer either way. No otpExpiresAt here, unlike resend-otp: that field would be a straight answer to \"does this address have an account\". This is also how the bootstrap admin claims its passwordless account. Request two of three."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// adminEmail must equal USER_BOOTSTRAP_ADMIN_EMAIL, the admin the service creates on first start.",
+                  "if (!pm.variables.get('adminEmail')) {",
+                  "  throw new Error('Set adminEmail to the value of USER_BOOTSTRAP_ADMIN_EMAIL in .env');",
+                  "}",
+                  "// A new password every run: a reset to the current password is rejected.",
+                  "pm.collectionVariables.set('adminPassword', `Admin${Date.now().toString(36)}9`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('202 Accepted', () => pm.response.to.have.status(202));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin: reset password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/password/reset",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"otp\": \"{{otp}}\",\n  \"newPassword\": \"{{adminPassword}}\"\n}"
+            },
+            "description": "204, and deliberately no tokens: every refresh token is revoked, so every device logs in again - which is the point, since a reset is what you do when someone else may have had your password. It also lifts any login lockout, because forgetting your password is the usual way to get locked out."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Mailpit is a real inbox with an HTTP API, so the runner reads its own code instead",
+                  "// of you copying one out of the browser. The six digits are already in the search",
+                  "// result's Snippet, so one call is enough.",
+                  "//",
+                  "// Filtering by subject keeps the sign-up code and the reset code apart when both are",
+                  "// in the same inbox; sorting by Created takes the newest, which is what a resend",
+                  "// leaves behind.",
+                  "const subject = \"Reset your FoC password\";",
+                  "const email = pm.variables.get('adminEmail');",
+                  "const query = encodeURIComponent('to:' + email);",
+                  "",
+                  "pm.sendRequest(",
+                  "  `${pm.collectionVariables.get('mailpitUrl')}/api/v1/search?query=${query}`,",
+                  "  (err, res) => {",
+                  "    if (err) { throw new Error('Mailpit is unreachable at mailpitUrl: ' + err); }",
+                  "    const message = res.json().messages",
+                  "      .filter((m) => m.Subject === subject)",
+                  "      .sort((a, b) => b.Created.localeCompare(a.Created))[0];",
+                  "    if (!message) { throw new Error(`No \"${subject}\" email for ${email}`); }",
+                  "    pm.collectionVariables.set('otp', message.Snippet.match(/\\b(\\d{6})\\b/)[1]);",
+                  "  },",
+                  ");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin: login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "description": "200 rather than 201 - a session is not a resource you can address afterwards. Login is not rate-limited by the OTP counter; it has its own five-failure lockout."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "// Its own variable, so the target's session in accessToken survives.",
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('adminAccessToken', pm.response.json().accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "List users (admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users?status=DEACTIVATED",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "DEACTIVATED"
+                }
+              ]
+            },
+            "description": "200 with { items }, each in the admin-facing Profile shape (adds role/status/createdAt over the self profile). role and status are both optional exact-match filters - remove or disable either query param to drop it. 403 for a non-admin caller (logged as UNAUTHORISED_ACCESS); 401 with no token. accessToken must belong to an ADMIN."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('lists the deactivated target', () => {",
+                  "  const target = pm.response.json().items",
+                  "    .find((u) => u.userId === pm.collectionVariables.get('targetUserId'));",
+                  "  pm.expect(target.status).to.eql('DEACTIVATED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reactivate user (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/users/{{targetUserId}}/reactivate",
+            "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 NOT_DEACTIVATED unless the target is currently DEACTIVATED (run 'Deactivate account' as that user first to test the success path). 403/401 as above."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('returns the target, ACTIVE', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.userId).to.eql(pm.collectionVariables.get('targetUserId'));",
+                  "  pm.expect(body.status).to.eql('ACTIVE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "409 reactivate an active account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/users/{{targetUserId}}/reactivate",
+            "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 NOT_DEACTIVATED unless the target is currently DEACTIVATED (run 'Deactivate account' as that user first to test the success path). 403/401 as above."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
+                  "pm.test('the error code is NOT_DEACTIVATED', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_DEACTIVATED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 reactivate an unknown id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/users/00000000-0000-4000-8000-000000000000/reactivate",
+            "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 NOT_DEACTIVATED unless the target is currently DEACTIVATED (run 'Deactivate account' as that user first to test the success path). 403/401 as above."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('the error code is NOT_FOUND', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login after reactivation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{targetEmail}}\",\n  \"password\": \"{{newPassword}}\"\n}"
+            },
+            "description": "200 rather than 201 - a session is not a resource you can address afterwards. Login is not rate-limited by the OTP counter; it has its own five-failure lockout."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "",
+                  "// Kept in variables, never in the file: nothing here is committed.",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "403 list users as a USER",
           "request": {
             "method": "GET",
             "header": [
@@ -1345,7 +2365,21 @@
               ]
             },
             "description": "200 with { items }, each in the admin-facing Profile shape (adds role/status/createdAt over the self profile). role and status are both optional exact-match filters - remove or disable either query param to drop it. 403 for a non-admin caller (logged as UNAUTHORISED_ACCESS); 401 with no token. accessToken must belong to an ADMIN."
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden', () => pm.response.to.have.status(403));",
+                  "pm.test('the error code is FORBIDDEN', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN');",
+                  "});"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Change role (admin)",
@@ -1358,7 +2392,7 @@
               },
               {
                 "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
+                "value": "Bearer {{adminAccessToken}}"
               }
             ],
             "url": "{{baseUrl}}/admin/users/{{targetUserId}}/role",
@@ -1367,21 +2401,53 @@
               "raw": "{\n  \"role\": \"ADMIN\"\n}"
             },
             "description": "200 with the target's admin-facing profile. role is 'USER' or 'ADMIN'. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE if the target isn't ACTIVE; 409 CANNOT_MODIFY_SELF if targetUserId equals the caller's own id and role is USER (use 'Deactivate account' to remove your own admin access instead); 409 LAST_ADMIN if the caller is the sole active admin demoting themselves. 403/401 as above."
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('the target is now an ADMIN', () => pm.expect(pm.response.json().role).to.eql('ADMIN'));"
+                ]
+              }
+            }
+          ]
         },
         {
-          "name": "Reactivate user (admin)",
+          "name": "Change role back to USER",
           "request": {
-            "method": "POST",
+            "method": "PATCH",
             "header": [
               {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
                 "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
+                "value": "Bearer {{adminAccessToken}}"
               }
             ],
-            "url": "{{baseUrl}}/admin/users/{{targetUserId}}/reactivate",
-            "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 NOT_DEACTIVATED unless the target is currently DEACTIVATED (run 'Deactivate account' as that user first to test the success path). 403/401 as above."
-          }
+            "url": "{{baseUrl}}/admin/users/{{targetUserId}}/role",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"USER\"\n}"
+            },
+            "description": "Demotes the target again, so admins do not pile up across runs."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('the target is a USER again', () => pm.expect(pm.response.json().role).to.eql('USER'));"
+                ]
+              }
+            }
+          ]
         }
       ]
     }
