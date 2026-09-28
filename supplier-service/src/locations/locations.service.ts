@@ -140,9 +140,10 @@ export class LocationsService {
 
     const limit = param(query.pageSize);
     const offset = param((query.page - 1) * query.pageSize);
+    // Fixed SQL keywords chosen by the enum, never interpolated from raw input.
+    const direction = query.order === 'desc' ? 'DESC' : 'ASC';
     const { rows } = await this.pool.query<LocationRow>(
-      // name A→Z; caller-chosen sorting is pending
-      `SELECT * FROM locations${whereSql} ORDER BY lower(name), id LIMIT ${limit} OFFSET ${offset}`,
+      `SELECT * FROM locations${whereSql} ORDER BY lower(name) ${direction}, id LIMIT ${limit} OFFSET ${offset}`,
       params,
     );
     return { items: rows.map(toDto), page: query.page, pageSize: query.pageSize, total: Number(countResult.rows[0].n) };
