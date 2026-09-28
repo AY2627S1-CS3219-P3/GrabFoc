@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Reconstructed and expanded Jie Yang's frontend and API Gateway usage entries; recorded User and Supplier gateway routing changes on 2026-09-28.
+Scope: Recorded Jie Yang's frontend and gateway assistance, including the gateway refactor and service-local environment change.
 Author review: Pending Jie Yang's review before merge.
 -->
 
@@ -59,6 +59,304 @@ Template:
 <!-- Add your entries here. -->
 
 ## Jie Yang
+
+### 2026-09-28 — Gateway-local .env configuration (feature/api-gateway-refactor)
+
+**Tool:** Codex (GPT-6) · **Mode:** refactor, debug
+**Files:** `api-gateway/src/config.ts`, `api-gateway/test/config.test.js`, `api-gateway/.env.example`, `api-gateway/README.md`, `api-gateway/AGENTS.md`, `.env.example`, `ai/usage-log.md`
+
+**Scenario:** Corrected the initial root `.env` approach so the gateway reads only its own environment file. The root `.env` loading entry was removed.
+
+**Prompt (exact):**
+
+~~~text
+shouldnt the gateway read from a .env file for the url of the different services and configs...
+undo that and remove it for usage log. each service and api gateway should have it's own env. its a microservice architecture which means they shouldnt share an env
+~~~
+
+**What it produced:** Gateway-local `.env` loading, a service-specific example file, precedence tests and updated setup instructions.
+
+**What I changed or rejected:** The user rejected loading the shared root `.env`; this replaces that work. No secret values or new configuration keys were added.
+
+**Verification:** `npm.cmd test` passed, including the new configuration tests.
+
+### 2026-09-28 — Gateway architecture refactor (feature/api-gateway-refactor)
+
+**Tool:** Codex (GPT-6) · **Mode:** refactor, debug
+**Files:** `api-gateway/src/**`, `api-gateway/test/**`, `api-gateway/README.md`, `api-gateway/AGENTS.md`, `ai/usage-log.md`
+
+**Scenario:** Separate route definitions, authentication, proxying and request logging while preserving the gateway's public routes and service RBAC boundary.
+
+**Prompt (exact, from the attached text):**
+
+~~~text
+Refactor the API gateway to make it scalable and maintainable as more backend services are added.
+
+Current gateway structure:
+
+src/
+├── auth.ts
+├── config.ts
+├── proxy.ts
+└── server.ts
+
+The current server.ts contains service-specific route matching functions such as userRoute() and supplierRoute(), authentication checks, logging, proxying, health checks, and error handling all in one file.
+
+Please refactor this without changing the existing external API behavior.
+
+Architecture requirements:
+
+1. Keep the API gateway responsible for:
+   - routing requests to the correct backend service
+   - JWT authentication / token verification
+   - access logging
+   - health endpoint
+   - proxying requests
+   - generic gateway-level error handling
+
+2. Do NOT move service-level authorization/RBAC into the gateway.
+   - The gateway should only distinguish public vs authenticated routes.
+   - Individual backend services remain responsible for checking roles/permissions and returning 403 when appropriate.
+   - This matches our project architecture: gateway authenticates, each service authorizes.
+
+3. Replace service-specific routing logic in server.ts with declarative route definitions.
+
+Target structure should be approximately:
+
+src/
+├── server.ts
+├── app.ts
+├── config/
+│   └── index.ts
+├── auth/
+│   ├── verify-token.ts
+│   └── auth.middleware.ts
+├── routing/
+│   ├── router.ts
+│   ├── types.ts
+│   └── routes/
+│       ├── user.routes.ts
+│       ├── supplier.routes.ts
+│       └── index.ts
+├── proxy/
+│   └── proxy.ts
+├── middleware/
+│   ├── request-logger.ts
+│   └── error-handler.ts
+└── utils/
+    └── response.ts
+
+You do not have to follow this structure exactly if a simpler structure is cleaner, but keep concerns separated and avoid unnecessary abstraction.
+
+4. Define a reusable GatewayRoute type, something conceptually like:
+
+type GatewayRoute = {
+  method: string;
+  pattern: RegExp;
+  service: ServiceName;
+  auth: 'public' | 'authenticated';
+};
+
+5. Each service should expose its own route definitions.
+
+For example:
+
+user.routes.ts
+- GET /.well-known/jwks.json -> public
+- POST auth/register -> public
+- POST auth/register/verify -> public
+- POST auth/register/resend-otp -> public
+- POST auth/login -> public
+- POST auth/refresh -> public
+- POST auth/password/forgot -> public
+- POST auth/password/reset -> public
+- POST auth/logout -> authenticated
+- GET /users/me -> authenticated
+- PATCH /users/me -> authenticated
+- GET /admin/users -> authenticated
+- PATCH /admin/users/:userId/role -> authenticated
+
+Use the configured authPrefix rather than hard-coding it where appropriate.
+
+supplier.routes.ts
+- GET /location-types
+- GET /locations
+- POST /locations
+- GET /locations/:locationId
+- PATCH /locations/:locationId
+- POST /locations/:locationId/deactivate
+- POST /locations/:locationId/restore
+
+These gateway routes should require authentication according to the current implementation. Do NOT enforce ADMIN role in the gateway; Supplier Service handles that.
+
+6. Implement a generic router:
+
+findRoute(routes, method, path)
+
+It should return the matching route definition instead of server.ts knowing anything about User Service or Supplier Service route shapes.
+
+7. Centralize service URL resolution.
+
+For example:
+
+getServiceUrl(route.service, config)
+
+Avoid scattered conditionals such as:
+
+if user -> config.userServiceUrl
+if supplier -> config.supplierServiceUrl
+
+Design it so adding an order service later is straightforward.
+
+8. Extract authentication handling so this duplicated code disappears:
+
+if (!await verify(request.headers.authorization)) {
+  console.warn(...)
+  return json(response, 401, { error: 'Unauthorized' });
+}
+
+Create a reusable authentication helper/middleware.
+
+9. Improve error handling.
+
+Currently one large try/catch can turn any error into:
+
+503 Authentication service unavailable
+
+That is misleading.
+
+Separate at least:
+
+- authentication verifier failure -> 503 Authentication service unavailable
+- invalid/missing authentication -> 401 Unauthorized
+- unmatched route -> 404 Not found
+- upstream/proxy failure -> 502 Upstream service unavailable
+- unexpected gateway error -> 500 Internal server error
+
+Be careful not to send a second response if the proxy has already started writing.
+
+10. Improve structured logging.
+
+Keep JSON structured logs.
+
+At minimum log completed requests with:
+- event
+- requestId
+- method
+- path
+- target service if applicable
+- status
+- durationMs
+
+Also log authentication failures and upstream failures.
+
+Generate or propagate a request ID:
+- use incoming x-request-id if present
+- otherwise generate one
+- forward it to downstream services if feasible with the existing proxy implementation
+
+11. server.ts should become very small.
+
+Its responsibility should mostly be:
+- load config
+- create the gateway/app
+- start listening
+- log gateway_started
+
+Move request-processing logic elsewhere.
+
+12. Preserve dependency injection/testability.
+
+The existing createGateway(config, verify = createTokenVerifier(config)) pattern allows tests to inject a fake token verifier. Preserve this capability or improve it.
+
+13. Preserve existing behavior unless required for the architectural refactor.
+
+Do not:
+- rename public API endpoints
+- change request/response payloads
+- introduce a web framework such as Express/Fastify unless absolutely necessary
+- add Kong, Envoy, service mesh, Kubernetes-specific components, etc.
+- duplicate RBAC logic from downstream services
+- overengineer the gateway
+
+Continue using node:http.
+
+14. Add/update tests.
+
+Cover at least:
+- GET /health -> 200
+- unknown route -> 404
+- public user route works without auth
+- protected user route rejects invalid auth with 401
+- protected supplier route rejects invalid auth with 401
+- valid authenticated route proxies to correct service
+- dynamic routes such as /locations/:id match
+- /locations/:id/deactivate and /restore match
+- /admin/users/:id/role matches
+- malformed similar paths do not accidentally match
+- verifier exception returns 503
+- proxy/upstream failure returns 502 if testable
+- route ordering does not cause dynamic routes to shadow more specific routes
+
+15. Check the existing repository before making changes.
+
+Do not assume the pasted snippets represent the entire implementation. Inspect:
+- package.json
+- tsconfig
+- existing tests
+- auth.ts
+- config.ts
+- proxy.ts
+- server.ts
+- downstream route conventions
+
+Reuse existing utilities where appropriate instead of rewriting working code unnecessarily.
+
+16. Keep TypeScript strict and avoid `any`.
+
+Prefer small explicit types and functions.
+
+17. Important: regex/path matching must be correct.
+
+Examples:
+- /admin/users/<id>/role
+- /locations/<id>
+- /locations/<id>/deactivate
+- /locations/<id>/restore
+
+Do not use malformed escaped regexes. Ensure matches are anchored with ^ and $ so extra path segments do not match unintentionally.
+
+Before editing:
+1. Inspect the current gateway implementation and tests.
+2. Briefly explain the refactor plan.
+3. Then implement it.
+
+After editing:
+1. Run typecheck.
+2. Run gateway tests.
+3. Run lint if configured.
+4. Fix any failures caused by the refactor.
+5. Summarize:
+   - files added/changed
+   - architectural changes
+   - behavior preserved
+   - tests run and results
+   - any remaining concerns
+
+Keep the solution appropriate for a university microservices project: clean, extensible, testable, but not production-infrastructure overkill.
+~~~
+
+**Additional prompt (exact):**
+
+~~~text
+maybe you can js branch out from that integration branch into the a api-gateway branch, commit and push those changes there, then merge it back into this frontend-service integration branch
+~~~
+
+**What it produced:** Declarative service routes, a generic matcher, a small startup entry point, request IDs and structured logs, distinct 401/502/503/500 handling, and regression tests. A review finding led to a follow-up fix that returns 503 only for JWKS outages and 500 for unexpected verifier errors.
+
+**What I changed or rejected:** Pending gateway owner review. The existing bearer-token handoff remains unchanged.
+
+**Verification:** `npm.cmd test` passed all 19 tests after the review fix; human review remains pending.
 
 ### 2026-09-28 — Supplier Service gateway routes (feature/gateway-supplier-routes)
 

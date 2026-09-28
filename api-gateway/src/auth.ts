@@ -1,13 +1,15 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Added gateway verification of User Service bearer JWTs using its JWKS.
+Scope: Added gateway verification of User Service bearer JWTs; distinguished JWKS outages from invalid tokens on 2026-09-28.
 Author review: Pending gateway owner review and User Service signing contract confirmation.
 */
 import { createPublicKey, verify as verifySignature, type JsonWebKey } from 'node:crypto';
 import type { Config } from './config.js';
 
 type Jwk = JsonWebKey & { kid?: string; alg?: string; use?: string; kty?: string };
+
+export class JwksUnavailableError extends Error {}
 
 function decodePart(value: string): unknown {
   return JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
@@ -47,13 +49,20 @@ export function createTokenVerifier(config: Config, get = fetch) {
       if (typeof claims.nbf === 'number' && claims.nbf > Math.floor(Date.now() / 1000)) return false;
       if (config.jwtIssuer && claims.iss !== config.jwtIssuer) return false;
       if (config.jwtAudience && claims.aud !== config.jwtAudience && !(Array.isArray(claims.aud) && claims.aud.includes(config.jwtAudience))) return false;
-      const key = (await keys()).find((entry) => entry.kid === header.kid && (!entry.alg || entry.alg === alg) && (!entry.use || entry.use === 'sig') && entry.kty === (alg === 'RS256' ? 'RSA' : 'EC'));
+      let availableKeys: Jwk[];
+      try {
+        availableKeys = await keys();
+      } catch {
+        throw new JwksUnavailableError('JWKS unavailable');
+      }
+      const key = availableKeys.find((entry) => entry.kid === header.kid && (!entry.alg || entry.alg === alg) && (!entry.use || entry.use === 'sig') && entry.kty === (alg === 'RS256' ? 'RSA' : 'EC'));
       if (!key) return false;
       const publicKey = createPublicKey({ key, format: 'jwk' });
       return verifySignature('sha256', Buffer.from(`${parts[0]}.${parts[1]}`),
         alg === 'ES256' ? { key: publicKey, dsaEncoding: 'ieee-p1363' } : publicKey,
         Buffer.from(parts[2], 'base64url'));
-    } catch {
+    } catch (error) {
+      if (error instanceof JwksUnavailableError) throw error;
       return false;
     }
   };

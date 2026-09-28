@@ -1,13 +1,15 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Added gateway routing and authentication boundary checks; covered implemented User and Supplier routes on 2026-09-28.
+Scope: Added gateway routing and authentication boundary checks; verified refactored routing, request IDs and errors on 2026-09-28.
 Author review: Pending gateway owner review.
 */
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { after, test } from 'node:test';
 import { createGateway } from '../dist/server.js';
+import { findRoute, gatewayRoutes } from '../dist/routing/router.js';
+import { JwksUnavailableError } from '../dist/auth.js';
 
 // AI-generated (pending human review)
 function listen(server) {
@@ -15,7 +17,11 @@ function listen(server) {
 }
 
 const user = createServer((request, response) => {
-  response.writeHead(201, { 'content-type': 'application/json' });
+  response.writeHead(201, { 'content-type': 'application/json', 'x-request-id': 'upstream-value' });
+  if (request.url?.includes('trace=1')) {
+    response.end(JSON.stringify({ requestId: request.headers['x-request-id'] }));
+    return;
+  }
   response.end(JSON.stringify({ path: request.url, method: request.method, authorization: request.headers.authorization, userId: request.headers['x-user-id'], userRole: request.headers['x-user-role'] }));
 });
 const supplier = createServer((request, response) => {
@@ -129,5 +135,97 @@ test('unknown User paths, methods and internal routes are unavailable', async ()
   ];
   for (const [method, path] of routes) {
     assert.equal((await fetch(`${gatewayUrl}${path}`, { method })).status, 404, `${method} ${path}`);
+  }
+});
+
+test('route lookup is independent of ordering and rejects similar malformed paths', () => {
+  const routes = gatewayRoutes({ authPrefix: '/auth', locationsPrefix: '/locations' });
+  for (const ordered of [routes, [...routes].reverse()]) {
+    assert.equal(findRoute(ordered, 'POST', '/locations/12/deactivate')?.service, 'supplier');
+    assert.equal(findRoute(ordered, 'POST', '/locations/12/restore')?.service, 'supplier');
+    assert.equal(findRoute(ordered, 'GET', '/locations/12')?.service, 'supplier');
+    assert.equal(findRoute(ordered, 'PATCH', '/admin/users/123/role')?.service, 'user');
+    assert.equal(findRoute(ordered, 'POST', '/locations/12/deactivate/extra'), undefined);
+    assert.equal(findRoute(ordered, 'PATCH', '/admin/users/123/role/extra'), undefined);
+  }
+});
+
+test('request IDs are returned and forwarded to the upstream', async () => {
+  const supplied = await fetch(`${gatewayUrl}/auth/login?trace=1`, {
+    method: 'POST', headers: { 'x-request-id': 'trace-123' },
+  });
+  assert.equal(supplied.headers.get('x-request-id'), 'trace-123');
+  assert.deepEqual(await supplied.json(), { requestId: 'trace-123' });
+
+  const generated = await fetch(`${gatewayUrl}/auth/login?trace=1`, { method: 'POST' });
+  const id = generated.headers.get('x-request-id');
+  assert.match(id, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(await generated.json(), { requestId: id });
+});
+
+test('verifier exceptions return 503 while invalid authentication returns 401', async () => {
+  const config = {
+    port: 3001, userServiceUrl: new URL(userUrl), supplierServiceUrl: new URL(supplierUrl),
+    jwksUrl: new URL(`${userUrl}/jwks`), authPrefix: '/auth', locationsPrefix: '/locations',
+  };
+  const broken = createGateway(config, async () => { throw new JwksUnavailableError('JWKS offline'); });
+  const brokenUrl = await listen(broken);
+  try {
+    const response = await fetch(`${brokenUrl}/locations`);
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: 'Authentication service unavailable' });
+  } finally {
+    broken.close();
+  }
+  assert.equal((await fetch(`${gatewayUrl}/locations`)).status, 401);
+});
+
+test('unexpected verifier errors return 500', async () => {
+  const config = {
+    port: 3001, userServiceUrl: new URL(userUrl), supplierServiceUrl: new URL(supplierUrl),
+    jwksUrl: new URL(`${userUrl}/jwks`), authPrefix: '/auth', locationsPrefix: '/locations',
+  };
+  const broken = createGateway(config, async () => { throw new Error('Unexpected verifier failure'); });
+  const brokenUrl = await listen(broken);
+  try {
+    const response = await fetch(`${brokenUrl}/locations`);
+    assert.equal(response.status, 500);
+  } finally {
+    broken.close();
+  }
+});
+
+test('unavailable upstream returns 502', async () => {
+  const unavailable = createServer();
+  const url = await listen(unavailable);
+  await new Promise((resolve) => unavailable.close(resolve));
+  const config = {
+    port: 3001, userServiceUrl: new URL(url), supplierServiceUrl: new URL(supplierUrl),
+    jwksUrl: new URL(`${userUrl}/jwks`), authPrefix: '/auth', locationsPrefix: '/locations',
+  };
+  const broken = createGateway(config, async () => true);
+  const brokenUrl = await listen(broken);
+  try {
+    const response = await fetch(`${brokenUrl}/auth/login`, { method: 'POST' });
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), { error: 'Upstream unavailable' });
+  } finally {
+    broken.close();
+  }
+});
+
+test('unexpected gateway errors return 500 before a response starts', async () => {
+  const config = {
+    port: 3001, userServiceUrl: undefined, supplierServiceUrl: new URL(supplierUrl),
+    jwksUrl: new URL(`${userUrl}/jwks`), authPrefix: '/auth', locationsPrefix: '/locations',
+  };
+  const broken = createGateway(config, async () => true);
+  const brokenUrl = await listen(broken);
+  try {
+    const response = await fetch(`${brokenUrl}/auth/login`, { method: 'POST' });
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: 'Internal server error' });
+  } finally {
+    broken.close();
   }
 });
