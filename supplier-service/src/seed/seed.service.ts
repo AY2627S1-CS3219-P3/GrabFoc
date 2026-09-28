@@ -28,14 +28,17 @@ type CsvRow = Record<
   string
 >;
 
-const GITHUB_BLOB = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/;
-
-/** github.com/<owner>/<repo>/blob/<branch>/<path> -> raw.githubusercontent.com/<owner>/<repo>/<branch>/<path> */
+/**
+ * The CSV's image links point at the template repository's web pages, which are not images and
+ * are outside our control. The same files are in this repository under data/images, so rewrite
+ * each link to the file of the same name served from our own copy.
+ */
 function toImageUrl(value: string): string | null {
   const url = value.trim();
   if (!url) return null;
-  const m = GITHUB_BLOB.exec(url);
-  return m ? `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}` : url;
+  const file = url.split('/').pop();
+  if (!file) return null;
+  return `${config.seedImageBaseUrl}/${file}`;
 }
 
 function toNumber(value: string): number | string {

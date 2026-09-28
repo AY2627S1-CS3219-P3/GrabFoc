@@ -40,6 +40,11 @@ export const config = {
   databaseUrl: required('SUPPLIER_DATABASE_URL'),
   seedCsvPath:
     process.env.SUPPLIER_SEED_CSV || path.resolve(__dirname, '../../data/csv/supplier-seed-data.csv'),
+  // Where the seed's images are served from: this repository's own copy of data/images, not the
+  // template repository. Point it elsewhere (e.g. at this service) by setting the variable.
+  seedImageBaseUrl:
+    process.env.SUPPLIER_SEED_IMAGE_BASE ||
+    'https://raw.githubusercontent.com/AY2627S1-CS3219-P3/GrabFoc/main/data/images',
   // The User Service publishes the public half of its signing key here; this service verifies
   // every forwarded token against it. Optional only in dev-auth mode, where the service can run
   // with no User Service at all; a token sent to it then gets 503 rather than being trusted.
