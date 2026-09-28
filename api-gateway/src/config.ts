@@ -1,9 +1,23 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Added validated runtime configuration for gateway routing and JWKS verification; aligned default port with service defaults on 2026-09-27.
+Scope: Added validated gateway configuration; loaded only the gateway's own .env on 2026-09-28.
 Author review: Pending gateway owner review.
 */
+
+import { fileURLToPath } from 'node:url';
+
+const gatewayEnvPath = fileURLToPath(new URL('../.env', import.meta.url));
+
+// AI-generated (pending human review)
+export function loadRuntimeEnv(path = gatewayEnvPath): NodeJS.ProcessEnv {
+  try {
+    process.loadEnvFile(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  return process.env;
+}
 
 // AI-generated (pending human review)
 export type Config = {
@@ -32,7 +46,7 @@ function prefix(name: string, value: string): string {
 }
 
 // AI-generated (pending human review)
-export function loadConfig(env = process.env): Config {
+export function loadConfig(env = loadRuntimeEnv()): Config {
   const port = Number(env.GATEWAY_PORT ?? '3003');
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('GATEWAY_PORT is invalid');
   const userServiceUrl = serviceUrl('USER_SERVICE_URL', env.USER_SERVICE_URL);

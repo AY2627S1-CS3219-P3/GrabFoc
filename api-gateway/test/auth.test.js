@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Checked actual JWT signature, expiry and issuer verification against a JWKS.
+Scope: Checked JWT signature, expiry and issuer verification; distinguished JWKS failure on 2026-09-28.
 Author review: Pending gateway owner review.
 */
 import assert from 'node:assert/strict';
@@ -29,4 +29,8 @@ test('accepts a valid signed JWT and rejects modified, expired and wrong-issuer 
   assert.equal(await verify(`Bearer ${valid.slice(0, -2)}aa`), false);
   assert.equal(await verify(`Bearer ${token({ iss: 'grabfoc-user', exp: 1 })}`), false);
   assert.equal(await verify(`Bearer ${token({ iss: 'other', exp: Math.floor(Date.now() / 1000) + 60 })}`), false);
+
+  const unavailable = createTokenVerifier(config, async () => { throw new Error('network offline'); });
+  await assert.rejects(unavailable(`Bearer ${valid}`), /JWKS unavailable/);
+  assert.equal(await unavailable('Bearer invalid'), false);
 });
