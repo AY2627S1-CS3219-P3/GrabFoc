@@ -34,4 +34,10 @@ export const config = {
   databaseUrl: required('SUPPLIER_DATABASE_URL'),
   seedCsvPath:
     process.env.SUPPLIER_SEED_CSV || path.resolve(__dirname, '../../data/csv/supplier-seed-data.csv'),
+  // The User Service publishes the public half of its signing key here; this service verifies
+  // every forwarded token against it.
+  jwksUrl: required('SUPPLIER_JWKS_URL'),
+  // Checked only when set, matching the gateway.
+  jwtIssuer: process.env.SUPPLIER_JWT_ISSUER || undefined,
+  jwtAudience: process.env.SUPPLIER_JWT_AUDIENCE || undefined,
 };

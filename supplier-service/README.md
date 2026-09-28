@@ -23,6 +23,7 @@ Stack: NestJS (TypeScript, Node.js), PostgreSQL via `pg` with plain SQL, Zod for
 
    ```
    SUPPLIER_DATABASE_URL=postgres://postgres:<your-password>@localhost:5432/supplier
+   SUPPLIER_JWKS_URL=http://localhost:3001/.well-known/jwks.json
    ```
 
    `SUPPLIER_PORT` defaults to 3002.
@@ -46,7 +47,7 @@ Import `postman/supplier.postman_collection.json`. Set the collection variable `
 docker exec foc-supplier-db psql -U postgres -d supplier -c "TRUNCATE locations RESTART IDENTITY;"
 ```
 
-**Auth is DEV-ONLY for now:** every request needs `X-User-Id` (any value) and `X-User-Role` (`ADMIN` or `USER`). Missing or invalid → 401. This is temporary until the team decides how identity reaches the Supplier Service.
+**Auth:** every request needs `Authorization: Bearer <token>`, with a token issued by the User Service. This service verifies it against the User Service's JWKS (`SUPPLIER_JWKS_URL`), so that service must be running. Missing or invalid → 401, wrong role → 403, JWKS unreachable → 503. Put a token in the collection's `adminToken` and `userToken` variables.
 
 ## Endpoints
 
