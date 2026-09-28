@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Drafted the frontend and API Gateway implementation sequence; updated progress and the JWT handoff decision on 2026-09-28.
+Scope: Drafted the frontend and API Gateway implementation sequence; recorded the User frontend integration branch on 2026-09-28.
 Author review: User authorized part 1 and directed the gateway to forward JWTs; service contracts remain for team review.
 -->
 
@@ -17,9 +17,9 @@ The frontend sends requests through the API Gateway. User Service owns registrat
 
 | Area | Status |
 |---|---|
-| Gateway scaffold, health route, routing, JWT/JWKS verification, and identity-header stripping | Implemented in the working tree; eight gateway tests pass. Live User and Supplier integration is pending. |
-| Authentication UI | Sign-in, sign-up and six-digit verification screens exist. Sign-up and OTP resend call the gateway. Sign-in, verification, refresh, logout and session handling are pending. |
-| Location and profile UI | Routes exist with unconnected states; live service data and management actions are pending. |
+| Gateway scaffold, health route, routing, JWT/JWKS verification, and identity-header stripping | Implemented; 19 gateway tests pass. Live User and Supplier integration is pending. |
+| Authentication UI | User integration branch connects sign-in, registration verification, recovery, refresh and logout through a server-managed session. Live User Service validation is pending. |
+| Location and profile UI | `/home` is the app Home route; the User integration branch loads `/profile` from `GET /users/me`. Supplier locations remain pending a separate branch. |
 | End-to-end integration | Pending service contracts, Supplier JWT verification, and a browser-to-live-services test. |
 
 ## Part 1 — API Gateway (authorized)

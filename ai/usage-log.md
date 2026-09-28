@@ -53,6 +53,49 @@ Template:
 
 ## Jie Yang
 
+### 2026-09-28 — Frontend User Service integration (feature/frontend-user-service-integration)
+
+**Tool:** Codex (GPT-6) · **Mode:** generate, debug
+**Files:** `frontend/app/**`, `frontend/lib/**`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `frontend/.env.example`, `frontend/.gitignore`, `.env.example`, `docs/frontend-gateway-implementation-plan.md`, `ai/usage-log.md`
+
+**Scenario:** Implement the approved User-first frontend integration with reviewable PRs. The user selected a Next.js server session with HttpOnly cookies, complete registration and password recovery, and no Supplier Service changes.
+
+**Prompt (exact):**
+
+~~~text
+PLEASE IMPLEMENT THIS PLAN:
+# Frontend integration with reviewable PRs
+
+## Branch and PR order
+
+1. Create `feature/frontend-user-service-integration` from `feature/frontend-service-integration`. Implement and test the User flows, push the branch, and open a PR into the integration branch. Merge after human review.
+2. Create `feature/frontend-supplier-service-integration` from the updated integration branch. Implement and test Home location loading, push it, and open a draft PR into the integration branch. Complete the live test after the Supplier owner updates its guard; then review and merge.
+
+Each PR will include a concise summary, affected routes, the service contract it uses, verification commands and results, remaining limitations, and a link to its AI usage-log entry.
+
+## User integration
+
+- Move Sign In to `/signin`, rename the current locations screen to `/home`, update navigation, and redirect `/locations` to `/home`. The root route checks or refreshes the server-managed session and sends the user to `/home` or `/signin`.
+- Complete registration with OTP confirmation; connect sign-in and both password-recovery steps to the existing gateway routes.
+- Use Next.js handlers and HttpOnly, SameSite cookies for access and refresh tokens. Handle single-use refresh without concurrent reuse, attach bearer tokens to protected calls, and support logout.
+- Fetch `GET /users/me` to populate profile fields. Keep credit and order figures unavailable until those services are integrated.
+
+## Supplier integration
+
+- Load active locations on `/home` through gateway `GET /locations`; connect search, live type filters, and pagination to the Supplier API.
+- Do not change Supplier Service or add gateway identity headers. Its current development guard remains a blocker for live requests; document that in the draft PR and require a successful live check before merge.
+
+## Verification
+
+Run relevant browser route tests, frontend lint/build, and gateway tests for each branch. Test User flows against the live User Service when available. Test Supplier UI against mocks first, then verify browser → gateway → Supplier with valid and missing tokens after the Supplier guard is updated. Update documentation and the AI usage log on each branch.
+~~~
+
+**What it produced:** User integration branch with login, OTP verification, password recovery, profile, logout, server session cookies, refresh coordination and browser tests. Supplier work follows after review and merge of this branch.
+
+**What I changed or rejected:** Human review pending. The implementation does not modify User Service or Supplier Service and does not expose returned token values in browser JSON.
+
+**Verification:** `npm run test:routes` passed three browser tests; `npm run build` and `npm run lint` passed. Live User Service verification remains pending.
+
 ### 2026-09-28 — Gateway-local .env configuration (feature/api-gateway-refactor)
 
 **Tool:** Codex (GPT-6) · **Mode:** refactor, debug

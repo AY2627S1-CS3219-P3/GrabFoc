@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Added browser tests for frontend button navigation and requests through the gateway rewrite.
+Scope: Verified User auth, profile, recovery and navigation through the gateway rewrite and server session.
 Author review: Pending team review and local browser verification.
 */
 import assert from "node:assert/strict";
@@ -17,9 +17,25 @@ const requests = [];
 const gateway = createServer(async (request, response) => {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
-  requests.push({ method: request.method, path: request.url, body: JSON.parse(Buffer.concat(chunks).toString() || "{}") });
-  response.writeHead(request.url === "/auth/register" ? 201 : 202, { "content-type": "application/json" });
-  response.end(JSON.stringify({ ok: true }));
+  const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+  requests.push({ method: request.method, path: request.url, body, authorization: request.headers.authorization });
+  if (request.url === "/users/me") {
+    response.writeHead(request.headers.authorization === "Bearer test-access" ? 200 : 401, { "content-type": "application/json" });
+    response.end(JSON.stringify({ userId: "user-1", displayName: "Alex Tan", email: "alex@u.nus.edu", countryCode: "+65", mobileNumber: "91234567" }));
+    return;
+  }
+  if (request.url === "/auth/login" && body.email === "wrong@u.nus.edu") {
+    response.writeHead(401, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: { message: "Invalid email or password." } }));
+    return;
+  }
+  if (["/auth/login", "/auth/register/verify", "/auth/refresh"].includes(request.url)) {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ accessToken: "test-access", refreshToken: "test-refresh", expiresIn: 900 }));
+    return;
+  }
+  response.writeHead(request.url === "/auth/register" ? 201 : request.url === "/auth/password/reset" || request.url === "/auth/logout" ? 204 : 202, { "content-type": "application/json" });
+  response.end(request.url === "/auth/password/reset" || request.url === "/auth/logout" ? undefined : JSON.stringify({ ok: true }));
 });
 
 function listen(server) {
@@ -68,21 +84,24 @@ after(async () => {
   await new Promise((resolve) => gateway.close(resolve));
 });
 
-test("sign-up and resend buttons reach the gateway; unfinished buttons stay local", async () => {
+test("login, profile, logout, registration, recovery and Home navigation reach the gateway", async () => {
   const page = await browser.newPage();
   try {
     await page.goto(`${baseUrl}/`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForURL("**/signin");
     await page.getByLabel("Email").fill("alex@u.nus.edu");
     await page.getByLabel("Password").fill("Passw0rdSafe");
     await page.getByRole("button", { name: "Sign In" }).click();
-    try {
-      await page.getByRole("status").waitFor({ timeout: 5000 });
-    } catch {
-      throw new Error(`Sign-in status missing at ${new URL(page.url()).pathname}: ${(await page.locator("body").innerText()).slice(0, 600)}`);
-    }
-    assert.equal(await page.getByRole("status").textContent(), "This action is unavailable right now. Please try again later.");
-    assert.equal(requests.length, 0);
+    await page.waitForURL("**/home");
+    assert.deepEqual(requests.find((request) => request.path === "/auth/login")?.body,
+      { email: "alex@u.nus.edu", password: "Passw0rdSafe" });
+    await page.getByRole("link", { name: "Profile" }).click();
+    await page.waitForURL("**/profile");
+    await page.getByRole("heading", { name: "Alex Tan" }).waitFor();
+    assert.ok(requests.some((request) => request.path === "/users/me" && request.authorization === "Bearer test-access"));
+    await page.getByRole("button", { name: "Log Out" }).click();
+    await page.waitForURL("**/signin");
+    assert.deepEqual(requests.find((request) => request.path === "/auth/logout")?.body, { refreshToken: "test-refresh" });
 
     await page.getByRole("link", { name: "Sign Up" }).click();
     await page.waitForLoadState("networkidle");
@@ -93,30 +112,73 @@ test("sign-up and resend buttons reach the gateway; unfinished buttons stay loca
     await page.getByLabel("Confirm Password").fill("Passw0rdSafe");
     await page.getByRole("button", { name: "Sign Up" }).click();
     await page.waitForURL("**/verify");
-    assert.equal(requests.length, 1);
-    assert.deepEqual(requests[0], {
-      method: "POST", path: "/auth/register",
-      body: { displayName: "Alex Tan", email: "alex@u.nus.edu", countryCode: "+65", mobileNumber: "91234567", password: "Passw0rdSafe" },
-    });
+    assert.deepEqual(requests.find((request) => request.path === "/auth/register")?.body,
+      { displayName: "Alex Tan", email: "alex@u.nus.edu", countryCode: "+65", mobileNumber: "91234567", password: "Passw0rdSafe" });
 
     await page.getByRole("button", { name: "Resend OTP" }).click();
     await page.getByRole("status").getByText("A new verification code has been sent.").waitFor();
-    assert.equal(requests.length, 2);
-    assert.deepEqual(requests[1], { method: "POST", path: "/auth/register/resend-otp", body: { email: "alex@u.nus.edu" } });
+    assert.deepEqual(requests.find((request) => request.path === "/auth/register/resend-otp")?.body, { email: "alex@u.nus.edu" });
 
     for (let digit = 1; digit <= 6; digit++) await page.getByLabel(`Digit ${digit}`).fill(String(digit));
     await page.getByRole("button", { name: "Confirm" }).click();
-    await page.getByRole("status").getByText("This action is unavailable right now. Please try again later.").waitFor();
-    assert.equal(requests.length, 2);
+    await page.waitForURL("**/home");
+    assert.deepEqual(requests.find((request) => request.path === "/auth/register/verify")?.body, { email: "alex@u.nus.edu", otp: "123456" });
 
     await page.goto(`${baseUrl}/locations`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForURL("**/home");
     await page.getByRole("button", { name: "Courier" }).click();
     await page.getByRole("heading", { name: "Available Orders" }).waitFor();
     await page.getByRole("link", { name: "Profile" }).click();
     await page.waitForURL("**/profile");
-    assert.equal(requests.length, 2);
+    await page.getByRole("button", { name: "Log Out" }).click();
+    await page.waitForURL("**/signin");
+    await page.getByRole("link", { name: "Forgot password?" }).click();
+    await page.waitForURL("**/forgot-password");
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByRole("button", { name: "Send reset code" }).click();
+    await page.waitForURL("**/reset-password");
+    await page.getByLabel("Six-digit code").fill("123456");
+    await page.getByLabel("New password").fill("NewPassw0rd");
+    await page.getByLabel("Confirm password").fill("NewPassw0rd");
+    await page.getByRole("button", { name: "Reset password" }).click();
+    await page.getByText("Your password was reset.").waitFor();
+    assert.deepEqual(requests.find((request) => request.path === "/auth/password/forgot")?.body, { email: "alex@u.nus.edu" });
+    assert.deepEqual(requests.find((request) => request.path === "/auth/password/reset")?.body,
+      { email: "alex@u.nus.edu", otp: "123456", newPassword: "NewPassw0rd" });
   } finally {
     await page.close();
   }
+});
+
+test("invalid credentials stay on Sign In and show the service error", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("wrong@u.nus.edu");
+    await page.getByLabel("Password").fill("wrong-password");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.getByRole("status").getByText("Invalid email or password.").waitFor();
+    assert.equal(new URL(page.url()).pathname, "/signin");
+  } finally { await page.close(); }
+});
+
+test("expired access cookie refreshes once across simultaneous tabs", async () => {
+  const context = await browser.newContext();
+  const login = await context.newPage();
+  try {
+    await login.goto(`${baseUrl}/signin`);
+    await login.getByLabel("Email").fill("alex@u.nus.edu");
+    await login.getByLabel("Password").fill("Passw0rdSafe");
+    await login.getByRole("button", { name: "Sign In" }).click();
+    await login.waitForURL("**/home");
+    const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
+    assert.ok(refreshCookie);
+    await context.clearCookies();
+    await context.addCookies([refreshCookie]);
+    const before = requests.filter((request) => request.path === "/auth/refresh").length;
+    const second = await context.newPage();
+    await Promise.all([login.goto(`${baseUrl}/profile`), second.goto(`${baseUrl}/profile`)]);
+    await Promise.all([login.getByRole("heading", { name: "Alex Tan" }).waitFor(), second.getByRole("heading", { name: "Alex Tan" }).waitFor()]);
+    assert.equal(requests.filter((request) => request.path === "/auth/refresh").length - before, 1);
+  } finally { await context.close(); }
 });
