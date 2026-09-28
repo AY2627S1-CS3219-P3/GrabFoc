@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Added gateway routing and authentication boundary checks, including /location-types and forged identity headers.
+Scope: Added gateway routing and authentication boundary checks; covered implemented User Service routes on 2026-09-28.
 Author review: Pending gateway owner review.
 */
 import assert from 'node:assert/strict';
@@ -16,7 +16,7 @@ function listen(server) {
 
 const user = createServer((request, response) => {
   response.writeHead(201, { 'content-type': 'application/json' });
-  response.end(JSON.stringify({ path: request.url, method: request.method }));
+  response.end(JSON.stringify({ path: request.url, method: request.method, authorization: request.headers.authorization, userId: request.headers['x-user-id'], userRole: request.headers['x-user-role'] }));
 });
 const supplier = createServer((request, response) => {
   response.writeHead(200, { 'content-type': 'application/json' });
@@ -41,10 +41,33 @@ test('health reports gateway state', async () => {
   assert.deepEqual(await response.json(), { status: 'ok' });
 });
 
-test('POST auth request reaches User Service with path and query', async () => {
-  const response = await fetch(`${gatewayUrl}/auth/signup?source=web`, { method: 'POST' });
-  assert.equal(response.status, 201);
-  assert.deepEqual(await response.json(), { path: '/auth/signup?source=web', method: 'POST' });
+test('implemented public User routes reach User Service', async () => {
+  const routes = [
+    ['POST', '/auth/register'], ['POST', '/auth/register/verify'],
+    ['POST', '/auth/register/resend-otp'], ['POST', '/auth/login'],
+    ['POST', '/auth/refresh'], ['POST', '/auth/password/forgot'],
+    ['POST', '/auth/password/reset'], ['GET', '/.well-known/jwks.json'],
+  ];
+  for (const [method, path] of routes) {
+    const response = await fetch(`${gatewayUrl}${path}?source=web`, { method });
+    assert.equal(response.status, 201, `${method} ${path}`);
+    assert.deepEqual(await response.json(), { path: `${path}?source=web`, method }, `${method} ${path}`);
+  }
+});
+
+test('implemented protected User routes require a token and forward the verified bearer', async () => {
+  const routes = [
+    ['POST', '/auth/logout'], ['GET', '/users/me'], ['PATCH', '/users/me'],
+    ['GET', '/admin/users'], ['PATCH', '/admin/users/123/role'],
+  ];
+  for (const [method, path] of routes) {
+    assert.equal((await fetch(`${gatewayUrl}${path}`, { method })).status, 401, `${method} ${path}`);
+    const response = await fetch(`${gatewayUrl}${path}`, {
+      method, headers: { authorization: 'Bearer valid', 'x-user-id': 'forged', 'x-user-role': 'ADMIN' },
+    });
+    assert.equal(response.status, 201, `${method} ${path}`);
+    assert.deepEqual(await response.json(), { path, method, authorization: 'Bearer valid' }, `${method} ${path}`);
+  }
 });
 
 test('protected location route rejects missing token', async () => {
@@ -71,7 +94,13 @@ test('location types require a token and reach Supplier Service', async () => {
   assert.deepEqual(await response.json(), { path: '/location-types', authorization: 'Bearer valid' });
 });
 
-test('auth GET and unknown paths are unavailable', async () => {
-  assert.equal((await fetch(`${gatewayUrl}/auth/signup`)).status, 404);
-  assert.equal((await fetch(`${gatewayUrl}/other`)).status, 404);
+test('unknown User paths, methods and internal routes are unavailable', async () => {
+  const routes = [
+    ['POST', '/auth/signup'], ['GET', '/auth/login'], ['POST', '/auth/unknown'],
+    ['POST', '/users/me'], ['GET', '/users/123'], ['POST', '/admin/users'],
+    ['PATCH', '/admin/users/123/status'], ['GET', '/internal/users/123'], ['GET', '/other'],
+  ];
+  for (const [method, path] of routes) {
+    assert.equal((await fetch(`${gatewayUrl}${path}`, { method })).status, 404, `${method} ${path}`);
+  }
 });

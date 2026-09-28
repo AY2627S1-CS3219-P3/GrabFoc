@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Reconstructed and expanded Jie Yang's frontend and API Gateway usage entries from local Codex chat transcripts.
+Scope: Reconstructed and expanded Jie Yang's frontend and API Gateway usage entries; recorded the User gateway routing change on 2026-09-28.
 Author review: Pending Jie Yang's review before merge.
 -->
 
@@ -59,6 +59,27 @@ Template:
 <!-- Add your entries here. -->
 
 ## Jie Yang
+
+### 2026-09-28 — User Service gateway routes (feature/gateway-user-routes)
+
+**Tool:** Codex (GPT-6) · **Mode:** generate, explain
+**Files:** `api-gateway/src/server.ts`, `api-gateway/test/gateway.test.js`, `api-gateway/README.md`, `api-gateway/AGENTS.md`, `ai/usage-log.md`
+
+**Scenario:** Map implemented User Service routes while leaving the final service authentication handoff undecided. PR #22 added self-profile and admin routes to the previously inspected auth branch.
+
+**Prompts (exact):**
+
+~~~text
+can you just route the end points for user branch and supplier branch first before we decide how the authentication is going to be handled
+can you inspect origin/pr/22
+implement the plan to integrate user and supplier service
+~~~
+
+**What it produced:** An exact User route map, gateway tests, and gateway documentation. Protected routes continue the existing JWT verification and forwarding behavior.
+
+**What I changed or rejected:** Pending owner review; the route and authentication handoff decisions remain subject to team confirmation.
+
+**Verification:** Gateway test and build results are recorded with the implementation review.
 
 ### 2026-09-28 — Reconstruct frontend and gateway AI usage (uncommitted)
 
