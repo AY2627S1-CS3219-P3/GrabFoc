@@ -1,15 +1,8 @@
-<!--
-AI Assistance Disclosure:
-Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Recorded Jie Yang's frontend and gateway assistance, including the gateway refactor and service-local environment change.
-Author review: Pending Jie Yang's review before merge.
--->
-
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
 
 Required by Appendix 2 of the project document: *"Maintain a log, `/ai/usage-log.md`, in the
 repository with timestamps, prompts, and usage scenarios."* Every AI-assisted change needs an
-entry here **as well as** the header comment in each affected file.
+entry here. AI-influenced files other than this log also need a disclosure header.
 
 ## How to add an entry
 
