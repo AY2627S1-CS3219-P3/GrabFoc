@@ -44,11 +44,11 @@ AI-generated log entry; human review pending.
 - Output: PR #28 (sorting, Dockerfile), PR #30 (token verification, dev fallback) and the coordinate-search branch.
 - Human review: Pending. Testing was against local RS256 test keys and a JWKS stub, not the real User Service, which is not merged yet.
 
-## 2026-09-28 — Supplier Service: usage-log entries and seed images from our own repository
+## 2026-09-28 — Supplier Service: usage-log entries (seed-image change reverted)
 
 - Tool and mode: Claude Code (Claude Opus 5), document and refactor.
 - Usage scenario: After a review of the whole Supplier change set, two follow-ups the team asked for: record the Supplier work in this log, and stop the seeded image links depending on the template repository.
 - Exact user prompts: "anything you want to flag to me? problems with our implementation or things to flag to the team like our PR #30 just now"; "do 2 and 8"; "forget the prof repo, do 2 and 8".
 - Key response: wrote the Supplier entries in this file, then changed the seed loader to keep each image's file name and serve it from this repository's own `data/images` copy, with the base configurable through `SUPPLIER_SEED_IMAGE_BASE`.
-- Output: `ai/usage-log.md`, `supplier-service/src/seed/seed.service.ts`, `supplier-service/src/config.ts`, `.env.example`, `supplier-service/AGENTS.md`.
-- Human review: Pending. Verified by re-seeding a fresh database and checking that all six image URLs return `image/jpeg`.
+- Output: `ai/usage-log.md`. The seed-image change was **reverted at the team's request**, so the loader still rewrites the template repository's page links to their raw equivalents, as before.
+- Human review: Pending.
