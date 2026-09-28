@@ -15,6 +15,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useGlobalFilters(new ProblemDetailsFilter());
   app.enableShutdownHooks();
+  if (config.devAuth) {
+    new Logger('Supplier').warn(
+      'SUPPLIER_DEV_AUTH=true: unauthenticated X-User-Id / X-User-Role headers are accepted when no ' +
+        'bearer token is sent. Local testing only — never enable this outside your own machine.',
+    );
+  }
   await app.listen(config.port);
   new Logger('Supplier').log(`Supplier Service listening on port ${config.port}`);
 }

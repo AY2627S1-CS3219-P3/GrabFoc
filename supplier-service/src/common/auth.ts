@@ -8,6 +8,7 @@
 import { CanActivate, ExecutionContext, Injectable, Logger, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
+import { config } from '../config';
 import { JwksUnavailableError, verifyToken } from './jwks';
 import { ProblemException } from './problem';
 
@@ -48,10 +49,24 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<AuthedRequest>();
+    const authorization = req.header('authorization');
+    const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7).trim() : undefined;
+
+    // LOCAL TESTING ONLY, and only when no token was sent: a real token is always verified, so
+    // these headers can never override or downgrade one.
+    if (!bearer && config.devAuth) {
+      const id = req.header('x-user-id');
+      const role = req.header('x-user-role');
+      if (!id || (role !== 'ADMIN' && role !== 'USER')) {
+        throw denied(req, 401, 'Missing or invalid credentials.');
+      }
+      req.caller = { id, role };
+      return this.checkRole(context, req);
+    }
 
     let claims;
     try {
-      claims = await verifyToken(req.header('authorization'));
+      claims = await verifyToken(authorization);
     } catch (err) {
       if (err instanceof JwksUnavailableError) {
         logger.error(`Cannot verify tokens: ${err.message}`);
@@ -64,12 +79,15 @@ export class JwtAuthGuard implements CanActivate {
       throw denied(req, 401, 'Missing or invalid credentials.');
     }
     req.caller = { id: claims.sub, role: claims.role };
+    return this.checkRole(context, req);
+  }
 
+  private checkRole(context: ExecutionContext, req: AuthedRequest): boolean {
     const allowed = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-    if (allowed && !allowed.includes(claims.role)) {
+    if (allowed && !allowed.includes(req.caller.role)) {
       throw denied(req, 403, 'This action requires the ADMIN role.', req.caller);
     }
     return true;
