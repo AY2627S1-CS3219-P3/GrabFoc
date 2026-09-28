@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented gateway setup, Supplier routes, and current integration boundaries; listed implemented User routes on 2026-09-28.
+Scope: Documented gateway setup and integration boundaries; listed implemented User and Supplier routes on 2026-09-28.
 Author review: Pending gateway owner review.
 -->
 
@@ -10,6 +10,8 @@ Author review: Pending gateway owner review.
 _Origin: AI doc; implementation of the gateway direction recorded in the project `AGENTS.md`._
 
 The gateway routes only implemented User Service methods and paths. Public routes are `POST /auth/register`, `/auth/register/verify`, `/auth/register/resend-otp`, `/auth/login`, `/auth/refresh`, `/auth/password/forgot`, `/auth/password/reset`, and `GET /.well-known/jwks.json`. Protected User routes are `POST /auth/logout`, `GET` and `PATCH /users/me`, `GET /admin/users`, and `PATCH /admin/users/:userId/role`. The `/auth` prefix is configurable. Unknown methods and paths, including `/internal/**`, return 404.
+
+Supplier routes are `GET /location-types`, `GET` and `POST /locations`, `GET` and `PATCH /locations/:locationId`, and `POST /locations/:locationId/deactivate` or `/restore`. All require a valid User Service bearer JWT. The `/locations` prefix is configurable.
 
 The gateway currently verifies a User Service bearer JWT for protected requests and forwards the bearer token unchanged. It strips caller-supplied `X-User-Id` and `X-User-Role` headers. This is an interim handoff while the team decides the final service authentication contract. The upstream receives the same path and query string. The gateway does not implement sign-in, registration, OTP, profile or location authorization.
 

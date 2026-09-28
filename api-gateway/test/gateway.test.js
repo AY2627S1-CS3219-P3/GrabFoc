@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Added gateway routing and authentication boundary checks; covered implemented User Service routes on 2026-09-28.
+Scope: Added gateway routing and authentication boundary checks; covered implemented User and Supplier routes on 2026-09-28.
 Author review: Pending gateway owner review.
 */
 import assert from 'node:assert/strict';
@@ -92,6 +92,33 @@ test('location types require a token and reach Supplier Service', async () => {
   const response = await fetch(`${gatewayUrl}/location-types`, { headers: { authorization: 'Bearer valid' } });
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { path: '/location-types', authorization: 'Bearer valid' });
+});
+
+test('implemented Supplier routes require a token and preserve method and query', async () => {
+  const routes = [
+    ['GET', '/location-types'], ['GET', '/locations'], ['POST', '/locations'],
+    ['GET', '/locations/12'], ['PATCH', '/locations/12'],
+    ['POST', '/locations/12/deactivate'], ['POST', '/locations/12/restore'],
+  ];
+  for (const [method, path] of routes) {
+    assert.equal((await fetch(`${gatewayUrl}${path}`, { method })).status, 401, `${method} ${path}`);
+    const response = await fetch(`${gatewayUrl}${path}?source=web`, {
+      method, headers: { authorization: 'Bearer valid', 'x-user-id': 'forged', 'x-user-role': 'ADMIN' },
+    });
+    assert.equal(response.status, 200, `${method} ${path}`);
+    assert.deepEqual(await response.json(), { path: `${path}?source=web`, authorization: 'Bearer valid' }, `${method} ${path}`);
+  }
+});
+
+test('unsupported Supplier paths and methods are unavailable', async () => {
+  const routes = [
+    ['POST', '/location-types'], ['DELETE', '/locations'], ['PUT', '/locations/12'],
+    ['DELETE', '/locations/12'], ['GET', '/locations/12/deactivate'],
+    ['POST', '/locations/12/other'], ['GET', '/locations/12/extra'],
+  ];
+  for (const [method, path] of routes) {
+    assert.equal((await fetch(`${gatewayUrl}${path}`, { method, headers: { authorization: 'Bearer valid' } })).status, 404, `${method} ${path}`);
+  }
 });
 
 test('unknown User paths, methods and internal routes are unavailable', async () => {

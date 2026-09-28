@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented gateway implementation boundaries and pending service contract decisions; updated User route scope on 2026-09-28.
+Scope: Documented gateway implementation boundaries and pending service contract decisions; updated User and Supplier route scope on 2026-09-28.
 Author review: Pending gateway owner review.
 -->
 

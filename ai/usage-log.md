@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Reconstructed and expanded Jie Yang's frontend and API Gateway usage entries; recorded the User gateway routing change on 2026-09-28.
+Scope: Reconstructed and expanded Jie Yang's frontend and API Gateway usage entries; recorded User and Supplier gateway routing changes on 2026-09-28.
 Author review: Pending Jie Yang's review before merge.
 -->
 
@@ -59,6 +59,26 @@ Template:
 <!-- Add your entries here. -->
 
 ## Jie Yang
+
+### 2026-09-28 — Supplier Service gateway routes (feature/gateway-supplier-routes)
+
+**Tool:** Codex (GPT-6) · **Mode:** generate, explain
+**Files:** `api-gateway/src/server.ts`, `api-gateway/test/gateway.test.js`, `api-gateway/README.md`, `api-gateway/AGENTS.md`, `ai/usage-log.md`
+
+**Scenario:** Map the Supplier Service routes while leaving the final service authentication handoff undecided.
+
+**Prompts (exact):**
+
+~~~text
+can you just route the end points for user branch and supplier branch first before we decide how the authentication is going to be handled
+implement the plan to integrate user and supplier service
+~~~
+
+**What it produced:** An exact Supplier route map, gateway tests, and gateway documentation. Protected routes continue the existing JWT verification and forwarding behavior.
+
+**What I changed or rejected:** Pending owner review; the authentication handoff remains subject to team confirmation.
+
+**Verification:** Gateway test and build results are recorded with the implementation review.
 
 ### 2026-09-28 — User Service gateway routes (feature/gateway-user-routes)
 

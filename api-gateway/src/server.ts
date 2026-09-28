@@ -1,17 +1,13 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Added health route, public User routing, protected Supplier routes and structured access logs; mapped implemented User Service routes on 2026-09-28.
+Scope: Added health route and structured access logs; mapped implemented User and Supplier Service routes on 2026-09-28.
 Author review: Pending gateway owner review.
 */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createTokenVerifier } from './auth.js';
 import { loadConfig, type Config } from './config.js';
 import { proxy } from './proxy.js';
-
-function matches(path: string, prefix: string): boolean {
-  return path === prefix || path.startsWith(`${prefix}/`);
-}
 
 function userRoute(method: string | undefined, path: string, authPrefix: string): 'public' | 'protected' | undefined {
   if (method === 'GET' && path === '/.well-known/jwks.json') return 'public';
@@ -26,6 +22,16 @@ function userRoute(method: string | undefined, path: string, authPrefix: string)
   if (method === 'GET' && path === '/admin/users') return 'protected';
   if (method === 'PATCH' && /^\/admin\/users\/[^/]+\/role$/.test(path)) return 'protected';
   return undefined;
+}
+
+function supplierRoute(method: string | undefined, path: string, locationsPrefix: string): boolean {
+  if (method === 'GET' && path === '/location-types') return true;
+  if (path === locationsPrefix) return method === 'GET' || method === 'POST';
+  if (!path.startsWith(`${locationsPrefix}/`)) return false;
+  const suffix = path.slice(locationsPrefix.length + 1).split('/');
+  if (suffix.length === 1 && suffix[0]) return method === 'GET' || method === 'PATCH';
+  return suffix.length === 2 && !!suffix[0] && method === 'POST' &&
+    (suffix[1] === 'deactivate' || suffix[1] === 'restore');
 }
 
 function json(response: ServerResponse, status: number, body: object): void {
@@ -47,7 +53,7 @@ export function createGateway(config: Config, verify = createTokenVerifier(confi
         }
         return proxy(request, response, config.userServiceUrl);
       }
-      if (matches(path, config.locationsPrefix) || path === '/location-types') {
+      if (supplierRoute(request.method, path, config.locationsPrefix)) {
         if (!await verify(request.headers.authorization)) {
           console.warn(JSON.stringify({ event: 'unauthorized_access', status: 401, method: request.method, path }));
           return json(response, 401, { error: 'Unauthorized' });
