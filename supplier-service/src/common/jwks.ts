@@ -38,6 +38,10 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 async function fetchKeys(): Promise<Jwk[]> {
+  if (!config.jwksUrl) {
+    // Only reachable in dev-auth mode: a token arrived but there is nowhere to check it.
+    throw new JwksUnavailableError('SUPPLIER_JWKS_URL is not set, so tokens cannot be verified');
+  }
   let response: Response;
   try {
     response = await fetch(config.jwksUrl, { signal: AbortSignal.timeout(5000) });

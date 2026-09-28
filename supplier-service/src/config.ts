@@ -29,22 +29,25 @@ function required(name: string): string {
   return value;
 }
 
+// LOCAL TESTING ONLY: accept X-User-Id / X-User-Role when no bearer token is sent, so the
+// service can be exercised in Postman without the User Service running. Never enable this
+// anywhere reachable by anyone else: the headers are unauthenticated, so any caller could
+// claim to be an ADMIN.
+const devAuth = process.env.SUPPLIER_DEV_AUTH === 'true';
+
 export const config = {
   port: Number(process.env.SUPPLIER_PORT || 3002),
   databaseUrl: required('SUPPLIER_DATABASE_URL'),
   seedCsvPath:
     process.env.SUPPLIER_SEED_CSV || path.resolve(__dirname, '../../data/csv/supplier-seed-data.csv'),
   // The User Service publishes the public half of its signing key here; this service verifies
-  // every forwarded token against it.
-  jwksUrl: required('SUPPLIER_JWKS_URL'),
+  // every forwarded token against it. Optional only in dev-auth mode, where the service can run
+  // with no User Service at all; a token sent to it then gets 503 rather than being trusted.
+  jwksUrl: devAuth ? process.env.SUPPLIER_JWKS_URL : required('SUPPLIER_JWKS_URL'),
   // Checked only when set, matching the gateway.
   jwtIssuer: process.env.SUPPLIER_JWT_ISSUER || undefined,
   jwtAudience: process.env.SUPPLIER_JWT_AUDIENCE || undefined,
-  // LOCAL TESTING ONLY: accept X-User-Id / X-User-Role when no bearer token is sent, so the
-  // service can be exercised in Postman without the User Service running. Never enable this
-  // anywhere reachable by anyone else: the headers are unauthenticated, so any caller could
-  // claim to be an ADMIN.
-  devAuth: process.env.SUPPLIER_DEV_AUTH === 'true',
+  devAuth,
 };
 
 if (config.devAuth && process.env.NODE_ENV === 'production') {
