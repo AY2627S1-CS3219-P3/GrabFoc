@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FoC Supplier Service",
-    "description": "Requests for the Supplier (Location) Service. Auth: every request sends Authorization: Bearer {{adminToken}} or {{userToken}} — get those by logging in through the User Service, which also has to be running so this service can fetch its JWKS. Set baseUrl for your machine. Run \"Create location\" before the update/deactivate/restore requests; it stores locationId and version.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated this collection from the endpoints and error codes in supplier-service/AGENTS.md. Author review: pending.",
+    "description": "Requests for the Supplier (Location) Service.\n\nAUTH, two ways:\n1. Real tokens: log in through the User Service and put the tokens in the adminToken / userToken variables. Supplier verifies them against the User Service's JWKS, so that service must be running.\n2. Standalone testing: leave adminToken / userToken empty and start Supplier with SUPPLIER_DEV_AUTH=true. Requests then fall back to the X-User-Id / X-User-Role headers below, and no other service is needed. That flag is for your own machine only.\n\nSet baseUrl for your machine. Run \"Create location\" before the update/deactivate/restore requests; it stores locationId and version.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated this collection from the endpoints and error codes in supplier-service/AGENTS.md. Author review: pending.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -24,6 +24,14 @@
     {
       "key": "userToken",
       "value": ""
+    },
+    {
+      "key": "devAdminId",
+      "value": "admin-1"
+    },
+    {
+      "key": "devUserId",
+      "value": "user-1"
     }
   ],
   "item": [
@@ -49,6 +57,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -81,6 +97,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -114,6 +138,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -152,6 +184,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -190,6 +230,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -228,6 +276,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -266,6 +322,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -304,6 +368,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devAdminId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
               }
             ],
             "url": {
@@ -342,6 +414,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -376,6 +456,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -426,6 +514,14 @@
                 "value": "Bearer {{adminToken}}"
               },
               {
+                "key": "X-User-Id",
+                "value": "{{devAdminId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
+              },
+              {
                 "key": "Content-Type",
                 "value": "application/json"
               }
@@ -467,6 +563,14 @@
                 "value": "Bearer {{adminToken}}"
               },
               {
+                "key": "X-User-Id",
+                "value": "{{devAdminId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
+              },
+              {
                 "key": "Content-Type",
                 "value": "application/json"
               }
@@ -506,6 +610,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devAdminId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
               }
             ],
             "url": {
@@ -540,6 +652,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devAdminId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
               }
             ],
             "url": {
@@ -606,6 +726,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -646,6 +774,14 @@
                 "value": "Bearer {{userToken}}"
               },
               {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
+              },
+              {
                 "key": "Content-Type",
                 "value": "application/json"
               }
@@ -684,6 +820,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -722,6 +866,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -760,6 +912,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -793,6 +953,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devAdminId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
               },
               {
                 "key": "Content-Type",
@@ -835,6 +1003,14 @@
                 "value": "Bearer {{adminToken}}"
               },
               {
+                "key": "X-User-Id",
+                "value": "{{devAdminId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
+              },
+              {
                 "key": "Content-Type",
                 "value": "application/json"
               }
@@ -873,6 +1049,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -906,6 +1090,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devAdminId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
               },
               {
                 "key": "Content-Type",
@@ -948,6 +1140,14 @@
                 "value": "Bearer {{adminToken}}"
               },
               {
+                "key": "X-User-Id",
+                "value": "{{devAdminId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
+              },
+              {
                 "key": "Content-Type",
                 "value": "application/json"
               }
@@ -987,6 +1187,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devAdminId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "ADMIN"
               }
             ],
             "url": {
@@ -1021,6 +1229,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {
@@ -1059,6 +1275,14 @@
               {
                 "key": "Authorization",
                 "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
               }
             ],
             "url": {

@@ -49,6 +49,8 @@ docker exec foc-supplier-db psql -U postgres -d supplier -c "TRUNCATE locations 
 
 **Auth:** every request needs `Authorization: Bearer <token>`, with a token issued by the User Service. This service verifies it against the User Service's JWKS (`SUPPLIER_JWKS_URL`), so that service must be running. Missing or invalid → 401, wrong role → 403, JWKS unreachable → 503. Put a token in the collection's `adminToken` and `userToken` variables.
 
+**Testing Supplier on its own:** start it with `SUPPLIER_DEV_AUTH=true` and leave those variables empty. The service then accepts the `X-User-Id` / `X-User-Role` headers the collection already sends, and needs no other service running. The flag is off by default, is refused when `NODE_ENV=production`, and a real token still wins over the headers. Use it on your own machine only.
+
 ## Endpoints
 
 | Method & path | Access |

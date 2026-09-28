@@ -40,4 +40,15 @@ export const config = {
   // Checked only when set, matching the gateway.
   jwtIssuer: process.env.SUPPLIER_JWT_ISSUER || undefined,
   jwtAudience: process.env.SUPPLIER_JWT_AUDIENCE || undefined,
+  // LOCAL TESTING ONLY: accept X-User-Id / X-User-Role when no bearer token is sent, so the
+  // service can be exercised in Postman without the User Service running. Never enable this
+  // anywhere reachable by anyone else: the headers are unauthenticated, so any caller could
+  // claim to be an ADMIN.
+  devAuth: process.env.SUPPLIER_DEV_AUTH === 'true',
 };
+
+if (config.devAuth && process.env.NODE_ENV === 'production') {
+  throw new Error(
+    'SUPPLIER_DEV_AUTH=true is refused when NODE_ENV=production: the header fallback is for local testing only.',
+  );
+}
