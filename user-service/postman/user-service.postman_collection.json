@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FoC User Service",
-    "description": "Sign-up, login, the session lifecycle, the admin user/role lifecycle and the OTP-protected self-service profile changes for the FoC User Service. Set baseUrl and signupEmail in an environment; every OTP arrives in Mailpit at http://localhost:8025 - paste it into the otp variable before the next request in a flow. AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. 2026-09-28 (model: Claude Sonnet 5): added List users (admin) and Change role (admin) (Step 10 - these routes were marked Postman-verified in admin.controller.ts/admin.service.ts, but the requests used for that were never saved into this collection) and the six Step 12 requests (Request OTP through Deactivate account). Author review: the six Step 12 requests were exercised via Postman against the compose stack on 2026-09-28 (all endpoints, including the retry-with-the-same-code behaviour on Change email - request and Change password) - see /ai/usage-log.md. List users (admin) and Change role (admin) (Step 10) are still unverified through this file specifically, even though the routes themselves were separately confirmed working via ad hoc Postman requests when Step 10 was built.",
+    "description": "Sign-up, login, the session lifecycle, the admin user/role lifecycle and the OTP-protected self-service profile changes for the FoC User Service. Set baseUrl and signupEmail in an environment; every OTP arrives in Mailpit at http://localhost:8025 - paste it into the otp variable before the next request in a flow. AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. 2026-09-28 (model: Claude Sonnet 5): added List users (admin) and Change role (admin) (Step 10 - these routes were marked Postman-verified in admin.controller.ts/admin.service.ts, but the requests used for that were never saved into this collection), the six Step 12 requests (Request OTP through Deactivate account), and Reactivate user (admin) (Step 13). Author review: the six Step 12 requests were exercised via Postman against the compose stack on 2026-09-28 (all endpoints, including the retry-with-the-same-code behaviour on Change email - request and Change password) - see /ai/usage-log.md. Reactivate user (admin) was exercised the same way on 2026-09-28 (deactivate then reactivate, 404 for an unknown id, 409 NOT_DEACTIVATED for an already-ACTIVE target). List users (admin) and Change role (admin) (Step 10) are still unverified through this file specifically, even though the routes themselves were separately confirmed working via ad hoc Postman requests when Step 10 was built.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -20,7 +20,7 @@
     {
       "key": "targetUserId",
       "value": "",
-      "description": "For 'Change role (admin)': the id of the USER being promoted/demoted, not the caller."
+      "description": "For 'Change role (admin)' and 'Reactivate user (admin)': the id of the target user, not the caller."
     },
     {
       "key": "newEmail",
@@ -285,6 +285,20 @@
       }
     },
     {
+      "name": "Reactivate user (admin)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/admin/users/{{targetUserId}}/reactivate",
+        "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 NOT_DEACTIVATED unless the target is currently DEACTIVATED (run 'Deactivate account' as that user first to test the success path). 403/401 as above."
+      }
+    },
+    {
       "name": "Get my profile",
       "request": {
         "method": "GET",
@@ -449,7 +463,7 @@
           "mode": "raw",
           "raw": "{\n  \"otp\": \"{{otp}}\"\n}"
         },
-        "description": "204. Run 'Request OTP' with purpose DEACTIVATION first. Sets status DEACTIVATED and revokes every refresh token; logging in afterward gives 403 ACCOUNT_DEACTIVATED. 409 LAST_ADMIN if the caller is the sole active admin - promote another admin via 'Change role (admin)' first to test the success path instead. An admin can undo this once Step 13 (reactivate) exists."
+        "description": "204. Run 'Request OTP' with purpose DEACTIVATION first. Sets status DEACTIVATED and revokes every refresh token; logging in afterward gives 403 ACCOUNT_DEACTIVATED. 409 LAST_ADMIN if the caller is the sole active admin - promote another admin via 'Change role (admin)' first to test the success path instead. An admin can undo this with 'Reactivate user (admin)'."
       }
     }
   ]

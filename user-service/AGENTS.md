@@ -411,8 +411,16 @@ _Origin: Team_
 - [x] Step 10: admin list, role change, last-admin lock — `GET /admin/users`, `PATCH /admin/users/:userId/role` (see [The last-admin lock](#the-last-admin-lock))
 - [x] Step 11: `GET /users/me`, `PATCH /users/me` (self profile shape, no OTP; a by-id lookup wasn't needed here — if one ever is, it's a filter on `GET /admin/users`, not a new route). Note: `display_name` has no uniqueness constraint (schema: `VARCHAR(100) NOT NULL`, no `UNIQUE`) and `PATCH /users/me` does not check for a duplicate name — only `email_hash` is unique, so two accounts may share the same display name.
 - [x] Step 12: OTP-protected changes (password, email, mobile, deactivate) — `POST /users/me/otp`, `POST /users/me/email` + `/email/verify`, `PATCH /users/me/mobile`, `POST /users/me/password`, `POST /users/me/deactivate`. Resolved the response-shape `[Open]` item in favour of the self profile shape (matching Step 11). `POST /users/me/email` and `POST /users/me/password` check their code for correctness before spending it, and only spend it once the endpoint's own business validation (`EMAIL_TAKEN`; "must differ from current password") also passes — see the **OTP** section above for why, and `OtpService.check`/`checkRecord`/`discard`.
-- [ ] Step 13: reactivate — `POST /admin/users/:userId/reactivate`
-- [ ] Step 14: `GET /internal/users/:userId`
+- [x] Step 13: reactivate — `POST /admin/users/:userId/reactivate`. No `AdminLockService` here,
+      unlike `changeRole`/`deactivateSelf`: this endpoint only ever adds an active admin back,
+      never removes one, so it cannot break the last-admin invariant — confirmed with the
+      service owner rather than assumed, given `roles.guard.ts`'s note that any endpoint
+      changing an account should otherwise re-read the caller's role fresh.
+- [ ] Step 14: `GET /internal/users/:userId` — **deferred.** Its only caller is the Notification
+      Service, which doesn't exist yet, so there's nothing to integration-test it against right
+      now. Building it early would mean carrying an untested endpoint (and an
+      `USER_INTERNAL_SERVICE_KEY` nothing yet reads) until Notification lands. Picking this back
+      up once `notification-service/` exists.
 
 Person B, while waiting on Phase 0: draft the Zod schemas and the last-admin SQL, so nothing here sits idle.
 

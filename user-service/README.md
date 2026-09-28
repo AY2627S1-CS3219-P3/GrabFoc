@@ -335,16 +335,17 @@ admin bootstrap**. That completes this side of Phase 1.
 There is one startup task with no route of its own: the **admin bootstrap**, which creates the
 first ADMIN from `USER_BOOTSTRAP_ADMIN_EMAIL` — see [The first admin](#the-first-admin).
 
-**Phase 1, Person B's track** (steps 10 to 12 so far) — **step 10: admin list, role change and
-the last-admin lock**, **step 11: self profile (get and update)**, and **step 12: the
-OTP-protected profile changes** (email, mobile, password, deactivate). Steps 13–14 (admin
-reactivation, and the internal lookup for the Notification Service) are still to come — see the
-build order in `AGENTS.md`.
+**Phase 1, Person B's track** (steps 10 to 13 so far) — **step 10: admin list, role change and
+the last-admin lock**, **step 11: self profile (get and update)**, **step 12: the
+OTP-protected profile changes** (email, mobile, password, deactivate), and **step 13:
+reactivation**. Step 14 (the internal lookup for the Notification Service) is deferred until
+that service exists — see the build order in `AGENTS.md`.
 
 | Route | |
 |---|---|
 | `GET /admin/users` | admin only |
 | `PATCH /admin/users/:userId/role` | admin only |
+| `POST /admin/users/:userId/reactivate` | admin only; 409 `NOT_DEACTIVATED` unless the target is currently DEACTIVATED |
 | `GET /users/me` | needs an access token |
 | `PATCH /users/me` | needs an access token; renames the caller only — `display_name` has no uniqueness check, see AGENTS.md's Step 11 note |
 | `POST /users/me/otp` | needs an access token; mails a code to the caller's current email for `EMAIL_CHANGE`, `MOBILE_CHANGE`, `PASSWORD_CHANGE` or `DEACTIVATION` |

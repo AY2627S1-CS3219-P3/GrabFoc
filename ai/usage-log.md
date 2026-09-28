@@ -261,6 +261,85 @@ dismissing it.
 
 ## Deanson
 
+### 2026-09-28 — Step 13: admin reactivation (branch `feature/user-service-protected-endpoints`, PR not yet opened)
+
+**Tool:** Claude Code (Claude Sonnet 5) · **Mode:** explain, generate, verify
+
+**Files:** `user-service/src/users/users.repository.ts`, `user-service/src/users/admin.service.ts`,
+`user-service/src/users/admin.controller.ts`, `user-service/src/users/admin.service.spec.ts`,
+`user-service/AGENTS.md`, `user-service/README.md`,
+`user-service/postman/user-service.postman_collection.json`, `/ai/usage-log.md`
+
+**Scenario.** Continuing Person B's track after Step 12: `POST
+/admin/users/:userId/reactivate`, the admin-side reverse of Step 12's self-deactivate. Had it
+read `AGENTS.md`, `README.md` and the existing admin/users code first, then plan before writing
+anything. It surfaced one implementation question `AGENTS.md` doesn't answer — whether
+reactivate should re-verify the caller's admin status fresh from the database (the way
+`changeRole`/`deactivateSelf` do via `AdminLockService`, per `roles.guard.ts`'s note that a
+demoted admin's token stays valid up to 15 minutes) — as a multiple-choice question rather than
+assuming an answer. I also separately decided to defer Step 14 (`GET /internal/users/:userId`)
+since its only caller, the Notification Service, doesn't exist yet.
+
+**Prompts (exact):**
+
+> I am person b (Deanson), implementing user service. Read the AGENTS.md, README.md and other
+> relevant files under /user-service folder to get a better understanding.
+
+> What is step 14 and step 15 about respectively.
+
+> Skip step 14 for now, edit AGENTS.md as a note, we probably only implement it once we have
+> notification service up.
+
+> Go ahead and implement step 13, including adding relevant tests to postman collections. After
+> you are done, list the files you added / edited. DO NOT proceed to subsequent steps (step 15)
+> without my permission
+
+> u don't have to test it via docker compose. Let me do it instead. Are you done with this
+> endpoint?
+
+> Give me the steps to test this endpoint via Postman
+
+> I tested the following via Postman.
+> - Reactiviating an activated account, rejected (account must be deactive 409)
+> - Rectivating using a user account, rejected must be admin role (403)
+> - Reactivating a user that doesnt exist (404)
+> - no access token -> 401 (the token is invalid or has expired)
+> - happy path (deactivatied account became active again)
+>
+> Step 13 looks all good to me. Update the relevant files such as usage-log.md,
+> user-service/AGENTs.md as well as other relevant files.
+
+(The choice of whether to re-verify the caller's admin status inside a lock was resolved
+through a multiple-choice question rather than free text — recorded under "Decisions I made"
+below, not paraphrased here as a prompt.)
+
+**What it produced:** `UsersRepository.reactivate`, `AdminService.reactivate` (404 `NOT_FOUND`,
+409 `NOT_DEACTIVATED`, `ADMIN_ACTION` audit log), the `POST :userId/reactivate` route, three new
+`admin.service.spec.ts` tests (happy path, 404, 409), the `AGENTS.md`/`README.md` build-order
+and endpoint-table updates, and a "Reactivate user (admin)" Postman request plus fixes to two
+other descriptions in that collection that referenced Step 13 as not-yet-built.
+
+**Decisions I made, which it did not:**
+
+- **No re-verification of the caller's admin status inside a lock for `reactivate`.** It laid
+  out three options (reuse `AdminLockService.run` for consistency at the cost of locking every
+  active-admin row unnecessarily; a lighter fresh re-read of just the caller's row; or trusting
+  `RolesGuard`'s token-based check only, same as `GET /admin/users`). I picked the third: this
+  endpoint only ever activates someone, so it can never break the last-admin invariant, and a
+  demoted admin's stale token reactivating an account for up to 15 minutes isn't the same class
+  of risk as a stale token demoting or promoting someone.
+- **Step 14 deferred**, not built now — its only consumer doesn't exist yet.
+
+**Verification:** `npm run build` (clean) and `npm test` (271/271, no regressions) after the
+code change. I then manually verified `POST /admin/users/:userId/reactivate` via Postman
+against the compose stack myself: reactivating an already-ACTIVE account is rejected with 409;
+calling it with a USER-role token is rejected with 403; an unknown `targetUserId` gets 404; no
+access token gets 401 (`TOKEN_INVALID`, "the token is invalid or has expired"); and the happy
+path (a DEACTIVATED account becomes ACTIVE again) works. All five matched what
+`admin.service.spec.ts` asserts.
+
+---
+
 ### 2026-09-28 — Step 12: the six OTP-protected self-service endpoints (branch `feature/user-service-self-profile`, PR not yet opened)
 
 **Tool:** Claude Code (Claude Sonnet 5) · **Mode:** explain, generate, debug, verify

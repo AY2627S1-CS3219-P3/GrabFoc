@@ -13,6 +13,10 @@
  *                file asserts was exercised for real via Postman on 2026-09-28, including the
  *                LAST_ADMIN case the two rewritten tests now correctly cover — see
  *                /ai/usage-log.md.
+ *                2026-09-28: added coverage for the new `reactivate` (Step 13): happy path,
+ *                404 for an unknown target, and 409 NOT_DEACTIVATED for a non-DEACTIVATED one.
+ * Author review: Read in full; `npm test` passes, and every branch was also exercised for real
+ *                via Postman against the compose stack on 2026-09-28 — see /ai/usage-log.md.
  */
 import { Role } from '../auth/caller';
 import { ErrorCode } from '../common/error-codes';
@@ -54,6 +58,7 @@ function build(lockActiveAdminIds: string[] | null = [CALLER_ID]) {
     listUsers: jest.fn<Promise<UserRecord[]>, [{ role?: Role; status?: UserStatus }]>(async () => [CALLER]),
     findById: jest.fn<Promise<UserRecord | null>, [string]>(async () => userRecord()),
     updateRole: jest.fn<Promise<boolean>, [string, Role]>(async () => true),
+    reactivate: jest.fn<Promise<boolean>, [string]>(async () => true),
   };
 
   const lock = {
@@ -184,4 +189,45 @@ describe('changeRole', () => {
     expect(logOrder).toBeGreaterThan(lockOrder);
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"event":"ADMIN_ACTION"'));
   });
+});
+
+describe('reactivate', () => {
+  it('reactivates a DEACTIVATED target and logs ADMIN_ACTION', async () => {
+    const { service, users } = build();
+    users.findById
+      .mockResolvedValueOnce(userRecord({ status: UserStatus.DEACTIVATED }))
+      .mockResolvedValueOnce(userRecord({ status: UserStatus.ACTIVE }));
+    const logSpy = jest.spyOn((service as unknown as { logger: { log: (m: unknown) => void } }).logger, 'log');
+
+    const result = await service.reactivate(CALLER_ID, TARGET_ID);
+
+    expect(users.reactivate).toHaveBeenCalledWith(TARGET_ID);
+    expect(result).toEqual(expect.objectContaining({ userId: TARGET_ID, status: UserStatus.ACTIVE }));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('"event":"ADMIN_ACTION"'));
+  });
+
+  it('rejects with 404 when the target does not exist', async () => {
+    const { service, users } = build();
+    users.findById.mockResolvedValueOnce(null);
+
+    await expect(service.reactivate(CALLER_ID, TARGET_ID)).rejects.toMatchObject({
+      status: 404,
+      code: ErrorCode.NOT_FOUND,
+    });
+    expect(users.reactivate).not.toHaveBeenCalled();
+  });
+
+  it.each([UserStatus.ACTIVE, UserStatus.SUSPENDED])(
+    'rejects with 409 NOT_DEACTIVATED when the target is %s',
+    async (status) => {
+      const { service, users } = build();
+      users.findById.mockResolvedValueOnce(userRecord({ status }));
+
+      await expect(service.reactivate(CALLER_ID, TARGET_ID)).rejects.toMatchObject({
+        status: 409,
+        code: ErrorCode.NOT_DEACTIVATED,
+      });
+      expect(users.reactivate).not.toHaveBeenCalled();
+    },
+  );
 });

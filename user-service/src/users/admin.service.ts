@@ -13,6 +13,16 @@
  *                on 2026-09-28, after the LAST_ADMIN fix above (promote, self-reaffirm no-op,
  *                self-demote with/without another admin present, distinct-target demotion,
  *                404/400/403/401) — see /ai/usage-log.md.
+ *                2026-09-28: added `reactivate` for Step 13 (POST /admin/users/:userId/reactivate).
+ *                Unlike `changeRole`, this does not run inside `AdminLockService` — the service
+ *                owner confirmed no re-verification of the caller's admin status is needed,
+ *                since this endpoint can only ever add an active admin back, never remove one,
+ *                so it cannot break the last-admin invariant regardless of how stale the
+ *                caller's token is (see user-service/AGENTS.md, "Deactivation and reactivation").
+ * Author review: `reactivate` verified via Postman against the compose stack on 2026-09-28
+ *                (deactivate → reactivate → login works again; reactivating an already-ACTIVE
+ *                user gets 409 NOT_DEACTIVATED; an unknown id gets 404; a non-admin gets 403; no
+ *                token gets 401) — see /ai/usage-log.md.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { Role } from '../auth/caller';
@@ -132,5 +142,46 @@ export class AdminService {
     }
 
     return result.profile;
+  }
+
+  /**
+   * `POST /admin/users/:userId/reactivate` (AGENTS.md, "Deactivation and reactivation"). Only a
+   * DEACTIVATED account can be reactivated — anything else is 409 `NOT_DEACTIVATED`. The role is
+   * left untouched, so a reactivated admin is an active admin again.
+   *
+   * No `AdminLockService` here, unlike `changeRole` and `deactivateSelf`: this endpoint only
+   * ever adds an active admin back, never removes one, so the invariant the lock protects can't
+   * be broken by it — confirmed with the service owner rather than assumed.
+   */
+  async reactivate(callerId: string, targetId: string): Promise<ProfileResponse> {
+    const target = await this.users.findById(targetId);
+    if (!target) {
+      throw new AppError(404, ErrorCode.NOT_FOUND, 'No such user.');
+    }
+    if (target.status !== UserStatus.DEACTIVATED) {
+      throw new AppError(
+        409,
+        ErrorCode.NOT_DEACTIVATED,
+        'Only a deactivated account can be reactivated.',
+      );
+    }
+
+    await this.users.reactivate(target.id);
+    const updated = await this.users.findById(target.id);
+
+    // Logged after the write, mirroring changeRole's "after the transaction commits" rule —
+    // there is no transaction here, but the principle is the same: never log a change that
+    // might not have happened.
+    this.logger.log(
+      auditLine(AuditEvent.ADMIN_ACTION, {
+        actorId: callerId,
+        targetId: target.id,
+        action: 'REACTIVATE',
+        from: UserStatus.DEACTIVATED,
+        to: UserStatus.ACTIVE,
+      }),
+    );
+
+    return toProfileResponse(updated!);
   }
 }

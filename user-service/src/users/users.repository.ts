@@ -18,6 +18,10 @@
  *                against the compose stack on 2026-09-28 (including `updateEmail`'s
  *                23505→EMAIL_TAKEN path, exercised by re-claiming an address already in use) —
  *                see /ai/usage-log.md.
+ *                2026-09-28: added `reactivate` for Step 13 (POST /admin/users/:userId/reactivate).
+ * Author review: `reactivate` verified via Postman against the compose stack on 2026-09-28
+ *                (deactivate a user, reactivate them, confirm login works again and
+ *                `deactivated_at` is cleared) — see /ai/usage-log.md.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -397,6 +401,23 @@ export class UsersRepository {
   async deactivate(userId: string, client: PoolClient): Promise<boolean> {
     const { rowCount } = await client.query(
       "UPDATE users SET status = 'DEACTIVATED', deactivated_at = now(), updated_at = now() WHERE id = $1",
+      [userId],
+    );
+    return rowCount !== null && rowCount > 0;
+  }
+
+  /**
+   * Reverses a deactivation (`POST /admin/users/:userId/reactivate`, Step 13). Only ever called
+   * after `AdminService.reactivate` has confirmed the target is currently DEACTIVATED — this
+   * method only writes, the same division of responsibility as `deactivate` and `updateRole`.
+   * No transaction is required: this endpoint never touches the last-admin invariant (it only
+   * ever adds an active admin back, never removes one), so it runs as a single statement rather
+   * than inside `AdminLockService`'s lock (a deliberate scope decision, confirmed with the
+   * service owner — see admin.service.ts).
+   */
+  async reactivate(userId: string, client?: PoolClient): Promise<boolean> {
+    const { rowCount } = await (client ?? this.pool).query(
+      "UPDATE users SET status = 'ACTIVE', deactivated_at = NULL, updated_at = now() WHERE id = $1",
       [userId],
     );
     return rowCount !== null && rowCount > 0;
