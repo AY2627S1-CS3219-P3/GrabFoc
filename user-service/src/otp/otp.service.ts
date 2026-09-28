@@ -5,6 +5,12 @@
  *        the record variants, which hold a code inside a larger value such as a pending
  *        sign-up.
  * Author review: Read in full; `npm run test:int` passes (18 tests against a real Redis), including the concurrency cases the scripts exist for.
+ *                2026-09-28: added check()/checkRecord() (Step 12) — verifies a code the same
+ *                way verify()/verifyRecord() do, but does not spend it on a match. See
+ *                CHECK_OTP_LUA in otp.scripts.ts for why.
+ * Author review: Read in full; `npm run test:int` passes against a real Redis — see
+ *                otp.service.int.spec.ts. Exercised indirectly through Step 12's endpoints,
+ *                verified via Postman on 2026-09-28 — see /ai/usage-log.md.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Redis } from 'ioredis';
@@ -12,7 +18,7 @@ import { AppError } from '../common/app-error';
 import { ErrorCode } from '../common/error-codes';
 import { OtpPurpose, generateOtpCode, hashOtp } from '../crypto';
 import { REDIS } from '../redis/redis.module';
-import { RATE_LIMIT_LUA, REISSUE_OTP_LUA, VERIFY_OTP_LUA } from './otp.scripts';
+import { CHECK_OTP_LUA, RATE_LIMIT_LUA, REISSUE_OTP_LUA, VERIFY_OTP_LUA } from './otp.scripts';
 
 /** AGENTS.md, "OTP". Changing any of these changes a documented rule. */
 export const OTP_TTL_SECONDS = 5 * 60;
@@ -98,7 +104,24 @@ export class OtpService {
     return record.payload;
   }
 
-  /** Drops an outstanding code, e.g. when an action is abandoned. */
+  /**
+   * Checks a submitted code the same way `verify()` does, but does not spend it on a match —
+   * the caller decides when it's safe to, via `discard()`, once its own business validation
+   * (that a correct code alone can't cover) has also passed. See `CHECK_OTP_LUA` for why this
+   * matters: `EMAIL_CHANGE` (`POST /users/me/email`) and `PASSWORD_CHANGE` (`POST
+   * /users/me/password`) are the two purposes that use this instead of `verify()`.
+   *
+   * A wrong or missing code still throws `OTP_INVALID`/`OTP_EXPIRED` exactly as `verify()`
+   * does — the attempt cap is enforced identically either way.
+   */
+  async check(purpose: OtpPurpose, subject: string, code: string): Promise<string | undefined> {
+    const record = await this.checkRecord<StoredOtp>(otpKey(purpose, subject), purpose, subject, code);
+    return record.payload;
+  }
+
+  /** Drops an outstanding code, e.g. when an action is abandoned, or once `check()` has been
+   * followed by a business check that passed — this is what actually spends a code `check()`
+   * left alive. Idempotent: deleting an already-gone or never-issued key is a no-op. */
   async discard(purpose: OtpPurpose, subject: string): Promise<void> {
     await this.redis.del(otpKey(purpose, subject));
   }
@@ -177,6 +200,38 @@ export class OtpService {
   ): Promise<T> {
     const [status, attemptsRemaining, raw] = (await this.redis.eval(
       VERIFY_OTP_LUA,
+      1,
+      key,
+      hashOtp(purpose, subject, code),
+      String(OTP_MAX_ATTEMPTS),
+      String(Date.now()),
+    )) as [string, number, string];
+
+    if (status === 'OK') {
+      return JSON.parse(raw) as T;
+    }
+
+    if (status === 'INVALID') {
+      throw new AppError(400, ErrorCode.OTP_INVALID, 'That code is not correct.', {
+        attemptsRemaining,
+      });
+    }
+
+    throw new AppError(
+      400,
+      ErrorCode.OTP_EXPIRED,
+      'That code has expired. Please request a new one.',
+    );
+  }
+
+  /**
+   * Same as `verifyRecord`, but via `CHECK_OTP_LUA`: a correct code is confirmed and returned
+   * without deleting the record. The caller is responsible for calling `discard(purpose,
+   * subject)` once it's actually safe to spend it — `checkRecord`/`check` alone never do.
+   */
+  async checkRecord<T>(key: string, purpose: OtpPurpose, subject: string, code: string): Promise<T> {
+    const [status, attemptsRemaining, raw] = (await this.redis.eval(
+      CHECK_OTP_LUA,
       1,
       key,
       hashOtp(purpose, subject, code),

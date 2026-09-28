@@ -161,6 +161,8 @@ _Origin: Team (Backlog USFR1–6, NFR5.1 and team decisions)_
 
 The OTP is **submitted together with the action**, never verified in a separate call. A separate `/otp/verify` would mean the server had to remember "this user is verified" and leave a gap between the two requests.
 
+- **Two exceptions to "single use, consumed the instant it's checked":** the `EMAIL_CHANGE` code on `POST /users/me/email` and the `PASSWORD_CHANGE` code on `POST /users/me/password` are checked for correctness first, but not actually spent until that endpoint's own business validation (`EMAIL_TAKEN`; "must differ from current password") also passes — so a caller who submits a taken new email, or resubmits their current password by mistake, can retry with the *same* code instead of requesting a new one. This is deliberately different from `POST /auth/password/reset`, which does consume its code even on the equivalent rejection: reset's version of that check sits behind a code tied to reading a real inbox, so there's nothing to gain by probing it for free. `changePassword` calls no request-limiter of its own, so if its reuse check ran *before* the code check instead, anyone holding a valid access token — including a leaked one — could submit throwaway codes with guessed passwords and read from the rejection whether a guess matches the account's real password, with no rate limit and no lockout. Checking the code first closes that off, at the cost of `OtpService` needing a non-consuming check (`check`/`checkRecord`, via `CHECK_OTP_LUA`) alongside the consuming one (`verify`/`verifyRecord`), plus an explicit `discard()` once the caller decides it's safe to spend it.
+
 **Login** (U2.1.2, U2.1.3, U2.3.1)
 
 1. If `loginlock:{emailHash}` exists → 423 `ACCOUNT_LOCKED` with `retryAfterSeconds`.
@@ -368,6 +370,7 @@ All prefixed `USER_` except the shared `LOG_LEVEL`. All are listed in the root `
 - **SMTP provider** for real mail. Test delivery to `@u.nus.edu` early; Mailpit only proves the service sends.
 - **Message broker** — blocks the outbox and `UserRegistered`.
 - These files have not been checked against `project.md`. Three things differ from it: `ACCOUNT_NOT_VERIFIED` removed, the `PENDING_VERIFICATION` status removed, `SUSPENDED` added.
+- **Step 12's OTP request limit is one shared bucket per user, across every purpose.** `otpreq:{userId}` (root `AGENTS.md` §"Redis keys") counts EMAIL_CHANGE, MOBILE_CHANGE, PASSWORD_CHANGE and DEACTIVATION requests together, and email change alone costs two codes against it (`EMAIL_CHANGE` then `NEW_EMAIL_VERIFY`). A user legitimately changing several fields in one sitting — email, then mobile, then password — can hit the 3-per-10-minutes block (429 `RATE_LIMITED`) without ever mistyping a code. Worth reconsidering before this reads as a bug report: options include a per-purpose bucket, or a higher limit for this authenticated self-service track than for the anonymous registration/reset flows the same limit was designed around.
 
 ## Edge cases
 
@@ -407,7 +410,7 @@ _Origin: Team_
 
 - [x] Step 10: admin list, role change, last-admin lock — `GET /admin/users`, `PATCH /admin/users/:userId/role` (see [The last-admin lock](#the-last-admin-lock))
 - [x] Step 11: `GET /users/me`, `PATCH /users/me` (self profile shape, no OTP; a by-id lookup wasn't needed here — if one ever is, it's a filter on `GET /admin/users`, not a new route). Note: `display_name` has no uniqueness constraint (schema: `VARCHAR(100) NOT NULL`, no `UNIQUE`) and `PATCH /users/me` does not check for a duplicate name — only `email_hash` is unique, so two accounts may share the same display name.
-- [ ] Step 12: OTP-protected changes (password, email, mobile, deactivate) — `POST /users/me/otp`, `POST /users/me/email` + `/email/verify`, `PATCH /users/me/mobile`, `POST /users/me/password`, `POST /users/me/deactivate`
+- [x] Step 12: OTP-protected changes (password, email, mobile, deactivate) — `POST /users/me/otp`, `POST /users/me/email` + `/email/verify`, `PATCH /users/me/mobile`, `POST /users/me/password`, `POST /users/me/deactivate`. Resolved the response-shape `[Open]` item in favour of the self profile shape (matching Step 11). `POST /users/me/email` and `POST /users/me/password` check their code for correctness before spending it, and only spend it once the endpoint's own business validation (`EMAIL_TAKEN`; "must differ from current password") also passes — see the **OTP** section above for why, and `OtpService.check`/`checkRecord`/`discard`.
 - [ ] Step 13: reactivate — `POST /admin/users/:userId/reactivate`
 - [ ] Step 14: `GET /internal/users/:userId`
 

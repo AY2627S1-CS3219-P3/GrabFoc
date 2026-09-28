@@ -261,6 +261,141 @@ dismissing it.
 
 ## Deanson
 
+### 2026-09-28 — Step 12: the six OTP-protected self-service endpoints (branch `feature/user-service-self-profile`, PR not yet opened)
+
+**Tool:** Claude Code (Claude Sonnet 5) · **Mode:** explain, generate, debug, verify
+**Files:** `user-service/src/auth/auth.schemas.ts`, `user-service/src/users/users.schemas.ts`,
+`user-service/src/users/users.repository.ts`, `user-service/src/users/users.service.ts`,
+`user-service/src/users/users.controller.ts`, `user-service/src/users/users.service.spec.ts`,
+`user-service/src/otp/otp.scripts.ts`, `user-service/src/otp/otp.service.ts`,
+`user-service/src/otp/otp.service.int.spec.ts` (all existing files, no new ones — see "What I
+changed or rejected" on file organisation), `user-service/AGENTS.md`, `user-service/README.md`,
+`user-service/postman/user-service.postman_collection.json`
+
+**Scenario.** Continuing Person B's track after Step 11: `POST /users/me/otp`, `POST
+/users/me/email` + `/email/verify`, `PATCH /users/me/mobile`, `POST /users/me/password`, `POST
+/users/me/deactivate`. Had it read the existing code and explain the OTP storage/consumption
+mechanics before any code was written, settled two design points as clarifying questions, then
+implemented and manually verified — then, in a follow-up review of exactly when each code is
+spent, the literal version of a change I asked for turned out to open a security hole, which
+got caught and redesigned before I implemented it.
+
+**Prompts (exact):**
+
+> I am person B (Deanson) implementing user service. Read /user-service AGENTS.md, readme.md and
+> all relevant files under user-service.
+
+> DOn't implement anything yet. Tell me your plan for step 12, let's ensure we are on the same
+> page.
+
+> 1. How are OTPs stored currently?
+> 2. what do u mean by 'consume' in this context
+> 3. new password must differ from current
+> 4. I rather you just fold the modules in instead of name it self-service.controller etc,
+> because it may be confusing.
+
+> Go ahead and implement step 12 as accordingly to what we discucsed. After you are finished,
+> state the files / functions you edited or changed for each endpoint. DO NOT start on step13
+> without my permission.
+
+> Run through the flow of a user wanting to change their email
+
+> Run through the flow for account registration. I just want to compare the flow.
+
+> I checked the corresponding files and code. It will looks okay. I will now proceed with
+> testing via Postman.
+
+> I don't think step 10's requests is in the collection?
+
+> Add step 10 and step 12 to the collection
+
+> under each /me/email or mobile or password, what currently happens when an expired otp is used
+
+> flag step 12 with a note saying that 3 OTP requests limit per 10min may need to be
+> reconsidered since user might change multiple fields consecutively in AGENTS.md
+
+> For each data flow (email, mobile and password). Tell me when an OTP is consumed
+
+> For /POST /users/me/email, we should only consume the code after we run our verification such
+> as if the email is valid and that if the email is unique
+> For /POST/users/me/password, we should only consume the code after we run our verification
+> such as the new password passes the correct length and format as well as that it is different
+> from the previous password
+>
+> Clarify that you understand.
+
+> Continue
+
+> how many times is correctness checked for in terms of limit?
+
+> on password change, are all refresh tokens invalidated?
+
+> I have tested step 12's all endpoints on postman, everything looks good. help me edit the
+> corresponding files including usage-log.md, agents.md and other relevnt files to reflect this
+> progress
+
+(Two design points were resolved through a multiple-choice question rather than free text —
+recorded under "Decisions I made" below, not paraphrased here as prompts.)
+
+**What it produced:** the six endpoints and their Zod schemas, repository methods
+(`updateEmail` — including translating the Postgres 23505 unique-violation into 409
+`EMAIL_TAKEN` — `updateMobile`, `deactivate`), the constructor wiring, a full rewrite of
+`users.service.spec.ts`'s mocks and new test coverage, two Postman flow walkthroughs (email
+change vs. registration) on request, and — after I asked when each OTP is spent and then asked
+to defer that point past validation — a new non-consuming check primitive in `OtpService`
+(`check`/`checkRecord`, backed by a new `CHECK_OTP_LUA`) plus the redesigned
+`requestEmailChange`/`changePassword` methods and their disclosure headers.
+
+**Decisions I made, which it did not:**
+
+- **Self profile shape for `PATCH /users/me/mobile` and `POST /users/me/email/verify`** —
+  resolving the `[Open]` item AGENTS.md had left for exactly this, in favour of consistency with
+  Step 11 over the endpoint table's literal (admin-facing) shape.
+- **Fold everything into the existing `users.controller.ts`/`users.service.ts`/
+  `users.schemas.ts`** rather than the separate `self-service.*` pair it first proposed —
+  simpler file layout, at the cost of those two files now covering both Step 11 and Step 12.
+- **Extend the "must differ from current password" check to `changePassword`**, even though
+  AGENTS.md only documents that rule for password *reset* — for consistency between the two
+  places a password gets set.
+- **Defer spending the `EMAIL_CHANGE`/`PASSWORD_CHANGE` code until after the endpoint's own
+  business check passes**, so a rejected `EMAIL_TAKEN`/"must differ" doesn't cost the user their
+  code — the request that started the security discussion below.
+- Given the choice, once the risk was flagged (below): **"verify-then-conditionally-consume"
+  over a plain reorder**, and applied it to *both* endpoints for consistency rather than only
+  the higher-risk one (password).
+- Added the OTP-rate-limit note to AGENTS.md's `Open` section myself, having noticed the
+  three-per-ten-minutes bucket is shared across every Step 12 purpose and a user changing
+  several fields in one sitting could hit it legitimately.
+
+**AI-proposed, and I adopted after reading the reasoning:**
+
+- **The whole "verify-then-conditionally-consume" design** (`OtpService.check`/`checkRecord`,
+  `CHECK_OTP_LUA`, explicit `discard()`). I'd asked for the literal version — move the business
+  check before the OTP check — and it flagged that this would let anyone holding a valid access
+  token (including a leaked one) probe `changePassword`'s reuse check as a free
+  password-guessing oracle, with no rate limit and no lockout, since `changePassword` calls no
+  request-limiter of its own. It proposed keeping the correctness check first (closing that
+  hole) but not deleting the record on a match until the business check also passes, so I still
+  get "a rejected check doesn't cost a code" without the oracle. I confirmed this via its
+  AskUserQuestion for both the password and (for consistency) the email endpoint.
+- **Flagged that Step 10's admin endpoints were never actually in the Postman collection**,
+  despite `admin.controller.ts`/`admin.service.ts`'s own disclosure headers claiming they were
+  Postman-verified — the verification evidently happened with ad hoc requests that were never
+  saved back into the shared file. I asked it to add both Step 10 and Step 12 to close the gap.
+
+**What I changed or rejected:** the literal form of my own OTP-consumption request (see above) —
+not code the AI generated unprompted, but a design I asked for that got substantively revised
+after it identified the oracle risk, before any code was written against it.
+
+**Verification.**
+- `npm run build` (clean) and `npm test` (267/267, 19 suites).
+- `npm run test:int` (50/50) against a real Redis (`docker compose up -d user-redis`), including
+  new coverage for `check()`/`discard()`: a correct code survives a `check()` without being
+  deleted, the same code can be checked again, `discard()` is what actually removes it, and the
+  attempt cap/`KEEPTTL` behaviour on a wrong guess is unchanged from `verify()`.
+- I tested all six Step 12 endpoints via Postman against the compose stack myself and confirmed
+  they work as expected.
+
 ### 2026-09-28 — Step 11: GET /users/me, PATCH /users/me (branch `feature/user-service-admin-endpoints`, PR not yet opened)
 
 **Tool:** Claude Code (Claude Sonnet 5) · **Mode:** explain, generate, debug, verify

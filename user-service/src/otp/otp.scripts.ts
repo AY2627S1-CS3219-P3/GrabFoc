@@ -4,6 +4,18 @@
  * Scope: Generated the Lua scripts that make OTP verification, reissue and rate limiting
  *        atomic.
  * Author review: Read in full; `npm run test:int` passes (18 tests against a real Redis), including the concurrency cases the scripts exist for.
+ *                2026-09-28: added CHECK_OTP_LUA (Step 12) for POST /users/me/email and POST
+ *                /users/me/password, where a correct code must not be spent until the
+ *                endpoint's own business validation (EMAIL_TAKEN / "must differ from current
+ *                password") also passes — otherwise a caller with a valid access token but no
+ *                real code could probe that validation for free. It is VERIFY_OTP_LUA with the
+ *                DEL on a match removed; the attempt cap keeps the same atomicity guarantee
+ *                either way, since only the deletion-on-success is deferred.
+ * Author review: Read in full; `npm run test:int` passes against a real Redis, including the
+ *                same match/attempt-cap/KEEPTTL cases `VERIFY_OTP_LUA` already had, plus the
+ *                "not deleted on a match, deleted by discard()" case — see
+ *                otp.service.int.spec.ts. Exercised indirectly through Step 12's endpoints,
+ *                verified via Postman on 2026-09-28 — see /ai/usage-log.md.
  */
 
 /**
@@ -58,6 +70,53 @@ if data.attempts >= tonumber(ARGV[2]) then
 end
 
 -- KEEPTTL: a wrong guess must not extend the code's five-minute life.
+redis.call('SET', KEYS[1], cjson.encode(data), 'KEEPTTL')
+return {'INVALID', tonumber(ARGV[2]) - data.attempts, ''}
+`;
+
+/**
+ * Check one OTP without spending it — everything VERIFY_OTP_LUA does, except a match does not
+ * delete the record.
+ *
+ * Why this exists: POST /users/me/email and POST /users/me/password each have a business check
+ * (EMAIL_TAKEN; "must differ from current password") that can only be run once a real code is
+ * confirmed correct. If that check ran BEFORE the code check instead, anyone holding a valid
+ * access token could probe it for free — for the password case, that means learning whether a
+ * guessed password matches the account's real one, with no rate limit and no lockout. Checking
+ * the code first and only, closes that off: nobody without a real, valid code ever reaches the
+ * business check. Not spending the record on a match then lets a caller retry the business step
+ * with the SAME code if that check fails (rather than needing a whole new one), and the caller
+ * explicitly spends it afterwards via OtpService.discard() once nothing else can go wrong.
+ *
+ * The attempt cap's atomicity is unaffected: only the deletion-on-success line is removed, and a
+ * wrong guess is handled exactly as in VERIFY_OTP_LUA (attempts++, deleted on the cap, KEEPTTL
+ * otherwise) — none of that depends on what happens to a right guess.
+ *
+ * KEYS[1] / ARGV[1-3]: identical to VERIFY_OTP_LUA.
+ * Returns the same shape; 'OK' means the record is still there.
+ */
+export const CHECK_OTP_LUA = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then
+  return {'EXPIRED', 0, ''}
+end
+
+local data = cjson.decode(raw)
+
+if data.otpExpiresAt and tonumber(data.otpExpiresAt) <= tonumber(ARGV[3]) then
+  return {'EXPIRED', 0, ''}
+end
+
+if data.otpHash == ARGV[1] then
+  return {'OK', 0, raw}
+end
+
+data.attempts = data.attempts + 1
+if data.attempts >= tonumber(ARGV[2]) then
+  redis.call('DEL', KEYS[1])
+  return {'EXPIRED', 0, ''}
+end
+
 redis.call('SET', KEYS[1], cjson.encode(data), 'KEEPTTL')
 return {'INVALID', tonumber(ARGV[2]) - data.attempts, ''}
 `;

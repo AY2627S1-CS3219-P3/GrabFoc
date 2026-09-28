@@ -11,10 +11,19 @@
  *                verified via Postman on 2026-09-27 (role/status filters, ordering). The
  *                role-change additions were verified via Postman on 2026-09-28 — see
  *                /ai/usage-log.md.
+ *                2026-09-28: added `updateEmail`, `updateMobile` and `deactivate` for
+ *                Step 12 (POST /users/me/email/verify, PATCH /users/me/mobile, POST
+ *                /users/me/deactivate).
+ * Author review: `updateEmail`, `updateMobile` and `deactivate` were verified via Postman
+ *                against the compose stack on 2026-09-28 (including `updateEmail`'s
+ *                23505→EMAIL_TAKEN path, exercised by re-claiming an address already in use) —
+ *                see /ai/usage-log.md.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
 import { Role } from '../auth/caller';
+import { AppError } from '../common/app-error';
+import { ErrorCode } from '../common/error-codes';
 import { PG_POOL } from '../db/database';
 
 /** Mirrors the `user_status` enum in migrations/001_init.sql. */
@@ -329,6 +338,67 @@ export class UsersRepository {
       userId,
       role,
     ]);
+    return rowCount !== null && rowCount > 0;
+  }
+
+  /**
+   * Commits a verified email change (`POST /users/me/email/verify`, Step 12). Unlike
+   * `insertIfAbsent`'s `ON CONFLICT DO NOTHING` — there is no row to *not* insert here — a
+   * concurrent claim of the same address surfaces as the `email_hash` UNIQUE constraint
+   * rejecting the UPDATE with Postgres error 23505, which this turns into the same 409
+   * `EMAIL_TAKEN` the pre-check in `UsersService.requestEmailChange` normally catches first.
+   * The pre-check alone would leave a window between it and this write for someone else to
+   * claim the address in between; this is what closes it.
+   */
+  async updateEmail(
+    userId: string,
+    emailHash: string,
+    emailEncrypted: Buffer,
+    client?: PoolClient,
+  ): Promise<boolean> {
+    try {
+      const { rowCount } = await (client ?? this.pool).query(
+        'UPDATE users SET email_hash = $2, email_encrypted = $3, updated_at = now() WHERE id = $1',
+        [userId, emailHash, emailEncrypted],
+      );
+      return rowCount !== null && rowCount > 0;
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') {
+        throw new AppError(409, ErrorCode.EMAIL_TAKEN, 'An account with this email already exists.');
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * `PATCH /users/me/mobile` (Step 12). `mobileEncrypted` holds only the digits — the country
+   * code is its own plaintext column, same split as `NewUser` and `profile.mapper.ts`.
+   */
+  async updateMobile(
+    userId: string,
+    countryCode: string,
+    mobileEncrypted: Buffer,
+    client?: PoolClient,
+  ): Promise<boolean> {
+    const { rowCount } = await (client ?? this.pool).query(
+      'UPDATE users SET country_code = $2, mobile_encrypted = $3, updated_at = now() WHERE id = $1',
+      [userId, countryCode, mobileEncrypted],
+    );
+    return rowCount !== null && rowCount > 0;
+  }
+
+  /**
+   * Self-deactivation (`POST /users/me/deactivate`, Step 12). Takes a required `client`, like
+   * `updateRole`: the caller (`UsersService.deactivateSelf`) always runs this inside
+   * `AdminLockService.run`'s transaction, alongside `RefreshTokensRepository.revokeAllForUser`
+   * — the status change and the session revoke must commit together, or a rollback of one
+   * would leave the other's effect standing.
+   */
+  async deactivate(userId: string, client: PoolClient): Promise<boolean> {
+    const { rowCount } = await client.query(
+      "UPDATE users SET status = 'DEACTIVATED', deactivated_at = now(), updated_at = now() WHERE id = $1",
+      [userId],
+    );
     return rowCount !== null && rowCount > 0;
   }
 }

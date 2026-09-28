@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FoC User Service",
-    "description": "Sign-up, login and the session lifecycle for the FoC User Service. Set baseUrl and signupEmail in an environment; the OTP arrives in Mailpit at http://localhost:8025. AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. Author review: every request run against the compose stack.",
+    "description": "Sign-up, login, the session lifecycle, the admin user/role lifecycle and the OTP-protected self-service profile changes for the FoC User Service. Set baseUrl and signupEmail in an environment; every OTP arrives in Mailpit at http://localhost:8025 - paste it into the otp variable before the next request in a flow. AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. 2026-09-28 (model: Claude Sonnet 5): added List users (admin) and Change role (admin) (Step 10 - these routes were marked Postman-verified in admin.controller.ts/admin.service.ts, but the requests used for that were never saved into this collection) and the six Step 12 requests (Request OTP through Deactivate account). Author review: the six Step 12 requests were exercised via Postman against the compose stack on 2026-09-28 (all endpoints, including the retry-with-the-same-code behaviour on Change email - request and Change password) - see /ai/usage-log.md. List users (admin) and Change role (admin) (Step 10) are still unverified through this file specifically, even though the routes themselves were separately confirmed working via ad hoc Postman requests when Step 10 was built.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -16,6 +16,16 @@
     {
       "key": "otp",
       "value": ""
+    },
+    {
+      "key": "targetUserId",
+      "value": "",
+      "description": "For 'Change role (admin)': the id of the USER being promoted/demoted, not the caller."
+    },
+    {
+      "key": "newEmail",
+      "value": "alex.new@u.nus.edu",
+      "description": "For the email-change flow. Must not already belong to another account."
     }
   ],
   "item": [
@@ -231,6 +241,50 @@
       }
     },
     {
+      "name": "List users (admin)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/admin/users?role=USER&status=ACTIVE",
+          "host": ["{{baseUrl}}"],
+          "path": ["admin", "users"],
+          "query": [
+            { "key": "role", "value": "USER", "disabled": false },
+            { "key": "status", "value": "ACTIVE", "disabled": false }
+          ]
+        },
+        "description": "200 with { items }, each in the admin-facing Profile shape (adds role/status/createdAt over the self profile). role and status are both optional exact-match filters - remove or disable either query param to drop it. 403 for a non-admin caller (logged as UNAUTHORISED_ACCESS); 401 with no token. accessToken must belong to an ADMIN."
+      }
+    },
+    {
+      "name": "Change role (admin)",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/admin/users/{{targetUserId}}/role",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"role\": \"ADMIN\"\n}"
+        },
+        "description": "200 with the target's admin-facing profile. role is 'USER' or 'ADMIN'. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE if the target isn't ACTIVE; 409 CANNOT_MODIFY_SELF if targetUserId equals the caller's own id and role is USER (use 'Deactivate account' to remove your own admin access instead); 409 LAST_ADMIN if the caller is the sole active admin demoting themselves. 403/401 as above."
+      }
+    },
+    {
       "name": "Get my profile",
       "request": {
         "method": "GET",
@@ -264,6 +318,138 @@
           "raw": "{\n  \"displayName\": \"Alex T.\"\n}"
         },
         "description": "200 with the updated self profile. No OTP needed - displayName is the one profile field that isn't OTP-protected. Any field other than displayName (e.g. role, email) is rejected with 400, since the body schema is strict."
+      }
+    },
+    {
+      "name": "Request OTP",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/users/me/otp",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"purpose\": \"EMAIL_CHANGE\"\n}"
+        },
+        "description": "202 with { otpExpiresAt }. purpose is one of EMAIL_CHANGE, MOBILE_CHANGE, PASSWORD_CHANGE, DEACTIVATION - swap the value above for whichever flow you're testing next. Always mails the code to the CURRENT email, even for MOBILE_CHANGE (every OTP in this service goes out by email). For DEACTIVATION, 409 LAST_ADMIN before any code is issued if the caller is the sole active admin. 429 after three requests in ten minutes."
+      }
+    },
+    {
+      "name": "Change email - request",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/users/me/email",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"newEmail\": \"{{newEmail}}\",\n  \"otp\": \"{{otp}}\"\n}"
+        },
+        "description": "202 with { otpExpiresAt }. Run 'Request OTP' with purpose EMAIL_CHANGE first and paste that code (from the CURRENT address's inbox) into otp here. On success, mails a SECOND code to newEmail - paste that one into otp before 'Change email - verify'. 409 EMAIL_TAKEN if newEmail already belongs to another account (the first code is still consumed even then). OTP errors otherwise."
+      }
+    },
+    {
+      "name": "Change email - verify",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/users/me/email/verify",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"otp\": \"{{otp}}\"\n}"
+        },
+        "description": "200 with the refreshed self profile - email is now newEmail. Uses the SECOND code, mailed to newEmail by 'Change email - request', not the first one. 409 EMAIL_TAKEN if newEmail was claimed by someone else in the meantime. No refresh tokens are revoked - existing sessions stay logged in."
+      }
+    },
+    {
+      "name": "Change mobile",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/users/me/mobile",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"countryCode\": \"+65\",\n  \"mobileNumber\": \"98765432\",\n  \"otp\": \"{{otp}}\"\n}"
+        },
+        "description": "200 with the refreshed self profile. Run 'Request OTP' with purpose MOBILE_CHANGE first. countryCode and mobileNumber must be a valid pair together (libphonenumber-js), not just individually well-formed. OTP errors otherwise; 400 for an invalid number."
+      }
+    },
+    {
+      "name": "Change password",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/users/me/password",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"otp\": \"{{otp}}\",\n  \"newPassword\": \"AnotherPassw0rd\"\n}"
+        },
+        "description": "204, no tokens back. Run 'Request OTP' with purpose PASSWORD_CHANGE first. Revokes every refresh token, so this session's accessToken still works (up to 15 min) but refreshToken no longer does - log in again to get a fresh pair. 400 VALIDATION_ERROR if newPassword matches the current one (still costs you the code). OTP errors otherwise."
+      }
+    },
+    {
+      "name": "Deactivate account",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/users/me/deactivate",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"otp\": \"{{otp}}\"\n}"
+        },
+        "description": "204. Run 'Request OTP' with purpose DEACTIVATION first. Sets status DEACTIVATED and revokes every refresh token; logging in afterward gives 403 ACCOUNT_DEACTIVATED. 409 LAST_ADMIN if the caller is the sole active admin - promote another admin via 'Change role (admin)' first to test the success path instead. An admin can undo this once Step 13 (reactivate) exists."
       }
     }
   ]
