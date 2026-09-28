@@ -1,15 +1,14 @@
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-09-28
-# Scope: Generated the CodeQL workflow for fork pull requests, main pushes, and weekly scans.
-# Author review: Pending human validation and approval on PR #23.
-# AI-generated workflow; human review pending.
+# Scope: Generated CodeQL scans for pull requests targeting any branch, main pushes, and weekly scans.
+# Author review: Initial setup approved in PR #23; expanded PR coverage pending human review.
+# AI-generated workflow; expanded PR coverage pending human review.
 name: CodeQL
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   schedule:
     - cron: '17 3 * * 1'
 

@@ -1,9 +1,9 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Generated this AI usage log entry for the CodeQL workflow configuration.
-Author review: Pending human review on PR #23.
-AI-generated log entry; human review pending.
+Scope: Recorded the CodeQL workflow configuration and expanded pull request coverage.
+Author review: Initial setup approved in PR #23; expanded PR coverage pending human review.
+AI-generated log entry; expanded PR coverage pending human review.
 -->
 
 # AI usage log
@@ -15,4 +15,12 @@ AI-generated log entry; human review pending.
 - Exact user prompt: “lets do the configuring of a nadvanced set up”
 - Key response: “I’ll configure the CodeQL workflow for pull requests, then switch GitHub from default to advanced setup and check whether PR #7 receives a scan. I’ll inspect the repository settings and existing workflow first.”
 - Output: `.github/workflows/codeql.yml` in PR #23.
-- Human review: Pending. The CodeQL jobs ran successfully after the repository switched to advanced setup.
+- Human review: Initial setup approved by Jyang1206 and merged in PR #23. The CodeQL jobs ran successfully after the repository switched to advanced setup.
+
+### 2026-09-28 — Follow-up: scan PRs targeting any branch
+
+- Tool and mode: Codex (GPT-6), generate.
+- Usage scenario: Extend the CodeQL setup above to cover feature-to-feature pull requests, including stacked changes.
+- Prompt and key response: The approved excerpts for this CodeQL setup work are recorded in the parent entry above.
+- Output: Removed the `pull_request.branches` filter from `.github/workflows/codeql.yml`; main push scans and the weekly schedule are unchanged.
+- Human review: Pending for this follow-up change.
