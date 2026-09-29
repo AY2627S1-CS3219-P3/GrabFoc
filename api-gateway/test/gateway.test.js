@@ -1,17 +1,17 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Added gateway routing and authentication boundary checks; verified refactored routing, request IDs and errors on 2026-09-28.
-Author review: Jie Yang reviewed this file.
+Scope: Added gateway routing and authentication boundary checks; verified refactored routing, request IDs and errors; covered non-origin-form targets and cookie stripping on 2026-09-29.
+Author review: Jie Yang reviewed the earlier tests; new security cases await his review.
 */
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { after, test } from 'node:test';
 import { createGateway } from '../dist/server.js';
 import { findRoute, gatewayRoutes } from '../dist/routing/router.js';
 import { JwksUnavailableError } from '../dist/auth.js';
 
-// AI-generated (pending human review)
+// AI-generated (earlier version reviewed by Jie Yang; latest edits pending review)
 function listen(server) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${server.address().port}`)));
 }
@@ -22,11 +22,11 @@ const user = createServer((request, response) => {
     response.end(JSON.stringify({ requestId: request.headers['x-request-id'] }));
     return;
   }
-  response.end(JSON.stringify({ path: request.url, method: request.method, authorization: request.headers.authorization, userId: request.headers['x-user-id'], userRole: request.headers['x-user-role'] }));
+  response.end(JSON.stringify({ path: request.url, method: request.method, authorization: request.headers.authorization, userId: request.headers['x-user-id'], userRole: request.headers['x-user-role'], cookie: request.headers.cookie }));
 });
 const supplier = createServer((request, response) => {
   response.writeHead(200, { 'content-type': 'application/json' });
-  response.end(JSON.stringify({ path: request.url, authorization: request.headers.authorization, userId: request.headers['x-user-id'], userRole: request.headers['x-user-role'] }));
+  response.end(JSON.stringify({ path: request.url, authorization: request.headers.authorization, userId: request.headers['x-user-id'], userRole: request.headers['x-user-role'], cookie: request.headers.cookie }));
 });
 const userUrl = await listen(user);
 const supplierUrl = await listen(supplier);
@@ -91,6 +91,38 @@ test('caller identity headers are not forwarded to Supplier Service', async () =
   const response = await fetch(`${gatewayUrl}/locations`, { headers: { authorization: 'Bearer valid', 'x-user-id': 'forged', 'x-user-role': 'ADMIN' } });
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { path: '/locations', authorization: 'Bearer valid' });
+});
+
+test('cookies are never forwarded to User or Supplier Service', async () => {
+  for (const path of ['/.well-known/jwks.json', '/locations']) {
+    const response = await fetch(`${gatewayUrl}${path}`, {
+      headers: { authorization: 'Bearer valid', cookie: 'foc_refresh=secret' },
+    });
+    assert.equal((await response.json()).cookie, undefined, path);
+  }
+});
+
+test('absolute and network-path request targets cannot redirect the proxy', async () => {
+  let attackerRequests = 0;
+  const attacker = createServer((_request, response) => { attackerRequests++; response.end('reached'); });
+  const attackerUrl = await listen(attacker);
+  const attackerHost = new URL(attackerUrl).host;
+  try {
+    for (const target of [`http://${attackerHost}/locations`, `//${attackerHost}/.well-known/jwks.json`]) {
+      const result = await new Promise((resolve, reject) => {
+        const address = new URL(gatewayUrl);
+        const request = httpRequest({ hostname: address.hostname, port: address.port, path: target,
+          headers: { authorization: 'Bearer valid', cookie: 'foc_refresh=secret' } }, (response) => {
+          response.resume();
+          response.on('end', () => resolve(response.statusCode));
+        });
+        request.on('error', reject);
+        request.end();
+      });
+      assert.equal(result, 400, target);
+    }
+    assert.equal(attackerRequests, 0);
+  } finally { attacker.close(); }
 });
 
 test('location types require a token and reach Supplier Service', async () => {
