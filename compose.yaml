@@ -3,6 +3,9 @@
 # Scope: Generated the first content of this file. 2026-09-28 (model: Claude Opus 5.5): moved
 #        the User Service to user-service/compose.yaml and included it from here.
 #        2026-09-29 (model: Claude Opus 5.5): included supplier-service/compose.yaml.
+# Tool: Codex (model: GPT-6), date: 2026-09-29
+# Scope: Included the API Gateway and frontend service Compose files.
+# Author review: Pending Jie Yang's review of the four-service stack.
 # Author review: Read in full; verified the full stack builds and runs, and that the database survives a down/up cycle.
 # Author review (Jian Bing, the supplier include): see supplier-service/compose.yaml.
 #
@@ -22,4 +25,8 @@ include:
     # here, so the root .env must exist: `cp .env.example .env` first.
     env_file: .env
   - path: supplier-service/compose.yaml
+    env_file: .env
+  - path: api-gateway/compose.yaml
+    env_file: .env
+  - path: frontend/compose.yaml
     env_file: .env

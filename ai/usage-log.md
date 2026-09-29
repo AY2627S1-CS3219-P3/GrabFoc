@@ -33,6 +33,9 @@ Author review: Pending team review of the merged log.
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Preserved main's Jian Bing entries and branch-specific frontend and gateway entries while resolving PR #43 merge conflicts.
 Author review: Pending Jie Yang's review of the merge resolution.
+Tool: Codex (model: GPT-6), date: 2026-09-29
+Scope: Recorded the approved gateway and frontend Compose implementation and its verification.
+Author review: Pending Jie Yang's review of the Compose change.
 -->
 
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
@@ -996,6 +999,27 @@ scan. I'll inspect the repository settings and existing workflow first."
 the repository switched to advanced setup.
 
 ## Jie Yang
+
+### 2026-09-29 23:23 SGT — Add gateway and frontend to root Compose
+
+**Tool:** Codex (GPT-6) · **Mode:** generate
+**Files:** `compose.yaml`, `api-gateway/compose.yaml`, `api-gateway/.dockerignore`, `api-gateway/README.md`, `frontend/Dockerfile`, `frontend/compose.yaml`, `frontend/.dockerignore`, `frontend/README.md`, `ai/usage-log.md`
+
+**Scenario:** Make the root Compose stack include the existing gateway and frontend alongside User and Supplier.
+
+**Prompts (exact):**
+
+~~~text
+the root compose should include the frontend and gateway compose
+~~~
+
+~~~text
+yes
+~~~
+
+**What it produced:** Added per-service Compose files, a frontend production Dockerfile, context exclusions, root includes, and setup notes.
+**What I changed or rejected:** Pending Jie Yang's review; the frontend gateway URL is set to the gateway's Compose hostname for both build and runtime.
+**Verification:** Root and individual Compose configs passed; both images built; gateway `/health`, frontend `/signin`, and the frontend `/api/gateway/health` rewrite returned 200. Stopped the test containers afterward.
 
 ### 2026-09-29 23:07 SGT — Resolve PR #43 merge conflicts
 

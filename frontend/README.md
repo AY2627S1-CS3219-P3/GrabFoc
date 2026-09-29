@@ -1,13 +1,15 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented frontend gateway requests, BFF-managed refresh, local configuration, reusable User Service error feedback, and Supplier browsing and management; removed the obsolete /locations redirect reference on 2026-09-29.
+Scope: Documented frontend gateway requests, BFF-managed refresh, local configuration, reusable User Service error feedback, and Supplier browsing and management; removed the obsolete /locations redirect reference and added Compose setup on 2026-09-29.
 Author review: Jie Yang reviewed this file; live integration testing remains pending.
 -->
 
 # GrabFoc frontend
 
 The frontend runs on port 3000 by default. Copy `frontend/.env.example` to `frontend/.env.local` and set `FRONTEND_GATEWAY_URL` if the gateway is not at `http://localhost:3003`.
+
+From the repository root, copy `.env.example` to `.env`, fill in the required User and Supplier settings, and run `docker compose up --build`. The frontend will be at `http://localhost:3000`; its server uses `http://api-gateway:3003` inside the Compose network. To run only this container, use `docker compose -f frontend/compose.yaml up --build`; requests to the gateway require the gateway container to be running in the same `foc` project.
 
 Start the gateway, User Service, and Supplier Service, then run `npm install` and `npm run dev` from this folder. The sign-in screen is `/signin`, the app Home is `/home`, and `/` checks the session before redirecting. Home shows live Supplier locations with name search, type, building, opening-time and name-order filters, plus pagination. Admins can use `/admin/locations` to create, edit, deactivate and restore locations; Supplier Service enforces the role independently.
 

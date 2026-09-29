@@ -1,0 +1,17 @@
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-09-29
+# Scope: Added the frontend container to the root Compose stack.
+# Author review: Pending Jie Yang's review and live integration check.
+
+name: foc
+
+services:
+  frontend:
+    build:
+      context: .
+      args:
+        FRONTEND_GATEWAY_URL: http://api-gateway:3003
+    environment:
+      FRONTEND_GATEWAY_URL: http://api-gateway:3003
+    ports:
+      - "3000:3000"

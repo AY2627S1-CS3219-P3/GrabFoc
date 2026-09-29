@@ -1,0 +1,17 @@
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-09-29
+# Scope: Added the API Gateway container to the root Compose stack.
+# Author review: Pending Jie Yang's review and live integration check.
+
+name: foc
+
+services:
+  api-gateway:
+    build: .
+    environment:
+      GATEWAY_PORT: 3003
+      USER_SERVICE_URL: http://user-service:3001
+      SUPPLIER_SERVICE_URL: http://supplier-service:3002
+      USER_SERVICE_JWKS_URL: http://user-service:3001/.well-known/jwks.json
+    ports:
+      - "3003:3003"

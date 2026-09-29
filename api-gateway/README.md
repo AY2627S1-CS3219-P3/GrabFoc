@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented gateway setup and integration boundaries; clarified gateway-local .env loading on 2026-09-28.
+Scope: Documented gateway setup and integration boundaries; clarified gateway-local .env loading on 2026-09-28 and added Compose setup on 2026-09-29.
 Author review: Jie Yang reviewed this file.
 -->
 
@@ -20,5 +20,7 @@ Route definitions live under `src/routing/`, one list per service. `src/app.ts` 
 Every completed request has a JSON log with request ID, method, path, target service, status and duration. The gateway forwards a valid incoming `X-Request-Id`, or creates one, and returns it in the response. Authentication and upstream failures have separate JSON events. A missing or invalid token returns 401; JWKS failure returns 503; an unavailable upstream returns 502; an unexpected gateway error returns 500.
 
 Copy `api-gateway/.env.example` to `api-gateway/.env`, set the service URLs, then run `npm install` and `npm run dev` from `api-gateway/`. The gateway loads only its own `.env`, regardless of its working directory; it never reads the repo-root or another service's `.env`. Shell variables take precedence, and a missing `.env` is allowed when the environment supplies the required URLs. Local defaults are User Service 3001, Supplier Service 3002, and gateway 3003. Use `npm test` and `npm run build` to verify. `GET /health` reports gateway process health only. If an upstream is absent, proxy requests return 502.
+
+From the repository root, copy `.env.example` to `.env`, fill in the required settings, and run `docker compose up --build`. The gateway is available at `http://localhost:3003` and uses the User and Supplier container hostnames inside the Compose network. It can also start by itself with `docker compose -f api-gateway/compose.yaml up --build`; upstream requests then need the corresponding service containers in the same `foc` project.
 
 Before connecting the frontend, confirm paths and payloads with User and Supplier owners. Confirm User Service's JWKS path, signing algorithm, issuer and audience. Decide whether each service re-verifies tokens or accepts gateway identity as recorded in the root `AGENTS.md`; this gateway currently forwards the bearer token and creates no identity headers.
