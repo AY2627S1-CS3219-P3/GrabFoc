@@ -1,3 +1,13 @@
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-09-28
+Scope: Recorded the CodeQL workflow configuration and expanded pull request coverage.
+Author review: Initial setup approved in PR #23; expanded PR coverage pending human review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Moved the CodeQL entries under the Jian Bing section when merging main into PR #27; entry text unchanged.
+Author review: Pending human review on PR #27.
+-->
+
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
 
 Required by Appendix 2 of the project document: *"Maintain a log, `/ai/usage-log.md`, in the
@@ -735,16 +745,6 @@ any real mailbox — not a service outage.
 <!-- Add your entries here. -->
 
 ## Jian Bing
-
-<!--
-AI Assistance Disclosure:
-Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Recorded the CodeQL workflow configuration and expanded pull request coverage.
-Author review: Initial setup approved in PR #23; expanded PR coverage pending human review.
-Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
-Scope: Moved these entries under this section when merging main into PR #27; entry text unchanged.
-Author review: Pending human review on PR #27.
--->
 
 ### 2026-09-28 — Follow-up: scan PRs targeting any branch
 
