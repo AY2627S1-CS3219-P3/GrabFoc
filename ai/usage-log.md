@@ -6,6 +6,9 @@ Author review: Initial setup approved in PR #23; expanded PR coverage pending hu
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Moved the CodeQL entries under the Jian Bing section when merging main into PR #27; entry text unchanged.
 Author review: Pending human review on PR #27.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Wrote the SoCLaaS TLS stopgap entry under the Jian Bing section (PR #36).
+Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #36.
 -->
 
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
@@ -745,6 +748,19 @@ any real mailbox — not a service outage.
 <!-- Add your entries here. -->
 
 ## Jian Bing
+
+### 2026-09-29 — Diagnose SoCLaaS review failures and add a TLS stopgap (PR #36)
+
+- Tool and mode: Claude Code (Claude Opus 5.5), debug and generate.
+- Usage scenario: Every SoCLaaS PR Review run failed with "SoCLaaS could not be reached" while the API still loaded in a browser. Used AI to find the cause and add a temporary workaround.
+- Prompts (exact):
+  - “why is soclass not working?” (with screenshots of the failed run and the API URL)
+  - “tyr the stopgap for the soclass o na different branch, but before you do, help me to settle this merge conflict on pr #27”
+  - “resolve this for pr 27, then open the pr for fix soclass tls”
+  - “okay the mcp is working now, read the review form codesx and resolv eth econversations accoridngly, then do the same with PR30 for user service”
+- Key response: After its 2026-09-28 certificate renewal, the SoCLaaS server sends only its leaf certificate. Browsers fetch the missing Let's Encrypt `YE2` intermediate themselves; Python's `urllib` does not, so the reviewer fails TLS verification and reports the service as unreachable.
+- Output: `SOCLAAS_INTERMEDIATES` (the `YE2` and `Root YE` certificates) and an SSL context for SoCLaaS requests only in `.github/scripts/soclaas_review.py`; certificate verification stays on. Tested locally against the live server on Python 3.11, 3.12 and 3.14.
+- Human review: Reviewed the diagnosis and chose the stopgap over waiting for the SoCLaaS admins. Still to confirm after merge: a SoCLaaS review re-run succeeds. Revert once the server serves its full chain.
 
 ### 2026-09-28 — Follow-up: scan PRs targeting any branch
 
