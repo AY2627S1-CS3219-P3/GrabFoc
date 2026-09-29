@@ -19,8 +19,8 @@ const messages: Record<string, string> = {
 };
 
 // AI-generated (pending human review)
-export function userErrorMessage(error: ServiceError): string {
-  const message = error.code ? messages[error.code] ?? error.message : error.message;
+export function userErrorMessage(error: ServiceError, fallback?: string): string {
+  const message = (error.code && messages[error.code]) || fallback || error.message;
   const retry = error.retryAfterSeconds;
   const attempts = error.attemptsRemaining;
   if (retry !== undefined && (error.code === 'ACCOUNT_LOCKED' || error.code === 'RATE_LIMITED'))

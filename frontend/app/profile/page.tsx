@@ -33,7 +33,7 @@ export default function ProfilePage() {
       if (!active) return;
       if (response.status === 401) { router.replace("/signin"); return; }
       if (!response.ok) {
-        const message = userErrorMessage(await parseServiceError(response, profileFallback));
+        const message = userErrorMessage(await parseServiceError(response, profileFallback), profileFallback);
         if (active) setError(message);
         return;
       }
@@ -49,7 +49,11 @@ export default function ProfilePage() {
     setError("");
     try {
       const response = await withSessionMutation(() => fetch("/api/session/logout", { method: "POST" }));
-      if (!response.ok) { feedback.setToast(userErrorMessage(await parseServiceError(response, "Could not log out. Please try again."))); return; }
+      if (!response.ok) {
+        const fallback = "Could not log out. Please try again.";
+        feedback.setToast(userErrorMessage(await parseServiceError(response, fallback), fallback));
+        return;
+      }
       const result: { remoteRevoked?: boolean } = await response.json();
       if (result.remoteRevoked === false) sessionStorage.setItem("logoutNotice", "Signed out here, but the service could not confirm remote logout.");
       else sessionStorage.removeItem("logoutNotice");

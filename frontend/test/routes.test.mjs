@@ -38,7 +38,7 @@ const gateway = createServer(async (request, response) => {
     }
     if (denyProfile) {
       response.writeHead(403, { "content-type": "application/json" });
-      response.end(JSON.stringify({ error: "Forbidden" }));
+      response.end(JSON.stringify({ error: { code: "UNKNOWN_PROFILE_ERROR", message: "Internal user table detail" } }));
       return;
     }
     if (malformedProfile) {
@@ -411,6 +411,8 @@ test("profile load failure keeps a retry action", async () => {
     denyProfile = true;
     await page.goto(`${baseUrl}/profile`);
     await page.getByRole("button", { name: "Retry" }).waitFor();
+    await page.getByRole("alert").getByText("Could not load your profile. Please try again.").waitFor();
+    assert.equal(await page.getByText("Internal user table detail").count(), 0);
     denyProfile = false;
     await page.getByRole("button", { name: "Retry" }).click();
     await page.getByRole("heading", { name: "Alex Tan" }).waitFor();
