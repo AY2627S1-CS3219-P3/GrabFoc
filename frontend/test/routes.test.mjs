@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified session flows, denial logging, refresh-only logout, reusable error feedback, Supplier browsing and management filters, retries, refreshed edits, and downstream 401 handling on 2026-09-29.
+Scope: Verified session flows, denial logging, refresh-only logout, reusable error feedback, Supplier browsing and management filters, retries, refreshed edits, and downstream 401 handling; removed the obsolete /locations redirect check on 2026-09-29.
 Author review: Jie Yang reviewed this file; local browser verification remains pending.
 */
 import assert from "node:assert/strict";
@@ -314,8 +314,6 @@ test("login, profile, logout, registration, recovery and Home navigation reach t
     await page.waitForURL("**/home");
     assert.deepEqual(requests.find((request) => request.path === "/auth/register/verify")?.body, { email: "alex@u.nus.edu", otp: "123456" });
 
-    await page.goto(`${baseUrl}/locations`);
-    await page.waitForURL("**/home");
     await page.getByRole("button", { name: "Courier" }).click();
     await page.getByRole("heading", { name: "Available Orders" }).waitFor();
     await page.getByRole("link", { name: "Profile" }).click();

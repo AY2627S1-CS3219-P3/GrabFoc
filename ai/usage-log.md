@@ -859,6 +859,23 @@ any real mailbox — not a service outage.
 
 ## Jie Yang
 
+### 2026-09-29 22:59 SGT — Remove obsolete frontend locations route
+
+**Tool:** Codex (GPT-6) · **Mode:** refactor
+**Files:** `frontend/app/locations/page.tsx`, `frontend/README.md`, `frontend/test/routes.test.mjs`, `ai/usage-log.md`
+
+**Scenario:** Remove the old `/locations` redirect because location browsing now lives at `/home`.
+
+**Prompt (exact):**
+
+~~~text
+can we remove the locations page?
+~~~
+
+**What it produced:** Deleted the redirect page and removed its documentation and browser-test references.
+**What I changed or rejected:** Pending Jie Yang's review; Supplier API `/locations` and admin `/admin/locations` remain in use.
+**Verification:** Checked route references and the frontend build.
+
 ### 2026-09-29 13:07 SGT — Merge main into frontend User Service integration
 
 **Tool:** Codex (GPT-6) · **Mode:** refactor, explain
