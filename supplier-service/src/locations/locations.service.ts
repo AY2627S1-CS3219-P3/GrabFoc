@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
  * Scope: Generated the location CRUD queries (parameterized SQL with pg), search, version checks,
  *        soft delete/restore, and the mapping of database errors to the team's error codes.
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; ran the CRUD, search and paging requests with Postman, and checked the 409 cases for a duplicate name and a stale version.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';

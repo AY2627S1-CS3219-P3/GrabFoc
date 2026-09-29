@@ -2,7 +2,7 @@
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28
 # Scope: Generated the two-stage build and runtime image, following the pattern in
 #        user-service/Dockerfile.
-# Author review: pending — to be completed by the reviewing team member.
+# Author review (Cole Lin): Read in full; built the image and ran the container against PostgreSQL.
 #
 # Build context is the REPOSITORY ROOT, not this folder, because the seed CSV lives in
 # data/ outside supplier-service/ (team decision):

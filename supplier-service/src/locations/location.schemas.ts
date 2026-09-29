@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
  * Scope: Generated strict Zod schemas for request bodies and query parameters, following the
  *        field, validation and error decisions in supplier-service/AGENTS.md.
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; ran it with Postman and checked the 400 cases: missing fields, unknown fields and bad query parameters.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';

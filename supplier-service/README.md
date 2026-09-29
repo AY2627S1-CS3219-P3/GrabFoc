@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
 Scope: Generated run and test instructions for the Supplier Service.
-Author review: pending — to be completed by the reviewing team member.
+Author review (Cole Lin): Read in full; followed the steps on a clean setup and confirmed they work.
 -->
 
 # Supplier Service

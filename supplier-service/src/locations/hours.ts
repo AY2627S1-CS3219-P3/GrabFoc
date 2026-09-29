@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
  * Scope: Generated HHMMhrs <-> minutes-since-midnight conversion (team decision: stored as minutes,
  *        entered and searched as HHMMhrs).
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; checked the conversion against the seed data, including the location that closes after midnight.
  */
 
 export const HHMM_RE = /^([01]\d|2[0-3])([0-5]\d)hrs$/;
