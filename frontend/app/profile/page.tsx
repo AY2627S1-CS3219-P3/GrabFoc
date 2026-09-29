@@ -17,7 +17,7 @@ import { ErrorToast, useErrorFeedback } from "../components/error-feedback";
 type Profile = { userId: string; displayName: string; email: string; countryCode: string | null; mobileNumber: string | null };
 const profileFallback = "Could not load your profile. Please try again.";
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export default function ProfilePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);

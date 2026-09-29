@@ -9,7 +9,7 @@ import { loadConfig } from './config.js';
 
 export { createGateway } from './app.js';
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1].replaceAll('\\', '/')}`).href) {
   const config = loadConfig();
   createGateway(config).listen(config.port, () => console.log(JSON.stringify({ event: 'gateway_started', port: config.port })));

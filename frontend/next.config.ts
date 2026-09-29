@@ -8,7 +8,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   distDir: process.env.FRONTEND_TEST_DIST_DIR ?? ".next",
-  // AI-generated (pending human review)
+  // AI-generated (reviewed by Jie Yang)
   async rewrites() {
     const gateway = process.env.FRONTEND_GATEWAY_URL ?? "http://localhost:3003";
     return [{ source: "/api/gateway/:path*", destination: `${gateway}/:path*` }];

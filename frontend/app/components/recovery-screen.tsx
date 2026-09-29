@@ -17,7 +17,7 @@ function noSubscription() { return () => {}; }
 function pendingEmail() { return sessionStorage.getItem("pendingResetEmail") ?? ""; }
 function emptyEmail() { return ""; }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function RecoveryScreen({ step }: { step: "forgot" | "reset" }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);

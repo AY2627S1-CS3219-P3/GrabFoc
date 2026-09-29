@@ -10,7 +10,7 @@ import { JwksUnavailableError } from './auth.js';
 export type TokenVerifier = (authorization: string | undefined) => Promise<boolean>;
 export type AuthResult = 'ok' | 'unauthorized' | 'unavailable';
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export async function authenticate(route: GatewayRoute, authorization: string | undefined, verify: TokenVerifier): Promise<AuthResult> {
   if (route.auth === 'public') return 'ok';
   try {

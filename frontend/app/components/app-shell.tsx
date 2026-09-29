@@ -7,7 +7,7 @@ Author review: Jie Yang reviewed this file; team visual review remains pending b
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function AppShell({ section, children }: { section: "profile" | "locations"; children: ReactNode }) {
   return (
     <div className="app-shell">

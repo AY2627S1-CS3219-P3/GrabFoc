@@ -22,7 +22,7 @@ function supplierPath(method: string, segments: string[]): string | null {
   return null;
 }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 async function handle(request: NextRequest, context: Context): Promise<NextResponse> {
   if (request.method !== 'GET' && !sameOrigin(request)) return forbiddenOrigin(request);
   const path = supplierPath(request.method, (await context.params).path);

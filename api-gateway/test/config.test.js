@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { loadRuntimeEnv } from '../dist/config.js';
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 test('loads .env values without overriding shell variables', () => {
   const path = join(tmpdir(), `gateway-config-${randomUUID()}.env`);
   const previous = {

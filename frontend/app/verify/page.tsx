@@ -6,7 +6,7 @@ Author review: Jie Yang reviewed this file; team visual verification remains pen
 */
 import { AuthScreen } from "../components/auth-screen";
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export default function VerifyPage() {
   return <AuthScreen view="verify" />;
 }

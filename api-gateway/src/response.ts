@@ -6,7 +6,7 @@ Author review: Jie Yang reviewed this file.
 */
 import type { ServerResponse } from 'node:http';
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function json(response: ServerResponse, status: number, body: object): void {
   if (response.headersSent || response.writableEnded) return;
   response.writeHead(status, { 'content-type': 'application/json' });

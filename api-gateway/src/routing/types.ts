@@ -5,7 +5,7 @@ Scope: Defined the gateway route contract for declarative service routing.
 Author review: Jie Yang reviewed this file.
 */
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export type ServiceName = 'user' | 'supplier';
 
 export type GatewayRoute = {

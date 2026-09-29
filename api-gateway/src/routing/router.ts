@@ -9,7 +9,7 @@ import { supplierRoutes } from './supplier.routes.js';
 import type { GatewayRoute, ServiceName } from './types.js';
 import { userRoutes } from './user.routes.js';
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function gatewayRoutes(config: Config): GatewayRoute[] {
   return [...userRoutes(config.authPrefix), ...supplierRoutes(config.locationsPrefix)];
 }

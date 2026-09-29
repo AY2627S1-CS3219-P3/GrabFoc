@@ -22,7 +22,7 @@ function unauthorized(request: NextRequest, clear: boolean): NextResponse {
   return response;
 }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export async function rotateRefreshToken(refreshToken: string): Promise<Rotation> {
   const key = createHash('sha256').update(refreshToken).digest('hex');
   const existing = rotations.get(key);

@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ensureSession } from "@/lib/session-client";
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export default function Home() {
   const router = useRouter();
   const [error, setError] = useState(false);

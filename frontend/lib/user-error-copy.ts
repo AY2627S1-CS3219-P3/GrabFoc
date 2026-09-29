@@ -18,7 +18,7 @@ const messages: Record<string, string> = {
   SERVICE_UNAVAILABLE: 'The service is unavailable. Please try again.',
 };
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function userErrorMessage(error: ServiceError, fallback?: string): string {
   const message = (error.code && messages[error.code]) || fallback || error.message;
   const retry = error.retryAfterSeconds;

@@ -6,5 +6,5 @@ Author review: Jie Yang reviewed this file.
 */
 import { AuthScreen } from "../components/auth-screen";
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export default function SignInPage() { return <AuthScreen view="signin" />; }

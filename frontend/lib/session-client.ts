@@ -6,7 +6,7 @@ Author review: Jie Yang reviewed this file.
 */
 'use client';
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export async function withSessionMutation<T>(action: () => Promise<T>): Promise<T> {
   if (!navigator.locks) return action();
   return navigator.locks.request('foc-refresh', action);

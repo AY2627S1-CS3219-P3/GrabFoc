@@ -14,7 +14,7 @@ function safeRequestId(value: string | string[] | undefined): string {
   return candidate && /^[A-Za-z0-9._:-]{1,128}$/.test(candidate) ? candidate : randomUUID();
 }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function beginRequest(request: IncomingMessage, response: ServerResponse, details: () => { path: string; service?: ServiceName }) {
   const requestId = safeRequestId(request.headers['x-request-id']);
   const startedAt = performance.now();

@@ -8,7 +8,7 @@ Author review: Jie Yang reviewed this file; visual verification remains pending.
 
 import { useEffect, useRef, useState } from 'react';
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function ErrorToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   const dismiss = useRef(onDismiss);
   useEffect(() => { dismiss.current = onDismiss; }, [onDismiss]);

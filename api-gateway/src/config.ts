@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const gatewayEnvPath = fileURLToPath(new URL('../.env', import.meta.url));
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function loadRuntimeEnv(path = gatewayEnvPath): NodeJS.ProcessEnv {
   try {
     process.loadEnvFile(path);
@@ -19,7 +19,7 @@ export function loadRuntimeEnv(path = gatewayEnvPath): NodeJS.ProcessEnv {
   return process.env;
 }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export type Config = {
   port: number;
   userServiceUrl: URL;
@@ -45,7 +45,7 @@ function prefix(name: string, value: string): string {
   return value;
 }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function loadConfig(env = loadRuntimeEnv()): Config {
   const port = Number(env.GATEWAY_PORT ?? '3003');
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('GATEWAY_PORT is invalid');

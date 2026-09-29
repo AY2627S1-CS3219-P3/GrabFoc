@@ -22,7 +22,7 @@ function nonnegativeNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export async function parseServiceError(response: Response, fallback: string): Promise<ServiceError> {
   const result: ServiceError = { status: response.status, message: fallback, fields: [] };
   let body: unknown;

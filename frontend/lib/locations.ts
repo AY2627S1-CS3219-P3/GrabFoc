@@ -22,7 +22,7 @@ export type Location = {
 
 export type LocationPage = { items: Location[]; page: number; pageSize: number; total: number };
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export async function supplierError(response: Response): Promise<string> {
   try {
     const body: unknown = await response.json();

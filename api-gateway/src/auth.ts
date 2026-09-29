@@ -19,7 +19,7 @@ function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function createTokenVerifier(config: Config, get = fetch) {
   let cached: { keys: Jwk[]; expiresAt: number } | undefined;
 

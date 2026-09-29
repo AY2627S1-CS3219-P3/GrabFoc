@@ -12,7 +12,7 @@ import { AppShell } from "../components/app-shell";
 import { getSession } from "@/lib/session-client";
 import { LocationBrowser } from "../components/location-browser";
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export default function HomePage() {
   const router = useRouter();
   const [mode, setMode] = useState<"requester" | "courier">("requester");

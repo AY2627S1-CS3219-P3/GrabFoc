@@ -9,7 +9,7 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { test } from 'node:test';
 import { createTokenVerifier } from '../dist/auth.js';
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 test('accepts a valid signed JWT and rejects modified, expired and wrong-issuer tokens', async () => {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'test-key', use: 'sig' };

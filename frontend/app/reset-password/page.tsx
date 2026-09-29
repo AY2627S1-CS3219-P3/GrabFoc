@@ -6,5 +6,5 @@ Author review: Jie Yang reviewed this file.
 */
 import { RecoveryScreen } from "../components/recovery-screen";
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export default function ResetPasswordPage() { return <RecoveryScreen step="reset" />; }

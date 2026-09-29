@@ -10,7 +10,7 @@ function escape(path: string): string {
   return path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function supplierRoutes(locationsPrefix: string): GatewayRoute[] {
   const root = escape(locationsPrefix);
   const location = `${root}/[^/]+`;

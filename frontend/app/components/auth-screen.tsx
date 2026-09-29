@@ -21,7 +21,7 @@ function pendingEmailSnapshot() { return sessionStorage.getItem("pendingRegistra
 function logoutNoticeSnapshot() { return sessionStorage.getItem("logoutNotice") ?? ""; }
 function emptySnapshot() { return ""; }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 function Brand() {
   return (
     <div className="auth-brand">
@@ -41,7 +41,7 @@ type FieldProps = {
   errors?: string[];
 };
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 function Field({ label, name, type = "text", placeholder, autoComplete, minLength, errors }: FieldProps) {
   return (
     <label className="auth-field">
@@ -52,7 +52,7 @@ function Field({ label, name, type = "text", placeholder, autoComplete, minLengt
   );
 }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 function OtpInputs({ onChange, invalid }: { onChange: (code: string) => void; invalid: boolean }) {
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   const [digits, setDigits] = useState(Array(6).fill("") as string[]);
@@ -101,7 +101,7 @@ function OtpInputs({ onChange, invalid }: { onChange: (code: string) => void; in
   );
 }
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export function AuthScreen({ view }: { view: View }) {
   const router = useRouter();
   const [message, setMessage] = useState("");

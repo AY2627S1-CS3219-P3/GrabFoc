@@ -31,7 +31,7 @@ export function sameOrigin(request: NextRequest): boolean {
   } catch { return false; }
 }
 
-// AI-generated (pending human review)
+// AI-generated (earlier version reviewed by Jie Yang; Docker origin fix pending review)
 export function sameOriginCookieRead(request: NextRequest): boolean {
   const origin = request.headers.get('origin');
   if (origin) return sameOrigin(request);

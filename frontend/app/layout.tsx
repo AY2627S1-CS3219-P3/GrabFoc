@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   description: "Sign in to GrabFoc",
 };
 
-// AI-generated (pending human review)
+// AI-generated (reviewed by Jie Yang)
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const requestHeaders = await headers();
   const host = requestHeaders.get("host") ?? "";
