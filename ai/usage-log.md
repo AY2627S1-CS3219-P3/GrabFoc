@@ -12,11 +12,15 @@ Author review: Jian Bing supplied the prompts quoted in that entry; pending his 
 Tool: Claude Code (model: Claude Opus 5), date: 2026-09-29
 Scope: Wrote the Cole Lin entries for PRs #7, #28, #30 and #33 from his prompts in the session.
 Author review: Cole Lin confirmed the prompts, decisions and verification described.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Wrote the SoCLaaS TLS stopgap entry under the Jian Bing section (PR #36).
 Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #36.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Moved lihloway's four Supplier Service entries under the Cole Lin section when merging main into PR #33; entry text unchanged.
 Author review: Pending review by Jian Bing and lihloway on PR #33.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Wrote the Supplier Service Docker Compose entry under the Jian Bing section (PR #33).
+Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #33.
 -->
 
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
@@ -801,6 +805,19 @@ any real mailbox — not a service outage.
 - Verification: Ran it with Postman against PostgreSQL in Docker: the seed loads all 21 locations, CRUD and search work, and the 401 and 403 cases behave as documented.
 
 ## Jian Bing
+
+### 2026-09-29 — Supplier Service Docker Compose file (PR #33)
+
+- Tool and mode: Claude Code (Claude Opus 5.5), generate.
+- Usage scenario: The Supplier Service had a Dockerfile but no compose file, so the root `compose.yaml` could not start it (D2 containerised demo).
+- Prompts (exact):
+  - “does the suppleir service have any docker compsoe file”
+  - “okay draft it out on the most udpated supplier service pr”
+  - A pasted draft compose file from Jie Yang (Codex, GPT-6) with Jie Yang's message: “u can jjs” / “add the env”
+- Key response: Follow `user-service/compose.yaml`: its own `supplier-db`, the image built from the repository root, and inclusion from the root `compose.yaml`. From Jie Yang's draft, took the separate `SUPPLIER_POSTGRES_PASSWORD` and host port 5434. Did not take `depends_on: user-service` (it lives in another included file, so the Supplier file could not run on its own, and the JWKS is fetched per request anyway).
+- Output: `supplier-service/compose.yaml`, the `include` in `compose.yaml`, `SUPPLIER_POSTGRES_PASSWORD` in `.env.example`, and a "Run with Docker Compose" section in `supplier-service/README.md`. The first draft passed the whole `.env` to the container; changed to pass only the Supplier variables, because it leaked user-db's password into the Supplier container.
+- Verification: in an isolated compose project with test secrets, standalone: 21 locations seeded, 401 without a token, 503 for a token (no User Service), dev headers ignored, data kept across `down`/`up`. Whole stack: the Supplier container fetched the User Service's JWKS; tokens signed with its key got 200 (USER), 403 (USER on `includeInactive`), 200 (ADMIN), and 401 when signed with another key.
+- Human review: Pending on PR #33.
 
 ### 2026-09-29 — Fix review findings on the Supplier Service JWT verification (PR #30)
 

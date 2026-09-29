@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
 Scope: Generated run and test instructions for the Supplier Service.
 Author review (Cole Lin): Read in full; followed the steps on a clean setup and confirmed they work.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Added the "Run with Docker Compose" section.
+Author review: pending — to be completed by the reviewing team member.
 -->
 
 # Supplier Service
@@ -10,6 +13,17 @@ Author review (Cole Lin): Read in full; followed the steps on a clean setup and 
 Manages campus locations (the brief's "suppliers"): simple CRUD, search, soft delete and restore. Design decisions are in [`AGENTS.md`](AGENTS.md).
 
 Stack: NestJS (TypeScript, Node.js), PostgreSQL via `pg` with plain SQL, Zod for validation.
+
+## Run with Docker Compose
+
+From the repository root, after `cp .env.example .env` and filling in the secrets:
+
+```bash
+docker compose up --build                                                          # whole project
+docker compose -f supplier-service/compose.yaml --env-file .env up --build        # Supplier only
+```
+
+The service is on http://localhost:3002, and its own database on `localhost:5434` (password `SUPPLIER_POSTGRES_PASSWORD`). Run on its own, requests with a token get 503 because the User Service isn't there to verify them; the header fallback is not available in the container.
 
 ## Run it locally
 
