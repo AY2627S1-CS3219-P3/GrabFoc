@@ -824,6 +824,41 @@ any real mailbox — not a service outage.
 
 ## Jian Bing
 
+### 2026-09-30 — Supplier Service unit and integration tests
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `supplier-service/src/**/*.spec.ts`, `supplier-service/src/test/*`,
+`supplier-service/jest.int.config.js`, `supplier-service/package.json`, `supplier-service/README.md`,
+`.env.example`; removed `supplier-service/test/config.test.mjs` (moved to `src/config.spec.ts`)
+
+**Scenario:** After PR #33 the Supplier Service had only three startup tests. Added tests for the
+code already merged, without changing its behaviour.
+
+**Prompts (exact):**
+> okay i have merged the pr 33, so now supplier serivce. for the next pr, i want to do tdd or add
+> unit tests if possible
+
+> Tests for existing code / Unit + database tests (Recommended) / Jest, like User Service (Recommended)
+> *(chosen from the options Claude offered)*
+
+> continue with the test making
+
+**What it produced:** Jest set up as in the User Service. Unit tests (`npm test`, 157) for the
+opening-hours conversion, request validation, token verification against a stub JWKS server, the
+auth guard and its access_denied log, the error format and startup configuration. Integration tests
+(`npm run test:int`, 51) for `LocationsService` and the seed loader against a real PostgreSQL, in a
+separate `supplier_test` database that the helper refuses to use unless its name ends in `_test`.
+
+**What I changed or rejected:** Chose tests for the existing code over a new TDD feature, unit plus
+database tests over unit only, and Jest over Node's built-in runner, to match the User Service.
+
+**Verification:** Run by Claude Code. Both suites pass. Each file was checked by deliberately breaking
+the code it covers (76 changes, such as skipping the signature check or the duplicate-name check) and
+confirming a test fails, then restoring it; the seven changes first missed led to extra test cases.
+Also checked: the results don't change with a hostile repo-root `.env`, and the service still builds
+and its Docker image runs. One full run failed because the two integration files ran in parallel on
+the same database; they now run one at a time, and passed 10 runs out of 10 (the unit tests too).
+
 ### 2026-09-29 — Usage-log format, merge conflicts and author reviews (PRs #27, #33)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor, explain

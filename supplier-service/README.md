@@ -8,6 +8,9 @@ Scope: Added the "Run with Docker Compose" section.
 Author review (Jian Bing): Asked for it with supplier-service/compose.yaml; the commands are the ones
 Claude Code ran in its 2026-09-29 test of the compose file. Ran `docker compose up --build` myself:
 the service started on 3002 and GET /locations without a token returned 401.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
+Scope: Rewrote the "Tests" section for the Jest unit and integration tests.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Supplier Service
@@ -56,12 +59,36 @@ On startup the service creates its tables if they don't exist and, **only if the
 ## Tests
 
 ```bash
-npm test
+npm test          # unit tests, no containers needed
+npm run test:int  # integration tests, needs the supplier-db container
 ```
 
-Builds, then runs the startup tests in `test/`, including that `SUPPLIER_DEV_AUTH=true` is
-refused when `NODE_ENV=production` (the Dockerfile sets that, so the container cannot run with
-the header fallback enabled).
+Jest, as in the User Service: each `*.spec.ts` sits next to the file it tests.
+
+`npm test` is offline and fast. It covers the opening-hours conversion, request validation, token
+verification against a stub JWKS server (including forged, expired and wrong-algorithm tokens, and
+how the keys are cached), the auth guard's 401/403/503 answers and dev-auth fallback, the error
+format, and startup configuration, including that `SUPPLIER_DEV_AUTH=true` is refused when
+`NODE_ENV=production` (the Dockerfile sets that, so the container cannot run with the header
+fallback enabled).
+
+The integration tests (`*.int.spec.ts`) run `LocationsService` and the seed loader against a real
+PostgreSQL: filters, paging, sorting, distance, the 409 rules and the seed. Start the database
+first, from the repo root:
+
+```bash
+docker compose up -d supplier-db
+npm run test:int                          # all integration tests
+npm run test:int -- src/locations         # or just some
+```
+
+They use their own database, `supplier_test`, which they create in that container and empty before
+every test, so your own data in `supplier` is never touched. They connect with
+`SUPPLIER_POSTGRES_PASSWORD` from the repo-root `.env`; set `SUPPLIER_TEST_DATABASE_URL` to use
+another server (its database name must end in `_test`).
+
+Neither run reads your `.env` for anything else: the test setup pins every Supplier setting, so a
+local `NODE_ENV=production` or `SUPPLIER_DEV_AUTH=true` cannot change the results.
 
 ## Test with Postman
 
