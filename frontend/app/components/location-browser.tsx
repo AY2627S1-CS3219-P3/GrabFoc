@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
-Scope: Added live Supplier location listing, search, filters, sorting, pagination and admin navigation; added retryable location-type loading on 2026-09-29.
-Author review: Jie Yang reviewed this file; team visual verification remains pending.
+Scope: Added live Supplier location listing, search, filters, sorting, pagination and admin navigation; added retryable location-type loading and Tailwind responsive layout on 2026-09-29.
+Author review: Jie Yang reviewed the earlier implementation; Tailwind layout and team visual verification remain pending.
 */
 "use client";
 
@@ -17,7 +17,7 @@ const initialFilters: Filters = { name: "", type: "", building: "", time: "", or
 
 function hours(value: string | null) { return value ? `${value.slice(0, 2)}:${value.slice(2, 4)}` : ""; }
 
-// AI-generated (pending human review)
+// AI-generated (earlier version reviewed by Jie Yang; latest edits pending review)
 export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
   const router = useRouter();
   const [types, setTypes] = useState<string[]>([]);
@@ -77,11 +77,11 @@ export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
   }
 
   return <section className="home-section" aria-labelledby="locations-title">
-    <div className="section-heading">
+    <div className="section-heading flex-col items-stretch sm:flex-row sm:items-start">
       <h2 id="locations-title">Browse Locations</h2>
       {role === "ADMIN" && <Link className="outline-link" href="/admin/locations">Manage Locations</Link>}
     </div>
-    <div className="location-filters">
+    <div className="location-filters grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(160px,2fr)_repeat(4,minmax(120px,1fr))]">
       <label><span>Search name</span><input type="search" value={draft.name} onChange={(event) => change("name", event.target.value)} placeholder="Search pickup points" /></label>
       <label><span>Type</span><select value={draft.type} disabled={typesLoading || Boolean(typesError)} onChange={(event) => change("type", event.target.value)}><option value="">All types</option>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
       <label><span>Building</span><input value={draft.building} onChange={(event) => change("building", event.target.value)} placeholder="Exact building" /></label>
@@ -94,7 +94,7 @@ export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
     {!error && loading && <div className="home-empty" role="status">Loading locations…</div>}
     {!error && !loading && data?.items.length === 0 && <div className="home-empty">No locations match these filters.</div>}
     {!error && !loading && data && data.items.length > 0 && <>
-      <div className="location-grid">
+      <div className="location-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
         {data.items.map((location) => <article className="location-card" key={location.id}>
           <div className="location-card-heading"><h3>{location.name}</h3><span>{location.type}</span></div>
           <p>{location.building}, floor {location.floor}</p>

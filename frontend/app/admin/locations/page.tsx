@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
-Scope: Added an admin-only interface to list, create, edit, deactivate and restore Supplier locations; added management filters and refreshed-version form reset on 2026-09-29.
-Author review: Jie Yang reviewed this file; team visual verification remains pending.
+Scope: Added an admin-only interface to list, create, edit, deactivate and restore Supplier locations; added management filters, refreshed-version form reset, and Tailwind responsive layout on 2026-09-29.
+Author review: Jie Yang reviewed the earlier implementation; Tailwind layout and team visual verification remain pending.
 */
 "use client";
 
@@ -18,7 +18,7 @@ function apiTime(value: string) { return value ? value.replace(":", "") + "hrs" 
 type Filters = { name: string; type: string; building: string; time: string; order: "asc" | "desc" };
 const initialFilters: Filters = { name: "", type: "", building: "", time: "", order: "asc" };
 
-// AI-generated (pending human review)
+// AI-generated (earlier version reviewed by Jie Yang; latest edits pending review)
 export default function ManageLocationsPage() {
   const router = useRouter();
   const [allowed, setAllowed] = useState(false);
@@ -141,12 +141,12 @@ export default function ManageLocationsPage() {
 
   if (!allowed) return <main className="auth-page"><div className="auth-card">{error || "Checking admin access…"}</div></main>;
 
-  return <AppShell section="locations"><div className="section-heading"><div><h1 className="dashboard-title">Manage Locations</h1><p>Active and inactive campus pickup points</p></div><Link className="outline-link" href="/home">Browse locations</Link></div>
+  return <AppShell section="locations"><div className="section-heading flex-col items-stretch sm:flex-row sm:items-start"><div><h1 className="dashboard-title">Manage Locations</h1><p>Active and inactive campus pickup points</p></div><Link className="outline-link" href="/home">Browse locations</Link></div>
     {error && <p className="auth-message" role="alert">{error}</p>}
-    <div className="manage-layout">
+    <div className="manage-layout grid grid-cols-1 xl:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
       <section className="manage-list" aria-labelledby="manage-list-title">
         <h2 id="manage-list-title">Locations</h2>
-        <div className="location-filters">
+        <div className="location-filters grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <label><span>Search name</span><input type="search" value={draft.name} onChange={(event) => changeFilter("name", event.target.value)} /></label>
           <label><span>Type</span><select value={draft.type} disabled={typesLoading || Boolean(typesError)} onChange={(event) => changeFilter("type", event.target.value)}><option value="">All types</option>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
           <label><span>Building</span><input value={draft.building} onChange={(event) => changeFilter("building", event.target.value)} /></label>
@@ -155,9 +155,9 @@ export default function ManageLocationsPage() {
         </div>
         {loading && <p role="status">Loading locations…</p>}
         {!loading && data?.items.length === 0 && <p>No locations found.</p>}
-        {!loading && data?.items.map((location) => <div className="manage-row" key={location.id}>
+        {!loading && data?.items.map((location) => <div className="manage-row flex-col items-start sm:flex-row sm:items-center" key={location.id}>
           <div><strong>{location.name}</strong><span>{location.type} · {location.building} · {location.status}</span></div>
-          <div className="manage-actions"><button type="button" disabled={busy} onClick={() => setEditing(location)}>Edit</button><button type="button" disabled={busy} onClick={() => changeStatus(location)}>{location.status === "ACTIVE" ? "Deactivate" : "Restore"}</button></div>
+          <div className="manage-actions w-full sm:w-auto"><button className="flex-1 sm:flex-none" type="button" disabled={busy} onClick={() => setEditing(location)}>Edit</button><button className="flex-1 sm:flex-none" type="button" disabled={busy} onClick={() => changeStatus(location)}>{location.status === "ACTIVE" ? "Deactivate" : "Restore"}</button></div>
         </div>)}
         {data && <div className="location-pagination"><button type="button" disabled={page <= 1} onClick={() => { setLoading(true); setPage(page - 1); }}>Previous</button><span>Page {data.page} · {data.total} locations</span><button type="button" disabled={page * data.pageSize >= data.total} onClick={() => { setLoading(true); setPage(page + 1); }}>Next</button></div>}
       </section>
@@ -170,8 +170,8 @@ export default function ManageLocationsPage() {
           <label>Building<input name="building" defaultValue={editing?.building} required /></label>
           <label>Floor<input name="floor" type="number" step="1" defaultValue={editing?.floor} required /></label>
           <label>Description<textarea name="location_desc" defaultValue={editing?.location_desc} required /></label>
-          <div className="manage-form-pair"><label>Latitude<input name="lat" type="number" step="any" defaultValue={editing?.lat} required /></label><label>Longitude<input name="lon" type="number" step="any" defaultValue={editing?.lon} required /></label></div>
-          <div className="manage-form-pair"><label>Opens<input name="open_time" type="time" defaultValue={timeField(editing?.open_time ?? null)} /></label><label>Closes<input name="close_time" type="time" defaultValue={timeField(editing?.close_time ?? null)} /></label></div>
+          <div className="manage-form-pair grid grid-cols-1 sm:grid-cols-2"><label>Latitude<input name="lat" type="number" step="any" defaultValue={editing?.lat} required /></label><label>Longitude<input name="lon" type="number" step="any" defaultValue={editing?.lon} required /></label></div>
+          <div className="manage-form-pair grid grid-cols-1 sm:grid-cols-2"><label>Opens<input name="open_time" type="time" defaultValue={timeField(editing?.open_time ?? null)} /></label><label>Closes<input name="close_time" type="time" defaultValue={timeField(editing?.close_time ?? null)} /></label></div>
           <label>Image URL (optional)<input name="image_url" type="url" defaultValue={editing?.image_url ?? ""} /></label>
           <button type="submit" className="auth-submit" disabled={busy || types.length === 0}>{busy ? "Saving…" : editing ? "Save Changes" : "Add Location"}</button>
         </form>}

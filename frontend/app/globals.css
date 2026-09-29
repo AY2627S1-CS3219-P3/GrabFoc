@@ -1,9 +1,13 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
-Scope: Added responsive authentication and app styles; updated six-digit OTP inputs and added reusable toast, field-error, and Supplier browsing and management styles on 2026-09-29.
-Author review: Jie Yang reviewed this file; team visual verification remains pending.
+Scope: Added responsive authentication and app styles; updated six-digit OTP inputs and added reusable toast, field-error, and Supplier browsing and management styles; moved Supplier responsive layout to Tailwind on 2026-09-29.
+Author review: Jie Yang reviewed the earlier styles; Tailwind migration and team visual verification remain pending.
 */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
 :root {
   --auth-background: #f8faff;
   --auth-text: #12151c;
@@ -18,7 +22,7 @@ button, input, select { font: inherit; }
 button, a, input, select { -webkit-tap-highlight-color: transparent; }
 :focus-visible { outline: 2px solid #174db5; outline-offset: 3px; }
 
-/* AI-generated (pending human review) */
+/* AI-generated (earlier version reviewed by Jie Yang; latest edits pending review) */
 .auth-page {
   min-height: 100svh;
   padding: 24px;
@@ -154,7 +158,7 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 
 @media (max-width: 360px) { .otp-inputs { gap: 5px; } }
 
-/* AI-generated (pending human review) */
+/* AI-generated (earlier version reviewed by Jie Yang; latest edits pending review) */
 .app-shell { min-height: 100svh; background: var(--auth-background); }
 .app-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 72px; padding: 0 max(24px, calc((100vw - 1040px) / 2)); border-bottom: 1px solid #dce2ec; background: #fff; }
 .app-wordmark { display: inline-flex; align-items: center; gap: 10px; color: var(--auth-text); font-size: 16px; font-weight: 700; text-decoration: none; }
@@ -182,7 +186,7 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
   .content-panel { padding: 22px; }
 }
 
-/* AI-generated (pending human review): Figma Home and Profile layouts, with real-data states left empty. */
+/* AI-generated (earlier version reviewed by Jie Yang; latest edits pending review): Figma Home and Profile layouts, with real-data states left empty. */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .app-header { justify-content: flex-start; padding-inline: 32px; }
 .app-wordmark .auth-logo { width: 30px; height: 30px; border-radius: 8px; font-size: 16px; }
@@ -267,16 +271,15 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
   .mode-switch { margin-top: 16px; }
   .home-section { margin-top: 26px; }
 }
-/* AI-generated (pending human review): Supplier location browsing and management. */
-.section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+/* AI-generated (earlier version reviewed by Jie Yang; latest edits pending review): Supplier location browsing and management. */
+.section-heading { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .section-heading h2 { margin: 0; }
 .section-heading p { margin: 4px 0 0; color: var(--auth-muted); font-size: 13px; }
-.location-filters { display: grid; grid-template-columns: minmax(160px, 2fr) repeat(4, minmax(120px, 1fr)); gap: 12px; margin-bottom: 18px; }
-.manage-list .location-filters { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.location-filters { gap: 12px; margin-bottom: 18px; }
 .location-filters label, .manage-form label, .manage-search { display: flex; flex-direction: column; gap: 6px; color: #374151; font-size: 12px; font-weight: 700; }
 .location-filters input, .location-filters select, .manage-form input, .manage-form select, .manage-form textarea, .manage-search input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--auth-border); border-radius: 7px; background: #fff; color: var(--auth-text); font: inherit; font-weight: 400; }
 .location-filters input:focus, .location-filters select:focus, .manage-form input:focus, .manage-form select:focus, .manage-form textarea:focus, .manage-search input:focus { border-color: var(--auth-blue); }
-.location-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.location-grid { gap: 14px; }
 .location-card, .manage-list, .manage-form { border: 1px solid #dce2ec; border-radius: 9px; background: #fff; }
 .location-card { min-width: 0; padding: 18px; }
 .location-card-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
@@ -287,11 +290,11 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .location-pagination { display: flex; justify-content: center; align-items: center; gap: 16px; margin: 18px 0; color: #526078; font-size: 12px; }
 .location-pagination button, .manage-actions button, .text-button { padding: 7px 10px; border: 1px solid #a8c0ee; border-radius: 6px; background: #fff; color: var(--auth-blue); cursor: pointer; }
 .location-pagination button:disabled, .manage-actions button:disabled { opacity: .5; cursor: not-allowed; }
-.manage-layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(300px, .7fr); gap: 20px; }
+.manage-layout { gap: 20px; }
 .manage-list, .manage-form { min-width: 0; padding: 20px; }
 .manage-list h2, .manage-form h2 { margin: 0 0 15px; font-size: 17px; }
 .manage-search { margin-bottom: 15px; }
-.manage-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid #e3e6ec; }
+.manage-row { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid #e3e6ec; }
 .manage-row strong, .manage-row span { display: block; }
 .manage-row strong { font-size: 13px; }
 .manage-row span { margin-top: 4px; color: #6b7280; font-size: 11px; }
@@ -299,18 +302,5 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .manage-actions button { font-size: 11px; }
 .manage-form form { display: grid; gap: 12px; }
 .manage-form textarea { min-height: 82px; resize: vertical; }
-.manage-form-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.manage-form-pair { gap: 12px; }
 .manage-form .text-button { margin: 0 0 12px; }
-@media (max-width: 900px) {
-  .location-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .location-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .manage-layout { grid-template-columns: 1fr; }
-}
-@media (max-width: 600px) {
-  .location-filters, .location-grid { grid-template-columns: 1fr; }
-  .section-heading { align-items: stretch; flex-direction: column; }
-  .manage-row { align-items: flex-start; flex-direction: column; }
-  .manage-actions { width: 100%; }
-  .manage-actions button { flex: 1; }
-  .manage-form-pair { grid-template-columns: 1fr; }
-}

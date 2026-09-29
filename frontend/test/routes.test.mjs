@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified session flows, denial logging, refresh-only logout, reusable error feedback, Supplier browsing and management filters, retries, refreshed edits, and downstream 401 handling; removed the obsolete /locations redirect check on 2026-09-29.
-Author review: Jie Yang reviewed this file; local browser verification remains pending.
+Scope: Verified session flows, denial logging, refresh-only logout, reusable error feedback, Supplier browsing and management filters, retries, refreshed edits, and downstream 401 handling; removed the obsolete /locations redirect check and added Supplier responsive-layout assertions on 2026-09-30.
+Author review: Jie Yang reviewed the earlier tests; responsive-layout assertions and local visual verification await his review.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -12,7 +12,7 @@ import { after, before, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
 
-// AI-generated (pending human review)
+// AI-generated (earlier version reviewed by Jie Yang; responsive test pending review)
 const requests = [];
 const adminAccess = `header.${Buffer.from(JSON.stringify({ role: "ADMIN" })).toString("base64url")}.signature`;
 const locations = [
@@ -951,6 +951,33 @@ test("users browse and filter locations while only admins manage them", async ()
     await row.getByText("ACTIVE").waitFor();
     assert.ok(requests.some((request) => request.method === "POST" && request.path === "/locations" && request.authorization === `Bearer ${adminAccess}`));
   } finally { await user.close(); await admin.close(); }
+});
+
+test("Supplier browsing and management use responsive Tailwind layouts", async () => {
+  const admin = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const columns = (selector) => admin.locator(selector).first().evaluate((element) =>
+    getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/).length);
+  try {
+    await admin.goto(`${baseUrl}/signin`);
+    await admin.getByLabel("Email").fill("admin@u.nus.edu");
+    await admin.getByLabel("Password").fill("Passw0rdSafe");
+    await admin.getByRole("button", { name: "Sign In" }).click();
+    await admin.waitForURL("**/home");
+    await admin.getByRole("heading", { name: "COM3 Basement" }).waitFor();
+    assert.equal(await columns(".home-section .location-filters"), 1);
+    assert.equal(await columns(".location-grid"), 1);
+
+    await admin.setViewportSize({ width: 1280, height: 900 });
+    assert.equal(await columns(".home-section .location-filters"), 5);
+    assert.equal(await columns(".location-grid"), 3);
+
+    await admin.getByRole("link", { name: "Manage Locations" }).click();
+    await admin.waitForURL("**/admin/locations");
+    assert.equal(await columns(".manage-layout"), 2);
+    await admin.setViewportSize({ width: 390, height: 844 });
+    assert.equal(await columns(".manage-layout"), 1);
+    assert.equal(await columns(".manage-form-pair"), 1);
+  } finally { await admin.close(); }
 });
 
 test("admin can retry location types without reloading the page", async () => {

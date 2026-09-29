@@ -1,11 +1,13 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented frontend gateway requests, BFF-managed refresh, local configuration, reusable User Service error feedback, and Supplier browsing and management; removed the obsolete /locations redirect reference and added Compose setup on 2026-09-29.
-Author review: Jie Yang reviewed this file; live integration testing remains pending.
+Scope: Documented frontend gateway requests, BFF-managed refresh, local configuration, reusable User Service error feedback, and Supplier browsing and management; removed the obsolete /locations redirect reference, added Compose setup, and recorded the styling choice on 2026-09-30.
+Author review: Jie Yang reviewed the earlier documentation and confirmed Tailwind CSS with shadcn/ui; live integration and team visual review remain pending.
 -->
 
 # GrabFoc frontend
+
+The team chose Tailwind CSS with shadcn/ui for frontend styling. Supplier browsing and management use Tailwind responsive layout utilities; existing controls remain unchanged.
 
 The frontend runs on port 3000 by default. Copy `frontend/.env.example` to `frontend/.env.local` and set `FRONTEND_GATEWAY_URL` if the gateway is not at `http://localhost:3003`.
 
