@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Added gateway verification of User Service bearer JWTs; distinguished JWKS outages from invalid tokens on 2026-09-28.
-Author review: Jie Yang reviewed this file; User Service signing contract confirmation remains pending.
+Scope: Added gateway verification of User Service bearer JWTs; distinguished JWKS outages and refreshed cached keys for an unknown key ID.
+Author review: Jie Yang reviewed the earlier implementation; the key-rotation fix awaits his review.
 */
 import { createPublicKey, verify as verifySignature, type JsonWebKey } from 'node:crypto';
 import type { Config } from './config.js';
@@ -19,12 +19,12 @@ function object(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-// AI-generated (reviewed by Jie Yang)
+// AI-generated (earlier version reviewed by Jie Yang; key-rotation fix pending review)
 export function createTokenVerifier(config: Config, get = fetch) {
   let cached: { keys: Jwk[]; expiresAt: number } | undefined;
 
-  async function keys(): Promise<Jwk[]> {
-    if (cached && cached.expiresAt > Date.now()) return cached.keys;
+  async function keys(forceRefresh = false): Promise<Jwk[]> {
+    if (!forceRefresh && cached && cached.expiresAt > Date.now()) return cached.keys;
     const response = await get(config.jwksUrl, { signal: AbortSignal.timeout(3000) });
     if (!response.ok) throw new Error('JWKS unavailable');
     const body: unknown = await response.json();
@@ -54,6 +54,13 @@ export function createTokenVerifier(config: Config, get = fetch) {
         availableKeys = await keys();
       } catch {
         throw new JwksUnavailableError('JWKS unavailable');
+      }
+      if (!availableKeys.some((entry) => entry.kid === header.kid)) {
+        try {
+          availableKeys = await keys(true);
+        } catch {
+          throw new JwksUnavailableError('JWKS unavailable');
+        }
       }
       const key = availableKeys.find((entry) => entry.kid === header.kid && (!entry.alg || entry.alg === alg) && (!entry.use || entry.use === 'sig') && entry.kty === (alg === 'RS256' ? 'RSA' : 'EC'));
       if (!key) return false;
