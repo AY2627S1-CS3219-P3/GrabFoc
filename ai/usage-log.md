@@ -1640,6 +1640,15 @@ operable program or batch file.
 - Key response: Verified the frontend, committed the local Supplier integration changes, pushed the branch and opened a PR targeting `feature/frontend-service-integration`.
 - Human review: Pending PR review.
 
+## 2026-09-29 — Supplier PR #37 follow-up review
+
+- Tool and mode: Codex (GPT-6), debug and refactor.
+- Usage scenario: Address newly posted frontend review comments on PR #37 while leaving User Service and Supplier Service components untouched.
+- Exact user prompt: “for each PR, 39 and 37, resolve the messages, ensure the changes made do not touch the individual components of the user service and supplier service.”
+- Key response: Added Home location-type error and retry state, management list type/building/time/order controls, and refreshed-version edit form reset, with browser regression coverage. Supplier-owned comments were left for the service owner.
+- Files: `frontend/app/components/location-browser.tsx`, `frontend/app/admin/locations/page.tsx`, `frontend/app/globals.css`, `frontend/test/routes.test.mjs`, `ai/usage-log.md`.
+- Human review: Pending PR review and team decision on the responsive UI library.
+
 ## 2026-09-29 — Supplier integration PR #37 frontend review fixes
 
 - Tool and mode: Codex (GPT-6), debug and refactor.

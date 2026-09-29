@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
-Scope: Added responsive authentication and app styles; updated OTP inputs for the six-digit User Service contract on 2026-09-27; styled Supplier browsing and management on 2026-09-29.
+Scope: Added responsive authentication and app styles; updated OTP inputs for the six-digit User Service contract on 2026-09-27; styled Supplier browsing and management, including management filter wrapping, on 2026-09-29.
 Author review: Pending team review and visual verification.
 */
 :root {
@@ -264,6 +264,7 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .section-heading h2 { margin: 0; }
 .section-heading p { margin: 4px 0 0; color: var(--auth-muted); font-size: 13px; }
 .location-filters { display: grid; grid-template-columns: minmax(160px, 2fr) repeat(4, minmax(120px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.manage-list .location-filters { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 .location-filters label, .manage-form label, .manage-search { display: flex; flex-direction: column; gap: 6px; color: #374151; font-size: 12px; font-weight: 700; }
 .location-filters input, .location-filters select, .manage-form input, .manage-form select, .manage-form textarea, .manage-search input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--auth-border); border-radius: 7px; background: #fff; color: var(--auth-text); font: inherit; font-weight: 400; }
 .location-filters input:focus, .location-filters select:focus, .manage-form input:focus, .manage-form select:focus, .manage-form textarea:focus, .manage-search input:focus { border-color: var(--auth-blue); }

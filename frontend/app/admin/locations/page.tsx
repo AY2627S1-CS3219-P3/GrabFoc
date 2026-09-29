@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
-Scope: Added an admin-only interface to list, create, edit, deactivate and restore Supplier locations; made type loading retryable and reset stale forms on 2026-09-29.
+Scope: Added an admin-only interface to list, create, edit, deactivate and restore Supplier locations; added management filters and refreshed-version form reset on 2026-09-29.
 Author review: Pending team review and visual verification.
 */
 "use client";
@@ -15,14 +15,16 @@ import { type Location, type LocationPage, supplierError } from "@/lib/locations
 
 function timeField(value: string | null) { return value ? `${value.slice(0, 2)}:${value.slice(2, 4)}` : ""; }
 function apiTime(value: string) { return value ? value.replace(":", "") + "hrs" : null; }
+type Filters = { name: string; type: string; building: string; time: string; order: "asc" | "desc" };
+const initialFilters: Filters = { name: "", type: "", building: "", time: "", order: "asc" };
 
 // AI-generated (pending human review)
 export default function ManageLocationsPage() {
   const router = useRouter();
   const [allowed, setAllowed] = useState(false);
   const [page, setPage] = useState(1);
-  const [name, setName] = useState("");
-  const [appliedName, setAppliedName] = useState("");
+  const [draft, setDraft] = useState(initialFilters);
+  const [filters, setFilters] = useState(initialFilters);
   const [types, setTypes] = useState<string[]>([]);
   const [typesLoading, setTypesLoading] = useState(true);
   const [typesError, setTypesError] = useState("");
@@ -62,15 +64,18 @@ export default function ManageLocationsPage() {
   }, [allowed, typesReload]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { setPage(1); setAppliedName(name); }, 300);
+    const timer = window.setTimeout(() => { setPage(1); setFilters(draft); }, 300);
     return () => window.clearTimeout(timer);
-  }, [name]);
+  }, [draft]);
 
   useEffect(() => {
     if (!allowed) return;
     const controller = new AbortController();
-    const query = new URLSearchParams({ includeInactive: "true", page: String(page), pageSize: "20" });
-    if (appliedName.trim()) query.set("name", appliedName.trim());
+    const query = new URLSearchParams({ includeInactive: "true", page: String(page), pageSize: "20", order: filters.order });
+    if (filters.name.trim()) query.set("name", filters.name.trim());
+    if (filters.type) query.set("type", filters.type);
+    if (filters.building.trim()) query.set("building", filters.building.trim());
+    if (filters.time) query.set("time", apiTime(filters.time) ?? "");
     withSessionMutation(() => fetch(`/api/session/supplier/locations?${query}`, { cache: "no-store", signal: controller.signal }))
       .then(async (response) => {
         if (response.status === 401) { router.replace("/signin"); return; }
@@ -83,7 +88,12 @@ export default function ManageLocationsPage() {
         if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : "Could not load locations."); setLoading(false); }
       });
     return () => controller.abort();
-  }, [allowed, appliedName, page, reload, router]);
+  }, [allowed, filters, page, reload, router]);
+
+  function changeFilter<K extends keyof Filters>(key: K, value: Filters[K]) {
+    setLoading(true);
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -136,7 +146,13 @@ export default function ManageLocationsPage() {
     <div className="manage-layout">
       <section className="manage-list" aria-labelledby="manage-list-title">
         <h2 id="manage-list-title">Locations</h2>
-        <label className="manage-search"><span>Search name</span><input type="search" value={name} onChange={(event) => { setLoading(true); setName(event.target.value); }} /></label>
+        <div className="location-filters">
+          <label><span>Search name</span><input type="search" value={draft.name} onChange={(event) => changeFilter("name", event.target.value)} /></label>
+          <label><span>Type</span><select value={draft.type} disabled={typesLoading || Boolean(typesError)} onChange={(event) => changeFilter("type", event.target.value)}><option value="">All types</option>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+          <label><span>Building</span><input value={draft.building} onChange={(event) => changeFilter("building", event.target.value)} /></label>
+          <label><span>Open at</span><input type="time" value={draft.time} onChange={(event) => changeFilter("time", event.target.value)} /></label>
+          <label><span>Name order</span><select value={draft.order} onChange={(event) => changeFilter("order", event.target.value as Filters["order"])}><option value="asc">A–Z</option><option value="desc">Z–A</option></select></label>
+        </div>
         {loading && <p role="status">Loading locations…</p>}
         {!loading && data?.items.length === 0 && <p>No locations found.</p>}
         {!loading && data?.items.map((location) => <div className="manage-row" key={location.id}>
@@ -148,7 +164,7 @@ export default function ManageLocationsPage() {
       <section className="manage-form" aria-labelledby="manage-form-title">
         <h2 id="manage-form-title">{editing ? `Edit ${editing.name}` : "Add Location"}</h2>
         {editing && <button type="button" className="text-button" onClick={() => setEditing(null)}>Cancel edit</button>}
-        {typesLoading ? <p role="status">Loading location types…</p> : typesError ? <div className="load-error" role="alert"><p>{typesError}</p><button type="button" onClick={() => { setTypesLoading(true); setTypesError(""); setTypesReload((value) => value + 1); }}>Retry location types</button></div> : types.length === 0 ? <p role="status">No location types available.</p> : <form key={`${editing?.id ?? "new"}-${createRevision}`} onSubmit={save}>
+        {typesLoading ? <p role="status">Loading location types…</p> : typesError ? <div className="load-error" role="alert"><p>{typesError}</p><button type="button" onClick={() => { setTypesLoading(true); setTypesError(""); setTypesReload((value) => value + 1); }}>Retry location types</button></div> : types.length === 0 ? <p role="status">No location types available.</p> : <form key={`${editing?.id ?? "new"}-${editing?.version ?? 0}-${createRevision}`} onSubmit={save}>
           <label>Name<input name="name" defaultValue={editing?.name} maxLength={100} required /></label>
           <label>Type<select name="type" defaultValue={editing?.type ?? types[0] ?? ""} required>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
           <label>Building<input name="building" defaultValue={editing?.building} required /></label>

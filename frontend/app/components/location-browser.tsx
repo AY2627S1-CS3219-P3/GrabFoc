@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
-Scope: Added live Supplier location listing, search, filters, sorting, pagination and admin navigation.
+Scope: Added live Supplier location listing, search, filters, sorting, pagination and admin navigation; added retryable location-type loading on 2026-09-29.
 Author review: Pending team review and visual verification.
 */
 "use client";
@@ -21,6 +21,9 @@ function hours(value: string | null) { return value ? `${value.slice(0, 2)}:${va
 export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
   const router = useRouter();
   const [types, setTypes] = useState<string[]>([]);
+  const [typesLoading, setTypesLoading] = useState(true);
+  const [typesError, setTypesError] = useState("");
+  const [typesReload, setTypesReload] = useState(0);
   const [draft, setDraft] = useState(initialFilters);
   const [filters, setFilters] = useState(initialFilters);
   const [page, setPage] = useState(1);
@@ -32,10 +35,16 @@ export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
   useEffect(() => {
     let active = true;
     withSessionMutation(() => fetch("/api/session/supplier/location-types", { cache: "no-store" }))
-      .then(async (response) => { if (response.ok && active) setTypes(await response.json() as string[]); })
-      .catch(() => {});
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Could not load location types.");
+        const result: unknown = await response.json();
+        if (!Array.isArray(result) || !result.every((type) => typeof type === "string")) throw new Error("Invalid location types response.");
+        if (active) setTypes(result);
+      })
+      .catch(() => { if (active) setTypesError("Could not load location types. Please try again."); })
+      .finally(() => { if (active) setTypesLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [typesReload]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { setPage(1); setFilters(draft); }, 300);
@@ -74,11 +83,13 @@ export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
     </div>
     <div className="location-filters">
       <label><span>Search name</span><input type="search" value={draft.name} onChange={(event) => change("name", event.target.value)} placeholder="Search pickup points" /></label>
-      <label><span>Type</span><select value={draft.type} onChange={(event) => change("type", event.target.value)}><option value="">All types</option>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+      <label><span>Type</span><select value={draft.type} disabled={typesLoading || Boolean(typesError)} onChange={(event) => change("type", event.target.value)}><option value="">All types</option>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
       <label><span>Building</span><input value={draft.building} onChange={(event) => change("building", event.target.value)} placeholder="Exact building" /></label>
       <label><span>Open at</span><input type="time" value={draft.time} onChange={(event) => change("time", event.target.value)} /></label>
       <label><span>Name order</span><select value={draft.order} onChange={(event) => change("order", event.target.value as Filters["order"])}><option value="asc">A–Z</option><option value="desc">Z–A</option></select></label>
     </div>
+    {typesLoading && <p role="status">Loading location types…</p>}
+    {typesError && <div className="load-error" role="alert"><p>{typesError}</p><button type="button" onClick={() => { setTypesLoading(true); setTypesError(""); setTypesReload((value) => value + 1); }}>Retry location types</button></div>}
     {error && <div className="home-empty" role="alert">{error} <button type="button" onClick={() => { setLoading(true); setReload((value) => value + 1); }}>Retry</button></div>}
     {!error && loading && <div className="home-empty" role="status">Loading locations…</div>}
     {!error && !loading && data?.items.length === 0 && <div className="home-empty">No locations match these filters.</div>}

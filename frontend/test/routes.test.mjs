@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified session flows, denial logging, and refresh-only logout revocation with local clearing on 2026-09-29; added Supplier browse and management fixtures and downstream 401 review cases on 2026-09-29.
+Scope: Verified session flows, denial logging, and refresh-only logout revocation with local clearing on 2026-09-29; added Supplier browse, management filtering, retry, refreshed edit, and downstream 401 review cases on 2026-09-29.
 Author review: Pending team review and local browser verification.
 */
 import assert from "node:assert/strict";
@@ -59,6 +59,7 @@ const gateway = createServer(async (request, response) => {
       if (url.searchParams.has("name")) items = items.filter((item) => item.name.toLowerCase().includes(url.searchParams.get("name").toLowerCase()));
       if (url.searchParams.has("type")) items = items.filter((item) => item.type === url.searchParams.get("type"));
       if (url.searchParams.has("building")) items = items.filter((item) => item.building === url.searchParams.get("building"));
+      if (url.searchParams.has("time")) items = items.filter((item) => item.open_time && item.close_time && item.open_time <= url.searchParams.get("time") && item.close_time > url.searchParams.get("time"));
       items = items.toSorted((a, b) => (url.searchParams.get("order") === "desc" ? -1 : 1) * a.name.localeCompare(b.name));
       const page = Number(url.searchParams.get("page") || 1);
       const pageSize = Number(url.searchParams.get("pageSize") || 20);
@@ -791,6 +792,73 @@ test("admin can retry location types without reloading the page", async () => {
     await admin.getByRole("button", { name: "Retry location types" }).click();
     await admin.locator("form [name=type]").waitFor();
   } finally { failTypes = false; await admin.close(); }
+});
+
+test("Home can retry location types without reloading the page", async () => {
+  const user = await browser.newPage();
+  failTypes = true;
+  try {
+    await user.goto(`${baseUrl}/signin`);
+    await user.getByLabel("Email").fill("alex@u.nus.edu");
+    await user.getByLabel("Password").fill("Passw0rdSafe");
+    await user.getByRole("button", { name: "Sign In" }).click();
+    await user.waitForURL("**/home");
+    await user.getByRole("alert").getByText("Could not load location types. Please try again.").waitFor();
+    failTypes = false;
+    await user.getByRole("button", { name: "Retry location types" }).click();
+    await user.getByLabel("Type").locator('option[value="Food"]').waitFor({ state: "attached" });
+  } finally { failTypes = false; await user.close(); }
+});
+
+test("admin management filters and sorting reach Supplier", async () => {
+  const admin = await browser.newPage();
+  try {
+    await admin.goto(`${baseUrl}/signin`);
+    await admin.getByLabel("Email").fill("admin@u.nus.edu");
+    await admin.getByLabel("Password").fill("Passw0rdSafe");
+    await admin.getByRole("button", { name: "Sign In" }).click();
+    await admin.waitForURL("**/home");
+    await admin.goto(`${baseUrl}/admin/locations`);
+    const list = admin.getByRole("region", { name: "Locations" });
+    await list.getByLabel("Type").selectOption("Food");
+    await list.getByLabel("Building").fill("COM3");
+    await list.getByLabel("Open at").fill("10:00");
+    await list.getByLabel("Name order").selectOption("desc");
+    let expected = false;
+    for (let attempt = 0; attempt < 30 && !expected; attempt++) {
+      expected = requests.some((request) => request.path?.startsWith("/locations?") &&
+        new URL(request.path, "http://gateway.local").searchParams.get("type") === "Food" &&
+        new URL(request.path, "http://gateway.local").searchParams.get("building") === "COM3" &&
+        new URL(request.path, "http://gateway.local").searchParams.get("time") === "1000hrs" &&
+        new URL(request.path, "http://gateway.local").searchParams.get("order") === "desc");
+      if (!expected) await delay(100);
+    }
+    assert.ok(expected);
+  } finally { await admin.close(); }
+});
+
+test("editing a refreshed location uses its latest version and fields", async () => {
+  const admin = await browser.newPage();
+  const location = locations.find((item) => item.id === 1);
+  const previous = { ...location };
+  try {
+    await admin.goto(`${baseUrl}/signin`);
+    await admin.getByLabel("Email").fill("admin@u.nus.edu");
+    await admin.getByLabel("Password").fill("Passw0rdSafe");
+    await admin.getByRole("button", { name: "Sign In" }).click();
+    await admin.waitForURL("**/home");
+    await admin.goto(`${baseUrl}/admin/locations`);
+    await admin.locator(".manage-row", { hasText: previous.name }).getByRole("button", { name: "Edit" }).click();
+    assert.equal(await admin.locator("form [name=name]").inputValue(), previous.name);
+    location.name = "Concurrent update";
+    location.version++;
+    await admin.locator(".manage-row", { hasText: "UTown Print" }).getByRole("button", { name: "Deactivate" }).click();
+    await admin.locator(".manage-row", { hasText: "Concurrent update" }).getByRole("button", { name: "Edit" }).click();
+    assert.equal(await admin.locator("form [name=name]").inputValue(), "Concurrent update");
+  } finally {
+    Object.assign(location, previous);
+    await admin.close();
+  }
 });
 
 test("Supplier-only 401 preserves a valid session and does not refresh", async () => {
