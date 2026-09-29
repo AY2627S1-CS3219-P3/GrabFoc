@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Added protected requests and in-flight refresh coordination; removed completed token replay, retained rotated cookies on errors, and logged 403 on 2026-09-29.
+Scope: Added protected requests and in-flight refresh coordination; reused rotation for expired-access logout on 2026-09-29.
 Author review: Pending frontend owner review and live User Service verification.
 */
 import 'server-only';
@@ -23,7 +23,7 @@ function unauthorized(request: NextRequest, clear: boolean): NextResponse {
 }
 
 // AI-generated (pending human review)
-async function rotate(refreshToken: string): Promise<Rotation> {
+export async function rotateRefreshToken(refreshToken: string): Promise<Rotation> {
   const key = createHash('sha256').update(refreshToken).digest('hex');
   const existing = rotations.get(key);
   if (existing) return existing;
@@ -47,7 +47,7 @@ async function rotate(refreshToken: string): Promise<Rotation> {
 export async function refreshSession(request: NextRequest): Promise<NextResponse> {
   const refresh = request.cookies.get(REFRESH)?.value;
   if (!refresh) return unauthorized(request, true);
-  const outcome = await rotate(refresh);
+  const outcome = await rotateRefreshToken(refresh);
   if (outcome.kind === 'unauthorized') return unauthorized(request, true);
   if (outcome.kind === 'unavailable') return unavailable();
   const response = NextResponse.json({ ok: true });
@@ -73,7 +73,7 @@ export async function protectedGateway(
       }
     }
     if (!refresh) return unauthorized(request, true);
-    const outcome = await rotate(refresh);
+    const outcome = await rotateRefreshToken(refresh);
     if (outcome.kind === 'unauthorized') return unauthorized(request, true);
     if (outcome.kind === 'unavailable') return unavailable();
     tokens = outcome.tokens;

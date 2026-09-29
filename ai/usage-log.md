@@ -59,6 +59,23 @@ Template:
 
 ## Jie Yang
 
+### 2026-09-29 12:58 SGT — Refresh-only logout revocation
+
+**Tool:** Codex (GPT-6) · **Mode:** generate, debug
+**Files:** `frontend/app/api/session/logout/route.ts`, `frontend/lib/protected-gateway.ts`, `frontend/test/routes.test.mjs`, `ai/usage-log.md`
+
+**Scenario:** Revoke a User Service refresh session at logout after the shorter-lived access cookie has expired, while always clearing browser cookies.
+
+**Prompt (exact):**
+
+~~~text
+Use the refresh token once to obtain a new access token and **rotated** refresh token, then send both required credentials to User Service’s logout endpoint. The browser cookies should still be cleared if either call fails.
+~~~
+
+**What it produced:** Exposed the existing in-flight refresh coordinator to logout, used the rotated access and refresh tokens for remote logout when no access cookie remains, and added success and remote-failure regression cases.
+**What I changed or rejected:** Pending human review. Kept the existing direct logout path when the access cookie is present, and kept local clearing on every outcome.
+**Verification:** `npm.cmd run test:routes` passed (19/19), `npm.cmd run lint` passed, and `npm.cmd run build` passed. Live User Service verification remains pending.
+
 ### 2026-09-29 12:52 SGT — PR #24 rejected-login logging
 
 **Tool:** Codex (GPT-6) · **Mode:** debug, explain

@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified session flows, single-use refresh, origin and 403 logging, rotated-cookie recovery, timeout, and outage logout; added upstream login denial logging checks on 2026-09-29.
+Scope: Verified session flows, denial logging, and refresh-only logout revocation with local clearing on 2026-09-29.
 Author review: Pending team review and local browser verification.
 */
 import assert from "node:assert/strict";
@@ -613,4 +613,40 @@ test("profile logout clears cookies even when session refresh is unavailable", a
     await page.waitForURL("**/signin");
     assert.equal((await context.cookies()).some((cookie) => cookie.name.startsWith("foc_")), false);
   } finally { refreshOutcome = 200; await context.close(); }
+});
+
+test("logout with only a refresh cookie rotates before revocation and always clears cookies", async () => {
+  for (const remoteFailure of [false, true]) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    try {
+      await page.goto(`${baseUrl}/signin`);
+      await page.getByLabel("Email").fill("alex@u.nus.edu");
+      await page.getByLabel("Password").fill("Passw0rdSafe");
+      await page.getByRole("button", { name: "Sign In" }).click();
+      await page.waitForURL("**/home");
+      await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+      const oldRefresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
+      assert.ok(oldRefresh);
+      await context.clearCookies();
+      await context.addCookies([oldRefresh]);
+      failLogout = remoteFailure;
+      const before = requests.length;
+      const result = await page.evaluate(async () => {
+        const response = await fetch("/api/session/logout", { method: "POST" });
+        return { status: response.status, body: await response.json() };
+      });
+      assert.equal(result.status, 200);
+      assert.deepEqual(result.body, { ok: true, remoteRevoked: !remoteFailure });
+      const relevant = requests.slice(before);
+      assert.deepEqual(relevant.map((request) => request.path), ["/auth/refresh", "/auth/logout"]);
+      assert.deepEqual(relevant[0].body, { refreshToken: oldRefresh.value });
+      assert.equal(relevant[1].authorization, "Bearer new-access");
+      assert.deepEqual(relevant[1].body, { refreshToken: `rotated-${oldRefresh.value}` });
+      assert.equal((await context.cookies()).some((cookie) => cookie.name.startsWith("foc_")), false);
+    } finally {
+      failLogout = false;
+      await context.close();
+    }
+  }
 });
