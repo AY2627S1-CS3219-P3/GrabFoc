@@ -6,6 +6,9 @@ Author review: Initial setup approved in PR #23; expanded PR coverage pending hu
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Moved the CodeQL entries under the Jian Bing section when merging main into PR #27; entry text unchanged.
 Author review: Pending human review on PR #27.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Wrote the PR #30 review-fix entry under the Jian Bing section.
+Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #30.
 -->
 
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
@@ -745,6 +748,17 @@ any real mailbox — not a service outage.
 <!-- Add your entries here. -->
 
 ## Jian Bing
+
+### 2026-09-29 — Fix review findings on the Supplier Service JWT verification (PR #30)
+
+- Tool and mode: Claude Code (Claude Opus 5.5), debug.
+- Usage scenario: Address Copilot's review findings on PR #30 (lihloway's branch) in `supplier-service/src/common/jwks.ts` and `supplier-service/src/config.ts`.
+- Prompts (exact):
+  - “okay the mcp is working now, read the review form codesx and resolv eth econversations accoridngly, then do the same with PR30 for user service”
+  - Plan approval, chosen from the options Claude offered: “Approve all 3 fixes (Recommended)”
+- Key response: Three findings were real bugs: an invalid or `null` JWKS body escaped as a 500 instead of the documented 503; concurrent requests each fetched the JWKS, defeating the 30-second refetch limit; and `SUPPLIER_JWKS_URL` was required even in the documented dev-auth-only mode. Claude flagged the third fix as a security trade-off before making it. The fourth finding (the original author's disclosure and log entry) was left for lihloway.
+- Output: Guarded JSON parsing and body validation, one shared in-flight JWKS fetch, and a JWKS URL that is optional only when `SUPPLIER_DEV_AUTH=true` (a bearer token then gets 503, never accepted unverified). Checked with a throwaway script against a fake JWKS server: all three bugs reproduced before the fix and passed after it; `npm run build` succeeds.
+- Human review: Approved the fix plan, including the dev-auth trade-off. Code review pending on PR #30.
 
 ### 2026-09-28 — Follow-up: scan PRs targeting any branch
 
