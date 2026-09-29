@@ -1623,3 +1623,12 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Ensured verification and resend expose validation for fields absent from the form, made profile transport and JSON failures show a safe retry message, kept the toast timer stable across parent renders, and masked unknown backend messages on profile load/logout after a fresh review. Added regression coverage and checked PR #38 again after pushing.
 - Files: `frontend/app/components/auth-screen.tsx`, `frontend/app/components/error-feedback.tsx`, `frontend/app/profile/page.tsx`, `frontend/lib/user-error-copy.ts`, `frontend/test/routes.test.mjs`, `ai/usage-log.md`.
 - Human review: Pending PR review.
+
+## 2026-09-29 — PR #39 environment template review
+
+- Tool and mode: Codex (GPT-6), documentation fix.
+- Usage scenario: Address a project environment-template comment on PR #39 without editing User Service or Supplier Service components.
+- Exact user prompt: “for each PR, 39 and 37, resolve the messages, ensure the changes made do not touch the individual components of the user service and supplier service.”
+- Key response: Documented `NODE_ENV=production` as a safe example for the existing Supplier development-auth guard. Service code was unchanged.
+- Files: `.env.example`, `ai/usage-log.md`.
+- Human review: Pending PR review.
