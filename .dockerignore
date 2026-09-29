@@ -1,0 +1,15 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28
+# Scope: Generated this file so builds whose context is the repository root (supplier-service)
+#        don't send node_modules, build output or secrets to the Docker daemon.
+# Author review: pending — to be completed by the reviewing team member.
+
+**/node_modules
+**/dist
+**/.next
+**/build
+.git
+.env
+.env.*
+!.env.example
+*.log
