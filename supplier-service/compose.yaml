@@ -1,0 +1,71 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+# Scope: Generated this file, following user-service/compose.yaml: the Supplier Service and
+#        its own PostgreSQL container, included from the root compose.yaml.
+# Author review (Jian Bing): Asked for this file and supplied Jie Yang's draft; kept its separate
+#        SUPPLIER_POSTGRES_PASSWORD and host port 5434. Checked the results of Claude Code's test run
+#        on 2026-09-29: standalone, 21 locations seeded, 401 without a token, 503 with one, data kept
+#        across down/up; whole stack, User Service tokens accepted and forged ones rejected, and only
+#        the Supplier variables reach the container. Ran it myself on 2026-09-29 (docker compose up
+#        --build in supplier-service/): the image built, 21 locations were seeded, the service
+#        listened on 3002 and supplier-db on 5434, and GET /locations without a token returned 401.
+#
+# The Supplier Service and the database only it uses. Its database is its own — no other
+# service connects to supplier-db (root AGENTS.md §3). The root compose.yaml includes this file.
+#
+# Run the whole project from the repo root:    docker compose up --build
+# Run only the Supplier Service, from the root: docker compose -f supplier-service/compose.yaml --env-file .env up --build
+#
+# Tokens are verified against the User Service's JWKS, fetched on the first request rather than
+# at startup, so this service starts without it; run on its own, token requests get 503.
+
+# The same project name as the root file, so a standalone run reuses the same containers and
+# named volumes — and so the same database.
+name: foc
+
+services:
+  supplier-db:
+    image: postgres:17-alpine
+    environment:
+      # Supplied by the git-ignored .env so no working credential lives in the repository.
+      # The fallback keeps `docker compose up` working on a fresh clone; override it in .env.
+      POSTGRES_USER: foc
+      # Its own password, separate from user-db's POSTGRES_PASSWORD.
+      POSTGRES_PASSWORD: ${SUPPLIER_POSTGRES_PASSWORD:-change-me-in-dotenv}
+      POSTGRES_DB: supplier
+    ports:
+      # 5434 on the host, because user-db already publishes 5432.
+      - "5434:5432"
+    volumes:
+      # Named volume, so the data survives `docker compose down` (root AGENTS.md §8).
+      - supplier-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foc -d supplier"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  supplier-service:
+    build:
+      # The repository root, because the image copies the seed CSV from data/ (see the Dockerfile).
+      context: ..
+      dockerfile: supplier-service/Dockerfile
+    depends_on:
+      supplier-db:
+        condition: service_healthy
+    # No env_file: passing the whole .env would hand this container other services' secrets
+    # (such as user-db's password) and local-run values such as SUPPLIER_DEV_AUTH=true, which
+    # the production image refuses. Only the variables below reach it.
+    environment:
+      # Inside the compose network the hostnames are the service names, not localhost.
+      SUPPLIER_PORT: 3002
+      SUPPLIER_DATABASE_URL: postgres://foc:${SUPPLIER_POSTGRES_PASSWORD:-change-me-in-dotenv}@supplier-db:5432/supplier
+      SUPPLIER_JWKS_URL: http://user-service:3001/.well-known/jwks.json
+      # Optional; checked only when set in .env.
+      SUPPLIER_JWT_ISSUER: ${SUPPLIER_JWT_ISSUER:-}
+      SUPPLIER_JWT_AUDIENCE: ${SUPPLIER_JWT_AUDIENCE:-}
+    ports:
+      - "3002:3002"
+
+volumes:
+  supplier-db-data:

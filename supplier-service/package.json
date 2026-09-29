@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "nest build",
+    "test": "npm run build && node --test",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch"
   },

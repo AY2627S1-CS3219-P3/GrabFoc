@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FoC Supplier Service",
-    "description": "Requests for the Supplier (Location) Service.\n\nAUTH, two ways:\n1. Real tokens: log in through the User Service and put the tokens in the adminToken / userToken variables. Supplier verifies them against the User Service's JWKS, so that service must be running.\n2. Standalone testing: leave adminToken / userToken empty and start Supplier with SUPPLIER_DEV_AUTH=true. Requests then fall back to the X-User-Id / X-User-Role headers below, and no other service is needed. That flag is for your own machine only.\n\nSet baseUrl for your machine. Run \"Create location\" before the update/deactivate/restore requests; it stores locationId and version.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated this collection from the endpoints and error codes in supplier-service/AGENTS.md. Author review: pending.",
+    "description": "Requests for the Supplier (Location) Service.\n\nAUTH, two ways:\n1. Real tokens: log in through the User Service and put the tokens in the adminToken / userToken variables. Supplier verifies them against the User Service's JWKS, so that service must be running.\n2. Standalone testing: leave adminToken / userToken empty and start Supplier with SUPPLIER_DEV_AUTH=true. Requests then fall back to the X-User-Id / X-User-Role headers below, and no other service is needed. That flag is for your own machine only.\n\nSet baseUrl for your machine. Run \"Create location\" before the update/deactivate/restore requests; it stores locationId and version.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated this collection from the endpoints and error codes in supplier-service/AGENTS.md. Author review (Cole Lin): Ran the collection against a seeded database; the Update, Get-by-id and duplicate-name requests failed on the first run, which turned out to be the both-hours rule and a missing re-seed. Both fixed, then re-run.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -32,6 +32,14 @@
     {
       "key": "devUserId",
       "value": "user-1"
+    },
+    {
+      "key": "lat",
+      "value": "1.2949"
+    },
+    {
+      "key": "lon",
+      "value": "103.7737"
     }
   ],
   "item": [
@@ -160,6 +168,61 @@
                 {
                   "key": "order",
                   "value": "desc"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Nearest to my coordinate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has distance_m, nearest first', () => { const d = pm.response.json().items.map(i => i.distance_m); pm.expect(d[0]).to.be.a('number'); pm.expect(d).to.eql([...d].sort((a, b) => a - b)); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/locations?lat={{lat}}&lon={{lon}}&order=distance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "locations"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "{{lat}}"
+                },
+                {
+                  "key": "lon",
+                  "value": "{{lon}}"
+                },
+                {
+                  "key": "order",
+                  "value": "distance"
                 }
               ]
             }
@@ -1297,6 +1360,98 @@
                 {
                   "key": "order",
                   "value": "random"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "400 order=distance without a coordinate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/locations?order=distance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "locations"
+              ],
+              "query": [
+                {
+                  "key": "order",
+                  "value": "distance"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "400 lat without lon",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/locations?lat={{lat}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "locations"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "{{lat}}"
                 }
               ]
             }

@@ -1,18 +1,3 @@
-<!--
-AI Assistance Disclosure:
-Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Recorded the CodeQL workflow configuration and expanded pull request coverage.
-Author review: Initial setup approved in PR #23; expanded PR coverage pending human review.
-Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
-Scope: Moved the CodeQL entries under the Jian Bing section when merging main into PR #27; entry text unchanged.
-Author review: Pending human review on PR #27.
-Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
-Scope: Wrote the SoCLaaS TLS stopgap entry under the Jian Bing section (PR #36).
-Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #36.
-Scope: Wrote the PR #30 review-fix entry under the Jian Bing section.
-Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #30.
--->
-
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
 
 Required by Appendix 2 of the project document: *"Maintain a log, `/ai/usage-log.md`, in the
@@ -747,51 +732,231 @@ any real mailbox — not a service outage.
 
 ## Cole Lin
 
-<!-- Add your entries here. -->
+### 2026-09-29 — Coordinate search, dev-mode fix and these log entries (PR #33)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate and debug.
+- Usage scenario: Close the "finding suppliers by location" gap in D2 Supplier point 2, then have the whole Supplier change set reviewed before pushing it.
+- Prompts (exact):
+  - "add the finding suppliers by location, given a coordinate. Just assume it will be a standard mobile gps location format"
+  - "we changed a lot with this, I want you to check through and figure out if its all good"
+  - "do 2 and 8" / "wait revert 8"
+- Key response: Asked how the coordinate should select results before writing anything, then added `lat`/`lon` (decimal degrees, given together), a `distance_m` field in whole metres computed in SQL, and `order=distance`. The review afterwards found that `SUPPLIER_JWKS_URL` was still required in dev-auth mode, which would have stopped the service running standalone.
+- What I changed or rejected: Rejected a radius filter and a "nearest N" cap — a coordinate adds distance and allows distance ordering, nothing more. Asked for the seeded image links to be served from our own repository copy, then decided against it and had it reverted, so the loader still rewrites the template repository's links. Left ordering by type or building pending.
+- Verification: Ran the coordinate queries in Postman against the seeded database, and checked the 400 cases for `lat` without `lon` and for `order=distance` with no coordinate.
+
+### 2026-09-28 — Verify User Service tokens, with an opt-in dev fallback (PR #30)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate and debug.
+- Usage scenario: Replace the Supplier Service's placeholder auth. The gateway forwards the token and injects no identity headers, so this service has to verify the JWT itself.
+- Prompts (exact):
+  - "ok so for API gateway stuff, right now I believe we have sort of a placeholder, but we should be able to flesh it out now that we know how the gateway is implemented right?"
+  - "ok ask me the questions I want to pick it up now" — then chose: hand-rolled `node:crypto`; remove the dev headers; check issuer and audience only when configured; test with local keys.
+  - "ok I actually now want to be able to test supplier alone, add back the dev-only X-User-Id / X-User-Role headers and make sure no security problems, only for testing"
+- Key response: `src/common/jwks.ts` with JWKS fetching, caching and RS256/ES256 verification, the guard swapped to read `sub` and `role` from the token, and `SUPPLIER_DEV_AUTH` accepted only when no bearer token is sent.
+- What I changed or rejected: Rejected adding the `jose` package and rejected copying the gateway's verification file into this service; chose hand-rolled `node:crypto` so there is no new dependency. First had the dev headers removed entirely, then reinstated them behind a flag once it was clear D2 point 3 needs the service testable on its own — with the rule that a real token always wins, the flag is off by default, and startup refuses it when `NODE_ENV=production`.
+- Verification: Read it in full, ran it with Postman and checked the 401 and 403 cases, including that the dev headers are ignored when the flag is off and cannot override a real token.
+
+### 2026-09-28 — A-Z / Z-A sorting and the service Dockerfile (PR #28)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate.
+- Usage scenario: Add the sorting D2 point 5 lists, and give the Supplier Service the Dockerfile every service needs for the containerised demo.
+- Prompts (exact):
+  - "add sorting A->Z and Z<-A"
+  - "i thinking of making our dockerfile" — then chose: build from the repo root, ports 3002 and 5433, Dockerfile now with the compose entry later.
+- Key response: `order=asc|desc` on `name`, rejecting any other value with 400, and a two-stage `node:22-alpine` build following `user-service/Dockerfile`, with a root `.dockerignore`.
+- What I changed or rejected: Rejected mounting `data/` into the container and rejected keeping a second copy of the seed CSV inside the service folder; chose the repo-root build context so the image copies `data/csv` in. Deferred the `compose.yaml` entry rather than conflicting with PR #9, which creates that file.
+- Verification: Built the image and ran the container against PostgreSQL, checking the seed loads from inside the image and that a restart does not seed again.
+
+### 2026-09-22 — Supplier Service: first implementation (PR #7)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate.
+- Usage scenario: Build the service from the design the team had already settled in `supplier-service/AGENTS.md`: schema, endpoints, error codes and seed rules were decided in conversation first, then implemented.
+- Prompts (exact):
+  - "ok are you able to start building it such that I can test with seed and postman first?" — then chose: NestJS; `pg` with plain SQL; a dev-only role header for testing; JSON field names matching the columns.
+  - "the Supplier Service files and .env.example together, leaving out the other services' AGENTS.md files is perfect and exactly what I was thinking"
+  - "push it and open a PR"
+- Key response: The NestJS service (config, database module, Problem Details filter, guard, Zod schemas, locations controller and service, CSV seed loader), a Postman collection and the README.
+- What I changed or rejected: Rejected Prisma, Drizzle and Knex in favour of plain parameterized SQL. Decided hours are stored as minutes but entered and searched as `HHMMhrs`, and that a location's opening and closing times are both present or both absent. Kept change history, the created and last-modified timestamps and the campus-boundary check out of this first version, and recorded them as pending in `AGENTS.md`.
+- Verification: Ran it with Postman against PostgreSQL in Docker: the seed loads all 21 locations, CRUD and search work, and the 401 and 403 cases behave as documented.
 
 ## Jian Bing
 
-### 2026-09-29 — Diagnose SoCLaaS review failures and add a TLS stopgap (PR #36)
+### 2026-09-29 — Usage-log format, merge conflicts and author reviews (PRs #27, #33)
 
-- Tool and mode: Claude Code (Claude Opus 5.5), debug and generate.
-- Usage scenario: Every SoCLaaS PR Review run failed with "SoCLaaS could not be reached" while the API still loaded in a browser. Used AI to find the cause and add a temporary workaround.
-- Prompts (exact):
-  - “why is soclass not working?” (with screenshots of the failed run and the API URL)
-  - “tyr the stopgap for the soclass o na different branch, but before you do, help me to settle this merge conflict on pr #27”
-  - “resolve this for pr 27, then open the pr for fix soclass tls”
-  - “okay the mcp is working now, read the review form codesx and resolv eth econversations accoridngly, then do the same with PR30 for user service”
-  - “for pr 36 this was commented by codex” (with a screenshot of Codex's finding that Python 3.13+ enables `VERIFY_X509_PARTIAL_CHAIN` by default)
-- Key response: After its 2026-09-28 certificate renewal, the SoCLaaS server sends only its leaf certificate. Browsers fetch the missing Let's Encrypt `YE2` intermediate themselves; Python's `urllib` does not, so the reviewer fails TLS verification and reports the service as unreachable.
-- Output: `SOCLAAS_INTERMEDIATES` (the `YE2` and `Root YE` certificates) and an SSL context for SoCLaaS requests only in `.github/scripts/soclaas_review.py`; certificate verification stays on. After Codex's review, the context also clears `VERIFY_X509_PARTIAL_CHAIN`, which Python 3.13+ sets by default and which let the embedded certificates act as trust anchors (confirmed on 3.14: accepted with no system roots before the fix, rejected after). Tested locally against the live server on Python 3.11, 3.12 and 3.14.
-- Human review: Reviewed the diagnosis and chose the stopgap over waiting for the SoCLaaS admins. Still to confirm after merge: a SoCLaaS review re-run succeeds. Revert once the server serves its full chain.
-### 2026-09-29 — Fix review findings on the Supplier Service JWT verification (PR #30)
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor, explain
+**Files:** `ai/usage-log.md`; the `Author review` lines in `.env.example`, `compose.yaml`,
+`supplier-service/compose.yaml`, `supplier-service/README.md`, `supplier-service/src/common/jwks.ts`,
+`supplier-service/src/config.ts`, `.github/scripts/soclaas_review.py`, `.github/workflows/codeql.yml`
 
-- Tool and mode: Claude Code (Claude Opus 5.5), debug.
-- Usage scenario: Address Copilot's review findings on PR #30 (lihloway's branch) in `supplier-service/src/common/jwks.ts` and `supplier-service/src/config.ts`.
-- Prompts (exact):
-  - “okay the mcp is working now, read the review form codesx and resolv eth econversations accoridngly, then do the same with PR30 for user service”
-  - Plan approval, chosen from the options Claude offered: “Approve all 3 fixes (Recommended)”
-- Key response: Three findings were real bugs: an invalid or `null` JWKS body escaped as a 500 instead of the documented 503; concurrent requests each fetched the JWKS, defeating the 30-second refetch limit; and `SUPPLIER_JWKS_URL` was required even in the documented dev-auth-only mode. Claude flagged the third fix as a security trade-off before making it. The fourth finding (the original author's disclosure and log entry) was left for lihloway.
-- Output: Guarded JSON parsing and body validation, one shared in-flight JWKS fetch, and a JWKS URL that is optional only when `SUPPLIER_DEV_AUTH=true` (a bearer token then gets 503, never accepted unverified). Checked with a throwaway script against a fake JWKS server: all three bugs reproduced before the fix and passed after it; `npm run build` succeeds.
-- Human review: Approved the fix plan, including the dev-auth trade-off. Code review pending on PR #30.
+**Scenario:** Resolved `ai/usage-log.md` merge conflicts on PRs #27 and #33, then removed the
+disclosure block that had built up at the top of this log and moved my entries to the team template,
+using Zi Yi's and Deanson's sections as the reference.
 
-### 2026-09-28 — Follow-up: scan PRs targeting any branch
+**Prompts (exact):**
+> help me fix the merge conflicts in this pr https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/33
 
-- Tool and mode: Codex (GPT-6), generate.
-- Usage scenario: Extend the CodeQL setup above to cover feature-to-feature pull requests, including stacked changes.
-- Prompts (exact):“lets alter the current codeQL configuration from the current only main prs to now also include pr-to-pr”
-- Key response: “I’ll expand CodeQL to scan PRs targeting any branch, keep the existing merge protection on `main`, and open a PR for the change.”
-- Output: Removed the `pull_request.branches` filter from `.github/workflows/codeql.yml`; main push scans and the weekly schedule are unchanged.
-- Human review: Pending for this follow-up change.
+> yes colin is lihloway, and hold off merging now, until cole lin added the author review
 
-### 2026-09-28 13:08 UTC — CodeQL advanced setup
+> help me see pr33 now to see what else is there to do
 
-- Tool and mode: Codex (GPT-6), generate and debug.
-- Usage scenario: Configure CodeQL analysis for public fork pull requests while continuing to scan JavaScript/TypeScript and GitHub Actions.
-- Prompts (exact): “assist me in configuring a more advanced version of codeQL workflow for me to customize”
-- Key response: “I’ll configure the CodeQL workflow for pull requests, then switch GitHub from default to advanced setup and check whether PR #7 receives a scan. I’ll inspect the repository settings and existing workflow first.”
-- Output: `.github/workflows/codeql.yml` in PR #23.
-- Human review: Initial setup approved by Jyang1206 and merged in PR #23. The CodeQL jobs ran successfully after the repository switched to advanced setup.
+> Push the fix now (Recommended) *(chosen from the options Claude offered)*
+
+> could i check with you on why you added [the disclosure block at the top of ai/usage-log.md] and at whether
+> the original usage-log.md demanded for an author review?
+
+> also, cole lin has made the changes to pr 33 to fix the blocks, so maybe we can push from that branch rather than
+> making a new pr
+
+**What it produced:** Merge resolutions that kept every entry from both sides (Cole Lin's entries
+moved under his section); the explanation that the log's own rules never ask for a disclosure block
+(it came from Codex in PR #23 applying the AGENTS.md file-header rule to the log itself); this section
+in the template format; and `Author review` lines written from what I actually did.
+
+**What I changed or rejected:** Questioned the disclosure block and had it removed, since Zi Yi's
+and Deanson's sections keep reviews inside each entry. Confirmed lihloway is Cole Lin before his
+entries were moved, held PRs #30 and #33 until he recorded his reviews, and chose to push this to
+PR #33 instead of opening a new PR.
+
+**Verification:** Claude Code compared the entries on both sides of each merge and confirmed no text
+was dropped; on PR #33 the build and Cole Lin's 3 tests passed after the merge.
+
+### 2026-09-29 — Supplier Service Docker Compose file (PR #33)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `supplier-service/compose.yaml`, `compose.yaml`, `.env.example`, `supplier-service/README.md`
+
+**Scenario:** The Supplier Service had a Dockerfile but no compose file, so the root `compose.yaml`
+could not start it for the D2 containerised demo.
+
+**Prompts (exact):**
+> does the suppleir service have any docker compsoe file
+
+> okay draft it out on the most udpated supplier service pr
+
+> *(a draft compose file from Jie Yang, written with Codex, pasted with Jie Yang's message)*
+> u can jjs / add the env
+
+**What it produced:** `supplier-service/compose.yaml` following `user-service/compose.yaml` (its own
+`supplier-db` on a named volume, the image built from the repository root), its `include` in the root
+`compose.yaml`, `SUPPLIER_POSTGRES_PASSWORD` in `.env.example`, and a "Run with Docker Compose" README
+section. It left out the draft's `depends_on: user-service`, which breaks a standalone run and isn't
+needed because the JWKS is fetched per request. Its first version passed the whole `.env` into the
+container, which leaked user-db's password; it now passes only the Supplier variables.
+
+**What I changed or rejected:** Brought in Jie Yang's draft and, following Jie Yang, gave
+`supplier-db` its own password (`SUPPLIER_POSTGRES_PASSWORD`) and host port 5434. Chose PR #33 as the
+branch, being the newest Supplier PR.
+
+**Verification:** Run by Claude Code in an isolated compose project with test secrets. Standalone:
+21 locations seeded, 401 without a token, 503 with one (no User Service), dev headers refused, data
+kept across `down`/`up`. Whole stack: the Supplier container fetched the User Service's JWKS; tokens
+signed with its key got 200 (USER), 403 (USER on `includeInactive`) and 200 (ADMIN), and a token signed
+with another key got 401. SoCLaaS's claim that the root `include` leaks `.env` into the container was
+checked and found wrong. I then ran `docker compose up --build` in `supplier-service/` myself: the
+image built, 21 locations were seeded, the service listened on 3002 and `supplier-db` on 5434, and
+`GET /locations` without a token returned 401.
+
+### 2026-09-29 — SoCLaaS review failures and a TLS stopgap (PR #36)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/scripts/soclaas_review.py`
+
+**Scenario:** Every SoCLaaS PR Review run failed with "SoCLaaS could not be reached", while the API
+still loaded in a browser.
+
+**Prompts (exact):**
+> why is soclass not working? *(with screenshots of the failed run and the API URL)*
+
+> tyr the stopgap for the soclass o na different branch, but before you do, help me to settle this
+> merge conflict on pr #27
+
+> resolve this for pr 27, then open the pr for fix soclass tls
+
+> okay the mcp is working now, read the review form codesx and resolv eth econversations
+> accoridngly, then do the same with PR30 for user service
+
+> for pr 36 this was commented by codex *(with a screenshot of Codex's `VERIFY_X509_PARTIAL_CHAIN` finding)*
+
+> can you help me se ewhy soclaas is still failing *(with a screenshot of a failed run on PR #30)*
+
+**What it produced:** The diagnosis: after its 2026-09-28 certificate renewal the server sent only its
+leaf certificate; browsers fetch the missing Let's Encrypt `YE2` intermediate themselves, Python's
+`urllib` does not. The stopgap embeds `YE2` and `Root YE` for SoCLaaS requests only, with certificate
+verification left on, and clears `VERIFY_X509_PARTIAL_CHAIN` so the chain must still end at a system
+root. The later failure on PR #30 was a 120-second timeout on a large diff, not TLS.
+
+**What I changed or rejected:** Chose the stopgap over waiting for the SoCLaaS admins, passed on
+Codex's `VERIFY_X509_PARTIAL_CHAIN` finding, and supplied my name for the code marker.
+
+**Verification:** Claude Code tested against the live server on Python 3.11, 3.12 and 3.14, including
+a check that the certificate is rejected with no system roots (it was accepted on 3.14 before the
+`VERIFY_X509_PARTIAL_CHAIN` fix). After the merge, SoCLaaS reviews completed on PRs #30 and #33. The
+server has since started sending its full chain, so the stopgap can be removed.
+
+### 2026-09-29 — Fixes for PR #30's review findings (PR #30)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug
+**Files:** `supplier-service/src/common/jwks.ts`, `supplier-service/src/config.ts` (on Cole Lin's branch)
+
+**Scenario:** Copilot's review of PR #30 left four findings on the Supplier Service token verification.
+
+**Prompts (exact):**
+> okay the mcp is working now, read the review form codesx and resolv eth econversations
+> accoridngly, then do the same with PR30 for user service
+
+> Approve all 3 fixes (Recommended) *(chosen from the options Claude offered)*
+
+> are all the conversations for the pr 30 and pr 33 okay? then il lapprove it
+
+**What it produced:** Three were real bugs: an invalid or `null` JWKS body escaped as a 500 instead of
+the documented 503; concurrent requests each fetched the JWKS, defeating the 30-second refetch limit;
+and `SUPPLIER_JWKS_URL` was required even in the documented dev-auth-only mode. Claude flagged the
+third fix as a security trade-off before making it. The fourth finding (Cole Lin's own disclosures)
+was left to him.
+
+**What I changed or rejected:** Approved all three fixes, including the trade-off that a bearer token
+sent without a JWKS URL gets 503 and is never accepted.
+
+**Verification:** Claude Code reproduced all three bugs with a script against a stub JWKS server and
+confirmed they pass after the fix; `npm run build` succeeded and CI passed. I approved and merged PR #30
+after its review threads were checked.
+
+### 2026-09-28 — CodeQL scans for pull requests to any branch (PR #27)
+
+**Tool:** Codex (GPT-6) · **Mode:** generate
+**Files:** `.github/workflows/codeql.yml`
+
+**Scenario:** Extend the CodeQL setup below to cover feature-to-feature pull requests, including
+stacked changes.
+
+**Prompts (exact):**
+> lets alter the current codeQL configuration from the current only main prs to now also include pr-to-pr
+
+**What it produced:** Removed the `pull_request.branches` filter from `.github/workflows/codeql.yml`;
+scans of pushes to `main` and the weekly schedule are unchanged. Key response: "I'll expand CodeQL to
+scan PRs targeting any branch, keep the existing merge protection on `main`, and open a PR for the
+change."
+
+**Verification:** Approved by Jyang1206 and merged in PR #27. CodeQL has since run on PRs #30, #33 and
+#36; not yet seen on a PR that targets a branch other than `main`.
+
+### 2026-09-28 — CodeQL advanced setup (PR #23)
+
+**Tool:** Codex (GPT-6) · **Mode:** generate, debug
+**Files:** `.github/workflows/codeql.yml`
+
+**Scenario:** CodeQL's default setup did not scan fork pull requests, so PR #7 waited on a required
+CodeQL result. Configure advanced setup, still scanning JavaScript/TypeScript and GitHub Actions.
+
+**Prompts (exact):**
+> assist me in configuring a more advanced version of codeQL workflow for me to customize
+
+**What it produced:** `.github/workflows/codeql.yml`. Key response: "I'll configure the CodeQL workflow
+for pull requests, then switch GitHub from default to advanced setup and check whether PR #7 receives a
+scan. I'll inspect the repository settings and existing workflow first."
+
+**Verification:** Approved by Jyang1206 and merged in PR #23. The CodeQL jobs ran successfully after
+the repository switched to advanced setup.
 
 ## Jie Yang
 
