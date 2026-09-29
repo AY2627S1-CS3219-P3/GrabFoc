@@ -1490,3 +1490,12 @@ operable program or batch file.
 - Key response: “I’ll configure the CodeQL workflow for pull requests, then switch GitHub from default to advanced setup and check whether PR #7 receives a scan. I’ll inspect the repository settings and existing workflow first.”
 - Output: `.github/workflows/codeql.yml` in PR #23.
 - Human review: Pending. The CodeQL jobs ran successfully after the repository switched to advanced setup.
+
+## 2026-09-29 05:34 UTC — Non-local HTTP browser notice
+
+- Tool and mode: Codex (GPT-6), debug and generate.
+- Usage scenario: Diagnose the frontend session screen on a plain HTTP network address and show a clear unsupported-browser message, following the user's earlier preference for that case.
+- Exact user prompts: “the app does not need to support plain http on non-local host, in that scenario a simple "browser not supported" should suffice but its a low priority issue” and “if i run it on [http://100.79.249.10:3000](http://100.79.249.10:3000) it'll keep saying its checking my session”.
+- Key response: Reproduced the stuck session screen at the reported address; the session-status request returned 403. Its page also failed to hydrate, so the notice is rendered by the server layout for HTTP on non-local hosts while keeping localhost and HTTPS available.
+- Files: `frontend/app/layout.tsx`.
+- Human review: Pending.
