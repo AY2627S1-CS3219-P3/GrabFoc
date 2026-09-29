@@ -21,6 +21,9 @@ Author review: Pending review by Jian Bing and lihloway on PR #33.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Wrote the Supplier Service Docker Compose entry under the Jian Bing section (PR #33).
 Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #33.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Resolved the merge of main into PR #33 by adding main's PR #36 entry to the Jian Bing section; no entry text changed.
+Author review: Jian Bing approved pushing the resolution; pending his review on PR #33.
 -->
 
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
@@ -818,6 +821,20 @@ any real mailbox — not a service outage.
 - Output: `supplier-service/compose.yaml`, the `include` in `compose.yaml`, `SUPPLIER_POSTGRES_PASSWORD` in `.env.example`, and a "Run with Docker Compose" section in `supplier-service/README.md`. The first draft passed the whole `.env` to the container; changed to pass only the Supplier variables, because it leaked user-db's password into the Supplier container.
 - Verification: in an isolated compose project with test secrets, standalone: 21 locations seeded, 401 without a token, 503 for a token (no User Service), dev headers ignored, data kept across `down`/`up`. Whole stack: the Supplier container fetched the User Service's JWKS; tokens signed with its key got 200 (USER), 403 (USER on `includeInactive`), 200 (ADMIN), and 401 when signed with another key.
 - Human review: Pending on PR #33.
+
+### 2026-09-29 — Diagnose SoCLaaS review failures and add a TLS stopgap (PR #36)
+
+- Tool and mode: Claude Code (Claude Opus 5.5), debug and generate.
+- Usage scenario: Every SoCLaaS PR Review run failed with "SoCLaaS could not be reached" while the API still loaded in a browser. Used AI to find the cause and add a temporary workaround.
+- Prompts (exact):
+  - “why is soclass not working?” (with screenshots of the failed run and the API URL)
+  - “tyr the stopgap for the soclass o na different branch, but before you do, help me to settle this merge conflict on pr #27”
+  - “resolve this for pr 27, then open the pr for fix soclass tls”
+  - “okay the mcp is working now, read the review form codesx and resolv eth econversations accoridngly, then do the same with PR30 for user service”
+  - “for pr 36 this was commented by codex” (with a screenshot of Codex's finding that Python 3.13+ enables `VERIFY_X509_PARTIAL_CHAIN` by default)
+- Key response: After its 2026-09-28 certificate renewal, the SoCLaaS server sends only its leaf certificate. Browsers fetch the missing Let's Encrypt `YE2` intermediate themselves; Python's `urllib` does not, so the reviewer fails TLS verification and reports the service as unreachable.
+- Output: `SOCLAAS_INTERMEDIATES` (the `YE2` and `Root YE` certificates) and an SSL context for SoCLaaS requests only in `.github/scripts/soclaas_review.py`; certificate verification stays on. After Codex's review, the context also clears `VERIFY_X509_PARTIAL_CHAIN`, which Python 3.13+ sets by default and which let the embedded certificates act as trust anchors (confirmed on 3.14: accepted with no system roots before the fix, rejected after). Tested locally against the live server on Python 3.11, 3.12 and 3.14.
+- Human review: Reviewed the diagnosis and chose the stopgap over waiting for the SoCLaaS admins. Still to confirm after merge: a SoCLaaS review re-run succeeds. Revert once the server serves its full chain.
 
 ### 2026-09-29 — Fix review findings on the Supplier Service JWT verification (PR #30)
 
