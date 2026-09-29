@@ -15,6 +15,7 @@ import { userErrorMessage } from "@/lib/user-error-copy";
 import { ErrorToast, useErrorFeedback } from "../components/error-feedback";
 
 type Profile = { userId: string; displayName: string; email: string; countryCode: string | null; mobileNumber: string | null };
+const profileFallback = "Could not load your profile. Please try again.";
 
 // AI-generated (pending human review)
 export default function ProfilePage() {
@@ -31,10 +32,14 @@ export default function ProfilePage() {
     sessionFetch("/api/session/profile").then(async (response) => {
       if (!active) return;
       if (response.status === 401) { router.replace("/signin"); return; }
-      if (!response.ok) throw new Error(userErrorMessage(await parseServiceError(response, "Could not load your profile.")));
+      if (!response.ok) {
+        const message = userErrorMessage(await parseServiceError(response, profileFallback));
+        if (active) setError(message);
+        return;
+      }
       const data: Profile = await response.json();
       if (active) setProfile(data);
-    }).catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "Could not load your profile. Please try again."); })
+    }).catch(() => { if (active) setError(profileFallback); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [router, reload]);
@@ -44,12 +49,12 @@ export default function ProfilePage() {
     setError("");
     try {
       const response = await withSessionMutation(() => fetch("/api/session/logout", { method: "POST" }));
-      if (!response.ok) throw new Error(userErrorMessage(await parseServiceError(response, "Could not log out. Please try again.")));
+      if (!response.ok) { feedback.setToast(userErrorMessage(await parseServiceError(response, "Could not log out. Please try again."))); return; }
       const result: { remoteRevoked?: boolean } = await response.json();
       if (result.remoteRevoked === false) sessionStorage.setItem("logoutNotice", "Signed out here, but the service could not confirm remote logout.");
       else sessionStorage.removeItem("logoutNotice");
       router.replace("/signin");
-    } catch (reason) { feedback.setToast(reason instanceof Error ? reason.message : "Could not log out. Please try again."); }
+    } catch { feedback.setToast("Could not log out. Please try again."); }
     finally { setLoggingOut(false); }
   }
 

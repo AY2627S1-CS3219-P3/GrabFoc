@@ -116,8 +116,13 @@ export function AuthScreen({ view }: { view: View }) {
     const fields = mapFieldErrors(error.fields, names);
     if (error.code === 'EMAIL_TAKEN' && !fields.email) fields.email = [userErrorMessage(error)];
     if (error.code === 'OTP_INVALID' && !fields.otp) fields.otp = [userErrorMessage(error)];
-    feedback.setFields(fields);
-    feedback.setToast(error.fields.length ? 'Please check the highlighted fields.' : userErrorMessage(error));
+    const visible = new Set(view === 'verify' ? ['otp'] : view === 'signin' ? ['email', 'password'] : ['fullName', 'email', 'countryCode', 'mobileNumber', 'password', 'confirmPassword']);
+    const shown = Object.fromEntries(Object.entries(fields).filter(([field]) => visible.has(field)));
+    const hidden = Object.entries(fields).filter(([field]) => !visible.has(field));
+    feedback.setFields(shown);
+    feedback.setToast(hidden.length
+      ? `${hidden.map(([field, messages]) => `${field}: ${messages.join(' ')}`).join(' ')}${view === 'verify' ? ' Return to sign-up to correct your email.' : ''}`
+      : error.fields.length && Object.keys(shown).length ? 'Please check the highlighted fields.' : userErrorMessage(error));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -223,6 +228,7 @@ export function AuthScreen({ view }: { view: View }) {
         {view === "verify" ? (
           <form className="auth-form auth-form--verify" onSubmit={handleSubmit}>
             <p className="verify-description">{pendingEmail ? `We have sent a verification code to ${pendingEmail}` : "Start sign-up to receive a verification code."}</p>
+            <Link href="/signup">Use a different email</Link>
             <OtpInputs onChange={(code) => { setOtp(code); feedback.clearField('otp'); }} invalid={!!feedback.fields.otp?.length} />
             <FieldError messages={feedback.fields.otp} id="otp-error" />
             <p className="otp-resend">Didn’t receive the code? <button type="button" onClick={resendOtp} disabled={submitting}>Resend OTP</button></p>

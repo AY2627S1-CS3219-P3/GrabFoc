@@ -6,15 +6,17 @@ Author review: Pending frontend owner review and visual verification.
 */
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // AI-generated (pending human review)
 export function ErrorToast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  const dismiss = useRef(onDismiss);
+  useEffect(() => { dismiss.current = onDismiss; }, [onDismiss]);
   useEffect(() => {
     if (!message) return;
-    const timer = window.setTimeout(onDismiss, 6000);
+    const timer = window.setTimeout(() => dismiss.current(), 6000);
     return () => window.clearTimeout(timer);
-  }, [message, onDismiss]);
+  }, [message]);
   if (!message) return null;
   return <div className="error-toast" role="alert"><span>{message}</span><button type="button" onClick={onDismiss} aria-label="Dismiss error">×</button></div>;
 }

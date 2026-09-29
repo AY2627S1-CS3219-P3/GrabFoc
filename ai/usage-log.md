@@ -1614,3 +1614,12 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Updated the User integration branch from main, created `feature/frontend-user-error-handling`, normalized both existing error envelopes, and added reusable toast and field feedback to the User screens. Supplier Service's response contract remains pending its owner's approval.
 - Files: `frontend/lib/service-errors.ts`, `frontend/lib/user-error-copy.ts`, `frontend/app/components/error-feedback.tsx`, User frontend screens, `frontend/app/globals.css`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `ai/usage-log.md`.
 - Human review: Pending PR review and manual UI inspection.
+
+## 2026-09-29 — PR #38 review follow-up
+
+- Tool and mode: Codex (GPT-6), debug, refactor.
+- Usage scenario: Address review feedback on reusable User Service error handling.
+- Exact user prompt: “in the user error handling PR there are unresolved comments, keep resolving the comments and committing, and monitor the new reviews and resolve them”
+- Key response: Ensured verification and resend expose validation for fields absent from the form, made profile transport and JSON failures show a safe retry message, and kept the toast timer stable across parent renders. Added regression coverage and checked PR #38 again after pushing.
+- Files: `frontend/app/components/auth-screen.tsx`, `frontend/app/components/error-feedback.tsx`, `frontend/app/profile/page.tsx`, `frontend/test/routes.test.mjs`, `ai/usage-log.md`.
+- Human review: Pending PR review.

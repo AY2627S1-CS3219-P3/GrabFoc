@@ -20,6 +20,7 @@ let failLogout = false;
 let refreshOutcome = 200;
 let rejectRotatedAccess = false;
 let denyProfile = false;
+let malformedProfile = false;
 let breakRotatedProfile = false;
 let stallLogin = false;
 const stalledResponses = new Set();
@@ -38,6 +39,11 @@ const gateway = createServer(async (request, response) => {
     if (denyProfile) {
       response.writeHead(403, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: "Forbidden" }));
+      return;
+    }
+    if (malformedProfile) {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{");
       return;
     }
     const accepted = request.headers.authorization === "Bearer test-access" ||
@@ -88,6 +94,11 @@ const gateway = createServer(async (request, response) => {
   if (request.url === "/auth/register/verify" && body.otp === "222222") {
     response.writeHead(400, { "content-type": "application/json" });
     response.end(JSON.stringify({ error: { code: "OTP_EXPIRED", message: "Expired code" } }));
+    return;
+  }
+  if ((request.url === "/auth/register/verify" || request.url === "/auth/register/resend-otp") && body.email === "invalid-verify@u.nus.edu") {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: { code: "VALIDATION_ERROR", message: "The request is invalid.", details: { fields: [{ field: "email", message: "must be an NUS address" }] } } }));
     return;
   }
   if (request.url === "/auth/password/reset" && body.otp === "333333") {
@@ -355,6 +366,21 @@ test("lockout and OTP errors use service codes and retry details", async () => {
   } finally { await page.close(); }
 });
 
+test("verification surfaces validation for an email absent from the form", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/verify`);
+    await page.evaluate(() => sessionStorage.setItem("pendingRegistrationEmail", "invalid-verify@u.nus.edu"));
+    await page.reload();
+    for (let digit = 1; digit <= 6; digit++) await page.getByLabel(`Digit ${digit}`).fill("3");
+    await page.getByRole("button", { name: "Confirm" }).click();
+    await page.getByRole("alert").getByText("email: must be an NUS address Return to sign-up to correct your email.").waitFor();
+    await page.getByRole("link", { name: "Use a different email" }).waitFor();
+    await page.getByRole("button", { name: "Resend OTP" }).click();
+    await page.getByRole("alert").getByText("email: must be an NUS address Return to sign-up to correct your email.").waitFor();
+  } finally { await page.close(); }
+});
+
 test("recovery keeps unknown accounts indistinguishable and handles rate limits and Problem Details", async () => {
   const page = await browser.newPage();
   try {
@@ -389,6 +415,23 @@ test("profile load failure keeps a retry action", async () => {
     await page.getByRole("button", { name: "Retry" }).click();
     await page.getByRole("heading", { name: "Alex Tan" }).waitFor();
   } finally { denyProfile = false; await page.close(); }
+});
+
+test("malformed successful profile response shows a safe retry message", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/home");
+    malformedProfile = true;
+    await page.goto(`${baseUrl}/profile`);
+    await page.getByRole("alert").getByText("Could not load your profile. Please try again.").waitFor();
+    malformedProfile = false;
+    await page.getByRole("button", { name: "Retry" }).click();
+    await page.getByRole("heading", { name: "Alex Tan" }).waitFor();
+  } finally { malformedProfile = false; await page.close(); }
 });
 
 test("upstream login 401 and 403 are logged without credentials", async () => {
