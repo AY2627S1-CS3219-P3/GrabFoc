@@ -32,6 +32,14 @@
     {
       "key": "devUserId",
       "value": "user-1"
+    },
+    {
+      "key": "lat",
+      "value": "1.2949"
+    },
+    {
+      "key": "lon",
+      "value": "103.7737"
     }
   ],
   "item": [
@@ -160,6 +168,61 @@
                 {
                   "key": "order",
                   "value": "desc"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Nearest to my coordinate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has distance_m, nearest first', () => { const d = pm.response.json().items.map(i => i.distance_m); pm.expect(d[0]).to.be.a('number'); pm.expect(d).to.eql([...d].sort((a, b) => a - b)); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/locations?lat={{lat}}&lon={{lon}}&order=distance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "locations"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "{{lat}}"
+                },
+                {
+                  "key": "lon",
+                  "value": "{{lon}}"
+                },
+                {
+                  "key": "order",
+                  "value": "distance"
                 }
               ]
             }
@@ -1297,6 +1360,98 @@
                 {
                   "key": "order",
                   "value": "random"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "400 order=distance without a coordinate",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/locations?order=distance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "locations"
+              ],
+              "query": [
+                {
+                  "key": "order",
+                  "value": "distance"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "400 lat without lon",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/locations?lat={{lat}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "locations"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "{{lat}}"
                 }
               ]
             }

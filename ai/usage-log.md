@@ -1,8 +1,5 @@
 <!--
 AI Assistance Disclosure:
-Tool: Codex (model: GPT-6), date: 2026-09-29
-Scope: Combined the team's main-branch usage entries with the frontend and gateway entries during the main merge.
-Author review: Pending team review of the merged log.
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Recorded the CodeQL workflow configuration and expanded pull request coverage.
 Author review: Initial setup approved in PR #23; expanded PR coverage pending human review.
@@ -10,11 +7,25 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Moved the CodeQL entries under the Jian Bing section when merging main into PR #27; entry text unchanged.
 Author review: Pending human review on PR #27.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
-Scope: Wrote the SoCLaaS TLS stopgap entry under the Jian Bing section (PR #36).
-Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #36.
 Scope: Wrote the PR #30 review-fix entry under the Jian Bing section.
 Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #30.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-09-29
+Scope: Wrote the Cole Lin entries for PRs #7, #28, #30 and #33 from his prompts in the session.
+Author review: Cole Lin confirmed the prompts, decisions and verification described.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Wrote the SoCLaaS TLS stopgap entry under the Jian Bing section (PR #36).
+Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #36.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Moved lihloway's four Supplier Service entries under the Cole Lin section when merging main into PR #33; entry text unchanged.
+Author review: Pending review by Jian Bing and lihloway on PR #33.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Wrote the Supplier Service Docker Compose entry under the Jian Bing section (PR #33).
+Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #33.
+Tool: Codex (model: GPT-6), date: 2026-09-29
+Scope: Combined PR #33 entries with the frontend and gateway log while merging PR #33.
+Author review: Pending team review of the merged log.
 -->
+
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
 
 Required by Appendix 2 of the project document: *"Maintain a log, `/ai/usage-log.md`, in the
@@ -749,23 +760,68 @@ any real mailbox — not a service outage.
 
 ## Cole Lin
 
-<!-- Add your entries here. -->
+### 2026-09-29 — Coordinate search, dev-mode fix and these log entries (PR #33)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate and debug.
+- Usage scenario: Close the "finding suppliers by location" gap in D2 Supplier point 2, then have the whole Supplier change set reviewed before pushing it.
+- Prompts (exact):
+  - "add the finding suppliers by location, given a coordinate. Just assume it will be a standard mobile gps location format"
+  - "we changed a lot with this, I want you to check through and figure out if its all good"
+  - "do 2 and 8" / "wait revert 8"
+- Key response: Asked how the coordinate should select results before writing anything, then added `lat`/`lon` (decimal degrees, given together), a `distance_m` field in whole metres computed in SQL, and `order=distance`. The review afterwards found that `SUPPLIER_JWKS_URL` was still required in dev-auth mode, which would have stopped the service running standalone.
+- What I changed or rejected: Rejected a radius filter and a "nearest N" cap — a coordinate adds distance and allows distance ordering, nothing more. Asked for the seeded image links to be served from our own repository copy, then decided against it and had it reverted, so the loader still rewrites the template repository's links. Left ordering by type or building pending.
+- Verification: Ran the coordinate queries in Postman against the seeded database, and checked the 400 cases for `lat` without `lon` and for `order=distance` with no coordinate.
+
+### 2026-09-28 — Verify User Service tokens, with an opt-in dev fallback (PR #30)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate and debug.
+- Usage scenario: Replace the Supplier Service's placeholder auth. The gateway forwards the token and injects no identity headers, so this service has to verify the JWT itself.
+- Prompts (exact):
+  - "ok so for API gateway stuff, right now I believe we have sort of a placeholder, but we should be able to flesh it out now that we know how the gateway is implemented right?"
+  - "ok ask me the questions I want to pick it up now" — then chose: hand-rolled `node:crypto`; remove the dev headers; check issuer and audience only when configured; test with local keys.
+  - "ok I actually now want to be able to test supplier alone, add back the dev-only X-User-Id / X-User-Role headers and make sure no security problems, only for testing"
+- Key response: `src/common/jwks.ts` with JWKS fetching, caching and RS256/ES256 verification, the guard swapped to read `sub` and `role` from the token, and `SUPPLIER_DEV_AUTH` accepted only when no bearer token is sent.
+- What I changed or rejected: Rejected adding the `jose` package and rejected copying the gateway's verification file into this service; chose hand-rolled `node:crypto` so there is no new dependency. First had the dev headers removed entirely, then reinstated them behind a flag once it was clear D2 point 3 needs the service testable on its own — with the rule that a real token always wins, the flag is off by default, and startup refuses it when `NODE_ENV=production`.
+- Verification: Read it in full, ran it with Postman and checked the 401 and 403 cases, including that the dev headers are ignored when the flag is off and cannot override a real token.
+
+### 2026-09-28 — A-Z / Z-A sorting and the service Dockerfile (PR #28)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate.
+- Usage scenario: Add the sorting D2 point 5 lists, and give the Supplier Service the Dockerfile every service needs for the containerised demo.
+- Prompts (exact):
+  - "add sorting A->Z and Z<-A"
+  - "i thinking of making our dockerfile" — then chose: build from the repo root, ports 3002 and 5433, Dockerfile now with the compose entry later.
+- Key response: `order=asc|desc` on `name`, rejecting any other value with 400, and a two-stage `node:22-alpine` build following `user-service/Dockerfile`, with a root `.dockerignore`.
+- What I changed or rejected: Rejected mounting `data/` into the container and rejected keeping a second copy of the seed CSV inside the service folder; chose the repo-root build context so the image copies `data/csv` in. Deferred the `compose.yaml` entry rather than conflicting with PR #9, which creates that file.
+- Verification: Built the image and ran the container against PostgreSQL, checking the seed loads from inside the image and that a restart does not seed again.
+
+### 2026-09-22 — Supplier Service: first implementation (PR #7)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate.
+- Usage scenario: Build the service from the design the team had already settled in `supplier-service/AGENTS.md`: schema, endpoints, error codes and seed rules were decided in conversation first, then implemented.
+- Prompts (exact):
+  - "ok are you able to start building it such that I can test with seed and postman first?" — then chose: NestJS; `pg` with plain SQL; a dev-only role header for testing; JSON field names matching the columns.
+  - "the Supplier Service files and .env.example together, leaving out the other services' AGENTS.md files is perfect and exactly what I was thinking"
+  - "push it and open a PR"
+- Key response: The NestJS service (config, database module, Problem Details filter, guard, Zod schemas, locations controller and service, CSV seed loader), a Postman collection and the README.
+- What I changed or rejected: Rejected Prisma, Drizzle and Knex in favour of plain parameterized SQL. Decided hours are stored as minutes but entered and searched as `HHMMhrs`, and that a location's opening and closing times are both present or both absent. Kept change history, the created and last-modified timestamps and the campus-boundary check out of this first version, and recorded them as pending in `AGENTS.md`.
+- Verification: Ran it with Postman against PostgreSQL in Docker: the seed loads all 21 locations, CRUD and search work, and the 401 and 403 cases behave as documented.
 
 ## Jian Bing
 
-### 2026-09-29 — Diagnose SoCLaaS review failures and add a TLS stopgap (PR #36)
+### 2026-09-29 — Supplier Service Docker Compose file (PR #33)
 
-- Tool and mode: Claude Code (Claude Opus 5.5), debug and generate.
-- Usage scenario: Every SoCLaaS PR Review run failed with "SoCLaaS could not be reached" while the API still loaded in a browser. Used AI to find the cause and add a temporary workaround.
+- Tool and mode: Claude Code (Claude Opus 5.5), generate.
+- Usage scenario: The Supplier Service had a Dockerfile but no compose file, so the root `compose.yaml` could not start it (D2 containerised demo).
 - Prompts (exact):
-  - “why is soclass not working?” (with screenshots of the failed run and the API URL)
-  - “tyr the stopgap for the soclass o na different branch, but before you do, help me to settle this merge conflict on pr #27”
-  - “resolve this for pr 27, then open the pr for fix soclass tls”
-  - “okay the mcp is working now, read the review form codesx and resolv eth econversations accoridngly, then do the same with PR30 for user service”
-  - “for pr 36 this was commented by codex” (with a screenshot of Codex's finding that Python 3.13+ enables `VERIFY_X509_PARTIAL_CHAIN` by default)
-- Key response: After its 2026-09-28 certificate renewal, the SoCLaaS server sends only its leaf certificate. Browsers fetch the missing Let's Encrypt `YE2` intermediate themselves; Python's `urllib` does not, so the reviewer fails TLS verification and reports the service as unreachable.
-- Output: `SOCLAAS_INTERMEDIATES` (the `YE2` and `Root YE` certificates) and an SSL context for SoCLaaS requests only in `.github/scripts/soclaas_review.py`; certificate verification stays on. After Codex's review, the context also clears `VERIFY_X509_PARTIAL_CHAIN`, which Python 3.13+ sets by default and which let the embedded certificates act as trust anchors (confirmed on 3.14: accepted with no system roots before the fix, rejected after). Tested locally against the live server on Python 3.11, 3.12 and 3.14.
-- Human review: Reviewed the diagnosis and chose the stopgap over waiting for the SoCLaaS admins. Still to confirm after merge: a SoCLaaS review re-run succeeds. Revert once the server serves its full chain.
+  - “does the suppleir service have any docker compsoe file”
+  - “okay draft it out on the most udpated supplier service pr”
+  - A pasted draft compose file from Jie Yang (Codex, GPT-6) with Jie Yang's message: “u can jjs” / “add the env”
+- Key response: Follow `user-service/compose.yaml`: its own `supplier-db`, the image built from the repository root, and inclusion from the root `compose.yaml`. From Jie Yang's draft, took the separate `SUPPLIER_POSTGRES_PASSWORD` and host port 5434. Did not take `depends_on: user-service` (it lives in another included file, so the Supplier file could not run on its own, and the JWKS is fetched per request anyway).
+- Output: `supplier-service/compose.yaml`, the `include` in `compose.yaml`, `SUPPLIER_POSTGRES_PASSWORD` in `.env.example`, and a "Run with Docker Compose" section in `supplier-service/README.md`. The first draft passed the whole `.env` to the container; changed to pass only the Supplier variables, because it leaked user-db's password into the Supplier container.
+- Verification: in an isolated compose project with test secrets, standalone: 21 locations seeded, 401 without a token, 503 for a token (no User Service), dev headers ignored, data kept across `down`/`up`. Whole stack: the Supplier container fetched the User Service's JWKS; tokens signed with its key got 200 (USER), 403 (USER on `includeInactive`), 200 (ADMIN), and 401 when signed with another key.
+- Human review: Pending on PR #33.
+
 ### 2026-09-29 — Fix review findings on the Supplier Service JWT verification (PR #30)
 
 - Tool and mode: Claude Code (Claude Opus 5.5), debug.

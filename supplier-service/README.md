@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
 Scope: Generated run and test instructions for the Supplier Service.
 Author review (Cole Lin): Read in full; followed the steps on a clean setup and confirmed they work.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Added the "Run with Docker Compose" section.
+Author review: pending — to be completed by the reviewing team member.
 -->
 
 # Supplier Service
@@ -10,6 +13,17 @@ Author review (Cole Lin): Read in full; followed the steps on a clean setup and 
 Manages campus locations (the brief's "suppliers"): simple CRUD, search, soft delete and restore. Design decisions are in [`AGENTS.md`](AGENTS.md).
 
 Stack: NestJS (TypeScript, Node.js), PostgreSQL via `pg` with plain SQL, Zod for validation.
+
+## Run with Docker Compose
+
+From the repository root, after `cp .env.example .env` and filling in the secrets:
+
+```bash
+docker compose up --build                                                          # whole project
+docker compose -f supplier-service/compose.yaml --env-file .env up --build        # Supplier only
+```
+
+The service is on http://localhost:3002, and its own database on `localhost:5434` (password `SUPPLIER_POSTGRES_PASSWORD`). Run on its own, requests with a token get 503 because the User Service isn't there to verify them; the header fallback is not available in the container.
 
 ## Run it locally
 
@@ -37,6 +51,16 @@ Stack: NestJS (TypeScript, Node.js), PostgreSQL via `pg` with plain SQL, Zod for
 
 On startup the service creates its tables if they don't exist and, **only if there are no locations yet**, loads the 21 locations from `data/csv/supplier-seed-data.csv`. To re-seed from scratch, drop the database (e.g. `docker rm -f foc-supplier-db`) and start again.
 
+## Tests
+
+```bash
+npm test
+```
+
+Builds, then runs the startup tests in `test/`, including that `SUPPLIER_DEV_AUTH=true` is
+refused when `NODE_ENV=production` (the Dockerfile sets that, so the container cannot run with
+the header fallback enabled).
+
 ## Test with Postman
 
 Import `postman/supplier.postman_collection.json`. Set the collection variable `baseUrl` if your port differs. Run **Create location** before the update, deactivate and restore requests; it stores the new `locationId` and `version`.
@@ -55,7 +79,7 @@ docker exec foc-supplier-db psql -U postgres -d supplier -c "TRUNCATE locations 
 
 | Method & path | Access |
 |---|---|
-| `GET /locations?name=&type=&building=&time=&includeInactive=&order=&page=&pageSize=` | any authenticated user; `includeInactive=true` is ADMIN only |
+| `GET /locations?name=&type=&building=&time=&lat=&lon=&includeInactive=&order=&page=&pageSize=` | any authenticated user; `includeInactive=true` is ADMIN only |
 | `GET /location-types` | any authenticated user |
 | `GET /locations/:locationId` | any authenticated user |
 | `POST /locations` | ADMIN |
@@ -63,4 +87,4 @@ docker exec foc-supplier-db psql -U postgres -d supplier -c "TRUNCATE locations 
 | `POST /locations/:locationId/deactivate` | ADMIN |
 | `POST /locations/:locationId/restore` | ADMIN |
 
-`GET /locations` returns `{ items, page, pageSize, total }` (20 per page by default). `order=asc` (default) sorts by name A→Z, `order=desc` gives Z→A. Errors are returned as Problem Details (`application/problem+json`).
+`GET /locations` returns `{ items, page, pageSize, total }` (20 per page by default). `order=asc` (default) sorts by name A→Z, `order=desc` gives Z→A. Pass a GPS coordinate as `lat`/`lon` (decimal degrees) to get `distance_m` on each item, and `order=distance` for nearest first. Errors are returned as Problem Details (`application/problem+json`).
