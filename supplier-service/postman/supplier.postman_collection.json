@@ -103,6 +103,49 @@
           }
         },
         {
+          "name": "Sort Z-A (order=desc)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('descending by name', () => { const n = pm.response.json().items.map(i => i.name.toLowerCase()); pm.expect(n).to.eql([...n].sort().reverse()); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/locations?order=desc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "locations"
+              ],
+              "query": [
+                {
+                  "key": "order",
+                  "value": "desc"
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Search by name (substring, case-insensitive)",
           "event": [
             {
@@ -1096,6 +1139,48 @@
                 {
                   "key": "page",
                   "value": "0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "400 invalid order value",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-User-Id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/locations?order=random",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "locations"
+              ],
+              "query": [
+                {
+                  "key": "order",
+                  "value": "random"
                 }
               ]
             }
