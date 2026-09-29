@@ -12,6 +12,11 @@ Author review: Jian Bing supplied the prompts quoted in that entry; pending his 
 Tool: Claude Code (model: Claude Opus 5), date: 2026-09-29
 Scope: Wrote the Cole Lin entries for PRs #7, #28, #30 and #33 from his prompts in the session.
 Author review: Cole Lin confirmed the prompts, decisions and verification described.
+Scope: Wrote the SoCLaaS TLS stopgap entry under the Jian Bing section (PR #36).
+Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #36.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Moved lihloway's four Supplier Service entries under the Cole Lin section when merging main into PR #33; entry text unchanged.
+Author review: Pending review by Jian Bing and lihloway on PR #33.
 -->
 
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
