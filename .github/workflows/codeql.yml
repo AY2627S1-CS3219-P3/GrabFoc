@@ -1,8 +1,9 @@
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-09-28
 # Scope: Generated CodeQL scans for pull requests targeting any branch, main pushes, and weekly scans.
-# Author review: Initial setup approved in PR #23; expanded PR coverage pending human review.
-# AI-generated workflow; expanded PR coverage pending human review.
+# Author review (Jian Bing): Initial setup approved in PR #23; the any-branch coverage was approved by
+#   Jyang1206 and merged in PR #27. CodeQL has since run on PRs #30, #33 and #36. Not yet seen on a
+#   PR that targets a branch other than main.
 name: CodeQL
 
 on:

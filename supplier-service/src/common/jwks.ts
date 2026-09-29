@@ -9,7 +9,10 @@
  * Scope: Fixed PR #30 review findings: malformed or null JWKS bodies now raise
  *        JwksUnavailableError (503), concurrent refreshes share one fetch, and an unset
  *        SUPPLIER_JWKS_URL (dev-auth mode only) raises JwksUnavailableError.
- * Author review: Jian Bing approved the fix plan; pending his review on PR #30.
+ * Author review (Jian Bing): Approved the fix plan, then checked with Claude Code that the review
+ *        threads were resolved and CI passed before approving and merging PR #30. The fixes were
+ *        tested by Claude Code against a stub JWKS server (invalid and null bodies, 20 concurrent
+ *        requests making one fetch).
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
 import { config } from '../config';
