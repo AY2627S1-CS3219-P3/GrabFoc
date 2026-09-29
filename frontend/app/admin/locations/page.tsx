@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
-Scope: Added an admin-only interface to list, create, edit, deactivate and restore Supplier locations.
+Scope: Added an admin-only interface to list, create, edit, deactivate and restore Supplier locations; made type loading retryable and reset stale forms on 2026-09-29.
 Author review: Pending team review and visual verification.
 */
 "use client";
@@ -24,12 +24,16 @@ export default function ManageLocationsPage() {
   const [name, setName] = useState("");
   const [appliedName, setAppliedName] = useState("");
   const [types, setTypes] = useState<string[]>([]);
+  const [typesLoading, setTypesLoading] = useState(true);
+  const [typesError, setTypesError] = useState("");
+  const [typesReload, setTypesReload] = useState(0);
   const [data, setData] = useState<LocationPage | null>(null);
   const [editing, setEditing] = useState<Location | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [reload, setReload] = useState(0);
+  const [createRevision, setCreateRevision] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -44,10 +48,18 @@ export default function ManageLocationsPage() {
 
   useEffect(() => {
     if (!allowed) return;
+    let active = true;
     withSessionMutation(() => fetch("/api/session/supplier/location-types", { cache: "no-store" }))
-      .then(async (response) => { if (response.ok) setTypes(await response.json() as string[]); })
-      .catch(() => {});
-  }, [allowed]);
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Could not load location types.");
+        const result: unknown = await response.json();
+        if (!Array.isArray(result) || !result.every((type) => typeof type === "string")) throw new Error("Invalid location types response.");
+        if (active) setTypes(result);
+      })
+      .catch(() => { if (active) setTypesError("Could not load location types. Please try again."); })
+      .finally(() => { if (active) setTypesLoading(false); });
+    return () => { active = false; };
+  }, [allowed, typesReload]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { setPage(1); setAppliedName(name); }, 300);
@@ -97,6 +109,7 @@ export default function ManageLocationsPage() {
         { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
       ));
       if (!response.ok) throw new Error(await supplierError(response));
+      if (!editing) setCreateRevision((value) => value + 1);
       setEditing(null);
       setReload((value) => value + 1);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not save the location."); }
@@ -110,6 +123,7 @@ export default function ManageLocationsPage() {
       const action = location.status === "ACTIVE" ? "deactivate" : "restore";
       const response = await withSessionMutation(() => fetch(`/api/session/supplier/locations/${location.id}/${action}`, { method: "POST" }));
       if (!response.ok) throw new Error(await supplierError(response));
+      setEditing((current) => current?.id === location.id ? null : current);
       setReload((value) => value + 1);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not change the location status."); }
     finally { setBusy(false); }
@@ -134,7 +148,7 @@ export default function ManageLocationsPage() {
       <section className="manage-form" aria-labelledby="manage-form-title">
         <h2 id="manage-form-title">{editing ? `Edit ${editing.name}` : "Add Location"}</h2>
         {editing && <button type="button" className="text-button" onClick={() => setEditing(null)}>Cancel edit</button>}
-        {types.length === 0 ? <p role="status">Loading location types…</p> : <form key={editing?.id ?? "new"} onSubmit={save}>
+        {typesLoading ? <p role="status">Loading location types…</p> : typesError ? <div className="load-error" role="alert"><p>{typesError}</p><button type="button" onClick={() => { setTypesLoading(true); setTypesError(""); setTypesReload((value) => value + 1); }}>Retry location types</button></div> : types.length === 0 ? <p role="status">No location types available.</p> : <form key={`${editing?.id ?? "new"}-${createRevision}`} onSubmit={save}>
           <label>Name<input name="name" defaultValue={editing?.name} maxLength={100} required /></label>
           <label>Type<select name="type" defaultValue={editing?.type ?? types[0] ?? ""} required>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
           <label>Building<input name="building" defaultValue={editing?.building} required /></label>

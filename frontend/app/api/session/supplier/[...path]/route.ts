@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
-Scope: Added an allowlisted, cookie-backed Supplier gateway route for location browsing and management.
+Scope: Added an allowlisted, cookie-backed Supplier gateway route for location browsing and management; confirmed downstream 401s with User Service on 2026-09-29.
 Author review: Pending team review and live integration verification.
 */
 import { NextRequest, NextResponse } from 'next/server';
@@ -39,7 +39,7 @@ async function handle(request: NextRequest, context: Context): Promise<NextRespo
       status: upstream.status,
       headers: { 'content-type': contentType, 'cache-control': 'no-store' },
     });
-  }, init);
+  }, init, true);
 }
 
 export async function GET(request: NextRequest, context: Context) { return handle(request, context); }

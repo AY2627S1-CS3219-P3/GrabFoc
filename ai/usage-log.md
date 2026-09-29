@@ -1639,3 +1639,35 @@ operable program or batch file.
 - Exact user prompt: “commit the current changes based on it's changes and open a PR to merge this into frontend service integration branch”.
 - Key response: Verified the frontend, committed the local Supplier integration changes, pushed the branch and opened a PR targeting `feature/frontend-service-integration`.
 - Human review: Pending PR review.
+
+## 2026-09-29 — Supplier integration PR #37 frontend review fixes
+
+- Tool and mode: Codex (GPT-6), debug and refactor.
+- Usage scenario: Resolve Supplier integration review comments in frontend and gateway-facing code without changing Supplier Service.
+- Exact user prompt:
+
+~~~text
+PLEASE IMPLEMENT THIS PLAN:
+# Resolve frontend comments on Supplier integration PR #37
+
+## Summary
+
+Update PR #37’s branch with fixes limited to frontend and gateway-facing code. Leave all Supplier Service files and their review threads untouched. The confirmed security behavior is: when Supplier returns 401, check the token with User Service before deciding to refresh or clear the browser session.
+
+## Implementation
+
+- **Supplier session route:** On a Supplier 401, check `/users/me` through the gateway using the same access token. If User Service accepts it, keep the cookies and return the existing unavailable response so the page offers Retry. If User Service returns 401, use the existing refresh path; clear cookies only if refresh confirms the session is invalid. If confirmation is unavailable, keep cookies and return unavailable. Apply the same check if Supplier rejects the rotated token, retaining rotated cookies when User Service accepts it.
+- **Location management:** Show a distinct error and Retry action when location types fail to load. After a successful create, reset the uncontrolled form. After deactivate or restore, clear the edit form if it holds that location so Save cannot submit its stale version.
+- **Verification:** Add route tests for Supplier-only 401, authority-confirmed expiry, failed confirmation, and rotated-cookie retention; add UI tests for location-type retry, consecutive creates, and status change while editing. Run frontend route tests, lint, and build.
+- **PR follow-up:** Add required AI disclosures and usage-log entry, commit and push to PR #37, reply to and resolve the four frontend inline threads, then check new reviews for actionable frontend or gateway feedback.
+
+## Boundaries and assumptions
+
+- Do not edit `supplier-service/` or resolve or reply to its four Supplier-owned threads, including the Compose documentation thread, as requested.
+- The existing unavailable response is the agreed response when Supplier rejects a token that User Service confirms is valid. No Supplier API contract changes are needed.
+- PR #37 remains open; no merge is part of this work.
+~~~
+
+- Key response: Added an authority check before reacting to Supplier 401s, retryable location-type loading, form resets after create and status changes, and regression tests. Supplier Service files and threads were left unchanged.
+- Files: `frontend/lib/protected-gateway.ts`, `frontend/app/api/session/supplier/[...path]/route.ts`, `frontend/app/admin/locations/page.tsx`, `frontend/test/routes.test.mjs`, `ai/usage-log.md`.
+- Human review: Pending PR review.

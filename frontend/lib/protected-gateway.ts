@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Added protected requests and in-flight refresh coordination; reused rotation for expired-access logout on 2026-09-29; supported Supplier methods and verified-role display on 2026-09-29.
+Scope: Added protected requests and in-flight refresh coordination; reused rotation for expired-access logout on 2026-09-29; supported Supplier methods and verified-role display on 2026-09-29; confirmed Supplier-only 401s with User Service on 2026-09-29.
 Author review: Pending frontend owner review and live User Service verification.
 */
 import 'server-only';
@@ -60,6 +60,7 @@ export async function protectedGateway(
   path: string,
   toResponse: (upstream: Response, accessToken: string) => Promise<NextResponse>,
   init: RequestInit = {},
+  confirmDownstream401 = false,
 ): Promise<NextResponse> {
   if (!sameOriginCookieRead(request)) return forbiddenOrigin(request);
   let access = request.cookies.get(ACCESS)?.value;
@@ -74,6 +75,11 @@ export async function protectedGateway(
         if (upstream.status === 403) logAccessDenial(request, 403);
         return toResponse(upstream, access);
       }
+      if (confirmDownstream401) {
+        const authority = await gateway('/users/me', { headers });
+        if (authority.status === 200) return unavailable();
+        if (authority.status !== 401) return unavailable();
+      }
     }
     if (!refresh) return unauthorized(request, true);
     const outcome = await rotateRefreshToken(refresh);
@@ -84,8 +90,14 @@ export async function protectedGateway(
     headers.set('authorization', `Bearer ${access}`);
     const retried = await gateway(path, { ...init, headers });
     if (retried.status === 403) logAccessDenial(request, 403);
-    const response = retried.status === 401 ? unauthorized(request, true) : await toResponse(retried, access);
-    if (retried.status !== 401) setSession(response, request, tokens);
+    let response: NextResponse;
+    if (retried.status === 401 && confirmDownstream401) {
+      const authority = await gateway('/users/me', { headers });
+      response = authority.status === 401 ? unauthorized(request, true) : unavailable();
+    } else {
+      response = retried.status === 401 ? unauthorized(request, true) : await toResponse(retried, access);
+    }
+    if (retried.status !== 401 || (confirmDownstream401 && response.status !== 401)) setSession(response, request, tokens);
     return response;
   } catch {
     const response = unavailable();

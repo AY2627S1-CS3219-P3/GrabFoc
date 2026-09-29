@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified session flows, denial logging, and refresh-only logout revocation with local clearing on 2026-09-29; added Supplier browse and management fixtures on 2026-09-29.
+Scope: Verified session flows, denial logging, and refresh-only logout revocation with local clearing on 2026-09-29; added Supplier browse and management fixtures and downstream 401 review cases on 2026-09-29.
 Author review: Pending team review and local browser verification.
 */
 import assert from "node:assert/strict";
@@ -27,6 +27,10 @@ let rejectRotatedAccess = false;
 let denyProfile = false;
 let breakRotatedProfile = false;
 let stallLogin = false;
+let failTypes = false;
+let supplier401 = false;
+let authorityStatus = 200;
+let authorityRejectOriginal = false;
 const stalledResponses = new Set();
 const consumedRefreshTokens = new Set();
 let loginCount = 0;
@@ -36,11 +40,12 @@ const gateway = createServer(async (request, response) => {
   const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
   requests.push({ method: request.method, path: request.url, body, authorization: request.headers.authorization });
   if (request.url === "/location-types") {
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify(["Food", "Printing"]));
+    response.writeHead(failTypes ? 503 : 200, { "content-type": "application/json" });
+    response.end(JSON.stringify(failTypes ? { error: "Unavailable" } : ["Food", "Printing"]));
     return;
   }
   if (request.url?.startsWith("/locations")) {
+    if (supplier401) { response.writeHead(401).end(); return; }
     const admin = request.headers.authorization === `Bearer ${adminAccess}`;
     const url = new URL(request.url, "http://gateway.local");
     if (!request.headers.authorization) { response.writeHead(401).end(); return; }
@@ -77,6 +82,8 @@ const gateway = createServer(async (request, response) => {
     return;
   }
   if (request.url === "/users/me") {
+    if (authorityStatus !== 200) { response.writeHead(authorityStatus).end(); return; }
+    if (authorityRejectOriginal && request.headers.authorization === "Bearer test-access") { response.writeHead(401).end(); return; }
     if (breakRotatedProfile && request.headers.authorization === "Bearer new-access") {
       response.destroy();
       return;
@@ -749,10 +756,94 @@ test("users browse and filter locations while only admins manage them", async ()
     await admin.getByRole("button", { name: "Add Location" }).click();
     const row = admin.locator(".manage-row", { hasText: "New Pickup" });
     await row.waitFor();
+    assert.equal(await admin.locator("form [name=name]").inputValue(), "");
+    await admin.locator("form [name=name]").fill("Second Pickup");
+    await admin.locator("form [name=building]").fill("COM3");
+    await admin.locator("form [name=floor]").fill("2");
+    await admin.locator("form [name=location_desc]").fill("Second entrance");
+    await admin.locator("form [name=lat]").fill("1.295");
+    await admin.locator("form [name=lon]").fill("103.773");
+    await admin.getByRole("button", { name: "Add Location" }).click();
+    await admin.locator(".manage-row", { hasText: "Second Pickup" }).waitFor();
+    await row.getByRole("button", { name: "Edit" }).click();
+    await admin.getByRole("heading", { name: "Edit New Pickup" }).waitFor();
     await row.getByRole("button", { name: "Deactivate" }).click();
     await row.getByText("INACTIVE").waitFor();
+    await admin.getByRole("heading", { name: "Add Location" }).waitFor();
     await row.getByRole("button", { name: "Restore" }).click();
     await row.getByText("ACTIVE").waitFor();
     assert.ok(requests.some((request) => request.method === "POST" && request.path === "/locations" && request.authorization === `Bearer ${adminAccess}`));
   } finally { await user.close(); await admin.close(); }
+});
+
+test("admin can retry location types without reloading the page", async () => {
+  const admin = await browser.newPage();
+  failTypes = true;
+  try {
+    await admin.goto(`${baseUrl}/signin`);
+    await admin.getByLabel("Email").fill("admin@u.nus.edu");
+    await admin.getByLabel("Password").fill("Passw0rdSafe");
+    await admin.getByRole("button", { name: "Sign In" }).click();
+    await admin.waitForURL("**/home");
+    await admin.goto(`${baseUrl}/admin/locations`);
+    await admin.getByRole("alert").getByText("Could not load location types. Please try again.").waitFor();
+    failTypes = false;
+    await admin.getByRole("button", { name: "Retry location types" }).click();
+    await admin.locator("form [name=type]").waitFor();
+  } finally { failTypes = false; await admin.close(); }
+});
+
+test("Supplier-only 401 preserves a valid session and does not refresh", async () => {
+  supplier401 = true;
+  try {
+    const before = requests.length;
+    const response = await fetch(`${baseUrl}/api/session/supplier/locations`, {
+      headers: { cookie: "foc_access=test-access; foc_refresh=supplier-valid", "sec-fetch-site": "same-origin" },
+    });
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.getSetCookie().length, 0);
+    assert.deepEqual(requests.slice(before).map((request) => request.path), ["/locations", "/users/me"]);
+  } finally { supplier401 = false; }
+});
+
+test("Supplier 401 refreshes only after User Service rejects access and retains rotated cookies", async () => {
+  supplier401 = true;
+  authorityRejectOriginal = true;
+  try {
+    const before = requests.length;
+    // The authority rejects the original access token, then accepts the rotated one.
+    const response = await fetch(`${baseUrl}/api/session/supplier/locations`, {
+      headers: { cookie: "foc_access=test-access; foc_refresh=supplier-rotate", "sec-fetch-site": "same-origin" },
+    });
+    assert.equal(response.status, 502);
+    assert.ok(response.headers.getSetCookie().some((cookie) => cookie.startsWith("foc_refresh=rotated-supplier-rotate")));
+    assert.deepEqual(requests.slice(before).map((request) => request.path), ["/locations", "/users/me", "/auth/refresh", "/locations", "/users/me"]);
+  } finally { supplier401 = false; authorityRejectOriginal = false; }
+});
+
+test("Supplier 401 keeps cookies if authority confirmation is unavailable", async () => {
+  supplier401 = true;
+  authorityStatus = 503;
+  try {
+    const before = requests.length;
+    const response = await fetch(`${baseUrl}/api/session/supplier/locations`, {
+      headers: { cookie: "foc_access=test-access; foc_refresh=supplier-pending", "sec-fetch-site": "same-origin" },
+    });
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.getSetCookie().length, 0);
+    assert.deepEqual(requests.slice(before).map((request) => request.path), ["/locations", "/users/me"]);
+  } finally { supplier401 = false; authorityStatus = 200; }
+});
+
+test("Supplier 401 clears cookies when User Service and refresh reject the session", async () => {
+  supplier401 = true;
+  authorityStatus = 401;
+  refreshOutcome = 401;
+  try {
+    const response = await fetch(`${baseUrl}/api/session/supplier/locations`, {
+      headers: { cookie: "foc_access=test-access; foc_refresh=supplier-invalid", "sec-fetch-site": "same-origin" },
+    });
+    assert.equal(response.status, 401);
+    assert.ok(response.headers.getSetCookie().some((cookie) => cookie.startsWith("foc_access=")));
+  } finally { supplier401 = false; authorityStatus = 200; refreshOutcome = 200; }
 });
