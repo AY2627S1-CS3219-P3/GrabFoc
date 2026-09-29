@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Added server-side registration verification, strict body validation and session creation.
+Scope: Added registration verification, strict validation and session creation; logged rejected origins on 2026-09-29.
 Author review: Pending frontend owner review.
 */
 import { NextRequest, NextResponse } from 'next/server';
@@ -9,7 +9,7 @@ import { forbiddenOrigin, gateway, sameOrigin, setSession, unavailable, validTok
 import { verifyInput } from '@/lib/session-input';
 
 export async function POST(request: NextRequest) {
-  if (!sameOrigin(request)) return forbiddenOrigin();
+  if (!sameOrigin(request)) return forbiddenOrigin(request);
   let body: unknown;
   try { body = await request.json(); }
   catch { return NextResponse.json({ error: { message: 'Invalid verification request.' } }, { status: 400 }); }

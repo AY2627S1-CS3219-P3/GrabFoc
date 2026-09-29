@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified BFF refresh, cookie rotation, one retry, failure handling, concurrency, and existing User flows.
+Scope: Verified session flows, single-use refresh, origin and 403 logging, rotated-cookie recovery, timeout, and outage logout through 2026-09-29.
 Author review: Pending team review and local browser verification.
 */
 import assert from "node:assert/strict";
@@ -19,6 +19,11 @@ let refreshStarted;
 let failLogout = false;
 let refreshOutcome = 200;
 let rejectRotatedAccess = false;
+let denyProfile = false;
+let breakRotatedProfile = false;
+let stallLogin = false;
+const stalledResponses = new Set();
+const consumedRefreshTokens = new Set();
 let loginCount = 0;
 const gateway = createServer(async (request, response) => {
   const chunks = [];
@@ -26,6 +31,15 @@ const gateway = createServer(async (request, response) => {
   const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
   requests.push({ method: request.method, path: request.url, body, authorization: request.headers.authorization });
   if (request.url === "/users/me") {
+    if (breakRotatedProfile && request.headers.authorization === "Bearer new-access") {
+      response.destroy();
+      return;
+    }
+    if (denyProfile) {
+      response.writeHead(403, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "Forbidden" }));
+      return;
+    }
     const accepted = request.headers.authorization === "Bearer test-access" ||
       (request.headers.authorization === "Bearer new-access" && !rejectRotatedAccess);
     response.writeHead(accepted ? 200 : 401, { "content-type": "application/json" });
@@ -48,12 +62,23 @@ const gateway = createServer(async (request, response) => {
     return;
   }
   if (["/auth/login", "/auth/register/verify", "/auth/refresh"].includes(request.url)) {
+    if (request.url === "/auth/login" && stallLogin) {
+      stalledResponses.add(response);
+      response.on("close", () => stalledResponses.delete(response));
+      return;
+    }
     if (request.url === "/auth/refresh" && refreshDelay) { refreshStarted?.(); await refreshDelay; }
+    if (request.url === "/auth/refresh" && consumedRefreshTokens.has(body.refreshToken)) {
+      response.writeHead(401, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "Consumed refresh token" }));
+      return;
+    }
     if (request.url === "/auth/refresh" && refreshOutcome !== 200) {
       response.writeHead(refreshOutcome, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: "Refresh failed" }));
       return;
     }
+    if (request.url === "/auth/refresh") consumedRefreshTokens.add(body.refreshToken);
     const otherUser = request.url === "/auth/login" && body.email === "new@u.nus.edu";
     const fresh = request.url === "/auth/refresh";
     const refreshToken = fresh ? `rotated-${body.refreshToken}` : otherUser ? "new-refresh" :
@@ -81,6 +106,8 @@ function freePort() {
 let app;
 let browser;
 let baseUrl;
+let appOutput = "";
+let appLogs = "";
 
 before(async () => {
   const gatewayPort = await listen(gateway);
@@ -91,9 +118,8 @@ before(async () => {
     env: { ...process.env, FRONTEND_GATEWAY_URL: `http://127.0.0.1:${gatewayPort}`, FRONTEND_TEST_DIST_DIR: ".next-route-tests" },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  let appOutput = "";
-  app.stdout.on("data", (chunk) => { appOutput = (appOutput + chunk).slice(-8000); });
-  app.stderr.on("data", (chunk) => { appOutput = (appOutput + chunk).slice(-8000); });
+  app.stdout.on("data", (chunk) => { appLogs += chunk; appOutput = (appOutput + chunk).slice(-8000); });
+  app.stderr.on("data", (chunk) => { appLogs += chunk; appOutput = (appOutput + chunk).slice(-8000); });
   for (let attempt = 0; attempt < 60; attempt++) {
     if (app.exitCode !== null) throw new Error(`Next.js exited before becoming ready: ${appOutput}`);
     try {
@@ -109,6 +135,7 @@ before(async () => {
 after(async () => {
   await browser?.close();
   app?.kill();
+  for (const response of stalledResponses) response.destroy();
   await new Promise((resolve) => gateway.close(resolve));
 });
 
@@ -362,9 +389,10 @@ test("a second protected 401 stops after one retry and ends the local session", 
   } finally { rejectRotatedAccess = false; await context.close(); }
 });
 
-test("simultaneous server requests reuse one rotation", async () => {
+test("simultaneous server requests share an in-flight rotation but reject stale arrivals", async () => {
   const context = await browser.newContext();
   const page = await context.newPage();
+  let release;
   try {
     await page.goto(`${baseUrl}/signin`);
     await page.getByLabel("Email").fill("alex@u.nus.edu");
@@ -374,14 +402,27 @@ test("simultaneous server requests reuse one rotation", async () => {
     const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     await context.clearCookies();
     await context.addCookies([refreshCookie]);
+    refreshDelay = new Promise((resolve) => { release = resolve; });
+    const started = new Promise((resolve) => { refreshStarted = resolve; });
     const before = requests.filter((request) => request.path === "/auth/refresh").length;
-    const statuses = await page.evaluate(() => Promise.all([
+    const pending = page.evaluate(() => Promise.all([
       fetch("/api/session/status").then((response) => response.status),
       ...Array.from({ length: 3 }, () => fetch("/api/session/profile").then((response) => response.status)),
     ]));
-    assert.deepEqual(statuses, [200, 200, 200, 200]);
-    assert.equal(requests.filter((request) => request.path === "/auth/refresh").length - before, 1);
-  } finally { await context.close(); }
+    await started;
+    await delay(500);
+    release();
+    const statuses = await pending;
+    assert.equal(statuses.length, 4);
+    assert.ok(statuses.filter((status) => status === 200).length >= 2);
+    assert.ok(statuses.every((status) => status === 200 || status === 401));
+    assert.ok(requests.filter((request) => request.path === "/auth/refresh").length - before >= 1);
+  } finally {
+    release?.();
+    refreshDelay = undefined;
+    refreshStarted = undefined;
+    await context.close();
+  }
 });
 
 test("sign-in waits for an in-progress refresh before replacing the session", async () => {
@@ -421,4 +462,133 @@ test("sign-in waits for an in-progress refresh before replacing the session", as
     refreshStarted = undefined;
     await context.close();
   }
+});
+
+test("a completed rotation never replays credentials to the consumed token", async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/home");
+    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    const oldRefresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
+    assert.ok(oldRefresh);
+    await context.clearCookies();
+    await context.addCookies([oldRefresh]);
+    const first = await page.evaluate(() => fetch("/api/session/profile").then((response) => response.status));
+    assert.equal(first, 200);
+    const rotated = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
+    assert.notEqual(rotated?.value, oldRefresh.value);
+    const before = requests.filter((request) => request.path === "/auth/refresh").length;
+    const stale = await fetch(`${baseUrl}/api/session/profile`, {
+      headers: { cookie: `foc_refresh=${oldRefresh.value}`, "sec-fetch-site": "same-origin" },
+    });
+    assert.equal(stale.status, 401);
+    assert.equal(requests.filter((request) => request.path === "/auth/refresh").length - before, 1);
+  } finally { await context.close(); }
+});
+
+test("a failed protected retry retains newly rotated cookies", async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/home");
+    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    const oldRefresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
+    await context.clearCookies();
+    await context.addCookies([oldRefresh]);
+    breakRotatedProfile = true;
+    assert.equal(await page.evaluate(() => fetch("/api/session/profile").then((response) => response.status)), 502);
+    assert.equal((await context.cookies()).find((cookie) => cookie.name === "foc_refresh")?.value, `rotated-${oldRefresh.value}`);
+    breakRotatedProfile = false;
+    assert.equal(await page.evaluate(() => fetch("/api/session/profile").then((response) => response.status)), 200);
+  } finally { breakRotatedProfile = false; await context.close(); }
+});
+
+test("403 stays forbidden, is logged, and does not rotate or clear cookies", async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/home");
+    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    const refreshes = requests.filter((request) => request.path === "/auth/refresh").length;
+    const logStart = appLogs.length;
+    denyProfile = true;
+    assert.equal(await page.evaluate(() => fetch("/api/session/profile").then((response) => response.status)), 403);
+    await delay(100);
+    assert.match(appLogs.slice(logStart), /"event":"unauthorized_access","status":403,"method":"GET","path":"\/api\/session\/profile"/);
+    assert.equal(requests.filter((request) => request.path === "/auth/refresh").length, refreshes);
+    assert.ok((await context.cookies()).some((cookie) => cookie.name === "foc_refresh"));
+  } finally { denyProfile = false; await context.close(); }
+});
+
+test("cross-origin cookie reads and mutations are logged and cannot refresh", async () => {
+  const logStart = appLogs.length;
+  const refreshes = requests.filter((request) => request.path === "/auth/refresh").length;
+  for (const path of ["profile", "status"]) {
+    const response = await fetch(`${baseUrl}/api/session/${path}`, {
+      headers: { cookie: "foc_refresh=stale", "sec-fetch-site": "cross-site" },
+    });
+    assert.equal(response.status, 403);
+  }
+  const forgedOrigin = await fetch(`${baseUrl}/api/session/profile`, {
+    headers: { cookie: "foc_refresh=stale", origin: "https://example.com", "sec-fetch-site": "same-origin" },
+  });
+  assert.equal(forgedOrigin.status, 403);
+  const mutation = await fetch(`${baseUrl}/api/session/refresh`, {
+    method: "POST", headers: { origin: "https://example.com", cookie: "foc_refresh=stale" },
+  });
+  assert.equal(mutation.status, 403);
+  await delay(100);
+  assert.match(appLogs.slice(logStart), /"event":"unauthorized_access","status":403/);
+  assert.equal(requests.filter((request) => request.path === "/auth/refresh").length, refreshes);
+});
+
+test("gateway login times out after ten seconds with the unavailable response", async () => {
+  stallLogin = true;
+  try {
+    const started = Date.now();
+    const response = await fetch(`${baseUrl}/api/session/login`, {
+      method: "POST", headers: { origin: baseUrl, "content-type": "application/json" },
+      body: JSON.stringify({ email: "alex@u.nus.edu", password: "Passw0rdSafe" }),
+    });
+    assert.equal(response.status, 502);
+    assert.ok(Date.now() - started >= 9_000);
+    assert.deepEqual(await response.json(), { error: { message: "Gateway unavailable. Please try again." } });
+  } finally {
+    stallLogin = false;
+    for (const response of stalledResponses) response.destroy();
+  }
+});
+
+test("profile logout clears cookies even when session refresh is unavailable", async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/home");
+    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    const refresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
+    await context.clearCookies();
+    await context.addCookies([refresh]);
+    refreshOutcome = 503;
+    await page.goto(`${baseUrl}/profile`);
+    await page.getByRole("button", { name: "Log Out" }).click();
+    await page.waitForURL("**/signin");
+    assert.equal((await context.cookies()).some((cookie) => cookie.name.startsWith("foc_")), false);
+  } finally { refreshOutcome = 200; await context.close(); }
 });

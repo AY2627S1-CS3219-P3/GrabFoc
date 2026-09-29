@@ -1,14 +1,14 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Added User Service logout and local session clearing even when remote revocation fails.
+Scope: Added logout and local session clearing after remote failure; logged rejected origins on 2026-09-29.
 Author review: Pending frontend owner review.
 */
 import { NextRequest, NextResponse } from 'next/server';
 import { ACCESS, clearSession, forbiddenOrigin, gateway, REFRESH, sameOrigin } from '@/lib/session-server';
 
 export async function POST(request: NextRequest) {
-  if (!sameOrigin(request)) return forbiddenOrigin();
+  if (!sameOrigin(request)) return forbiddenOrigin(request);
   const access = request.cookies.get(ACCESS)?.value;
   const refresh = request.cookies.get(REFRESH)?.value;
   if (!access || !refresh) {

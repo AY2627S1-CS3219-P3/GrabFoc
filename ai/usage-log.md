@@ -1,3 +1,9 @@
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-09-29
+Scope: Recorded the exact PR #24 security prompts, changes and verification.
+Author review: Pending team review.
+-->
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
 
 Required by Appendix 2 of the project document: *"Maintain a log, `/ai/usage-log.md`, in the
@@ -52,6 +58,52 @@ Template:
 <!-- Add your entries here. -->
 
 ## Jie Yang
+
+### 2026-09-29 10:54 SGT — PR #24 token and security review fixes
+
+**Tool:** Codex (GPT-6) · **Mode:** generate, debug, refactor
+**Files:** `frontend/lib/{protected-gateway,session-server}.ts`, `frontend/app/api/session/{login,verify,refresh,logout}/route.ts`, `frontend/app/profile/page.tsx`, `frontend/test/routes.test.mjs`, `ai/usage-log.md`
+
+**Scenario:** Investigate PR #24 review comments, implement the approved security plan in the working tree, run checks and a read-only review agent. No commit was requested.
+
+**Prompts (exact):**
+
+~~~text
+investigate the current PR and resolve its comments on the token and security
+
+the rotated credentials shouldnt exist any longer than it is used, 403 can be used to differentiate between authenticated but not authorised. a request that presents the old token *after* rotation completes should be rejected.
+
+PLEASE IMPLEMENT THIS PLAN:
+# Resolve PR #24 token and security comments
+
+## Summary
+
+Keep rotated credentials only while a refresh is in flight. Once it settles, remove the coordination entry; any later request using the consumed refresh token must reach User Service and be rejected. Keep 403 distinct from 401: it means an authenticated request was denied authorization.
+
+## Implementation
+
+- Update the frontend’s protected gateway helper to coalesce concurrent in-flight refreshes, delete the entry on settlement, and attach rotated cookies even when the subsequent protected request fails. Preserve the existing behavior that clears the session after a second 401.
+- Emit the existing structured `unauthorized_access` log for upstream 403 responses and rejected cross-origin session requests, without logging tokens or personal data. Guard cookie-backed profile and status requests against cross-origin requests before they can trigger refresh.
+- Give server-to-gateway calls an explicit 10-second timeout and return the existing unavailable response on timeout. Remove the profile page’s session-check preflight so local logout can clear cookies during an upstream outage.
+- Update AI disclosures and `ai/usage-log.md` as required by `AGENTS.md`. No public endpoint or response shape changes are planned.
+
+## Verification
+
+- Extend route tests to cover concurrent refresh sharing, rejection of a consumed token after rotation, retained cookies when a protected retry fails, 403 logging, cross-origin rejection before refresh, gateway timeout, and logout during an outage.
+- Run frontend route tests, lint, and build. Review each PR thread against the resulting diff before marking it resolved.
+
+## Assumptions
+
+- The confirmed rule is that completed refresh results are never replayed, even to a request carrying a stale cookie.
+- A 403 remains a 403 to the caller and is recorded as an authorization denial; it does not trigger refresh or clear cookies.
+- The timeout is 10 seconds for all frontend server-to-gateway calls.
+
+do not commit the changes run a [$review-agent](C:\Users\njyang\\.codex\skills\\.system\review-agent\SKILL.md)
+~~~
+
+**What it produced:** Removed the completed refresh replay window, kept rotated cookies after a failed retry, added structured 403/origin logs and a 10-second gateway timeout, guarded cookie-backed reads, and let profile logout reach local cookie clearing during outages. Added regression tests and ran a read-only review agent.
+**What I changed or rejected:** Pending human review. The read-only review agent reported no findings; its suggested GET Origin-header test was added.
+**Verification:** `npm.cmd run test:routes` passed (17/17), `npm.cmd run lint` passed, `npm.cmd run build` passed, and the read-only review agent reported no findings. Live User Service verification remains pending.
 
 ### 2026-09-28 — BFF protected-request refresh (feature/frontend-user-service-integration)
 

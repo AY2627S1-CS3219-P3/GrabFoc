@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Added server-only gateway calls and HttpOnly session cookie handling.
+Scope: Added server-only gateway calls and HttpOnly session cookie handling; bounded gateway waits and logged origin rejections on 2026-09-29.
 Author review: Pending frontend owner review.
 */
 import 'server-only';
@@ -18,12 +18,23 @@ export function gatewayUrl(path: string): string {
 }
 
 export async function gateway(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(gatewayUrl(path), { ...init, cache: 'no-store' });
+  return fetch(gatewayUrl(path), { ...init, cache: 'no-store', signal: AbortSignal.timeout(10_000) });
 }
 
 export function sameOrigin(request: NextRequest): boolean {
   const origin = request.headers.get('origin');
   return origin === request.nextUrl.origin;
+}
+
+// AI-generated (pending human review)
+export function sameOriginCookieRead(request: NextRequest): boolean {
+  const origin = request.headers.get('origin');
+  if (origin) return origin === request.nextUrl.origin;
+  return request.headers.get('sec-fetch-site') === 'same-origin';
+}
+
+export function logAccessDenial(request: NextRequest, status: 401 | 403): void {
+  console.warn(JSON.stringify({ event: 'unauthorized_access', status, method: request.method, path: request.nextUrl.pathname }));
 }
 
 export function setSession(response: NextResponse, request: NextRequest, tokens: Tokens): void {
@@ -49,6 +60,7 @@ export function unavailable(): NextResponse {
   return NextResponse.json({ error: { message: 'Gateway unavailable. Please try again.' } }, { status: 502 });
 }
 
-export function forbiddenOrigin(): NextResponse {
+export function forbiddenOrigin(request: NextRequest): NextResponse {
+  logAccessDenial(request, 403);
   return NextResponse.json({ error: { message: 'Invalid request origin.' } }, { status: 403 });
 }
