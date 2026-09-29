@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FoC Supplier Service",
-    "description": "Requests for the Supplier (Location) Service. Auth is DEV-ONLY for now: X-User-Id / X-User-Role headers (see supplier-service/AGENTS.md). Set baseUrl for your machine. Run \"Create location\" before the update/deactivate/restore requests; it stores locationId and version.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22. Scope: generated this collection from the endpoints and error codes in supplier-service/AGENTS.md. Author review: pending.",
+    "description": "Requests for the Supplier (Location) Service.\n\nAUTH, two ways:\n1. Real tokens: log in through the User Service and put the tokens in the adminToken / userToken variables. Supplier verifies them against the User Service's JWKS, so that service must be running.\n2. Standalone testing: leave adminToken / userToken empty and start Supplier with SUPPLIER_DEV_AUTH=true. Requests then fall back to the X-User-Id / X-User-Role headers below, and no other service is needed. That flag is for your own machine only.\n\nSet baseUrl for your machine. Run \"Create location\" before the update/deactivate/restore requests; it stores locationId and version.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated this collection from the endpoints and error codes in supplier-service/AGENTS.md. Author review: pending.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,20 +10,28 @@
       "value": "http://localhost:3002"
     },
     {
-      "key": "adminId",
-      "value": "admin-1"
-    },
-    {
-      "key": "userId",
-      "value": "user-1"
-    },
-    {
       "key": "locationId",
       "value": ""
     },
     {
       "key": "version",
       "value": "1"
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "userToken",
+      "value": ""
+    },
+    {
+      "key": "devAdminId",
+      "value": "admin-1"
+    },
+    {
+      "key": "devUserId",
+      "value": "user-1"
     }
   ],
   "item": [
@@ -47,8 +55,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -83,8 +95,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -98,6 +114,53 @@
               ],
               "path": [
                 "locations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sort Z-A (order=desc)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('descending by name', () => { const n = pm.response.json().items.map(i => i.name.toLowerCase()); pm.expect(n).to.eql([...n].sort().reverse()); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/locations?order=desc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "locations"
+              ],
+              "query": [
+                {
+                  "key": "order",
+                  "value": "desc"
+                }
               ]
             }
           }
@@ -119,8 +182,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -161,8 +228,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -203,8 +274,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -245,8 +320,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -287,8 +366,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{adminId}}"
+                "value": "{{devAdminId}}"
               },
               {
                 "key": "X-User-Role",
@@ -329,8 +412,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -367,8 +454,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -419,8 +510,12 @@
             "method": "POST",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{adminId}}"
+                "value": "{{devAdminId}}"
               },
               {
                 "key": "X-User-Role",
@@ -464,8 +559,12 @@
             "method": "PATCH",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{adminId}}"
+                "value": "{{devAdminId}}"
               },
               {
                 "key": "X-User-Role",
@@ -509,8 +608,12 @@
             "method": "POST",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{adminId}}"
+                "value": "{{devAdminId}}"
               },
               {
                 "key": "X-User-Role",
@@ -547,8 +650,12 @@
             "method": "POST",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{adminId}}"
+                "value": "{{devAdminId}}"
               },
               {
                 "key": "X-User-Role",
@@ -574,7 +681,7 @@
       "name": "Errors",
       "item": [
         {
-          "name": "401 no credentials",
+          "name": "401 no token",
           "event": [
             {
               "listen": "test",
@@ -617,8 +724,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -659,8 +770,12 @@
             "method": "POST",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -703,8 +818,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -745,8 +864,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -787,8 +910,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -824,8 +951,12 @@
             "method": "POST",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{adminId}}"
+                "value": "{{devAdminId}}"
               },
               {
                 "key": "X-User-Role",
@@ -868,8 +999,12 @@
             "method": "POST",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{adminId}}"
+                "value": "{{devAdminId}}"
               },
               {
                 "key": "X-User-Role",
@@ -912,8 +1047,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -949,8 +1088,12 @@
             "method": "POST",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{adminId}}"
+                "value": "{{devAdminId}}"
               },
               {
                 "key": "X-User-Role",
@@ -993,8 +1136,12 @@
             "method": "PATCH",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{adminId}}"
+                "value": "{{devAdminId}}"
               },
               {
                 "key": "X-User-Role",
@@ -1038,8 +1185,12 @@
             "method": "POST",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{adminId}}"
+                "value": "{{devAdminId}}"
               },
               {
                 "key": "X-User-Role",
@@ -1076,8 +1227,12 @@
             "method": "GET",
             "header": [
               {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
                 "key": "X-User-Id",
-                "value": "{{userId}}"
+                "value": "{{devUserId}}"
               },
               {
                 "key": "X-User-Role",
@@ -1096,6 +1251,52 @@
                 {
                   "key": "page",
                   "value": "0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "400 invalid order value",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-User-Id",
+                "value": "{{devUserId}}"
+              },
+              {
+                "key": "X-User-Role",
+                "value": "USER"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/locations?order=random",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "locations"
+              ],
+              "query": [
+                {
+                  "key": "order",
+                  "value": "random"
                 }
               ]
             }

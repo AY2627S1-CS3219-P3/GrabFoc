@@ -1,9 +1,21 @@
 <!--
 AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-09-28
+Scope: Recorded the CodeQL workflow configuration and expanded pull request coverage.
+Author review: Initial setup approved in PR #23; expanded PR coverage pending human review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Moved the CodeQL entries under the Jian Bing section when merging main into PR #27; entry text unchanged.
+Author review: Pending human review on PR #27.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
+Scope: Wrote the SoCLaaS TLS stopgap entry under the Jian Bing section (PR #36).
+Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #36.
+Scope: Wrote the PR #30 review-fix entry under the Jian Bing section.
+Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #30.
 Tool: Codex (model: GPT-6), date: 2026-09-29
-Scope: Combined the team's main-branch usage entries with the frontend and gateway entries during the main merge.
-Author review: Pending team review of the merged log.
+Scope: Combined the main-branch log with the User frontend integration entries.
+Author review: Pending team review.
 -->
+
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
 
 Required by Appendix 2 of the project document: *"Maintain a log, `/ai/usage-log.md`, in the
@@ -742,7 +754,47 @@ any real mailbox — not a service outage.
 
 ## Jian Bing
 
-<!-- Add your entries here. -->
+### 2026-09-29 — Diagnose SoCLaaS review failures and add a TLS stopgap (PR #36)
+
+- Tool and mode: Claude Code (Claude Opus 5.5), debug and generate.
+- Usage scenario: Every SoCLaaS PR Review run failed with "SoCLaaS could not be reached" while the API still loaded in a browser. Used AI to find the cause and add a temporary workaround.
+- Prompts (exact):
+  - “why is soclass not working?” (with screenshots of the failed run and the API URL)
+  - “tyr the stopgap for the soclass o na different branch, but before you do, help me to settle this merge conflict on pr #27”
+  - “resolve this for pr 27, then open the pr for fix soclass tls”
+  - “okay the mcp is working now, read the review form codesx and resolv eth econversations accoridngly, then do the same with PR30 for user service”
+  - “for pr 36 this was commented by codex” (with a screenshot of Codex's finding that Python 3.13+ enables `VERIFY_X509_PARTIAL_CHAIN` by default)
+- Key response: After its 2026-09-28 certificate renewal, the SoCLaaS server sends only its leaf certificate. Browsers fetch the missing Let's Encrypt `YE2` intermediate themselves; Python's `urllib` does not, so the reviewer fails TLS verification and reports the service as unreachable.
+- Output: `SOCLAAS_INTERMEDIATES` (the `YE2` and `Root YE` certificates) and an SSL context for SoCLaaS requests only in `.github/scripts/soclaas_review.py`; certificate verification stays on. After Codex's review, the context also clears `VERIFY_X509_PARTIAL_CHAIN`, which Python 3.13+ sets by default and which let the embedded certificates act as trust anchors (confirmed on 3.14: accepted with no system roots before the fix, rejected after). Tested locally against the live server on Python 3.11, 3.12 and 3.14.
+- Human review: Reviewed the diagnosis and chose the stopgap over waiting for the SoCLaaS admins. Still to confirm after merge: a SoCLaaS review re-run succeeds. Revert once the server serves its full chain.
+### 2026-09-29 — Fix review findings on the Supplier Service JWT verification (PR #30)
+
+- Tool and mode: Claude Code (Claude Opus 5.5), debug.
+- Usage scenario: Address Copilot's review findings on PR #30 (lihloway's branch) in `supplier-service/src/common/jwks.ts` and `supplier-service/src/config.ts`.
+- Prompts (exact):
+  - “okay the mcp is working now, read the review form codesx and resolv eth econversations accoridngly, then do the same with PR30 for user service”
+  - Plan approval, chosen from the options Claude offered: “Approve all 3 fixes (Recommended)”
+- Key response: Three findings were real bugs: an invalid or `null` JWKS body escaped as a 500 instead of the documented 503; concurrent requests each fetched the JWKS, defeating the 30-second refetch limit; and `SUPPLIER_JWKS_URL` was required even in the documented dev-auth-only mode. Claude flagged the third fix as a security trade-off before making it. The fourth finding (the original author's disclosure and log entry) was left for lihloway.
+- Output: Guarded JSON parsing and body validation, one shared in-flight JWKS fetch, and a JWKS URL that is optional only when `SUPPLIER_DEV_AUTH=true` (a bearer token then gets 503, never accepted unverified). Checked with a throwaway script against a fake JWKS server: all three bugs reproduced before the fix and passed after it; `npm run build` succeeds.
+- Human review: Approved the fix plan, including the dev-auth trade-off. Code review pending on PR #30.
+
+### 2026-09-28 — Follow-up: scan PRs targeting any branch
+
+- Tool and mode: Codex (GPT-6), generate.
+- Usage scenario: Extend the CodeQL setup above to cover feature-to-feature pull requests, including stacked changes.
+- Prompts (exact):“lets alter the current codeQL configuration from the current only main prs to now also include pr-to-pr”
+- Key response: “I’ll expand CodeQL to scan PRs targeting any branch, keep the existing merge protection on `main`, and open a PR for the change.”
+- Output: Removed the `pull_request.branches` filter from `.github/workflows/codeql.yml`; main push scans and the weekly schedule are unchanged.
+- Human review: Pending for this follow-up change.
+
+### 2026-09-28 13:08 UTC — CodeQL advanced setup
+
+- Tool and mode: Codex (GPT-6), generate and debug.
+- Usage scenario: Configure CodeQL analysis for public fork pull requests while continuing to scan JavaScript/TypeScript and GitHub Actions.
+- Prompts (exact): “assist me in configuring a more advanced version of codeQL workflow for me to customize”
+- Key response: “I’ll configure the CodeQL workflow for pull requests, then switch GitHub from default to advanced setup and check whether PR #7 receives a scan. I’ll inspect the repository settings and existing workflow first.”
+- Output: `.github/workflows/codeql.yml` in PR #23.
+- Human review: Initial setup approved by Jyang1206 and merged in PR #23. The CodeQL jobs ran successfully after the repository switched to advanced setup.
 
 ## Jie Yang
 
@@ -1499,3 +1551,84 @@ operable program or batch file.
 - Key response: Reproduced the stuck session screen at the reported address; the session-status request returned 403. Its page also failed to hydrate, so the notice is rendered by the server layout for HTTP on non-local hosts while keeping localhost and HTTPS available.
 - Files: `frontend/app/layout.tsx`.
 - Human review: Pending.
+
+## 2026-09-29 — Reusable frontend error handling
+
+- Tool and mode: Codex (GPT-6), generate, debug, explain.
+- Usage scenario: Add reusable service-error parsing, toast feedback and form field errors on the User integration branch, with a stacked PR workflow.
+- Exact user prompts:
+
+~~~text
+the user service integration branch can be accessed to work on reading the response to receive the proper errors
+can we define proper error handling and error popups on the front end ? update the user service integration branch to the latest  and branch out to handle the errors.
+
+The supplier service should also define the proper errors
+{
+    "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "The request is invalid.",
+        "details": {
+            "fields": [
+                {
+                    "field": "email",
+                    "message": "must be a valid email address"
+                },
+                {
+                    "field": "email",
+                    "message": "must be an NUS address (@u.nus.edu or @nus.edu.sg)"
+                }
+            ]
+        }
+    }
+}
+
+Once done, create the relevant PRs to merge user error handling to user service integration and back to service integration. The error handling on the front end should be extensible to other future services like order service etc. The other services also have certain fields to fill out and it'll be good if we can have a error handling for user and other services too
+
+PLEASE IMPLEMENT THIS PLAN:
+# Reusable frontend error handling
+
+## Summary
+
+Update `feature/frontend-user-service-integration` from the latest `main`, then create `feature/frontend-user-error-handling`. Implement error handling on User Service screens using components and a response parser that Supplier, Order, and future forms can reuse.
+
+## Implementation
+
+- Add a shared parser that normalizes User Service’s `{ error: { code, message, details } }` and Supplier’s current RFC 9457 Problem Details into a frontend error type. Keep parsing separate from service-specific code-to-message rules. Handle malformed responses with safe defaults.
+- Add an accessible, dismissible toast for operation failures and reusable inline field errors for validation. Each form supplies its backend-to-frontend field mapping, including `displayName` → Full Name. Keep a visible retry action for failed page loads.
+- Apply the system to sign-in, sign-up, OTP verification and resend, password recovery, and profile loading and logout. Handle known User Service codes such as `EMAIL_TAKEN`, `OTP_INVALID`, `OTP_EXPIRED`, `ACCOUNT_LOCKED`, and `RATE_LIMITED`; preserve password recovery’s account-enumeration protection.
+- Keep service response shapes unchanged. Supplier backend codes and field-detail extensions need Supplier owner approval, so that contract change belongs in a separate Supplier PR. Supplier screens from PR #37 are outside this round.
+
+## Verification and PRs
+
+- Test validation fields, known error codes, retry details, malformed responses, toast dismissal, page-load retry, and password recovery behavior. Run frontend route tests, lint, and build.
+- Open PR 1 from `feature/frontend-user-error-handling` into `feature/frontend-user-service-integration`. After PR 1 is reviewed and merged, open PR 2 from the updated User integration branch into `feature/frontend-service-integration`. Do not merge either PR automatically.
+- Record AI assistance and add file disclosures as required by `AGENTS.md`.
+
+## Assumptions
+
+- “Latest” means the remote `main` at implementation time.
+- The shared parser supports Supplier’s current response format now; it does not depend on the pending Supplier API decision.
+- Only User Service screens adopt the new UI in this round. Future services use the same parser, toast, and field-error components.
+~~~
+
+- Key response: Updated the User integration branch from main, created `feature/frontend-user-error-handling`, normalized both existing error envelopes, and added reusable toast and field feedback to the User screens. Supplier Service's response contract remains pending its owner's approval.
+- Files: `frontend/lib/service-errors.ts`, `frontend/lib/user-error-copy.ts`, `frontend/app/components/error-feedback.tsx`, User frontend screens, `frontend/app/globals.css`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `ai/usage-log.md`.
+- Human review: Pending PR review and manual UI inspection.
+
+## 2026-09-29 — PR #38 review follow-up
+
+- Tool and mode: Codex (GPT-6), debug, refactor.
+- Usage scenario: Address review feedback on reusable User Service error handling.
+- Exact user prompt: “in the user error handling PR there are unresolved comments, keep resolving the comments and committing, and monitor the new reviews and resolve them”
+- Key response: Ensured verification and resend expose validation for fields absent from the form, made profile transport and JSON failures show a safe retry message, kept the toast timer stable across parent renders, and masked unknown backend messages on profile load/logout after a fresh review. Added regression coverage and checked PR #38 again after pushing.
+- Files: `frontend/app/components/auth-screen.tsx`, `frontend/app/components/error-feedback.tsx`, `frontend/app/profile/page.tsx`, `frontend/lib/user-error-copy.ts`, `frontend/test/routes.test.mjs`, `ai/usage-log.md`.
+- Human review: Pending PR review.
+
+## 2026-09-29 — PR #39 environment template review
+
+- Tool and mode: Codex (GPT-6), documentation fix.
+- Usage scenario: Address a project environment-template comment on PR #39 without editing User Service or Supplier Service components.
+- Exact user prompt: “for each PR, 39 and 37, resolve the messages, ensure the changes made do not touch the individual components of the user service and supplier service.”
+- Key response: Documented `NODE_ENV=production` as a safe example for the existing Supplier development-auth guard. Service code was unchanged.
+- Files: `.env.example`, `ai/usage-log.md`.
+- Human review: Pending PR review.

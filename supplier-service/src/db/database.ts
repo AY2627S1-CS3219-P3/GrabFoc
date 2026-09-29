@@ -2,7 +2,7 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
  * Scope: Generated the PostgreSQL connection pool provider and startup schema creation.
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; confirmed the pool connects and the schema is created at startup against a fresh database.
  */
 import { Global, Inject, Injectable, Logger, Module, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Pool } from 'pg';
