@@ -1606,3 +1606,36 @@ operable program or batch file.
 - Key response: Reproduced the stuck session screen at the reported address; the session-status request returned 403. Its page also failed to hydrate, so the notice is rendered by the server layout for HTTP on non-local hosts while keeping localhost and HTTPS available.
 - Files: `frontend/app/layout.tsx`.
 - Human review: Pending.
+
+## 2026-09-29 07:35 UTC — Supplier PR import and frontend integration
+
+- Tool and mode: Codex (GPT-6), generate, debug, explain.
+- Usage scenario: Import the Supplier sorting and JWT verification work before integrating the Supplier Service into the gateway and frontend.
+- Exact user prompts: “we should be done with integrating the user service now i need to branch out and integrate the supplier service. 1st is the receiving of supplier information and a list of suppliers. then it's the filtering and search, lastly its the difference between admin account priviledges to edit or add suppliers and a normal user who can only view”; “wait there's a PR for the new supplier svs taking in the token”; “I recommend adding that to the existing session check after verification. Supplier Service would still independently verify the JWT and reject unauthorized edits.   what would this look like”; “the session check involves checking with user svs?”; “doesnt the jwt contain the role?”; “wait so whats the current implementation and issue and solution”; “can we not pull pr 28 and 30 into our branch first and continue working”; “continue”.
+- Key response: Imported the substantive commits from PRs #28 and #30; added Supplier database and service to root Compose; forwarded cookie-backed requests through allowlisted Next.js routes and the gateway; exposed the verified role in session status; added live location browsing, search, filters, pagination and admin management; added browser route coverage and run instructions.
+- Files: `.env.example`, `compose.yaml`, `supplier-service/compose.yaml`, `frontend/app/**`, `frontend/lib/**`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `supplier-service/README.md`, `ai/usage-log.md`.
+- Human review: Pending. Tests and live verification are recorded in the working session.
+
+## 2026-09-29 — Sync latest main and PR #28
+
+- Tool and mode: Codex (GPT-6), merge and debug.
+- Usage scenario: Update `feature/frontend-supplier-service-integration` while preserving uncommitted Supplier integration work.
+- Exact user prompt: “pull from the latest main and PR 28”.
+- Key response: Fetched `origin/main` and PR #28, confirmed PR #28 was already merged into main, merged main, kept the reviewed Supplier disclosures and both AI log histories, and restored the uncommitted integration changes.
+- Human review: Pending review of the merged branch and integration work.
+
+## 2026-09-29 — Merge Supplier PR #33
+
+- Tool and mode: Codex (GPT-6), merge and debug.
+- Usage scenario: Bring the nearby search and Supplier Compose work into the frontend integration branch while preserving uncommitted work.
+- Exact user prompt: “pull from PR 33”.
+- Key response: Merged PR #33, combined the team's AI log histories, restored the frontend changes, retained the PR's Supplier Compose layout, and required an explicit Supplier database password in `.env`.
+- Human review: Pending review of the merged branch and integration work.
+
+## 2026-09-29 — Commit Supplier integration and open PR
+
+- Tool and mode: Codex (GPT-6), verify and Git workflow.
+- Usage scenario: Finalize the frontend and gateway Supplier integration work and propose it against the frontend integration branch.
+- Exact user prompt: “commit the current changes based on it's changes and open a PR to merge this into frontend service integration branch”.
+- Key response: Verified the frontend, committed the local Supplier integration changes, pushed the branch and opened a PR targeting `feature/frontend-service-integration`.
+- Human review: Pending PR review.

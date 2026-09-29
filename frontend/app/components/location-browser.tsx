@@ -1,0 +1,102 @@
+/*
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-09-29
+Scope: Added live Supplier location listing, search, filters, sorting, pagination and admin navigation.
+Author review: Pending team review and visual verification.
+*/
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { withSessionMutation } from "@/lib/session-client";
+import { type LocationPage, supplierError } from "@/lib/locations";
+
+type Filters = { name: string; type: string; building: string; time: string; order: "asc" | "desc" };
+const initialFilters: Filters = { name: "", type: "", building: "", time: "", order: "asc" };
+
+function hours(value: string | null) { return value ? `${value.slice(0, 2)}:${value.slice(2, 4)}` : ""; }
+
+// AI-generated (pending human review)
+export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
+  const router = useRouter();
+  const [types, setTypes] = useState<string[]>([]);
+  const [draft, setDraft] = useState(initialFilters);
+  const [filters, setFilters] = useState(initialFilters);
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<LocationPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    withSessionMutation(() => fetch("/api/session/supplier/location-types", { cache: "no-store" }))
+      .then(async (response) => { if (response.ok && active) setTypes(await response.json() as string[]); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setPage(1); setFilters(draft); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [draft]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = new URLSearchParams({ page: String(page), pageSize: "12", order: filters.order });
+    if (filters.name.trim()) query.set("name", filters.name.trim());
+    if (filters.type) query.set("type", filters.type);
+    if (filters.building.trim()) query.set("building", filters.building.trim());
+    if (filters.time) query.set("time", filters.time.replace(":", "") + "hrs");
+    withSessionMutation(() => fetch(`/api/session/supplier/locations?${query}`, { cache: "no-store", signal: controller.signal }))
+      .then(async (response) => {
+        if (response.status === 401) { router.replace("/signin"); return; }
+        if (!response.ok) throw new Error(await supplierError(response));
+        const result = await response.json() as LocationPage;
+        if (!controller.signal.aborted) { setData(result); setError(""); setLoading(false); }
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : "Could not load locations."); setLoading(false); }
+      });
+    return () => controller.abort();
+  }, [filters, page, reload, router]);
+
+  function change<K extends keyof Filters>(key: K, value: Filters[K]) {
+    setLoading(true);
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  return <section className="home-section" aria-labelledby="locations-title">
+    <div className="section-heading">
+      <h2 id="locations-title">Browse Locations</h2>
+      {role === "ADMIN" && <Link className="outline-link" href="/admin/locations">Manage Locations</Link>}
+    </div>
+    <div className="location-filters">
+      <label><span>Search name</span><input type="search" value={draft.name} onChange={(event) => change("name", event.target.value)} placeholder="Search pickup points" /></label>
+      <label><span>Type</span><select value={draft.type} onChange={(event) => change("type", event.target.value)}><option value="">All types</option>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+      <label><span>Building</span><input value={draft.building} onChange={(event) => change("building", event.target.value)} placeholder="Exact building" /></label>
+      <label><span>Open at</span><input type="time" value={draft.time} onChange={(event) => change("time", event.target.value)} /></label>
+      <label><span>Name order</span><select value={draft.order} onChange={(event) => change("order", event.target.value as Filters["order"])}><option value="asc">A–Z</option><option value="desc">Z–A</option></select></label>
+    </div>
+    {error && <div className="home-empty" role="alert">{error} <button type="button" onClick={() => { setLoading(true); setReload((value) => value + 1); }}>Retry</button></div>}
+    {!error && loading && <div className="home-empty" role="status">Loading locations…</div>}
+    {!error && !loading && data?.items.length === 0 && <div className="home-empty">No locations match these filters.</div>}
+    {!error && !loading && data && data.items.length > 0 && <>
+      <div className="location-grid">
+        {data.items.map((location) => <article className="location-card" key={location.id}>
+          <div className="location-card-heading"><h3>{location.name}</h3><span>{location.type}</span></div>
+          <p>{location.building}, floor {location.floor}</p>
+          <p>{location.location_desc}</p>
+          {location.open_time && location.close_time && <p>Open {hours(location.open_time)}–{hours(location.close_time)}</p>}
+          {location.image_url && <a href={location.image_url} target="_blank" rel="noopener noreferrer">View location image</a>}
+        </article>)}
+      </div>
+      <div className="location-pagination">
+        <button type="button" disabled={page <= 1} onClick={() => { setLoading(true); setPage(page - 1); }}>Previous</button>
+        <span>Page {data.page} of {Math.max(1, Math.ceil(data.total / data.pageSize))} · {data.total} locations</span>
+        <button type="button" disabled={page * data.pageSize >= data.total} onClick={() => { setLoading(true); setPage(page + 1); }}>Next</button>
+      </div>
+    </>}
+  </section>;
+}

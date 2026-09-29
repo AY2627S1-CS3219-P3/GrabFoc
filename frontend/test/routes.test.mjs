@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified session flows, denial logging, and refresh-only logout revocation with local clearing on 2026-09-29.
+Scope: Verified session flows, denial logging, and refresh-only logout revocation with local clearing on 2026-09-29; added Supplier browse and management fixtures on 2026-09-29.
 Author review: Pending team review and local browser verification.
 */
 import assert from "node:assert/strict";
@@ -14,6 +14,11 @@ import { chromium } from "playwright-core";
 
 // AI-generated (pending human review)
 const requests = [];
+const adminAccess = `header.${Buffer.from(JSON.stringify({ role: "ADMIN" })).toString("base64url")}.signature`;
+const locations = [
+  { id: 1, name: "COM3 Basement", type: "Food", building: "COM3", floor: -1, location_desc: "Campus pickup point", lat: 1.295, lon: 103.773, open_time: "0900hrs", close_time: "1800hrs", image_url: null, status: "ACTIVE", version: 1 },
+  { id: 2, name: "UTown Print", type: "Printing", building: "UTown", floor: 1, location_desc: "Print counter", lat: 1.304, lon: 103.773, open_time: null, close_time: null, image_url: null, status: "ACTIVE", version: 1 },
+];
 let refreshDelay;
 let refreshStarted;
 let failLogout = false;
@@ -30,6 +35,47 @@ const gateway = createServer(async (request, response) => {
   for await (const chunk of request) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
   requests.push({ method: request.method, path: request.url, body, authorization: request.headers.authorization });
+  if (request.url === "/location-types") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(["Food", "Printing"]));
+    return;
+  }
+  if (request.url?.startsWith("/locations")) {
+    const admin = request.headers.authorization === `Bearer ${adminAccess}`;
+    const url = new URL(request.url, "http://gateway.local");
+    if (!request.headers.authorization) { response.writeHead(401).end(); return; }
+    if ((url.searchParams.get("includeInactive") === "true" || request.method !== "GET") && !admin) {
+      response.writeHead(403, { "content-type": "application/problem+json" });
+      response.end(JSON.stringify({ detail: "This action requires the ADMIN role." }));
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/locations") {
+      let items = locations.filter((item) => url.searchParams.get("includeInactive") === "true" || item.status === "ACTIVE");
+      if (url.searchParams.has("name")) items = items.filter((item) => item.name.toLowerCase().includes(url.searchParams.get("name").toLowerCase()));
+      if (url.searchParams.has("type")) items = items.filter((item) => item.type === url.searchParams.get("type"));
+      if (url.searchParams.has("building")) items = items.filter((item) => item.building === url.searchParams.get("building"));
+      items = items.toSorted((a, b) => (url.searchParams.get("order") === "desc" ? -1 : 1) * a.name.localeCompare(b.name));
+      const page = Number(url.searchParams.get("page") || 1);
+      const pageSize = Number(url.searchParams.get("pageSize") || 20);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ items: items.slice((page - 1) * pageSize, page * pageSize), page, pageSize, total: items.length }));
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/locations") {
+      const item = { ...body, id: Math.max(...locations.map((entry) => entry.id)) + 1, status: "ACTIVE", version: 1 };
+      locations.push(item);
+      response.writeHead(201, { "content-type": "application/json" }).end(JSON.stringify(item));
+      return;
+    }
+    const id = Number(url.pathname.split("/")[2]);
+    const item = locations.find((entry) => entry.id === id);
+    if (!item) { response.writeHead(404).end(); return; }
+    if (request.method === "PATCH") Object.assign(item, body, { version: item.version + 1 });
+    if (url.pathname.endsWith("/deactivate")) { item.status = "INACTIVE"; item.version++; }
+    if (url.pathname.endsWith("/restore")) { item.status = "ACTIVE"; item.version++; }
+    response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(item));
+    return;
+  }
   if (request.url === "/users/me") {
     if (breakRotatedProfile && request.headers.authorization === "Bearer new-access") {
       response.destroy();
@@ -40,7 +86,8 @@ const gateway = createServer(async (request, response) => {
       response.end(JSON.stringify({ error: "Forbidden" }));
       return;
     }
-    const accepted = request.headers.authorization === "Bearer test-access" ||
+    const accepted = request.headers.authorization === `Bearer ${adminAccess}` ||
+      request.headers.authorization === "Bearer test-access" ||
       (request.headers.authorization === "Bearer new-access" && !rejectRotatedAccess);
     response.writeHead(accepted ? 200 : 401, { "content-type": "application/json" });
     response.end(JSON.stringify({ userId: "user-1", displayName: "Alex Tan", email: "alex@u.nus.edu", countryCode: "+65", mobileNumber: "91234567" }));
@@ -64,6 +111,11 @@ const gateway = createServer(async (request, response) => {
   if (request.url === "/auth/login" && body.email === "malformed@u.nus.edu") {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ accessToken: "test-access", expiresIn: 900 }));
+    return;
+  }
+  if (request.url === "/auth/login" && body.email === "admin@u.nus.edu") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ accessToken: adminAccess, refreshToken: "admin-refresh", expiresIn: 900 }));
     return;
   }
   if (["/auth/login", "/auth/register/verify", "/auth/refresh"].includes(request.url)) {
@@ -179,7 +231,7 @@ test("login, profile, logout, registration, recovery and Home navigation reach t
     assert.deepEqual(requests.find((request) => request.path === "/auth/logout")?.body, { refreshToken: "test-refresh" });
 
     await page.getByRole("link", { name: "Sign Up" }).click();
-    await page.waitForLoadState("networkidle");
+    await page.waitForURL("**/signup");
     await page.getByLabel("Full Name").fill("Alex Tan");
     await page.getByLabel("Email").fill("alex@u.nus.edu");
     await page.getByLabel("Mobile Number").fill("91234567");
@@ -314,6 +366,7 @@ test("expired access cookie refreshes once across simultaneous tabs", async () =
     await login.getByRole("button", { name: "Sign In" }).click();
     await login.waitForURL("**/home");
     await login.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await login.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     assert.ok(refreshCookie);
     await context.clearCookies();
@@ -340,6 +393,7 @@ test("a protected BFF request refreshes after gateway 401 and retries once", asy
     assert.deepEqual(await (await loginResponse).json(), { ok: true });
     await page.waitForURL("**/home");
     await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const context = page.context();
     const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     await context.clearCookies();
@@ -369,6 +423,7 @@ test("refresh 401 clears cookies and 503 leaves the session retryable without lo
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
     await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     await context.clearCookies();
     await context.addCookies([refreshCookie]);
@@ -399,6 +454,7 @@ test("a second protected 401 stops after one retry and ends the local session", 
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
     await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     await context.clearCookies();
     await context.addCookies([refreshCookie]);
@@ -458,6 +514,7 @@ test("sign-in waits for an in-progress refresh before replacing the session", as
     await oldTab.getByRole("button", { name: "Sign In" }).click();
     await oldTab.waitForURL("**/home");
     await oldTab.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await oldTab.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     assert.ok(refreshCookie);
     await context.clearCookies();
@@ -496,6 +553,7 @@ test("a completed rotation never replays credentials to the consumed token", asy
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
     await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const oldRefresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     assert.ok(oldRefresh);
     await context.clearCookies();
@@ -523,6 +581,7 @@ test("a failed protected retry retains newly rotated cookies", async () => {
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
     await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const oldRefresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     await context.clearCookies();
     await context.addCookies([oldRefresh]);
@@ -544,6 +603,7 @@ test("403 stays forbidden, is logged, and does not rotate or clear cookies", asy
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
     await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refreshes = requests.filter((request) => request.path === "/auth/refresh").length;
     const logStart = appLogs.length;
     denyProfile = true;
@@ -604,6 +664,7 @@ test("profile logout clears cookies even when session refresh is unavailable", a
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
     await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     await context.clearCookies();
     await context.addCookies([refresh]);
@@ -626,6 +687,7 @@ test("logout with only a refresh cookie rotates before revocation and always cle
       await page.getByRole("button", { name: "Sign In" }).click();
       await page.waitForURL("**/home");
       await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
       const oldRefresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
       assert.ok(oldRefresh);
       await context.clearCookies();
@@ -649,4 +711,48 @@ test("logout with only a refresh cookie rotates before revocation and always cle
       await context.close();
     }
   }
+});
+
+test("users browse and filter locations while only admins manage them", async () => {
+  const user = await browser.newPage();
+  const admin = await browser.newPage();
+  try {
+    await user.goto(`${baseUrl}/signin`);
+    await user.getByLabel("Email").fill("alex@u.nus.edu");
+    await user.getByLabel("Password").fill("Passw0rdSafe");
+    await user.getByRole("button", { name: "Sign In" }).click();
+    await user.waitForURL("**/home");
+    await user.getByRole("heading", { name: "COM3 Basement" }).waitFor();
+    assert.equal(await user.getByRole("link", { name: "Manage Locations" }).count(), 0);
+    await user.getByLabel("Search name").fill("UTown");
+    await user.getByRole("heading", { name: "UTown Print" }).waitFor();
+    await user.getByRole("heading", { name: "COM3 Basement" }).waitFor({ state: "detached" });
+    const denied = await user.evaluate(() => fetch("/api/session/supplier/locations", {
+      method: "POST", headers: { "content-type": "application/json" }, body: "{}",
+    }).then((response) => response.status));
+    assert.equal(denied, 403);
+
+    await admin.goto(`${baseUrl}/signin`);
+    await admin.getByLabel("Email").fill("admin@u.nus.edu");
+    await admin.getByLabel("Password").fill("Passw0rdSafe");
+    await admin.getByRole("button", { name: "Sign In" }).click();
+    await admin.waitForURL("**/home");
+    await admin.getByRole("link", { name: "Manage Locations" }).click();
+    await admin.waitForURL("**/admin/locations");
+    await admin.getByRole("heading", { name: "Manage Locations" }).waitFor();
+    await admin.locator("form [name=name]").fill("New Pickup");
+    await admin.locator("form [name=building]").fill("COM3");
+    await admin.locator("form [name=floor]").fill("1");
+    await admin.locator("form [name=location_desc]").fill("Near the entrance");
+    await admin.locator("form [name=lat]").fill("1.295");
+    await admin.locator("form [name=lon]").fill("103.773");
+    await admin.getByRole("button", { name: "Add Location" }).click();
+    const row = admin.locator(".manage-row", { hasText: "New Pickup" });
+    await row.waitFor();
+    await row.getByRole("button", { name: "Deactivate" }).click();
+    await row.getByText("INACTIVE").waitFor();
+    await row.getByRole("button", { name: "Restore" }).click();
+    await row.getByText("ACTIVE").waitFor();
+    assert.ok(requests.some((request) => request.method === "POST" && request.path === "/locations" && request.authorization === `Bearer ${adminAccess}`));
+  } finally { await user.close(); await admin.close(); }
 });

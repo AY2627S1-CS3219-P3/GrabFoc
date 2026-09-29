@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Added protected requests and in-flight refresh coordination; reused rotation for expired-access logout on 2026-09-29.
+Scope: Added protected requests and in-flight refresh coordination; reused rotation for expired-access logout on 2026-09-29; supported Supplier methods and verified-role display on 2026-09-29.
 Author review: Pending frontend owner review and live User Service verification.
 */
 import 'server-only';
@@ -58,18 +58,21 @@ export async function refreshSession(request: NextRequest): Promise<NextResponse
 export async function protectedGateway(
   request: NextRequest,
   path: string,
-  toResponse: (upstream: Response) => Promise<NextResponse>,
+  toResponse: (upstream: Response, accessToken: string) => Promise<NextResponse>,
+  init: RequestInit = {},
 ): Promise<NextResponse> {
   if (!sameOriginCookieRead(request)) return forbiddenOrigin(request);
   let access = request.cookies.get(ACCESS)?.value;
   const refresh = request.cookies.get(REFRESH)?.value;
   let tokens: Tokens | undefined;
   try {
+    const headers = new Headers(init.headers);
     if (access) {
-      const upstream = await gateway(path, { headers: { authorization: `Bearer ${access}` } });
+      headers.set('authorization', `Bearer ${access}`);
+      const upstream = await gateway(path, { ...init, headers });
       if (upstream.status !== 401) {
         if (upstream.status === 403) logAccessDenial(request, 403);
-        return toResponse(upstream);
+        return toResponse(upstream, access);
       }
     }
     if (!refresh) return unauthorized(request, true);
@@ -78,9 +81,10 @@ export async function protectedGateway(
     if (outcome.kind === 'unavailable') return unavailable();
     tokens = outcome.tokens;
     access = tokens.accessToken;
-    const retried = await gateway(path, { headers: { authorization: `Bearer ${access}` } });
+    headers.set('authorization', `Bearer ${access}`);
+    const retried = await gateway(path, { ...init, headers });
     if (retried.status === 403) logAccessDenial(request, 403);
-    const response = retried.status === 401 ? unauthorized(request, true) : await toResponse(retried);
+    const response = retried.status === 401 ? unauthorized(request, true) : await toResponse(retried, access);
     if (retried.status !== 401) setSession(response, request, tokens);
     return response;
   } catch {

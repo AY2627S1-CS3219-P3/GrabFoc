@@ -1,16 +1,16 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Moved the location listing shell to /home ahead of Supplier Service integration.
+Scope: Moved the location listing shell to /home; added live Supplier browsing on 2026-09-29.
 Author review: Pending team review; no Figma location frame or Supplier API contract exists.
 */
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../components/app-shell";
-import { ensureSession } from "@/lib/session-client";
+import { getSession } from "@/lib/session-client";
+import { LocationBrowser } from "../components/location-browser";
 
 // AI-generated (pending human review)
 export default function HomePage() {
@@ -18,12 +18,13 @@ export default function HomePage() {
   const [mode, setMode] = useState<"requester" | "courier">("requester");
   const [ready, setReady] = useState(false);
   const [sessionError, setSessionError] = useState(false);
+  const [role, setRole] = useState<"ADMIN" | "USER" | undefined>();
 
   useEffect(() => {
     let active = true;
-    ensureSession().then((authenticated) => {
+    getSession().then((session) => {
       if (!active) return;
-      if (authenticated) setReady(true);
+      if (session.authenticated) { setRole(session.role); setReady(true); }
       else router.replace("/signin");
     }).catch(() => { if (active) setSessionError(true); });
     return () => { active = false; };
@@ -46,18 +47,7 @@ export default function HomePage() {
             <h2 id="active-orders-title">My Active Orders</h2>
             <div className="home-empty">Your active orders will appear here after sign-in and Order Service integration.</div>
           </section>
-          <section className="home-section" aria-labelledby="locations-title">
-            <h2 id="locations-title">Browse Locations</h2>
-            <div className="browse-controls">
-              <label className="browse-search"><span className="sr-only">Search locations</span><input type="search" placeholder="Search locations" disabled aria-describedby="locations-state" /></label>
-              <div className="filter-chips" aria-label="Location type filters"><span aria-current="true">All</span><span>Food</span><span>Print</span><span>Convenience</span></div>
-            </div>
-            <div className="home-empty" id="locations-state">
-              <strong>Locations are not available yet</strong>
-              <p>Sign in and connect Supplier Service to browse live campus pickup points.</p>
-              <Link className="outline-link" href="/signin">Go to sign in</Link>
-            </div>
-          </section>
+          <LocationBrowser role={role} />
         </>
       ) : (
         <>
