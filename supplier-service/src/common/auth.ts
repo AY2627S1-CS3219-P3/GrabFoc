@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28
  * Scope: Replaced the dev-only header guard with JWT verification against the User Service's
  *        JWKS, keeping the @Roles decorator and the logging of denied attempts.
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; ran it with Postman and checked the 401 and 403 cases, including that dev headers are ignored when a token is sent.
  */
 import { CanActivate, ExecutionContext, Injectable, Logger, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';

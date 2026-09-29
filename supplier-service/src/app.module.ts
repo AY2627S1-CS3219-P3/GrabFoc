@@ -2,7 +2,7 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
  * Scope: Generated the NestJS module wiring (database, routes, seed, global JWT auth guard).
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; confirmed the guard is registered globally, so every route requires credentials unless a role says otherwise.
  */
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
