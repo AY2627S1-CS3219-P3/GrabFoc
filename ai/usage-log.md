@@ -59,6 +59,25 @@ Template:
 
 ## Jie Yang
 
+### 2026-09-29 12:52 SGT — PR #24 rejected-login logging
+
+**Tool:** Codex (GPT-6) · **Mode:** debug, explain
+**Files:** `frontend/app/api/session/login/route.ts`, `frontend/test/routes.test.mjs`, `ai/usage-log.md`
+
+**Scenario:** Address the review finding that User Service login 401/403 responses lacked a structured denial event, and explain the separate expired-access logout finding without changing logout.
+
+**Prompt (exact):**
+
+~~~text
+update the logging issue and
+
+"The access cookie expires before the refresh cookie. In that state this branch clears local cookies without calling User Service, leaving the refresh session usable. Recover a short-lived access token through the existing refresh path, attempt logout with the rotated refresh token, and still clear local cookies if either call   explain this?
+~~~
+
+**What it produced:** Logged upstream login 401/403 using the existing structured helper, without credentials, and added a route regression test. Explained the token lifetimes and remote revocation gap separately.
+**What I changed or rejected:** Pending human review. No logout behavior was changed.
+**Verification:** Frontend route tests and lint recorded in the handoff.
+
 ### 2026-09-29 10:54 SGT — PR #24 token and security review fixes
 
 **Tool:** Codex (GPT-6) · **Mode:** generate, debug, refactor

@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified session flows, single-use refresh, origin and 403 logging, rotated-cookie recovery, timeout, and outage logout through 2026-09-29.
+Scope: Verified session flows, single-use refresh, origin and 403 logging, rotated-cookie recovery, timeout, and outage logout; added upstream login denial logging checks on 2026-09-29.
 Author review: Pending team review and local browser verification.
 */
 import assert from "node:assert/strict";
@@ -49,6 +49,11 @@ const gateway = createServer(async (request, response) => {
   if (request.url === "/auth/login" && body.email === "wrong@u.nus.edu") {
     response.writeHead(401, { "content-type": "application/json" });
     response.end(JSON.stringify({ error: { message: "Invalid email or password." } }));
+    return;
+  }
+  if (request.url === "/auth/login" && body.email === "forbidden@u.nus.edu") {
+    response.writeHead(403, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: { message: "Sign-in forbidden." } }));
     return;
   }
   if (request.url === "/auth/logout" && failLogout) {
@@ -251,6 +256,23 @@ test("invalid credentials stay on Sign In and show the service error", async () 
     await page.getByRole("status").getByText("Invalid email or password.").waitFor();
     assert.equal(new URL(page.url()).pathname, "/signin");
   } finally { await page.close(); }
+});
+
+test("upstream login 401 and 403 are logged without credentials", async () => {
+  const logStart = appLogs.length;
+  for (const [email, expectedStatus] of [["wrong@u.nus.edu", 401], ["forbidden@u.nus.edu", 403]]) {
+    const response = await fetch(`${baseUrl}/api/session/login`, {
+      method: "POST", headers: { origin: baseUrl, "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "secret-for-log-test" }),
+    });
+    assert.equal(response.status, expectedStatus);
+  }
+  const emitted = appLogs.slice(logStart);
+  for (const status of [401, 403]) {
+    assert.ok(emitted.includes(JSON.stringify({ event: "unauthorized_access", status, method: "POST", path: "/api/session/login" })));
+  }
+  assert.equal(emitted.includes("secret-for-log-test"), false);
+  assert.equal(emitted.includes("forbidden@u.nus.edu"), false);
 });
 
 test("malformed token response does not create a browser session", async () => {
