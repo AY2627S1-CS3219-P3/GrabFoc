@@ -9,7 +9,8 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 **Implementation [Decided]** · _Origin: Team_
 - NestJS (TypeScript, Node.js), PostgreSQL through `pg` with plain parameterized SQL, strict Zod validation.
 - JSON field names are the same as the columns (`id`, `name`, `type`, `building`, `floor`, `location_desc`, `lat`, `lon`, `image_url`, `status`, `version`), except the hours: `open_time` / `close_time`, as `HHMMhrs` strings (stored as minutes in `open_min` / `close_min`).
-- **Auth, temporary (DEV-ONLY):** the service reads the caller from `X-User-Id` and `X-User-Role` (`ADMIN` / `USER`) headers so it can be tested in Postman. Missing or invalid → 401. Replace once the team decides how identity reaches the Supplier Service.
+- **Auth [Decided]:** every request carries a bearer token issued by the User Service. The gateway verifies it and forwards it unchanged; **this service verifies it again** against the User Service's JWKS (`SUPPLIER_JWKS_URL`) rather than trusting the network, then takes the caller from the `sub` and `role` claims. RS256/ES256 only, `exp` and `nbf` enforced, `iss`/`aud` checked only when configured (same as the gateway). Keys are cached for 5 minutes and refetched when a `kid` is unknown (at most every 30 s). Missing or invalid token → **401**; wrong role → **403**; JWKS unreachable → **503**.
+- **Local testing only:** with `SUPPLIER_DEV_AUTH=true` the service falls back to `X-User-Id` / `X-User-Role` headers **when no bearer token is sent**, so it can be tested without the User Service. A real token is always verified, so the headers can never override or downgrade one. The flag is off by default, startup refuses it when `NODE_ENV=production` (which the Dockerfile sets), and it logs a warning at startup when on.
 - Run and test instructions: `README.md`. Postman collection: `postman/supplier.postman_collection.json`.
 
 **Why PostgreSQL [Decided]** · _Origin: Team_
@@ -129,15 +130,16 @@ Searching by a time *t* (in `HHMMhrs` format) returns the locations open at *t*.
 | Code | When |
 |---|---|
 | **400** | Invalid input: `time` not in `HHMMhrs`; `type` not one of the location types (an error, not an empty result); an unknown query parameter; a non-numeric ID; a required field missing (S1.2.1); an invalid field value (`name` over 100 characters, `type` not in the table, `floor` not a whole number, hours not in `HHMMhrs`, `image_url` not `http(s)`); the body sets `id`, `status` or `version` on create; coordinates outside the campus boundary (S1.2.3); `version` missing on update; an update that tries to change `id` (S3.1.1) or empties a required field (S3.2.2) |
-| **401** | No token, or an invalid or expired one |
+| **401** | No token, or one that is malformed, expired, signed with an unknown or untrusted key, or missing `sub`/`role` |
 | **403** | Valid token but not an ADMIN, on `POST`, `PATCH`, deactivate or restore, or when sending `includeInactive=true`. Logged (U5.1.1) |
 | **404** | No location with that ID: lookup (S2.3.3), update (S3.2.3), deactivate, restore |
 | **409** | `name` matches an ACTIVE location on create or update (S1.2.2); out-of-date `version` on update (S3.3.3); deactivating a location that is already INACTIVE (S4.1.3); restoring one that is already ACTIVE; restoring would clash with an ACTIVE location's name (S4.3.2) |
 | **500** | The server itself fails (e.g. the database is down) |
+| **503** | The User Service's JWKS can't be reached, so tokens can't be verified |
 
 **Error body:** Problem Details (RFC 9457), sent as `application/problem+json`, with the standard fields (`type`, `title`, `status`, `detail`, `instance`). `detail` explains what went wrong, e.g. which field was invalid. No extension fields for now.
 
-The service must be usable through Postman without the UI running (D2 point 3). Keep a Postman collection in `supplier-service/postman/`. Use Postman variables (e.g. `{{token}}`, `{{baseUrl}}`) for tokens and URLs; never commit real tokens or passwords.
+Postman needs a real token: log in through the User Service and put it in the collection's `adminToken` / `userToken` variables. The service must be usable through Postman without the UI running (D2 point 3). Keep a Postman collection in `supplier-service/postman/`. Use Postman variables (e.g. `{{token}}`, `{{baseUrl}}`) for tokens and URLs; never commit real tokens or passwords.
 
 ## Query events from Order [Decided]
 
