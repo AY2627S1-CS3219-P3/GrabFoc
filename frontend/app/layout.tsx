@@ -1,10 +1,11 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
-Scope: Updated page metadata and removed starter font styling for the Figma UI; renamed page metadata to GrabFoc on 2026-09-27.
+Scope: Updated page metadata and removed starter font styling for the Figma UI; renamed page metadata to GrabFoc on 2026-09-27; added an unsupported-browser notice for non-local HTTP on 2026-09-29.
 Author review: Pending team review and visual verification.
 */
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,10 +14,23 @@ export const metadata: Metadata = {
 };
 
 // AI-generated (pending human review)
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host") ?? "";
+  const hostname = new URL(`http://${host || "localhost"}`).hostname;
+  const local = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+  const unsupported = requestHeaders.get("x-forwarded-proto") !== "https" && !local;
+
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>{unsupported ? (
+        <main className="auth-page">
+          <div className="auth-card">
+            <h1>Browser not supported</h1>
+            <p>GrabFOC does not support HTTP browsers.</p>
+          </div>
+        </main>
+      ) : children}</body>
     </html>
   );
 }

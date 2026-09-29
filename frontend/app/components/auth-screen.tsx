@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
-Scope: Created shared authentication UI; connected public registration and resend requests through the gateway, with six-digit OTP input, on 2026-09-27.
+Scope: Created shared authentication UI; connected registration, login and verification and displayed unconfirmed remote logout notices.
 Author review: Pending team review and visual verification.
 */
 "use client";
@@ -9,11 +9,13 @@ Author review: Pending team review and visual verification.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent, type ClipboardEvent } from "react";
+import { withSessionMutation } from "@/lib/session-client";
 
 type View = "signin" | "signup" | "verify";
 
 function noSubscription() { return () => {}; }
 function pendingEmailSnapshot() { return sessionStorage.getItem("pendingRegistrationEmail") ?? ""; }
+function logoutNoticeSnapshot() { return sessionStorage.getItem("logoutNotice") ?? ""; }
 function emptySnapshot() { return ""; }
 
 // AI-generated (pending human review)
@@ -46,13 +48,15 @@ function Field({ label, name, type = "text", placeholder, autoComplete, minLengt
 }
 
 // AI-generated (pending human review)
-function OtpInputs() {
+function OtpInputs({ onChange }: { onChange: (code: string) => void }) {
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   const [digits, setDigits] = useState(Array(6).fill("") as string[]);
 
   function update(index: number, value: string) {
     const digit = value.replace(/\D/g, "").slice(-1);
-    setDigits((current) => current.map((entry, position) => position === index ? digit : entry));
+    const next = digits.map((entry, position) => position === index ? digit : entry);
+    setDigits(next);
+    onChange(next.join(""));
     if (digit && index < 5) refs.current[index + 1]?.focus();
   }
 
@@ -65,6 +69,7 @@ function OtpInputs() {
     if (!pasted) return;
     event.preventDefault();
     setDigits(Array.from({ length: 6 }, (_, index) => pasted[index] ?? ""));
+    onChange(pasted);
     refs.current[Math.min(pasted.length, 5)]?.focus();
   }
 
@@ -94,15 +99,44 @@ export function AuthScreen({ view }: { view: View }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const pendingEmail = useSyncExternalStore(noSubscription, pendingEmailSnapshot, emptySnapshot);
+  const logoutNotice = useSyncExternalStore(noSubscription, logoutNoticeSnapshot, emptySnapshot);
   const [submitting, setSubmitting] = useState(false);
+  const [otp, setOtp] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (view !== "signup") {
-      setMessage("This action is unavailable right now. Please try again later.");
+    const data = new FormData(event.currentTarget);
+    if (view === "verify") {
+      if (!pendingEmail || otp.length !== 6) { setMessage("Enter the six-digit code sent to your email."); return; }
+      setSubmitting(true);
+      setMessage("");
+      try {
+        const response = await withSessionMutation(() => fetch("/api/session/verify", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: pendingEmail, otp }),
+        }));
+        if (!response.ok) { setMessage(await errorMessage(response, "Could not verify your code.")); return; }
+        sessionStorage.removeItem("pendingRegistrationEmail");
+        router.replace("/home");
+      } catch { setMessage("Could not reach the service. Please try again."); }
+      finally { setSubmitting(false); }
       return;
     }
-    const data = new FormData(event.currentTarget);
+    if (view === "signin") {
+      setSubmitting(true);
+      setMessage("");
+      try {
+        const response = await withSessionMutation(() => fetch("/api/session/login", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: String(data.get("email") ?? "").trim().toLowerCase(), password: String(data.get("password") ?? "") }),
+        }));
+        if (!response.ok) { setMessage(await errorMessage(response, "Could not sign in.")); return; }
+        sessionStorage.removeItem("logoutNotice");
+        router.replace("/home");
+      } catch { setMessage("Could not reach the service. Please try again."); }
+      finally { setSubmitting(false); }
+      return;
+    }
     const password = String(data.get("password") ?? "");
     if (password !== data.get("confirmPassword")) {
       setMessage("Passwords do not match.");
@@ -124,11 +158,7 @@ export function AuthScreen({ view }: { view: View }) {
         }),
       });
       if (!response.ok) {
-        const body: unknown = await response.json();
-        const detail = typeof body === "object" && body !== null && "error" in body &&
-          typeof body.error === "object" && body.error !== null && "message" in body.error &&
-          typeof body.error.message === "string" ? body.error.message : "Could not start sign-up. Please try again.";
-        setMessage(detail);
+        setMessage(await errorMessage(response, "Could not start sign-up. Please try again."));
         return;
       }
       sessionStorage.setItem("pendingRegistrationEmail", email);
@@ -171,9 +201,9 @@ export function AuthScreen({ view }: { view: View }) {
         {view === "verify" ? (
           <form className="auth-form auth-form--verify" onSubmit={handleSubmit}>
             <p className="verify-description">{pendingEmail ? `We have sent a verification code to ${pendingEmail}` : "Start sign-up to receive a verification code."}</p>
-            <OtpInputs />
+            <OtpInputs onChange={setOtp} />
             <p className="otp-resend">Didn’t receive the code? <button type="button" onClick={resendOtp} disabled={submitting}>Resend OTP</button></p>
-            <button className="auth-submit" type="submit">Confirm</button>
+            <button className="auth-submit" type="submit" disabled={submitting}>{submitting ? "Please wait…" : "Confirm"}</button>
           </form>
         ) : (
           <form className="auth-form" onSubmit={handleSubmit}>
@@ -192,19 +222,30 @@ export function AuthScreen({ view }: { view: View }) {
             )}
             <Field label="Password" name="password" type="password" placeholder={view === "signin" ? "Password" : "*******"} autoComplete={view === "signin" ? "current-password" : "new-password"} minLength={view === "signup" ? 8 : undefined} />
             {view === "signup" && <Field label="Confirm Password" name="confirmPassword" type="password" placeholder="*******" autoComplete="new-password" minLength={8} />}
-            {view === "signin" && <button className="forgot-link" type="button" onClick={() => setMessage("Password reset is unavailable right now. Please try again later.")}>Forgot password?</button>}
+            {view === "signin" && <Link className="forgot-link" href="/forgot-password">Forgot password?</Link>}
             <button className="auth-submit" type="submit" disabled={submitting}>{submitting ? "Please wait…" : view === "signin" ? "Sign In" : "Sign Up"}</button>
           </form>
         )}
 
+        {view === "signin" && logoutNotice && <p className="auth-message" role="status">{logoutNotice}</p>}
         {message && <p className="auth-message" role="status">{message}</p>}
         {view !== "verify" && (
           <p className="auth-footer">
             {view === "signin" ? "Don't have an account?" : "Already Have An Account?"}{" "}
-            <Link href={view === "signin" ? "/signup" : "/"}>{view === "signin" ? "Sign Up" : "Login"}</Link>
+            <Link href={view === "signin" ? "/signup" : "/signin"}>{view === "signin" ? "Sign Up" : "Login"}</Link>
           </p>
         )}
       </section>
     </main>
   );
+}
+
+async function errorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const body: unknown = await response.json();
+    if (typeof body === "object" && body !== null && "error" in body &&
+      typeof body.error === "object" && body.error !== null && "message" in body.error &&
+      typeof body.error.message === "string") return body.error.message;
+  } catch { /* malformed upstream error */ }
+  return fallback;
 }

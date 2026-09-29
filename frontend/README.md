@@ -1,21 +1,23 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented the frontend's current gateway connection for public registration requests.
+Scope: Documented frontend gateway requests, BFF-managed refresh, and local configuration.
 Author review: Pending team review and live integration test.
 -->
 
 # GrabFoc frontend
 
-The frontend runs on port 3000 by default. Sign-up and OTP resend use a same-origin `/api/gateway/*` rewrite to the API Gateway at `http://localhost:3003`. Set `FRONTEND_GATEWAY_URL` in the frontend process environment if the gateway has another address. The root `.env.example` lists the setting; when running Next.js from `frontend/`, put the value in `frontend/.env.local` or set it in your shell.
+The frontend runs on port 3000 by default. Copy `frontend/.env.example` to `frontend/.env.local` and set `FRONTEND_GATEWAY_URL` if the gateway is not at `http://localhost:3003`.
 
-Start the gateway and User Service, then run `npm install` and `npm run dev` from this folder. Sign-up calls `POST /auth/register` through the gateway. OTP resend calls `POST /auth/register/resend-otp`. Verification, sign-in, session storage, and protected data are pending the team-approved token flow. The verification UI uses six digits to match User Service.
+Start the gateway and User Service, then run `npm install` and `npm run dev` from this folder. The sign-in screen is `/signin`, the app Home is `/home`, and `/` checks the session before redirecting. `/locations` redirects to `/home`.
+
+Registration, resend, and password recovery use the same-origin `/api/gateway/*` rewrite. Sign-in and registration verification call Next.js `/api/session/*` handlers, which call the gateway and put tokens in HttpOnly, SameSite cookies. Protected profile and status requests send the bearer access token from Next.js. On a missing or rejected access token, Next.js calls `POST /auth/refresh` through the gateway, rotates both cookies, and retries the protected request once. Refresh 401 clears both cookies; an unavailable refresh keeps the session retryable. Browser tabs use Web Locks to serialize cookie-backed requests and session mutations; the Next.js process also coalesces requests presenting the same refresh token. Process coordination does not extend across multiple Next.js instances. Logout clears local cookies even if User Service logout fails; Sign In then warns that remote token revocation was not confirmed. The six-digit registration code is sent to `/auth/register/verify`. Profile displays User Service data; credit and order totals remain pending their own services.
 
 ## Check button destinations
 
-Run `npm run test:routes` from `frontend/`. The browser test uses an installed Microsoft Edge, starts an isolated Next.js instance and a fake gateway, clicks the controls, and asserts which requests arrive at the gateway. It does not require the real User or Supplier services or interrupt an existing Next.js dev server. Sign-in and Confirm currently make no gateway request; sign-up and Resend OTP do.
+Run `npm run test:routes` from `frontend/`. The browser test uses an installed Microsoft Edge, starts an isolated Next.js instance and a fake gateway, and checks login, registration, verification, recovery, profile, logout and concurrent refresh. It does not require the real User or Supplier services or interrupt an existing Next.js dev server.
 
-For a manual check, open the frontend in Edge, press F12, select **Network**, enable **Preserve log**, and click a button. Filter for `gateway`. Sign-up should show `POST /api/gateway/auth/register`; Resend OTP should show `POST /api/gateway/auth/register/resend-otp`. The browser sees the frontend path because Next.js rewrites it; the upstream gateway receives `/auth/register` or `/auth/register/resend-otp`. Never share a Network export containing passwords or tokens.
+For a manual check, open the frontend in Edge, press F12, select **Network**, enable **Preserve log**, and click a button. Sign-up should show `POST /api/gateway/auth/register`; Sign In should show `POST /api/session/login`. The browser sees frontend paths; Next.js sends the corresponding requests to the gateway. Never share a Network export containing passwords or tokens.
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 

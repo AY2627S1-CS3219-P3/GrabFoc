@@ -12,12 +12,12 @@ export function AppShell({ section, children }: { section: "profile" | "location
   return (
     <div className="app-shell">
       <header className="app-header">
-        <Link className="app-wordmark" href="/locations" aria-label="GrabFoc home">
+        <Link className="app-wordmark" href="/home" aria-label="GrabFoc home">
           <span className="auth-logo" aria-hidden="true">F</span>
           <span className="sr-only">GrabFoc</span>
         </Link>
         <nav className="app-nav" aria-label="Main navigation">
-          <Link href="/locations" aria-current={section === "locations" ? "page" : undefined}>Home</Link>
+          <Link href="/home" aria-current={section === "locations" ? "page" : undefined}>Home</Link>
           <span aria-disabled="true" title="Orders are not available yet">My Orders</span>
           <Link href="/profile" aria-current={section === "profile" ? "page" : undefined}>Profile</Link>
         </nav>
