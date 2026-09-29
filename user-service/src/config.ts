@@ -1,0 +1,112 @@
+/*
+ * AI Assistance Disclosure:
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
+ * Scope: Generated environment loading and validation, including the base64 key checks.
+ * Author review: Read in full; verified the service starts, migrates and serves /health under docker compose.
+ */
+import * as path from 'path';
+import { z } from 'zod';
+
+// Load the repo-root .env if it exists (it is git-ignored). Real env vars take precedence,
+// which is what lets compose.yaml point the service at the containers.
+try {
+  process.loadEnvFile(path.resolve(__dirname, '../../.env'));
+} catch {
+  // no .env file: rely on the environment
+}
+
+/**
+ * Only the variables this service reads TODAY are listed. Later Phase 0 steps add their own
+ * (JWT keys in step 3; Redis and SMTP in step 4), so the service still starts while the
+ * foundation is half-built. Every variable here also appears in the repo-root `.env.example`.
+ */
+/** A base64 secret that must decode to exactly `bytes` bytes. */
+const base64Key = (bytes: number) =>
+  z
+    .string()
+    .min(1, `required; generate one with: openssl rand -base64 ${bytes}`)
+    .refine((value) => Buffer.from(value, 'base64').length === bytes, {
+      message: `must be exactly ${bytes} bytes of base64 (openssl rand -base64 ${bytes})`,
+    });
+
+const EnvSchema = z.object({
+  USER_PORT: z.coerce.number().int().positive().default(3001),
+  USER_DATABASE_URL: z
+    .string()
+    .min(1, 'required, e.g. postgres://foc:<password>@localhost:5432/users'),
+  LOG_LEVEL: z.enum(['debug', 'verbose', 'log', 'warn', 'error']).default('log'),
+
+  // A separate key per purpose, so compromising one does not compromise the others
+  // (AGENTS.md, "Credential and personal-data storage"). A wrong-length AES key would
+  // otherwise only fail on the first registration, so it is checked here at boot.
+  USER_AES_KEY: base64Key(32),
+  USER_EMAIL_HMAC_KEY: base64Key(32),
+  USER_OTP_HMAC_KEY: base64Key(32),
+
+  // The RS256 signing key, as a PKCS#8 PEM that has been base64-encoded so it fits on one
+  // line. A PEM pasted raw into a .env file spans many lines, which neither the .env parser
+  // nor compose handles reliably. Decoded in src/auth/jwt.service.ts and nowhere else.
+  USER_JWT_PRIVATE_KEY: z
+    .string()
+    .min(1, 'required; see the README for how to generate a key pair')
+    .refine((v) => Buffer.from(v, 'base64').toString('utf8').includes('BEGIN PRIVATE KEY'), {
+      message: 'must be a base64-encoded PKCS#8 PEM (openssl genpkey ... | base64)',
+    }),
+  // Names the key in the JWKS and in each token's `kid` header, so the key can be rotated
+  // without every service rejecting tokens signed by the previous one.
+  USER_JWT_KID: z.string().min(1, 'required; any stable identifier, e.g. a date like 2026-09'),
+
+  USER_REDIS_URL: z.string().min(1, 'required, e.g. redis://localhost:6379'),
+
+  // SMTP. In development these point at the Mailpit container, which accepts anything and
+  // delivers nowhere, so the credentials are optional.
+  USER_SMTP_HOST: z.string().min(1, 'required, e.g. mailpit in compose or localhost'),
+  USER_SMTP_PORT: z.coerce.number().int().positive().default(1025),
+  USER_SMTP_USER: z.string().optional(),
+  USER_SMTP_PASS: z.string().optional(),
+  USER_SMTP_FROM: z.string().min(1).default('FoC <no-reply@foc.local>'),
+
+  // The address that becomes the first ADMIN, on the first start against an empty `users`
+  // table (AGENTS.md, "First admin"). Optional: a deployment that already has an admin does
+  // not need it, and leaving it unset must not stop the service booting.
+  //
+  // Deliberately NOT validated here as an email. The domain allowlist lives in
+  // `auth.schemas.ts`, which reaches `config` through the crypto helpers, so importing it
+  // back would be circular. `AdminBootstrapService` validates it at startup instead, which
+  // is still before the first request.
+  USER_BOOTSTRAP_ADMIN_EMAIL: z.string().optional(),
+});
+
+// `.env.example` ships every variable with an empty value, so a half-filled `.env` would
+// otherwise fail as `""` rather than fall back to the default. Treat empty as unset.
+const present = Object.fromEntries(
+  Object.entries(process.env).filter(([, value]) => value !== undefined && value !== ''),
+);
+
+const parsed = EnvSchema.safeParse(present);
+if (!parsed.success) {
+  const problems = parsed.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`);
+  // Fail at startup, not on the first request that needs the value.
+  throw new Error(`Invalid environment (see .env.example):\n${problems.join('\n')}`);
+}
+
+export const config = {
+  port: parsed.data.USER_PORT,
+  databaseUrl: parsed.data.USER_DATABASE_URL,
+  logLevel: parsed.data.LOG_LEVEL,
+  // Decoded once. Nothing outside src/crypto should read these.
+  aesKey: Buffer.from(parsed.data.USER_AES_KEY, 'base64'),
+  emailHmacKey: Buffer.from(parsed.data.USER_EMAIL_HMAC_KEY, 'base64'),
+  otpHmacKey: Buffer.from(parsed.data.USER_OTP_HMAC_KEY, 'base64'),
+  jwtPrivateKeyPem: Buffer.from(parsed.data.USER_JWT_PRIVATE_KEY, 'base64').toString('utf8'),
+  jwtKid: parsed.data.USER_JWT_KID,
+  redisUrl: parsed.data.USER_REDIS_URL,
+  smtp: {
+    host: parsed.data.USER_SMTP_HOST,
+    port: parsed.data.USER_SMTP_PORT,
+    user: parsed.data.USER_SMTP_USER,
+    pass: parsed.data.USER_SMTP_PASS,
+    from: parsed.data.USER_SMTP_FROM,
+  },
+  bootstrapAdminEmail: parsed.data.USER_BOOTSTRAP_ADMIN_EMAIL,
+};
