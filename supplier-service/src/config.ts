@@ -2,7 +2,7 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
  * Scope: Generated configuration loading (environment variables, .env file).
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; checked startup with and without `.env`, with a missing variable, and that dev auth is refused when NODE_ENV=production.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
  * Scope: Made SUPPLIER_JWKS_URL optional when SUPPLIER_DEV_AUTH=true (PR #30 review finding).
  * Author review: Jian Bing approved this security trade-off; pending his review on PR #30.

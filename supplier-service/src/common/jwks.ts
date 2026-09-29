@@ -4,7 +4,7 @@
  * Scope: Generated JWKS fetching/caching and RS256/ES256 token verification with node:crypto,
  *        following the same checks as api-gateway/src/auth.ts (team decision: every service
  *        verifies the forwarded token itself).
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; ran it with Postman and checked the 401 cases: expired token, unknown key and untrusted signature.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
  * Scope: Fixed PR #30 review findings: malformed or null JWKS bodies now raise
  *        JwksUnavailableError (503), concurrent refreshes share one fetch, and an unset

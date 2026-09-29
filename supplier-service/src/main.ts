@@ -2,7 +2,7 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
  * Scope: Generated the application entry point.
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; confirmed the service starts, logs the dev-auth warning when the flag is on, and shuts down cleanly.
  */
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
