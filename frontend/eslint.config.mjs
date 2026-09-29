@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Ignored the generated browser test build directory during linting.
-Author review: Pending team review.
+Author review: Jie Yang reviewed this file; team review remains pending.
 */
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";

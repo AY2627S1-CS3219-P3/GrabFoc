@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
 Scope: Created shared authentication UI; connected registration, login and verification; added reusable error feedback on 2026-09-29.
-Author review: Pending team review and visual verification.
+Author review: Jie Yang reviewed this file; team visual verification remains pending.
 */
 "use client";
 

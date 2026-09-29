@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Added logout and local session clearing after remote failure; used shared token rotation to revoke refresh-only sessions on 2026-09-29.
-Author review: Pending frontend owner review.
+Author review: Jie Yang reviewed this file.
 */
 import { NextRequest, NextResponse } from 'next/server';
 import { rotateRefreshToken } from '@/lib/protected-gateway';

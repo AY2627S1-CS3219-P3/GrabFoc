@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Documented frontend gateway requests, BFF-managed refresh, local configuration, reusable User Service error feedback, and Supplier browsing and management on 2026-09-29.
-Author review: Pending team review and live integration test.
+Author review: Jie Yang reviewed this file; live integration testing remains pending.
 -->
 
 # GrabFoc frontend

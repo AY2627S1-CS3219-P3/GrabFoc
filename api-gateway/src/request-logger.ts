@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Added request IDs and structured completion and failure logging without sensitive data.
-Author review: Pending gateway owner review.
+Author review: Jie Yang reviewed this file.
 */
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';

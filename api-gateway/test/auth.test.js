@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Checked JWT signature, expiry and issuer verification; distinguished JWKS failure on 2026-09-28.
-Author review: Pending gateway owner review.
+Author review: Jie Yang reviewed this file.
 */
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';

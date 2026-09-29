@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Added frontend types and error handling for the existing Supplier location contract.
-Author review: Pending team review and live integration verification.
+Author review: Jie Yang reviewed this file; live integration verification remains pending.
 */
 export type Location = {
   id: number;

@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Added live Supplier location listing, search, filters, sorting, pagination and admin navigation; added retryable location-type loading on 2026-09-29.
-Author review: Pending team review and visual verification.
+Author review: Jie Yang reviewed this file; team visual verification remains pending.
 */
 "use client";
 

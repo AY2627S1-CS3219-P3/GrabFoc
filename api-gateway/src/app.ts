@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Separated route dispatch, authentication, logging and gateway errors from startup.
-Author review: Pending gateway owner review.
+Author review: Jie Yang reviewed this file.
 */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { authenticate, type TokenVerifier } from './authenticate.js';

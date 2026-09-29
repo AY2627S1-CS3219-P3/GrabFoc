@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Documented gateway setup and integration boundaries; clarified gateway-local .env loading on 2026-09-28.
-Author review: Pending gateway owner review.
+Author review: Jie Yang reviewed this file.
 -->
 
 # API Gateway

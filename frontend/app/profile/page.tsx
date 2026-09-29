@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Loaded self profile and logout; added retryable load errors and operation toasts on 2026-09-29.
-Author review: Pending team review; no Figma profile frame exists.
+Author review: Jie Yang reviewed this file; team visual review remains pending because there is no Figma profile frame.
 */
 "use client";
 

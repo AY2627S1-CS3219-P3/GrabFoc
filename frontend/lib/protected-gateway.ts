@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Added protected requests and in-flight refresh coordination; reused rotation for expired-access logout on 2026-09-29; supported Supplier methods and verified-role display on 2026-09-29; confirmed Supplier-only 401s with User Service on 2026-09-29.
-Author review: Pending frontend owner review and live User Service verification.
+Author review: Jie Yang reviewed this file; live User Service verification remains pending.
 */
 import 'server-only';
 import { createHash } from 'node:crypto';

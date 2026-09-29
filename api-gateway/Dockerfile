@@ -1,7 +1,7 @@
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-09-27
 # Scope: Added container build for the API Gateway; aligned exposed port with the service defaults.
-# Author review: Pending gateway owner review.
+# Author review: Jie Yang reviewed this file.
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json tsconfig.json ./

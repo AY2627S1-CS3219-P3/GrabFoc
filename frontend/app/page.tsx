@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
 Scope: Redirected the root route according to the gateway-backed session state.
-Author review: Pending team review and visual verification.
+Author review: Jie Yang reviewed this file; team visual verification remains pending.
 */
 "use client";
 

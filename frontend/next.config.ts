@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Added a same-origin rewrite from frontend API calls to the API Gateway and isolated the browser test build directory.
-Author review: Pending team review and integration test.
+Author review: Jie Yang reviewed this file; integration testing remains pending.
 */
 import type { NextConfig } from "next";
 

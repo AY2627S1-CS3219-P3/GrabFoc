@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
 Scope: Updated page metadata and removed starter font styling for the Figma UI; renamed page metadata to GrabFoc on 2026-09-27; added an unsupported-browser notice for non-local HTTP on 2026-09-29.
-Author review: Pending team review and visual verification.
+Author review: Jie Yang reviewed this file; team visual verification remains pending.
 */
 import type { Metadata } from "next";
 import { headers } from "next/headers";

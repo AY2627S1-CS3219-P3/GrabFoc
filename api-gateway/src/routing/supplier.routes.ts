@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Moved implemented Supplier Service route definitions out of the gateway request handler.
-Author review: Pending gateway owner review.
+Author review: Jie Yang reviewed this file.
 */
 import type { GatewayRoute } from './types.js';
 

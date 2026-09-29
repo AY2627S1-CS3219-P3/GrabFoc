@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Verified gateway-local .env loading and shell-variable precedence.
-Author review: Pending gateway owner review.
+Author review: Jie Yang reviewed this file.
 */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';

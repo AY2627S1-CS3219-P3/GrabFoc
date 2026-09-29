@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Verified session flows, denial logging, refresh-only logout, reusable error feedback, Supplier browsing and management filters, retries, refreshed edits, and downstream 401 handling on 2026-09-29.
-Author review: Pending team review and local browser verification.
+Author review: Jie Yang reviewed this file; local browser verification remains pending.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";

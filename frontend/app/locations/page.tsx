@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Redirected the former locations page to the Home route.
-Author review: Pending frontend owner review.
+Author review: Jie Yang reviewed this file.
 */
 import { redirect } from "next/navigation";
 

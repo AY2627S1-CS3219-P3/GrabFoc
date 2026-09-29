@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Added validated gateway configuration; loaded only the gateway's own .env on 2026-09-28.
-Author review: Pending gateway owner review.
+Author review: Jie Yang reviewed this file.
 */
 
 import { fileURLToPath } from 'node:url';

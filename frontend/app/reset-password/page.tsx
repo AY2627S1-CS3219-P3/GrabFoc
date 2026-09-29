@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Added the reset-password page.
-Author review: Pending frontend owner review.
+Author review: Jie Yang reviewed this file.
 */
 import { RecoveryScreen } from "../components/recovery-screen";
 

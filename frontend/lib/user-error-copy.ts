@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Mapped User Service error codes to user-facing copy without coupling the shared parser to one service.
-Author review: Pending frontend owner review.
+Author review: Jie Yang reviewed this file.
 */
 import type { ServiceError } from './service-errors';
 

@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Added password recovery forms; mapped service errors to reusable toast and field feedback on 2026-09-29.
-Author review: Pending frontend owner review.
+Author review: Jie Yang reviewed this file.
 */
 "use client";
 

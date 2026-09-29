@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
 Scope: Added responsive authentication and app styles; updated six-digit OTP inputs and added reusable toast, field-error, and Supplier browsing and management styles on 2026-09-29.
-Author review: Pending team review and visual verification.
+Author review: Jie Yang reviewed this file; team visual verification remains pending.
 */
 :root {
   --auth-background: #f8faff;

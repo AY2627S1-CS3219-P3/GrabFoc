@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Added an allowlisted, cookie-backed Supplier gateway route for location browsing and management; confirmed downstream 401s with User Service on 2026-09-29.
-Author review: Pending team review and live integration verification.
+Author review: Jie Yang reviewed this file; live integration verification remains pending.
 */
 import { NextRequest, NextResponse } from 'next/server';
 import { protectedGateway } from '@/lib/protected-gateway';

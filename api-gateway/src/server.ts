@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Reduced the gateway entry point to configuration and startup.
-Author review: Pending gateway owner review.
+Author review: Jie Yang reviewed this file.
 */
 import { createGateway } from './app.js';
 import { loadConfig } from './config.js';

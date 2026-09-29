@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Added login cookies and strict input validation; logged rejected origins and upstream 401/403 responses on 2026-09-29.
-Author review: Pending frontend owner review.
+Author review: Jie Yang reviewed this file.
 */
 import { NextRequest, NextResponse } from 'next/server';
 import { forbiddenOrigin, gateway, logAccessDenial, sameOrigin, setSession, unavailable, validTokens } from '@/lib/session-server';

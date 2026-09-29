@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Added stream-based forwarding; forwarded request IDs and isolated upstream failures on 2026-09-28.
-Author review: Pending gateway owner review.
+Author review: Jie Yang reviewed this file.
 */
 import { request as httpRequest, type IncomingMessage, type ServerResponse } from 'node:http';
 import { request as httpsRequest } from 'node:https';

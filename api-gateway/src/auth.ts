@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Added gateway verification of User Service bearer JWTs; distinguished JWKS outages from invalid tokens on 2026-09-28.
-Author review: Pending gateway owner review and User Service signing contract confirmation.
+Author review: Jie Yang reviewed this file; User Service signing contract confirmation remains pending.
 */
 import { createPublicKey, verify as verifySignature, type JsonWebKey } from 'node:crypto';
 import type { Config } from './config.js';

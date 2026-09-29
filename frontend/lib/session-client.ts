@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Serialized cookie-backed BFF requests and session mutations across browser tabs; exposed the validated session role for location controls on 2026-09-29.
-Author review: Pending frontend owner review.
+Author review: Jie Yang reviewed this file.
 */
 'use client';
 

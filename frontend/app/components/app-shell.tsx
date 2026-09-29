@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Added shared navigation for the User and location pages, using the existing authentication visual tokens.
-Author review: Pending team review; no Figma frames exist for these pages.
+Author review: Jie Yang reviewed this file; team visual review remains pending because these pages have no Figma frames.
 */
 import Link from "next/link";
 import type { ReactNode } from "react";

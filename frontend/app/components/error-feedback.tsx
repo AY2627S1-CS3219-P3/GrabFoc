@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Added reusable accessible toast and inline field feedback for service forms.
-Author review: Pending frontend owner review and visual verification.
+Author review: Jie Yang reviewed this file; visual verification remains pending.
 */
 "use client";
 

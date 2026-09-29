@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Moved the location listing shell to /home; added live Supplier browsing on 2026-09-29.
-Author review: Pending team review; no Figma location frame or Supplier API contract exists.
+Author review: Jie Yang reviewed this file; team visual review and live Supplier integration verification remain pending.
 */
 "use client";
 

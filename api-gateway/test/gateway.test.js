@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Added gateway routing and authentication boundary checks; verified refactored routing, request IDs and errors on 2026-09-28.
-Author review: Pending gateway owner review.
+Author review: Jie Yang reviewed this file.
 */
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';

@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Normalized User Service errors and RFC 9457 Problem Details for reusable frontend feedback.
-Author review: Pending frontend owner review.
+Author review: Jie Yang reviewed this file.
 */
 export type FieldIssue = { field: string; message: string };
 export type ServiceError = {
