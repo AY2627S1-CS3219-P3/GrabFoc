@@ -5,7 +5,9 @@
  * Author review (Cole Lin): Read in full; checked startup with and without `.env`, with a missing variable, and that dev auth is refused when NODE_ENV=production.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
  * Scope: Made SUPPLIER_JWKS_URL optional when SUPPLIER_DEV_AUTH=true (PR #30 review finding).
- * Author review: Jian Bing approved this security trade-off; pending his review on PR #30.
+ * Author review (Jian Bing): Approved this security trade-off (a bearer token without a JWKS URL
+ *        gets 503, never accepted), then approved and merged PR #30 after its review threads and
+ *        CI were checked.
  */
 import { existsSync } from 'fs';
 import * as path from 'path';

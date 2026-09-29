@@ -5,7 +5,9 @@ Scope: Generated run and test instructions for the Supplier Service.
 Author review (Cole Lin): Read in full; followed the steps on a clean setup and confirmed they work.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Added the "Run with Docker Compose" section.
-Author review: pending — to be completed by the reviewing team member.
+Author review (Jian Bing): Asked for it with supplier-service/compose.yaml; the commands are the ones
+Claude Code ran in its 2026-09-29 test of the compose file. Ran `docker compose up --build` myself:
+the service started on 3002 and GET /locations without a token returned 401.
 -->
 
 # Supplier Service

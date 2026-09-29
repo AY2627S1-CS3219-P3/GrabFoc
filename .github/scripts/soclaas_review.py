@@ -3,10 +3,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 # Scope: Added SOCLAAS_INTERMEDIATES and its SSL context to work around the
 #   SoCLaaS server's incomplete certificate chain.
-# Author review: Jian Bing reviewed the diagnosis (server omits its intermediate
-#   certificate), chose this stopgap over waiting for the SoCLaaS admins, and supplied
-#   the reviewer name for the marker below. To confirm after merge: a SoCLaaS review
-#   re-run succeeds.
+# Author review (Jian Bing): Reviewed the diagnosis (the server omitted its intermediate
+#   certificate) and chose this stopgap over waiting for the SoCLaaS admins; passed on Codex's
+#   VERIFY_X509_PARTIAL_CHAIN finding, which was then fixed. After merging PR #36, SoCLaaS
+#   reviews completed again on PRs #30 and #33 (2026-09-29).
 """A diff reviewer using GitHub's REST API and SoCLaaS Chat Completions.
 
 Python 3.10+, standard library only. Never checks out or executes PR content.

@@ -2,10 +2,13 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 # Scope: Generated this file, following user-service/compose.yaml: the Supplier Service and
 #        its own PostgreSQL container, included from the root compose.yaml.
-# Author review: pending — Jian Bing asked for it; to be completed by the reviewing team member.
-# Tool: Codex (model: GPT-6), date: 2026-09-29
-# Scope: Required an explicit Supplier database password when reconciling PR #33 with the local integration.
-# Author review: Pending team review.
+# Author review (Jian Bing): Asked for this file and supplied Jie Yang's draft; kept its separate
+#        SUPPLIER_POSTGRES_PASSWORD and host port 5434. Checked the results of Claude Code's test run
+#        on 2026-09-29: standalone, 21 locations seeded, 401 without a token, 503 with one, data kept
+#        across down/up; whole stack, User Service tokens accepted and forged ones rejected, and only
+#        the Supplier variables reach the container. Ran it myself on 2026-09-29 (docker compose up
+#        --build in supplier-service/): the image built, 21 locations were seeded, the service
+#        listened on 3002 and supplier-db on 5434, and GET /locations without a token returned 401.
 #
 # The Supplier Service and the database only it uses. Its database is its own — no other
 # service connects to supplier-db (root AGENTS.md §3). The root compose.yaml includes this file.
@@ -25,9 +28,10 @@ services:
     image: postgres:17-alpine
     environment:
       # Supplied by the git-ignored .env so no working credential lives in the repository.
+      # The fallback keeps `docker compose up` working on a fresh clone; override it in .env.
       POSTGRES_USER: foc
       # Its own password, separate from user-db's POSTGRES_PASSWORD.
-      POSTGRES_PASSWORD: ${SUPPLIER_POSTGRES_PASSWORD:?Set SUPPLIER_POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${SUPPLIER_POSTGRES_PASSWORD:-change-me-in-dotenv}
       POSTGRES_DB: supplier
     ports:
       # 5434 on the host, because user-db already publishes 5432.
@@ -55,7 +59,7 @@ services:
     environment:
       # Inside the compose network the hostnames are the service names, not localhost.
       SUPPLIER_PORT: 3002
-      SUPPLIER_DATABASE_URL: postgres://foc:${SUPPLIER_POSTGRES_PASSWORD:?Set SUPPLIER_POSTGRES_PASSWORD in .env}@supplier-db:5432/supplier
+      SUPPLIER_DATABASE_URL: postgres://foc:${SUPPLIER_POSTGRES_PASSWORD:-change-me-in-dotenv}@supplier-db:5432/supplier
       SUPPLIER_JWKS_URL: http://user-service:3001/.well-known/jwks.json
       # Optional; checked only when set in .env.
       SUPPLIER_JWT_ISSUER: ${SUPPLIER_JWT_ISSUER:-}
