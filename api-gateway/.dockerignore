@@ -1,0 +1,11 @@
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-09-29
+# Scope: Excluded local dependencies, build output, and environment secrets from the gateway image context.
+# Author review: Pending Jie Yang's review.
+
+node_modules
+dist
+.env
+.env.*
+!.env.example
+*.log

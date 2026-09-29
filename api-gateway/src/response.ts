@@ -1,0 +1,14 @@
+/*
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-09-28
+Scope: Centralized small JSON gateway responses and guarded error responses.
+Author review: Jie Yang reviewed this file.
+*/
+import type { ServerResponse } from 'node:http';
+
+// AI-generated (reviewed by Jie Yang)
+export function json(response: ServerResponse, status: number, body: object): void {
+  if (response.headersSent || response.writableEnded) return;
+  response.writeHead(status, { 'content-type': 'application/json' });
+  response.end(JSON.stringify(body));
+}
