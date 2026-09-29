@@ -856,7 +856,9 @@ branch, being the newest Supplier PR.
 kept across `down`/`up`. Whole stack: the Supplier container fetched the User Service's JWKS; tokens
 signed with its key got 200 (USER), 403 (USER on `includeInactive`) and 200 (ADMIN), and a token signed
 with another key got 401. SoCLaaS's claim that the root `include` leaks `.env` into the container was
-checked and found wrong. Not yet run on my own machine.
+checked and found wrong. I then ran `docker compose up --build` in `supplier-service/` myself: the
+image built, 21 locations were seeded, the service listened on 3002 and `supplier-db` on 5434, and
+`GET /locations` without a token returned 401.
 
 ### 2026-09-29 — SoCLaaS review failures and a TLS stopgap (PR #36)
 
