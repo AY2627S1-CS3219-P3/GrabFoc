@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented frontend gateway requests, BFF-managed refresh, local configuration, and Supplier browsing and management on 2026-09-29.
+Scope: Documented frontend gateway requests, BFF-managed refresh, local configuration, reusable User Service error feedback, and Supplier browsing and management on 2026-09-29.
 Author review: Pending team review and live integration test.
 -->
 
@@ -12,6 +12,8 @@ The frontend runs on port 3000 by default. Copy `frontend/.env.example` to `fron
 Start the gateway, User Service, and Supplier Service, then run `npm install` and `npm run dev` from this folder. The sign-in screen is `/signin`, the app Home is `/home`, and `/` checks the session before redirecting. `/locations` redirects to `/home`. Home shows live Supplier locations with name search, type, building, opening-time and name-order filters, plus pagination. Admins can use `/admin/locations` to create, edit, deactivate and restore locations; Supplier Service enforces the role independently.
 
 Registration, resend, and password recovery use the same-origin `/api/gateway/*` rewrite. Sign-in and registration verification call Next.js `/api/session/*` handlers, which call the gateway and put tokens in HttpOnly, SameSite cookies. Protected profile and status requests send the bearer access token from Next.js. On a missing or rejected access token, Next.js calls `POST /auth/refresh` through the gateway, rotates both cookies, and retries the protected request once. Refresh 401 clears both cookies; an unavailable refresh keeps the session retryable. Browser tabs use Web Locks to serialize cookie-backed requests and session mutations; the Next.js process also coalesces requests presenting the same refresh token. Process coordination does not extend across multiple Next.js instances. Logout clears local cookies even if User Service logout fails; Sign In then warns that remote token revocation was not confirmed. The six-digit registration code is sent to `/auth/register/verify`. Profile displays User Service data; credit and order totals remain pending their own services.
+
+User Service errors are parsed into a shared frontend shape. Known codes control messages and retry details, validation fields appear beside inputs, and operation failures appear in a dismissible toast. The parser also accepts Supplier Service's current RFC 9457 Problem Details response so later services can use the same UI components without changing their response contracts.
 
 ## Check button destinations
 

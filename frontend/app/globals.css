@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
-Scope: Added responsive authentication and app styles; updated OTP inputs for the six-digit User Service contract on 2026-09-27; styled Supplier browsing and management, including management filter wrapping, on 2026-09-29.
+Scope: Added responsive authentication and app styles; updated six-digit OTP inputs and added reusable toast, field-error, and Supplier browsing and management styles on 2026-09-29.
 Author review: Pending team review and visual verification.
 */
 :root {
@@ -105,6 +105,13 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .auth-footer { margin: 19px 0 0; color: var(--auth-muted); text-align: center; font-size: 12px; line-height: 17px; }
 .auth-footer a { color: #526078; font-weight: 700; text-decoration: none; }
 .auth-message { margin: 12px 0 0; color: #526078; font-size: 12px; line-height: 18px; text-align: center; }
+.field-error { color: #b42318; font-size: 12px; line-height: 1.4; }
+.auth-field input[aria-invalid="true"], .phone-fields input[aria-invalid="true"] { border-color: #d92d20; }
+.error-toast { position: fixed; z-index: 50; top: 20px; right: 20px; width: min(380px, calc(100vw - 32px)); display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid #fecdca; border-radius: 10px; background: #fff8f7; color: #7a271a; box-shadow: 0 8px 24px rgb(18 21 28 / 12%); font-size: 13px; line-height: 1.5; }
+.error-toast button { flex: none; border: 0; padding: 0 2px; background: transparent; color: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+.load-error { margin: 14px 0; padding: 12px; border: 1px solid #fecdca; border-radius: 8px; background: #fff8f7; color: #7a271a; font-size: 13px; }
+.load-error p { margin: 0 0 8px; }
+.load-error button { border: 0; padding: 0; background: transparent; color: #174db5; font-weight: 700; cursor: pointer; }
 
 .auth-page--signin .auth-card { min-height: 452px; }
 .auth-page--signin .auth-card h1 { margin-top: 42px; }
@@ -123,6 +130,7 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .auth-form--verify .auth-submit { height: 54px; margin-top: 10px; background: #5787e2; font-size: 15px; }
 
 @media (max-width: 639px) {
+  .error-toast { top: auto; right: 16px; bottom: 16px; }
   .auth-page { display: block; min-height: 100svh; padding: 0 24px 40px; }
   .auth-card { width: 100%; min-height: 0 !important; padding: 92px 0 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
   .auth-card h1 { margin-top: 66px; margin-bottom: 23px; font-size: 18px; }
