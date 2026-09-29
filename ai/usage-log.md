@@ -36,6 +36,9 @@ Author review: Pending Jie Yang's review of the merge resolution.
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Recorded the approved gateway and frontend Compose implementation and its verification.
 Author review: Pending Jie Yang's review of the Compose change.
+Tool: Codex (model: GPT-6), date: 2026-09-29
+Scope: Recorded the frontend origin-check fix and Docker regression verification.
+Author review: Pending Jie Yang's review of the security fix.
 -->
 
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
@@ -999,6 +1002,23 @@ scan. I'll inspect the repository settings and existing workflow first."
 the repository switched to advanced setup.
 
 ## Jie Yang
+
+### 2026-09-29 23:41 SGT — Fix frontend origin check in Docker
+
+**Tool:** Codex (GPT-6) · **Mode:** debug
+**Files:** `frontend/lib/session-server.ts`, `ai/usage-log.md`
+
+**Scenario:** Same-origin POST and PATCH requests from `http://localhost:3000` were rejected before reaching the gateway because Next.js exposed an internal container origin in `request.nextUrl.origin`.
+
+**Prompt (exact):**
+
+~~~text
+fix the origin name mismatch
+~~~
+
+**What it produced:** Compared the browser Origin with the request Host and protocol, and reused that check for cookie reads carrying an Origin header. Missing and mismatched origins remain rejected.
+**What I changed or rejected:** Pending Jie Yang's review; did not disable the origin guard or accept arbitrary forwarded hosts.
+**Verification:** Docker frontend rebuilt; same-origin deactivate POST returned 401 without a session instead of an origin 403; forged and missing origins returned 403; login POST reached input validation; frontend route tests passed 34/34.
 
 ### 2026-09-29 23:23 SGT — Add gateway and frontend to root Compose
 

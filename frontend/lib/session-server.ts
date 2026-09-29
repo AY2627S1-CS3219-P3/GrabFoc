@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
-Scope: Added server-only gateway calls and HttpOnly session cookie handling; bounded gateway waits and logged origin rejections on 2026-09-29.
-Author review: Jie Yang reviewed this file.
+Scope: Added server-only gateway calls and HttpOnly session cookie handling; bounded gateway waits and logged origin rejections; compared mutation origins with the browser-facing Host header on 2026-09-29.
+Author review: Jie Yang reviewed the earlier implementation; the Docker origin fix awaits his review.
 */
 import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
@@ -23,13 +23,18 @@ export async function gateway(path: string, init?: RequestInit): Promise<Respons
 
 export function sameOrigin(request: NextRequest): boolean {
   const origin = request.headers.get('origin');
-  return origin === request.nextUrl.origin;
+  const host = request.headers.get('host');
+  if (!origin || !host) return false;
+  try {
+    const parsed = new URL(origin);
+    return parsed.origin === origin && parsed.protocol === request.nextUrl.protocol && parsed.host === host;
+  } catch { return false; }
 }
 
 // AI-generated (pending human review)
 export function sameOriginCookieRead(request: NextRequest): boolean {
   const origin = request.headers.get('origin');
-  if (origin) return origin === request.nextUrl.origin;
+  if (origin) return sameOrigin(request);
   return request.headers.get('sec-fetch-site') === 'same-origin';
 }
 
