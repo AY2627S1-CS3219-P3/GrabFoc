@@ -1551,3 +1551,66 @@ operable program or batch file.
 - Key response: Reproduced the stuck session screen at the reported address; the session-status request returned 403. Its page also failed to hydrate, so the notice is rendered by the server layout for HTTP on non-local hosts while keeping localhost and HTTPS available.
 - Files: `frontend/app/layout.tsx`.
 - Human review: Pending.
+
+## 2026-09-29 — Reusable frontend error handling
+
+- Tool and mode: Codex (GPT-6), generate, debug, explain.
+- Usage scenario: Add reusable service-error parsing, toast feedback and form field errors on the User integration branch, with a stacked PR workflow.
+- Exact user prompts:
+
+~~~text
+the user service integration branch can be accessed to work on reading the response to receive the proper errors
+can we define proper error handling and error popups on the front end ? update the user service integration branch to the latest  and branch out to handle the errors.
+
+The supplier service should also define the proper errors
+{
+    "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "The request is invalid.",
+        "details": {
+            "fields": [
+                {
+                    "field": "email",
+                    "message": "must be a valid email address"
+                },
+                {
+                    "field": "email",
+                    "message": "must be an NUS address (@u.nus.edu or @nus.edu.sg)"
+                }
+            ]
+        }
+    }
+}
+
+Once done, create the relevant PRs to merge user error handling to user service integration and back to service integration. The error handling on the front end should be extensible to other future services like order service etc. The other services also have certain fields to fill out and it'll be good if we can have a error handling for user and other services too
+
+PLEASE IMPLEMENT THIS PLAN:
+# Reusable frontend error handling
+
+## Summary
+
+Update `feature/frontend-user-service-integration` from the latest `main`, then create `feature/frontend-user-error-handling`. Implement error handling on User Service screens using components and a response parser that Supplier, Order, and future forms can reuse.
+
+## Implementation
+
+- Add a shared parser that normalizes User Service’s `{ error: { code, message, details } }` and Supplier’s current RFC 9457 Problem Details into a frontend error type. Keep parsing separate from service-specific code-to-message rules. Handle malformed responses with safe defaults.
+- Add an accessible, dismissible toast for operation failures and reusable inline field errors for validation. Each form supplies its backend-to-frontend field mapping, including `displayName` → Full Name. Keep a visible retry action for failed page loads.
+- Apply the system to sign-in, sign-up, OTP verification and resend, password recovery, and profile loading and logout. Handle known User Service codes such as `EMAIL_TAKEN`, `OTP_INVALID`, `OTP_EXPIRED`, `ACCOUNT_LOCKED`, and `RATE_LIMITED`; preserve password recovery’s account-enumeration protection.
+- Keep service response shapes unchanged. Supplier backend codes and field-detail extensions need Supplier owner approval, so that contract change belongs in a separate Supplier PR. Supplier screens from PR #37 are outside this round.
+
+## Verification and PRs
+
+- Test validation fields, known error codes, retry details, malformed responses, toast dismissal, page-load retry, and password recovery behavior. Run frontend route tests, lint, and build.
+- Open PR 1 from `feature/frontend-user-error-handling` into `feature/frontend-user-service-integration`. After PR 1 is reviewed and merged, open PR 2 from the updated User integration branch into `feature/frontend-service-integration`. Do not merge either PR automatically.
+- Record AI assistance and add file disclosures as required by `AGENTS.md`.
+
+## Assumptions
+
+- “Latest” means the remote `main` at implementation time.
+- The shared parser supports Supplier’s current response format now; it does not depend on the pending Supplier API decision.
+- Only User Service screens adopt the new UI in this round. Future services use the same parser, toast, and field-error components.
+~~~
+
+- Key response: Updated the User integration branch from main, created `feature/frontend-user-error-handling`, normalized both existing error envelopes, and added reusable toast and field feedback to the User screens. Supplier Service's response contract remains pending its owner's approval.
+- Files: `frontend/lib/service-errors.ts`, `frontend/lib/user-error-copy.ts`, `frontend/app/components/error-feedback.tsx`, User frontend screens, `frontend/app/globals.css`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `ai/usage-log.md`.
+- Human review: Pending PR review and manual UI inspection.

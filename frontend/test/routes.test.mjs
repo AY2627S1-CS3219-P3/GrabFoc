@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified session flows, denial logging, and refresh-only logout revocation with local clearing on 2026-09-29.
+Scope: Verified session flows, denial logging, refresh-only logout, and reusable frontend error feedback on 2026-09-29.
 Author review: Pending team review and local browser verification.
 */
 import assert from "node:assert/strict";
@@ -54,6 +54,50 @@ const gateway = createServer(async (request, response) => {
   if (request.url === "/auth/login" && body.email === "forbidden@u.nus.edu") {
     response.writeHead(403, { "content-type": "application/json" });
     response.end(JSON.stringify({ error: { message: "Sign-in forbidden." } }));
+    return;
+  }
+  if (request.url === "/auth/login" && body.email === "locked@u.nus.edu") {
+    response.writeHead(423, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: { code: "ACCOUNT_LOCKED", message: "Account locked", details: { retryAfterSeconds: 120 } } }));
+    return;
+  }
+  if (request.url === "/auth/register" && body.email === "invalid@u.nus.edu") {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: { code: "VALIDATION_ERROR", message: "The request is invalid.", details: { fields: [
+      { field: "displayName", message: "must be at least 2 characters" },
+      { field: "email", message: "must be an NUS address" },
+      { field: "email", message: "must be unique" },
+    ] } } }));
+    return;
+  }
+  if (request.url === "/auth/register" && body.email === "taken@u.nus.edu") {
+    response.writeHead(409, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: { code: "EMAIL_TAKEN", message: "Email conflict" } }));
+    return;
+  }
+  if (request.url === "/auth/register" && body.email === "broken@u.nus.edu") {
+    response.writeHead(502, { "content-type": "text/plain" });
+    response.end("upstream error");
+    return;
+  }
+  if (request.url === "/auth/register/verify" && body.otp === "111111") {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: { code: "OTP_INVALID", message: "Wrong code", details: { attemptsRemaining: 2 } } }));
+    return;
+  }
+  if (request.url === "/auth/register/verify" && body.otp === "222222") {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: { code: "OTP_EXPIRED", message: "Expired code" } }));
+    return;
+  }
+  if (request.url === "/auth/password/reset" && body.otp === "333333") {
+    response.writeHead(429, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: { code: "RATE_LIMITED", message: "Slow down", details: { retryAfterSeconds: 90 } } }));
+    return;
+  }
+  if (request.url === "/auth/password/reset" && body.otp === "444444") {
+    response.writeHead(400, { "content-type": "application/problem+json" });
+    response.end(JSON.stringify({ type: "about:blank", title: "Bad Request", status: 400, detail: "Invalid reset code" }));
     return;
   }
   if (request.url === "/auth/logout" && failLogout) {
@@ -253,9 +297,98 @@ test("invalid credentials stay on Sign In and show the service error", async () 
     await page.getByLabel("Email").fill("wrong@u.nus.edu");
     await page.getByLabel("Password").fill("wrong-password");
     await page.getByRole("button", { name: "Sign In" }).click();
-    await page.getByRole("status").getByText("Invalid email or password.").waitFor();
+    await page.getByRole("alert").getByText("Invalid email or password.").waitFor();
     assert.equal(new URL(page.url()).pathname, "/signin");
   } finally { await page.close(); }
+});
+
+test("registration validation maps service fields and the toast can be dismissed", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/signup`);
+    await page.locator('[name="fullName"]').fill("Alex Tan");
+    await page.locator('[name="email"]').fill("invalid@u.nus.edu");
+    await page.locator('[name="mobileNumber"]').fill("91234567");
+    await page.locator('[name="password"]').fill("Passw0rdSafe");
+    await page.locator('[name="confirmPassword"]').fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign Up" }).click();
+    await page.getByText("must be at least 2 characters").waitFor();
+    await page.getByText("must be an NUS address").waitFor();
+    await page.getByText("must be unique").waitFor();
+    assert.equal(await page.locator('[name="fullName"]').getAttribute("aria-invalid"), "true");
+    assert.equal(await page.locator('[name="email"]').getAttribute("aria-invalid"), "true");
+    await page.getByRole("alert").getByText("Please check the highlighted fields.").waitFor();
+    await page.getByRole("button", { name: "Dismiss error" }).click();
+    assert.equal(await page.locator(".error-toast").count(), 0);
+    await page.locator('[name="email"]').fill("taken@u.nus.edu");
+    await page.getByRole("button", { name: "Sign Up" }).click();
+    await page.getByRole("alert").getByText("This email is already registered.").waitFor();
+    await page.getByText("This email is already registered.").first().waitFor();
+    await page.locator('[name="email"]').fill("broken@u.nus.edu");
+    await page.getByRole("button", { name: "Sign Up" }).click();
+    await page.getByRole("alert").getByText("Could not start sign-up. Please try again.").waitFor();
+  } finally { await page.close(); }
+});
+
+test("lockout and OTP errors use service codes and retry details", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("locked@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.getByRole("alert").getByText("This account is temporarily locked. Try again in 2 minutes.").waitFor();
+    await page.goto(`${baseUrl}/signup`);
+    await page.getByLabel("Full Name").fill("Alex Tan");
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Mobile Number").fill("91234567");
+    await page.getByLabel("Password", { exact: true }).fill("Passw0rdSafe");
+    await page.getByLabel("Confirm Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign Up" }).click();
+    await page.waitForURL("**/verify");
+    for (let digit = 1; digit <= 6; digit++) await page.getByLabel(`Digit ${digit}`).fill("1");
+    await page.getByRole("button", { name: "Confirm" }).click();
+    await page.getByRole("alert").getByText("That code is incorrect. 2 attempts remaining.").waitFor();
+    for (let digit = 1; digit <= 6; digit++) await page.getByLabel(`Digit ${digit}`).fill("2");
+    await page.getByRole("button", { name: "Confirm" }).click();
+    await page.getByRole("alert").getByText("That code has expired. Request a new one.").waitFor();
+  } finally { await page.close(); }
+});
+
+test("recovery keeps unknown accounts indistinguishable and handles rate limits and Problem Details", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/forgot-password`);
+    await page.getByLabel("Email").fill("unknown@u.nus.edu");
+    await page.getByRole("button", { name: "Send reset code" }).click();
+    await page.waitForURL("**/reset-password");
+    await page.getByLabel("New password").fill("NewPassw0rd");
+    await page.getByLabel("Confirm password").fill("NewPassw0rd");
+    await page.getByLabel("Six-digit code").fill("333333");
+    await page.getByRole("button", { name: "Reset password" }).click();
+    await page.getByRole("alert").getByText("Too many attempts. Please try again later. Try again in 2 minutes.").waitFor();
+    await page.getByLabel("Six-digit code").fill("444444");
+    await page.getByRole("button", { name: "Reset password" }).click();
+    await page.getByRole("alert").getByText("Invalid reset code").waitFor();
+  } finally { await page.close(); }
+});
+
+test("profile load failure keeps a retry action", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/home");
+    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    denyProfile = true;
+    await page.goto(`${baseUrl}/profile`);
+    await page.getByRole("button", { name: "Retry" }).waitFor();
+    denyProfile = false;
+    await page.getByRole("button", { name: "Retry" }).click();
+    await page.getByRole("heading", { name: "Alex Tan" }).waitFor();
+  } finally { denyProfile = false; await page.close(); }
 });
 
 test("upstream login 401 and 403 are logged without credentials", async () => {
@@ -282,7 +415,7 @@ test("malformed token response does not create a browser session", async () => {
     await page.getByLabel("Email").fill("malformed@u.nus.edu");
     await page.getByLabel("Password").fill("Passw0rdSafe");
     await page.getByRole("button", { name: "Sign In" }).click();
-    await page.getByRole("status").getByText("Gateway unavailable. Please try again.").waitFor();
+    await page.getByRole("alert").getByText("Gateway unavailable. Please try again.").waitFor();
     assert.equal((await page.context().cookies()).some((cookie) => cookie.name === "foc_access" || cookie.name === "foc_refresh"), false);
   } finally { await page.close(); }
 });

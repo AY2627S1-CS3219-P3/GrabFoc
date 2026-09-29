@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Loaded self profile and logout; removed the logout session preflight on 2026-09-29 so local sign-out works during outages.
+Scope: Loaded self profile and logout; added retryable load errors and operation toasts on 2026-09-29.
 Author review: Pending team review; no Figma profile frame exists.
 */
 "use client";
@@ -10,6 +10,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../components/app-shell";
 import { sessionFetch, withSessionMutation } from "@/lib/session-client";
+import { parseServiceError } from "@/lib/service-errors";
+import { userErrorMessage } from "@/lib/user-error-copy";
+import { ErrorToast, useErrorFeedback } from "../components/error-feedback";
 
 type Profile = { userId: string; displayName: string; email: string; countryCode: string | null; mobileNumber: string | null };
 
@@ -20,31 +23,33 @@ export default function ProfilePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [reload, setReload] = useState(0);
+  const feedback = useErrorFeedback();
 
   useEffect(() => {
     let active = true;
     sessionFetch("/api/session/profile").then(async (response) => {
       if (!active) return;
       if (response.status === 401) { router.replace("/signin"); return; }
-      if (!response.ok) throw new Error("Could not load your profile.");
+      if (!response.ok) throw new Error(userErrorMessage(await parseServiceError(response, "Could not load your profile.")));
       const data: Profile = await response.json();
       if (active) setProfile(data);
-    }).catch(() => { if (active) setError("Could not load your profile. Please try again."); })
+    }).catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : "Could not load your profile. Please try again."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [router]);
+  }, [router, reload]);
 
   async function logout() {
     setLoggingOut(true);
     setError("");
     try {
       const response = await withSessionMutation(() => fetch("/api/session/logout", { method: "POST" }));
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw new Error(userErrorMessage(await parseServiceError(response, "Could not log out. Please try again.")));
       const result: { remoteRevoked?: boolean } = await response.json();
       if (result.remoteRevoked === false) sessionStorage.setItem("logoutNotice", "Signed out here, but the service could not confirm remote logout.");
       else sessionStorage.removeItem("logoutNotice");
       router.replace("/signin");
-    } catch { setError("Could not log out. Please try again."); }
+    } catch (reason) { feedback.setToast(reason instanceof Error ? reason.message : "Could not log out. Please try again."); }
     finally { setLoggingOut(false); }
   }
 
@@ -57,7 +62,7 @@ export default function ProfilePage() {
           <h2 id="profile-name">{profile?.displayName ?? (loading ? "Loading profile…" : "Your profile")}</h2>
           <p className="profile-email">{profile?.email ?? ""}</p>
           {profile?.mobileNumber && <p>{[profile.countryCode, profile.mobileNumber].filter(Boolean).join(" ")}</p>}
-          {error && <p className="auth-message" role="status">{error}</p>}
+          {error && <div className="load-error" role="alert"><p>{error}</p><button type="button" onClick={() => { setError(""); setLoading(true); setReload((value) => value + 1); }}>Retry</button></div>}
           <div className="profile-divider" />
           <button className="outline-link" type="button" disabled={loggingOut} onClick={logout}>{loggingOut ? "Logging out…" : "Log Out"}</button>
         </section>
@@ -78,6 +83,7 @@ export default function ProfilePage() {
           <p className="data-note">Your account and credit information will appear when User and Credit Service integration is ready.</p>
         </div>
       </div>
+      <ErrorToast message={feedback.toast} onDismiss={() => feedback.setToast('')} />
     </AppShell>
   );
 }

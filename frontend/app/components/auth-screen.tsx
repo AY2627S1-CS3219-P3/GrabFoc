@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
-Scope: Created shared authentication UI; connected registration, login and verification and displayed unconfirmed remote logout notices.
+Scope: Created shared authentication UI; connected registration, login and verification; added reusable error feedback on 2026-09-29.
 Author review: Pending team review and visual verification.
 */
 "use client";
@@ -10,6 +10,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent, type ClipboardEvent } from "react";
 import { withSessionMutation } from "@/lib/session-client";
+import { parseServiceError, mapFieldErrors } from "@/lib/service-errors";
+import { userErrorMessage } from "@/lib/user-error-copy";
+import { ErrorToast, FieldError, useErrorFeedback } from "./error-feedback";
 
 type View = "signin" | "signup" | "verify";
 
@@ -35,20 +38,22 @@ type FieldProps = {
   placeholder?: string;
   autoComplete?: string;
   minLength?: number;
+  errors?: string[];
 };
 
 // AI-generated (pending human review)
-function Field({ label, name, type = "text", placeholder, autoComplete, minLength }: FieldProps) {
+function Field({ label, name, type = "text", placeholder, autoComplete, minLength, errors }: FieldProps) {
   return (
     <label className="auth-field">
       <span>{label}</span>
-      <input name={name} type={type} placeholder={placeholder} autoComplete={autoComplete} minLength={minLength} required />
+      <input name={name} type={type} placeholder={placeholder} autoComplete={autoComplete} minLength={minLength} required aria-invalid={!!errors?.length} aria-describedby={errors?.length ? `${name}-error` : undefined} />
+      <FieldError messages={errors} id={`${name}-error`} />
     </label>
   );
 }
 
 // AI-generated (pending human review)
-function OtpInputs({ onChange }: { onChange: (code: string) => void }) {
+function OtpInputs({ onChange, invalid }: { onChange: (code: string) => void; invalid: boolean }) {
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   const [digits, setDigits] = useState(Array(6).fill("") as string[]);
 
@@ -85,6 +90,8 @@ function OtpInputs({ onChange }: { onChange: (code: string) => void }) {
           maxLength={1}
           autoComplete={index === 0 ? "one-time-code" : "off"}
           value={digit}
+          aria-invalid={invalid}
+          aria-describedby={invalid ? 'otp-error' : undefined}
           onChange={(event) => update(index, event.target.value)}
           onKeyDown={(event) => onKeyDown(event, index)}
           required
@@ -102,49 +109,62 @@ export function AuthScreen({ view }: { view: View }) {
   const logoutNotice = useSyncExternalStore(noSubscription, logoutNoticeSnapshot, emptySnapshot);
   const [submitting, setSubmitting] = useState(false);
   const [otp, setOtp] = useState("");
+  const feedback = useErrorFeedback();
+
+  async function showError(response: Response, fallback: string, names: Record<string, string> = {}) {
+    const error = await parseServiceError(response, fallback);
+    const fields = mapFieldErrors(error.fields, names);
+    if (error.code === 'EMAIL_TAKEN' && !fields.email) fields.email = [userErrorMessage(error)];
+    if (error.code === 'OTP_INVALID' && !fields.otp) fields.otp = [userErrorMessage(error)];
+    feedback.setFields(fields);
+    feedback.setToast(error.fields.length ? 'Please check the highlighted fields.' : userErrorMessage(error));
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     if (view === "verify") {
-      if (!pendingEmail || otp.length !== 6) { setMessage("Enter the six-digit code sent to your email."); return; }
+      if (!pendingEmail || otp.length !== 6) { feedback.setToast("Enter the six-digit code sent to your email."); return; }
       setSubmitting(true);
       setMessage("");
+      feedback.clear();
       try {
         const response = await withSessionMutation(() => fetch("/api/session/verify", {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ email: pendingEmail, otp }),
         }));
-        if (!response.ok) { setMessage(await errorMessage(response, "Could not verify your code.")); return; }
+        if (!response.ok) { await showError(response, "Could not verify your code."); return; }
         sessionStorage.removeItem("pendingRegistrationEmail");
         router.replace("/home");
-      } catch { setMessage("Could not reach the service. Please try again."); }
+      } catch { feedback.setToast("Could not reach the service. Please try again."); }
       finally { setSubmitting(false); }
       return;
     }
     if (view === "signin") {
       setSubmitting(true);
       setMessage("");
+      feedback.clear();
       try {
         const response = await withSessionMutation(() => fetch("/api/session/login", {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ email: String(data.get("email") ?? "").trim().toLowerCase(), password: String(data.get("password") ?? "") }),
         }));
-        if (!response.ok) { setMessage(await errorMessage(response, "Could not sign in.")); return; }
+        if (!response.ok) { await showError(response, "Could not sign in."); return; }
         sessionStorage.removeItem("logoutNotice");
         router.replace("/home");
-      } catch { setMessage("Could not reach the service. Please try again."); }
+      } catch { feedback.setToast("Could not reach the service. Please try again."); }
       finally { setSubmitting(false); }
       return;
     }
     const password = String(data.get("password") ?? "");
     if (password !== data.get("confirmPassword")) {
-      setMessage("Passwords do not match.");
+      feedback.setFields({ confirmPassword: ["Passwords do not match."] });
       return;
     }
     const email = String(data.get("email") ?? "").trim().toLowerCase();
     setSubmitting(true);
     setMessage("");
+    feedback.clear();
     try {
       const response = await fetch("/api/gateway/auth/register", {
         method: "POST",
@@ -158,13 +178,13 @@ export function AuthScreen({ view }: { view: View }) {
         }),
       });
       if (!response.ok) {
-        setMessage(await errorMessage(response, "Could not start sign-up. Please try again."));
+        await showError(response, "Could not start sign-up. Please try again.", { displayName: 'fullName' });
         return;
       }
       sessionStorage.setItem("pendingRegistrationEmail", email);
       router.push("/verify");
     } catch {
-      setMessage("Could not reach the service. Please try again.");
+      feedback.setToast("Could not reach the service. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -177,14 +197,16 @@ export function AuthScreen({ view }: { view: View }) {
     }
     setSubmitting(true);
     setMessage("");
+    feedback.clear();
     try {
       const response = await fetch("/api/gateway/auth/register/resend-otp", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: pendingEmail }),
       });
-      setMessage(response.ok ? "A new verification code has been sent." : "Could not resend the code. Please try again.");
+      if (response.ok) setMessage("A new verification code has been sent.");
+      else await showError(response, "Could not resend the code. Please try again.");
     } catch {
-      setMessage("Could not reach the service. Please try again.");
+      feedback.setToast("Could not reach the service. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -201,14 +223,18 @@ export function AuthScreen({ view }: { view: View }) {
         {view === "verify" ? (
           <form className="auth-form auth-form--verify" onSubmit={handleSubmit}>
             <p className="verify-description">{pendingEmail ? `We have sent a verification code to ${pendingEmail}` : "Start sign-up to receive a verification code."}</p>
-            <OtpInputs onChange={setOtp} />
+            <OtpInputs onChange={(code) => { setOtp(code); feedback.clearField('otp'); }} invalid={!!feedback.fields.otp?.length} />
+            <FieldError messages={feedback.fields.otp} id="otp-error" />
             <p className="otp-resend">Didn’t receive the code? <button type="button" onClick={resendOtp} disabled={submitting}>Resend OTP</button></p>
             <button className="auth-submit" type="submit" disabled={submitting}>{submitting ? "Please wait…" : "Confirm"}</button>
           </form>
         ) : (
-          <form className="auth-form" onSubmit={handleSubmit}>
-            {view === "signup" && <Field label="Full Name" name="fullName" placeholder="James Doe" autoComplete="name" />}
-            <Field label="Email" name="email" type="email" placeholder="james_doe@gmail.com" autoComplete="email" />
+          <form className="auth-form" onSubmit={handleSubmit} onChange={(event) => {
+            const target: EventTarget = event.target;
+            if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) feedback.clearField(target.name);
+          }}>
+            {view === "signup" && <Field label="Full Name" name="fullName" placeholder="James Doe" autoComplete="name" errors={feedback.fields.fullName} />}
+            <Field label="Email" name="email" type="email" placeholder="james_doe@gmail.com" autoComplete="email" errors={feedback.fields.email} />
             {view === "signup" && (
               <div className="auth-field">
                 <label htmlFor="mobile-number">Mobile Number</label>
@@ -216,12 +242,13 @@ export function AuthScreen({ view }: { view: View }) {
                   <select aria-label="Country code" name="countryCode" defaultValue="+65">
                     <option value="+65">+65</option>
                   </select>
-                  <input id="mobile-number" name="mobileNumber" type="tel" inputMode="numeric" autoComplete="tel-national" required />
+                  <input id="mobile-number" name="mobileNumber" type="tel" inputMode="numeric" autoComplete="tel-national" required aria-invalid={!!feedback.fields.mobileNumber?.length} aria-describedby={feedback.fields.mobileNumber?.length ? 'mobile-number-error' : undefined} />
                 </div>
+                <FieldError messages={feedback.fields.mobileNumber} id="mobile-number-error" />
               </div>
             )}
-            <Field label="Password" name="password" type="password" placeholder={view === "signin" ? "Password" : "*******"} autoComplete={view === "signin" ? "current-password" : "new-password"} minLength={view === "signup" ? 8 : undefined} />
-            {view === "signup" && <Field label="Confirm Password" name="confirmPassword" type="password" placeholder="*******" autoComplete="new-password" minLength={8} />}
+            <Field label="Password" name="password" type="password" placeholder={view === "signin" ? "Password" : "*******"} autoComplete={view === "signin" ? "current-password" : "new-password"} minLength={view === "signup" ? 8 : undefined} errors={feedback.fields.password} />
+            {view === "signup" && <Field label="Confirm Password" name="confirmPassword" type="password" placeholder="*******" autoComplete="new-password" minLength={8} errors={feedback.fields.confirmPassword} />}
             {view === "signin" && <Link className="forgot-link" href="/forgot-password">Forgot password?</Link>}
             <button className="auth-submit" type="submit" disabled={submitting}>{submitting ? "Please wait…" : view === "signin" ? "Sign In" : "Sign Up"}</button>
           </form>
@@ -236,16 +263,7 @@ export function AuthScreen({ view }: { view: View }) {
           </p>
         )}
       </section>
+      <ErrorToast message={feedback.toast} onDismiss={() => feedback.setToast('')} />
     </main>
   );
-}
-
-async function errorMessage(response: Response, fallback: string): Promise<string> {
-  try {
-    const body: unknown = await response.json();
-    if (typeof body === "object" && body !== null && "error" in body &&
-      typeof body.error === "object" && body.error !== null && "message" in body.error &&
-      typeof body.error.message === "string") return body.error.message;
-  } catch { /* malformed upstream error */ }
-  return fallback;
 }
