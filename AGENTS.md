@@ -146,12 +146,13 @@ The repo follows the template's **one-service-per-folder** rule (see `README.md`
 ├── data/
 │   ├── csv/supplier-seed-data.csv   # Supplier seed data (from the template)
 │   └── images/                      # location images for the seed data
-├── compose.yaml
+├── compose.yaml          # includes each service's own compose.yaml
 ├── .env.example
 └── README.md
 ```
 
 - Each service folder has its own `Dockerfile`, `README.md` and `AGENTS.md`. Put service-specific agent notes in that service's `AGENTS.md`.
+- Each service folder also has its own `compose.yaml`: the service plus the containers only it uses, including its own database. The root `compose.yaml` only `include`s them, so `docker compose up` from the root still starts everything.
 - Any N2H that needs its own service (e.g. centralized logging, real-time chat) gets a new top-level folder, following the same structure.
 - Agent configs, prompts and skills may be added, but core code must stay inside the service folders.
 
