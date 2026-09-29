@@ -1,15 +1,15 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented gateway setup and integration boundaries; clarified gateway-local .env loading on 2026-09-28 and added Compose setup on 2026-09-29.
-Author review: Jie Yang reviewed this file.
+Scope: Documented gateway setup and integration boundaries; clarified gateway-local .env loading on 2026-09-28, added Compose setup, and listed the implemented User routes on 2026-09-29.
+Author review: Jie Yang reviewed the earlier documentation; the expanded route list awaits his review.
 -->
 
 # API Gateway
 
 _Origin: AI doc; implementation of the gateway direction recorded in the project `AGENTS.md`._
 
-The gateway routes only implemented User Service methods and paths. Public routes are `POST /auth/register`, `/auth/register/verify`, `/auth/register/resend-otp`, `/auth/login`, `/auth/refresh`, `/auth/password/forgot`, `/auth/password/reset`, and `GET /.well-known/jwks.json`. Protected User routes are `POST /auth/logout`, `GET` and `PATCH /users/me`, `GET /admin/users`, and `PATCH /admin/users/:userId/role`. The `/auth` prefix is configurable. Unknown methods and paths, including `/internal/**`, return 404.
+The gateway routes only implemented User Service methods and paths. Public routes are `POST /auth/register`, `/auth/register/verify`, `/auth/register/resend-otp`, `/auth/login`, `/auth/refresh`, `/auth/password/forgot`, `/auth/password/reset`, and `GET /.well-known/jwks.json`. Protected User routes are `POST /auth/logout`; `GET` and `PATCH /users/me`; `POST /users/me/otp`, `/users/me/email`, `/users/me/email/verify`, `/users/me/password`, and `/users/me/deactivate`; `PATCH /users/me/mobile`; `GET /admin/users`; `PATCH /admin/users/:userId/role`; and `POST /admin/users/:userId/reactivate`. The `/auth` prefix is configurable. Unknown methods and paths, including `/internal/**`, return 404.
 
 Supplier routes are `GET /location-types`, `GET` and `POST /locations`, `GET` and `PATCH /locations/:locationId`, and `POST /locations/:locationId/deactivate` or `/restore`. All require a valid User Service bearer JWT. The `/locations` prefix is configurable.
 

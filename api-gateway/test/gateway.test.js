@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Added gateway routing and authentication boundary checks; verified refactored routing, request IDs and errors; covered non-origin-form targets and cookie stripping on 2026-09-29.
-Author review: Jie Yang reviewed the earlier tests; new security cases await his review.
+Scope: Added gateway routing and authentication boundary checks; verified refactored routing, request IDs and errors; covered non-origin-form targets, cookie stripping, and added User routes on 2026-09-29.
+Author review: Jie Yang reviewed the earlier tests; new security and route cases await his review.
 */
 import assert from 'node:assert/strict';
 import { createServer, request as httpRequest } from 'node:http';
@@ -64,7 +64,11 @@ test('implemented public User routes reach User Service', async () => {
 test('implemented protected User routes require a token and forward the verified bearer', async () => {
   const routes = [
     ['POST', '/auth/logout'], ['GET', '/users/me'], ['PATCH', '/users/me'],
+    ['POST', '/users/me/otp'], ['POST', '/users/me/email'],
+    ['POST', '/users/me/email/verify'], ['PATCH', '/users/me/mobile'],
+    ['POST', '/users/me/password'], ['POST', '/users/me/deactivate'],
     ['GET', '/admin/users'], ['PATCH', '/admin/users/123/role'],
+    ['POST', '/admin/users/123/reactivate'],
   ];
   for (const [method, path] of routes) {
     assert.equal((await fetch(`${gatewayUrl}${path}`, { method })).status, 401, `${method} ${path}`);
