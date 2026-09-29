@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
-Scope: Added an admin-only interface to list, create, edit, deactivate and restore Supplier locations; added management filters, refreshed-version form reset, and Tailwind responsive layout on 2026-09-29.
-Author review: Jie Yang reviewed the earlier implementation; Tailwind layout and team visual verification remain pending.
+Scope: Added an admin-only interface to manage Supplier locations, responsive layout, and recovery after an edit conflict.
+Author review: Jie Yang reviewed the earlier implementation; responsive layout and conflict recovery await his review.
 */
 "use client";
 
@@ -118,6 +118,13 @@ export default function ManageLocationsPage() {
         editing ? `/api/session/supplier/locations/${editing.id}` : "/api/session/supplier/locations",
         { method: editing ? "PATCH" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
       ));
+      if (response.status === 409 && editing) {
+        const message = await supplierError(response);
+        setEditing(null);
+        setReload((value) => value + 1);
+        setError(`${message} Locations refreshed; select Edit again to use the latest version.`);
+        return;
+      }
       if (!response.ok) throw new Error(await supplierError(response));
       if (!editing) setCreateRevision((value) => value + 1);
       setEditing(null);

@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified session flows, denial logging, refresh-only logout, reusable error feedback, Supplier browsing and management filters, retries, refreshed edits, and downstream 401 handling; removed the obsolete /locations redirect check and added Supplier responsive-layout assertions on 2026-09-30.
-Author review: Jie Yang reviewed the earlier tests; responsive-layout assertions and local visual verification await his review.
+Scope: Verified session flows, Supplier management and responsive layout, downstream 401 handling, and recovery after an edit conflict.
+Author review: Jie Yang reviewed the earlier tests; responsive and conflict assertions await his review.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -12,7 +12,7 @@ import { after, before, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright-core";
 
-// AI-generated (earlier version reviewed by Jie Yang; responsive test pending review)
+// AI-generated (earlier version reviewed by Jie Yang; latest tests pending review)
 const requests = [];
 const adminAccess = `header.${Buffer.from(JSON.stringify({ role: "ADMIN" })).toString("base64url")}.signature`;
 const locations = [
@@ -77,7 +77,14 @@ const gateway = createServer(async (request, response) => {
     const id = Number(url.pathname.split("/")[2]);
     const item = locations.find((entry) => entry.id === id);
     if (!item) { response.writeHead(404).end(); return; }
-    if (request.method === "PATCH") Object.assign(item, body, { version: item.version + 1 });
+    if (request.method === "PATCH") {
+      if (body.version !== item.version) {
+        response.writeHead(409, { "content-type": "application/problem+json" });
+        response.end(JSON.stringify({ detail: "Location was changed by someone else. Reload and try again." }));
+        return;
+      }
+      Object.assign(item, body, { version: item.version + 1 });
+    }
     if (url.pathname.endsWith("/deactivate")) { item.status = "INACTIVE"; item.version++; }
     if (url.pathname.endsWith("/restore")) { item.status = "ACTIVE"; item.version++; }
     response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(item));
@@ -1060,6 +1067,33 @@ test("editing a refreshed location uses its latest version and fields", async ()
     assert.equal(await admin.locator("form [name=name]").inputValue(), "Concurrent update");
   } finally {
     Object.assign(location, previous);
+    await admin.close();
+  }
+});
+
+// AI-generated (conflict-recovery regression test pending review)
+test("a stale location edit refreshes the list and clears the old version", async () => {
+  const admin = await browser.newPage();
+  const index = locations.findIndex((item) => item.id === 1);
+  const location = locations[index];
+  try {
+    await admin.goto(`${baseUrl}/signin`);
+    await admin.getByLabel("Email").fill("admin@u.nus.edu");
+    await admin.getByLabel("Password").fill("Passw0rdSafe");
+    await admin.getByRole("button", { name: "Sign In" }).click();
+    await admin.waitForURL("**/home");
+    await admin.goto(`${baseUrl}/admin/locations`);
+    await admin.locator(".manage-row", { hasText: location.name }).getByRole("button", { name: "Edit" }).click();
+    locations[index] = { ...location, name: "Changed by another admin", version: location.version + 1 };
+    await admin.getByRole("button", { name: "Save Changes" }).click();
+    await admin.getByRole("alert").getByText(/Locations refreshed; select Edit again/).waitFor();
+    await admin.locator(".manage-row", { hasText: "Changed by another admin" }).getByRole("button", { name: "Edit" }).click();
+    assert.equal(await admin.locator("form [name=name]").inputValue(), "Changed by another admin");
+    await admin.getByRole("button", { name: "Save Changes" }).click();
+    await admin.getByRole("button", { name: "Add Location" }).waitFor();
+    assert.equal(requests.filter((request) => request.method === "PATCH" && request.path === `/locations/${location.id}`).at(-1).body.version, location.version + 1);
+  } finally {
+    locations[index] = location;
     await admin.close();
   }
 });
