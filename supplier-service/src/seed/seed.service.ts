@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
  * Scope: Generated the seed loader following the "Seed data" rules in supplier-service/AGENTS.md
  *        (only when empty, all-or-nothing, Windows-1252 decoding, GitHub link rewrite, null creator).
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; confirmed a fresh database seeds all 21 locations and that a restart doesn't seed again.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { parse } from 'csv-parse/sync';

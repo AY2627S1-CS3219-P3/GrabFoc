@@ -1,13 +1,15 @@
 /*
  * AI Assistance Disclosure:
- * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
- * Scope: Generated the DEV-ONLY role check (X-User-Id / X-User-Role headers), the @Roles decorator,
- *        and logging of denied attempts. Temporary, as decided by the team, until identity is decided.
- * Author review: pending — to be completed by the reviewing team member.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28
+ * Scope: Replaced the dev-only header guard with JWT verification against the User Service's
+ *        JWKS, keeping the @Roles decorator and the logging of denied attempts.
+ * Author review (Cole Lin): Read in full; ran it with Postman and checked the 401 and 403 cases, including that dev headers are ignored when a token is sent.
  */
 import { CanActivate, ExecutionContext, Injectable, Logger, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
+import { config } from '../config';
+import { JwksUnavailableError, verifyToken } from './jwks';
 import { ProblemException } from './problem';
 
 export type Role = 'ADMIN' | 'USER';
@@ -38,28 +40,54 @@ export function denied(req: Request, status: 401 | 403, detail: string, caller?:
 }
 
 /**
- * DEV-ONLY: trusts the X-User-Id and X-User-Role headers so the service can be tested in Postman
- * before the User Service and gateway exist. Replace once the team decides how identity reaches
- * the Supplier Service (see the root AGENTS.md).
+ * Every request must carry a bearer token issued by the User Service. The gateway verifies it
+ * too, but this service re-verifies rather than trusting whatever reached it over the network.
  */
 @Injectable()
-export class DevRoleGuard implements CanActivate {
+export class JwtAuthGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<AuthedRequest>();
-    const id = req.header('x-user-id');
-    const role = req.header('x-user-role');
-    if (!id || (role !== 'ADMIN' && role !== 'USER')) {
+    const authorization = req.header('authorization');
+    const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7).trim() : undefined;
+
+    // LOCAL TESTING ONLY, and only when no token was sent: a real token is always verified, so
+    // these headers can never override or downgrade one.
+    if (!bearer && config.devAuth) {
+      const id = req.header('x-user-id');
+      const role = req.header('x-user-role');
+      if (!id || (role !== 'ADMIN' && role !== 'USER')) {
+        throw denied(req, 401, 'Missing or invalid credentials.');
+      }
+      req.caller = { id, role };
+      return this.checkRole(context, req);
+    }
+
+    let claims;
+    try {
+      claims = await verifyToken(authorization);
+    } catch (err) {
+      if (err instanceof JwksUnavailableError) {
+        logger.error(`Cannot verify tokens: ${err.message}`);
+        throw new ProblemException(503, 'Cannot verify credentials right now. Try again shortly.');
+      }
+      throw err;
+    }
+
+    if (!claims || (claims.role !== 'ADMIN' && claims.role !== 'USER')) {
       throw denied(req, 401, 'Missing or invalid credentials.');
     }
-    req.caller = { id, role };
+    req.caller = { id: claims.sub, role: claims.role };
+    return this.checkRole(context, req);
+  }
 
+  private checkRole(context: ExecutionContext, req: AuthedRequest): boolean {
     const allowed = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-    if (allowed && !allowed.includes(role)) {
+    if (allowed && !allowed.includes(req.caller.role)) {
       throw denied(req, 403, 'This action requires the ADMIN role.', req.caller);
     }
     return true;

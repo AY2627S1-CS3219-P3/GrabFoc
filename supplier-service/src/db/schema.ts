@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
  * Scope: Transcribed the team's schema from supplier-service/AGENTS.md into SQL run at startup;
  *        added IF NOT EXISTS / ON CONFLICT DO NOTHING so it can run on every start.
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; verified the SQL matches the schema in AGENTS.md, and that re-running it on an existing database is harmless.
  */
 
 // Keep in sync with the "Schema" section of supplier-service/AGENTS.md.

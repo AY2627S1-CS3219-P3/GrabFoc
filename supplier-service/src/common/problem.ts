@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
  * Scope: Generated the Problem Details (RFC 9457) error type and global exception filter,
  *        following the team's error-response decisions in supplier-service/AGENTS.md.
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; checked the error responses come back as application/problem+json with the documented status codes.
  */
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';

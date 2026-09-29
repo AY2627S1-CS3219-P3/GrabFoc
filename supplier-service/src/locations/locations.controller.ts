@@ -2,7 +2,7 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
  * Scope: Generated the HTTP routes for the endpoints listed in supplier-service/AGENTS.md.
- * Author review: pending — to be completed by the reviewing team member.
+ * Author review (Cole Lin): Read in full; ran every endpoint with Postman, including the 401 and 403 cases.
  */
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { AuthedRequest, denied, Roles } from '../common/auth';
