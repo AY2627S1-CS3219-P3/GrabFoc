@@ -4,6 +4,9 @@
 #        it needs (PostgreSQL, Redis, Mailpit). 2026-09-28 (model: Claude Opus 5.5): moved
 #        here from the root compose.yaml, which now includes this file.
 # Author review: Read in full; verified the full stack builds and runs, and that the database survives a down/up cycle.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-01
+# Scope: Replaced `env_file: ../.env` with an explicit list of the variables the service reads.
+# Author review: pending — Jian Bing to record what he checked; needs the User Service owners' agreement.
 #
 # The User Service and the containers only it uses. Its database is its own — no other
 # service connects to user-db (root AGENTS.md §3). The root compose.yaml includes this file.
@@ -75,21 +78,29 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
-    # Secrets (keys, the bootstrap admin address) come from the git-ignored .env at the repo root.
-    env_file:
-      # Optional, so a fresh clone can still run `docker compose config`. Without it the
-      # service fails at startup naming the missing variable, which is a clearer error
-      # than compose refusing to read the file at all.
-      - path: ../.env
-        required: false
+    # Only the variables this service reads (src/config.ts), taken from the git-ignored .env at the
+    # repo root. No env_file: passing the whole .env would hand this container every other
+    # service's secrets too, such as SUPPLIER_POSTGRES_PASSWORD. A variable left empty is treated as
+    # unset (src/config.ts), so a missing secret still fails at startup naming it.
     environment:
-      # These point at the containers above and override whatever .env says, because inside
-      # the compose network the hostnames are the service names, not localhost.
+      # These point at the containers above, because inside the compose network the hostnames
+      # are the service names, not localhost.
       USER_PORT: 3001
       USER_DATABASE_URL: postgres://foc:${POSTGRES_PASSWORD:-change-me-in-dotenv}@user-db:5432/users
       USER_REDIS_URL: redis://user-redis:6379
       USER_SMTP_HOST: mailpit
       USER_SMTP_PORT: 1025
+      # From .env.
+      LOG_LEVEL: ${LOG_LEVEL:-}
+      USER_AES_KEY: ${USER_AES_KEY:-}
+      USER_EMAIL_HMAC_KEY: ${USER_EMAIL_HMAC_KEY:-}
+      USER_OTP_HMAC_KEY: ${USER_OTP_HMAC_KEY:-}
+      USER_JWT_PRIVATE_KEY: ${USER_JWT_PRIVATE_KEY:-}
+      USER_JWT_KID: ${USER_JWT_KID:-}
+      USER_SMTP_USER: ${USER_SMTP_USER:-}
+      USER_SMTP_PASS: ${USER_SMTP_PASS:-}
+      USER_SMTP_FROM: ${USER_SMTP_FROM:-}
+      USER_BOOTSTRAP_ADMIN_EMAIL: ${USER_BOOTSTRAP_ADMIN_EMAIL:-}
     ports:
       - "3001:3001"
 

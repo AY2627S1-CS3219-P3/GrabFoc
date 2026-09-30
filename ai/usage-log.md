@@ -824,6 +824,30 @@ any real mailbox — not a service outage.
 
 ## Jian Bing
 
+### 2026-10-01 — Pass the User Service container only its own variables
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `user-service/compose.yaml`
+
+**Scenario:** `user-service/compose.yaml` passed the whole repo-root `.env` into the container, so the
+User Service could read every other service's secrets, such as `SUPPLIER_POSTGRES_PASSWORD`.
+
+**Prompts (exact):**
+> about the env, shouldnt every service have their own env?
+
+> sure *(to Claude's offer to draft a team message and prepare this change as a PR for the User Service owners)*
+
+**What it produced:** `env_file: ../.env` replaced by an explicit list of the 15 variables
+`user-service/src/config.ts` reads, each taken from `.env`. Empty values are treated as unset by
+the service, so a missing secret still fails at startup by name.
+
+**What I changed or rejected:** Chose the middle ground (one root `.env`, but each container gets only
+its own variables) over giving every service its own `.env`, pending the team's agreement.
+
+**Verification:** Run by Claude Code with test secrets: the container's variables went from 29 to the
+15 it reads (plus `NODE_ENV` from the Dockerfile); the whole stack started and sign-up, login, the admin
+bootstrap and location CRUD all worked through the gateway, as on `main`.
+
 ### 2026-09-29 — Usage-log format, merge conflicts and author reviews (PRs #27, #33)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor, explain
