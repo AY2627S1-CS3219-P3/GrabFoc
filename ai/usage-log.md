@@ -837,12 +837,16 @@ User Service could read every other service's secrets, such as `SUPPLIER_POSTGRE
 
 > sure *(to Claude's offer to draft a team message and prepare this change as a PR for the User Service owners)*
 
+> is it possible to just add the authro review to pr 45 instead *(the PR #44 review lines, which
+> missed that PR's merge, are carried in this PR)*
+
 **What it produced:** `env_file: ../.env` replaced by an explicit list of the 15 variables
 `user-service/src/config.ts` reads, each taken from `.env`. Empty values are treated as unset by
 the service, so a missing secret still fails at startup by name.
 
 **What I changed or rejected:** Chose the middle ground (one root `.env`, but each container gets only
-its own variables) over giving every service its own `.env`, pending the team's agreement.
+its own variables) over giving every service its own `.env`. Zi Yi (User Service owner) approved
+PR #45.
 
 **Verification:** Run by Claude Code with test secrets: the container's variables went from 29 to the
 15 it reads (plus `NODE_ENV` from the Dockerfile); the whole stack started and sign-up, login, the admin

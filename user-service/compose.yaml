@@ -6,7 +6,8 @@
 # Author review: Read in full; verified the full stack builds and runs, and that the database survives a down/up cycle.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-01
 # Scope: Replaced `env_file: ../.env` with an explicit list of the variables the service reads.
-# Author review: pending — Jian Bing to record what he checked; needs the User Service owners' agreement.
+# Author review: Agreed by User Service owner Zi Yi (approved PR #45 on 2026-10-01).
+#   Jian Bing's own check: pending.
 #
 # The User Service and the containers only it uses. Its database is its own — no other
 # service connects to user-db (root AGENTS.md §3). The root compose.yaml includes this file.
