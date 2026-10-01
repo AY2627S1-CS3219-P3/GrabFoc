@@ -3,7 +3,8 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
  * Scope: Generated this helper for the integration tests: a separate supplier_test database in
  *        the supplier-db container, created and emptied by the tests themselves.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review (Jian Bing): Used by the integration tests; ran `npm run test:int` against
+ *        supplier-db on 2026-10-01 (51 passed) and verified those test cases by hand.
  */
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';

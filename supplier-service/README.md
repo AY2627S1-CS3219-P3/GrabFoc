@@ -10,7 +10,8 @@ Claude Code ran in its 2026-09-29 test of the compose file. Ran `docker compose 
 the service started on 3002 and GET /locations without a token returned 401.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
 Scope: Rewrote the "Tests" section for the Jest unit and integration tests.
-Author review: pending — Jian Bing to record what he checked.
+Author review (Jian Bing): Followed the "Tests" steps on 2026-10-01: `npm test` (157 passed) and
+`npm run test:int` against supplier-db (51 passed).
 -->
 
 # Supplier Service
@@ -74,10 +75,10 @@ fallback enabled).
 
 The integration tests (`*.int.spec.ts`) run `LocationsService` and the seed loader against a real
 PostgreSQL: filters, paging, sorting, distance, the 409 rules and the seed. Start the database
-first, from the repo root:
+first, from the repo root (if you have a root `.env`, `docker compose up -d supplier-db` also works):
 
 ```bash
-docker compose up -d supplier-db
+docker compose -f supplier-service/compose.yaml up -d supplier-db   # no root .env needed
 npm run test:int                          # all integration tests
 npm run test:int -- src/locations         # or just some
 ```
