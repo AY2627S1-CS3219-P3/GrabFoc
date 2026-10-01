@@ -824,6 +824,36 @@ any real mailbox — not a service outage.
 
 ## Jian Bing
 
+### 2026-10-01 — Pass the User Service container only its own variables
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `user-service/compose.yaml`
+
+**Scenario:** `user-service/compose.yaml` passed the whole repo-root `.env` into the container, so the
+User Service could read every other service's secrets, such as `SUPPLIER_POSTGRES_PASSWORD`.
+
+**Prompts (exact):**
+> about the env, shouldnt every service have their own env?
+
+> sure *(to Claude's offer to draft a team message and prepare this change as a PR for the User Service owners)*
+
+> is it possible to just add the authro review to pr 45 instead *(the PR #44 review lines, which
+> missed that PR's merge, are carried in this PR)*
+
+**What it produced:** `env_file: ../.env` replaced by an explicit list of the 15 variables
+`user-service/src/config.ts` reads, each taken from `.env`. Empty values are treated as unset by
+the service, so a missing secret still fails at startup by name.
+
+**What I changed or rejected:** Chose the middle ground (one root `.env`, but each container gets only
+its own variables) over giving every service its own `.env`. Zi Yi (User Service owner) approved
+PR #45.
+
+**Verification:** Run by Claude Code with test secrets: the container's variables went from 29 to the
+15 it reads (plus `NODE_ENV` from the Dockerfile); the whole stack started and sign-up, login, the admin
+bootstrap and location CRUD all worked through the gateway, as on `main`. Then checked by me on
+2026-10-01: `docker compose -f user-service/compose.yaml config` shows the container's environment
+limited to `LOG_LEVEL` and the 14 `USER_*` variables, with no `env_file`.
+
 ### 2026-09-30 — Supplier Service unit and integration tests
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
@@ -843,6 +873,9 @@ code already merged, without changing its behaviour.
 
 > continue with the test making
 
+> i ran the trest suites, and manjally verified all test cases, could you now add that for my
+> author review comments
+
 **What it produced:** Jest set up as in the User Service. Unit tests (`npm test`, 157) for the
 opening-hours conversion, request validation, token verification against a stub JWKS server, the
 auth guard and its access_denied log, the error format and startup configuration. Integration tests
@@ -857,7 +890,8 @@ the code it covers (76 changes, such as skipping the signature check or the dupl
 confirming a test fails, then restoring it; the seven changes first missed led to extra test cases.
 Also checked: the results don't change with a hostile repo-root `.env`, and the service still builds
 and its Docker image runs. One full run failed because the two integration files ran in parallel on
-the same database; they now run one at a time, and passed 10 runs out of 10 (the unit tests too).
+the same database; they now run one at a time, and passed 10 runs out of 10 (the unit tests too). Then run by me on 2026-10-01: `npm test` (157 passed) and
+`npm run test:int` against supplier-db (51 passed), and I verified every test case by hand.
 
 ### 2026-09-29 — Usage-log format, merge conflicts and author reviews (PRs #27, #33)
 

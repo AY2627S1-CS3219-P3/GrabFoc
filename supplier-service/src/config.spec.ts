@@ -8,7 +8,8 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
  * Scope: Moved these tests from test/config.test.mjs (Node's runner, against dist/) to Jest,
  *        with the same checks, and added the missing-variable cases.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review (Jian Bing): Ran `npm test` on 2026-10-01 (157 passed) and verified each test
+ *        case in this file by hand.
  */
 
 /** Evaluates src/config.ts afresh with the given environment; returns the error message, or 'ok'. */

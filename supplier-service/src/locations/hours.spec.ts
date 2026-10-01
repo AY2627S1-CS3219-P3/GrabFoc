@@ -2,7 +2,8 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
  * Scope: Generated these unit tests for the HHMMhrs <-> minutes conversion.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review (Jian Bing): Ran `npm test` on 2026-10-01 (157 passed) and verified each test
+ *        case in this file by hand.
  */
 import { HHMM_RE, hhmmToMinutes, minutesToHhmm } from './hours';
 

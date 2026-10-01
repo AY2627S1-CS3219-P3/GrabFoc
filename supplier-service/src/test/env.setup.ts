@@ -2,7 +2,8 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
  * Scope: Generated this Jest setup, following user-service/src/test/env.setup.ts.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review (Jian Bing): Used by every test; ran `npm test` (157 passed) and `npm run test:int`
+ *        (51 passed) on 2026-10-01 and verified the test cases by hand.
  */
 
 /**
