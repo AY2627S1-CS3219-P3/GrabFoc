@@ -2,7 +2,8 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
  * Scope: Generated this test helper: a stub JWKS server and a token signer.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review (Jian Bing): Used by the token and auth-guard tests; ran `npm test` on 2026-10-01
+ *        (157 passed) and verified those test cases by hand.
  */
 import { createServer, Server } from 'http';
 import { AddressInfo } from 'net';

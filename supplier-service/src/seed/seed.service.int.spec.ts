@@ -2,7 +2,8 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
  * Scope: Generated these integration tests for loading the seed CSV into a real PostgreSQL.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review (Jian Bing): Ran `npm run test:int` against supplier-db on 2026-10-01 (51 passed)
+ *        and verified each test case in this file by hand.
  */
 import { Logger } from '@nestjs/common';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';

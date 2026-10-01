@@ -3,7 +3,8 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
  * Scope: Generated these unit tests for the auth guard: 401/403/503 outcomes, role checks,
  *        the dev-auth header fallback and the access_denied log.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review (Jian Bing): Ran `npm test` on 2026-10-01 (157 passed) and verified each test
+ *        case in this file by hand.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';

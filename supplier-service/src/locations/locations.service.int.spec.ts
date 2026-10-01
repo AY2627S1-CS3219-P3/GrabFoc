@@ -3,7 +3,8 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
  * Scope: Generated these integration tests for LocationsService against a real PostgreSQL:
  *        listing, filters, paging, sorting, distance, and the create/update/status rules.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review (Jian Bing): Ran `npm run test:int` against supplier-db on 2026-10-01 (51 passed)
+ *        and verified each test case in this file by hand.
  */
 import { Pool } from 'pg';
 import { ProblemException } from '../common/problem';

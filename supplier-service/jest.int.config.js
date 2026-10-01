@@ -2,7 +2,7 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
  * Scope: Generated this Jest config for the integration tests.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review (Jian Bing): Ran `npm run test:int` with this config on 2026-10-01 (51 passed).
  */
 
 // The integration tests (*.int.spec.ts): the unit-test config from package.json, run on the other

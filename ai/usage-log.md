@@ -867,6 +867,9 @@ code already merged, without changing its behaviour.
 
 > continue with the test making
 
+> i ran the trest suites, and manjally verified all test cases, could you now add that for my
+> author review comments
+
 **What it produced:** Jest set up as in the User Service. Unit tests (`npm test`, 157) for the
 opening-hours conversion, request validation, token verification against a stub JWKS server, the
 auth guard and its access_denied log, the error format and startup configuration. Integration tests
@@ -881,7 +884,8 @@ the code it covers (76 changes, such as skipping the signature check or the dupl
 confirming a test fails, then restoring it; the seven changes first missed led to extra test cases.
 Also checked: the results don't change with a hostile repo-root `.env`, and the service still builds
 and its Docker image runs. One full run failed because the two integration files ran in parallel on
-the same database; they now run one at a time, and passed 10 runs out of 10 (the unit tests too).
+the same database; they now run one at a time, and passed 10 runs out of 10 (the unit tests too). Then run by me on 2026-10-01: `npm test` (157 passed) and
+`npm run test:int` against supplier-db (51 passed), and I verified every test case by hand.
 
 ### 2026-09-29 — Usage-log format, merge conflicts and author reviews (PRs #27, #33)
 
