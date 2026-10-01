@@ -2027,3 +2027,66 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Merged the updated frontend integration base into PR #37, retained both AI-log histories, and combined shared frontend disclosures. Verified the combined frontend before pushing.
 - Files: `ai/usage-log.md`, `frontend/README.md`, `frontend/app/globals.css`, `frontend/test/routes.test.mjs`.
 - Human review: Pending PR review.
+
+## 2026-10-01 — Supplier location thumbnails
+
+- Tool and mode: Codex (GPT-6), generate and explain.
+- Usage scenario: Show Supplier location images in the existing frontend without changing the service contract.
+- Exact user prompts: “how does the frontend load the images for the supplier service now? theres definitiely a better way of showing it on the UI and also loading it rather than just a pure image right?”; “how does the second lazy load thing work? and how does nextjs image optimization work when the database stores url?”; “so the frontend server will be storing the image somewhere in its cache isit? it will load from the URL and then store it to load on the UI?”; “how will it know to NOT fetch it again?”; “ok branch out to implement this and open a PR”.
+- Key response: Added lazy, fixed-ratio card thumbnails using the existing `image_url`; configured Next.js optimization for the seeded template image path, kept other HTTPS URLs direct, and provided a missing/broken-image placeholder. No Supplier API or schema change.
+- Files: `frontend/app/components/location-image.tsx`, `frontend/app/components/location-browser.tsx`, `frontend/app/globals.css`, `frontend/next.config.ts`, `frontend/README.md`, `ai/usage-log.md`.
+- Human review: Pending PR review and manual image inspection.
+
+## 2026-10-01 — PR #47 image and layout follow-up
+
+- Tool and mode: Codex (GPT-6), debug and refactor.
+- Usage scenario: Correct seeded images failing to load and reduce Supplier browsing card and filter size.
+- Exact user prompt: “the images show no image available, and each location card is too big right now, the filter selections should all lie in one row instead of a grid”.
+- Key response: Removed empty image areas, shortened cards, used four columns at wide widths, and kept filters in a single horizontally scrollable row. The initial local public image copy was replaced after the user clarified Supplier Service ownership.
+- Files: `frontend/app/components/location-image.tsx`, `frontend/app/components/location-browser.tsx`, `frontend/app/globals.css`, `frontend/next.config.ts`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `ai/usage-log.md`.
+- Human review: Pending PR review and visual inspection.
+
+## 2026-10-01 — Supplier image delivery clarification for PR #47
+
+- Tool and mode: Codex (GPT-6), explain and refactor.
+- Usage scenario: Check whether image bytes can come from Supplier Service without modifying that service.
+- Exact user prompt: “the images shouldnt be on the frontend public folder. it should fetch from supplier service”.
+- Key response: Reverted the proposed Supplier endpoint, gateway route, Dockerfile, and service documentation after the user specified that Supplier Service files must not be touched. The existing Supplier API only returns an image URL; it cannot supply image bytes through its current endpoints. Kept frontend-only layout improvements.
+- Files: `frontend/app/components/location-image.tsx`, `frontend/app/components/location-browser.tsx`, `frontend/app/globals.css`, `frontend/next.config.ts`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `ai/usage-log.md`.
+- Human review: Pending PR review; image source decision remains open.
+
+## 2026-10-01 — Enable seeded location image optimization
+
+- Tool and mode: Codex (GPT-6), debug and generate.
+- Usage scenario: Enable Next.js optimization for location thumbnails using the existing Supplier image URLs.
+- Exact user prompts: “why isit when it is unoptimized, the images load successfully, but when i remove it the images dont load”; “is this rlly the best way to handle loading images”; “enable optimization and configure the allowed path”.
+- Key response: Removed the component's `unoptimized` prop and allowed HTTPS images only from `raw.githubusercontent.com/CS3219-AY2627S1/FoC-Template/main/data/images/**`, without query strings or custom ports. Retained lazy loading and the error fallback.
+- Files: `frontend/next.config.ts`, `frontend/app/components/location-image.tsx`, `ai/usage-log.md`.
+- Human review: Pending human review and runtime image inspection.
+
+## 2026-10-01 — Preserve external HTTPS location thumbnails
+
+- Tool and mode: Codex (GPT-6), debug.
+- Usage scenario: Fix valid Supplier HTTPS image URLs rejected by the restricted Next.js optimizer path.
+- Exact user prompt: “When an admin saves a valid HTTPS URL outside this single GitHub path (the Supplier contract and integration fixtures accept URLs such as https://example.com/canteen.jpg), LocationImage passes it to next/image, but the optimizer rejects it because it does not match remotePatterns, causing the card to show ‘No image available’ even though the full-image link works. This is distinct from the previously reported HTTP-only issue: the newly added restrictive pattern also breaks contract-valid HTTPS hosts, so provide a compatible rendering path or align the service contract. AGENTS.md reference: frontend/AGENTS.md:L18-L22”.
+- Key response: Optimize images matching the configured GitHub host, path, port and query restrictions; render other valid HTTPS URLs with unoptimized delivery. Supplier contract is unchanged.
+- Files: `frontend/app/components/location-image.tsx`, `ai/usage-log.md`.
+- Human review: Pending human review.
+
+## 2026-10-01 � Location thumbnail fallback and stale optimizer build
+
+- Tool and mode: Codex (GPT-6), debug.
+- Exact user prompts: `"url" parameter is not allowed`; `the location cards should all have a location image thumbnail and only show it if the url isnt there from the supplier service`.
+- Key response: Found the saved Next.js build had no remotePatterns despite the current configuration allowing seeded GitHub images. Rebuilt the frontend. Kept a thumbnail area on every location card, using Supplier image_url when available and the existing placeholder when missing or unavailable.
+- Files: `frontend/app/components/location-image.tsx`, `ai/usage-log.md`.
+- Human review: Pending human review.
+
+## 2026-10-01 — Avoid server fetches for location thumbnails
+
+- Tool and mode: Codex (GPT-6), debug.
+- Usage scenario: Next.js returned 400 while fetching a remote location image URL.
+- Exact user prompt: “i get a 400 Bad request response , the next.js server cant access the image URL”.
+- Key response: Rendered every valid HTTPS location image directly from its URL with `next/image`'s `unoptimized` prop, so Next.js no longer fetches it. Removed the unused remote image allowlist. Kept the existing placeholder for missing or failed images.
+- Files: `frontend/app/components/location-image.tsx`, `frontend/next.config.ts`, `ai/usage-log.md`.
+- Verification: `npm.cmd run build` and `npx.cmd eslint app/components/location-image.tsx next.config.ts` passed.
+- Human review: Pending human review and browser check of a live image URL.

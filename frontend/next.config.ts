@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
-Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Added a same-origin rewrite from frontend API calls to the API Gateway and isolated the browser test build directory.
-Author review: Jie Yang reviewed this file; integration testing remains pending.
+Tool: Codex (model: GPT-6), date: 2026-10-01
+Scope: Added a same-origin gateway rewrite and isolated the browser test build directory; removed the unused remote image optimizer allowlist.
+Author review: Jie Yang reviewed the earlier gateway rewrite; image change has been reviewed.
 */
 import type { NextConfig } from "next";
 

@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
-Scope: Added live Supplier location listing, search, filters, sorting, pagination and admin navigation; added retryable location-type loading and Tailwind responsive layout on 2026-09-29.
-Author review: Jie Yang reviewed the earlier implementation; Tailwind layout and team visual verification remain pending.
+Scope: Added live Supplier location listing, search, filters, sorting, pagination and admin navigation; added retryable location-type loading and Tailwind responsive layout on 2026-09-29; added image thumbnails on 2026-10-01.
+Author review: Jie Yang reviewed the earlier implementation; thumbnails await review.
 */
 "use client";
 
@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { withSessionMutation } from "@/lib/session-client";
 import { type LocationPage, supplierError } from "@/lib/locations";
+import { LocationImage, locationImageSource } from "@/app/components/location-image";
 
 type Filters = { name: string; type: string; building: string; time: string; order: "asc" | "desc" };
 const initialFilters: Filters = { name: "", type: "", building: "", time: "", order: "asc" };
@@ -81,7 +82,7 @@ export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
       <h2 id="locations-title">Browse Locations</h2>
       {role === "ADMIN" && <Link className="outline-link" href="/admin/locations">Manage Locations</Link>}
     </div>
-    <div className="location-filters grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[minmax(160px,2fr)_repeat(4,minmax(120px,1fr))]">
+    <div className="location-filters flex flex-nowrap overflow-x-auto pb-2">
       <label><span>Search name</span><input type="search" value={draft.name} onChange={(event) => change("name", event.target.value)} placeholder="Search pickup points" /></label>
       <label><span>Type</span><select value={draft.type} disabled={typesLoading || Boolean(typesError)} onChange={(event) => change("type", event.target.value)}><option value="">All types</option>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
       <label><span>Building</span><input value={draft.building} onChange={(event) => change("building", event.target.value)} placeholder="Exact building" /></label>
@@ -94,13 +95,14 @@ export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
     {!error && loading && <div className="home-empty" role="status">Loading locations…</div>}
     {!error && !loading && data?.items.length === 0 && <div className="home-empty">No locations match these filters.</div>}
     {!error && !loading && data && data.items.length > 0 && <>
-      <div className="location-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="location-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {data.items.map((location) => <article className="location-card" key={location.id}>
+          <LocationImage source={location.image_url} name={location.name} />
           <div className="location-card-heading"><h3>{location.name}</h3><span>{location.type}</span></div>
           <p>{location.building}, floor {location.floor}</p>
           <p>{location.location_desc}</p>
           {location.open_time && location.close_time && <p>Open {hours(location.open_time)}–{hours(location.close_time)}</p>}
-          {location.image_url && <a href={location.image_url} target="_blank" rel="noopener noreferrer">View location image</a>}
+          {locationImageSource(location.image_url) && <a href={locationImageSource(location.image_url)!} target="_blank" rel="noopener noreferrer">View full image</a>}
         </article>)}
       </div>
       <div className="location-pagination">
