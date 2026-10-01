@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
-Scope: Added responsive authentication and app styles; updated six-digit OTP inputs and added reusable toast, field-error, and Supplier browsing and management styles; moved Supplier responsive layout to Tailwind on 2026-09-29.
-Author review: Jie Yang reviewed the earlier styles; Tailwind migration and team visual verification remain pending.
+Scope: Added responsive authentication and app styles; updated six-digit OTP inputs and added reusable toast, field-error, and Supplier browsing and management styles; moved Supplier responsive layout to Tailwind on 2026-09-29; styled location thumbnails on 2026-10-01.
+Author review: Jie Yang reviewed the earlier styles; thumbnail styling awaits review.
 */
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
@@ -282,6 +282,10 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .location-grid { gap: 14px; }
 .location-card, .manage-list, .manage-form { border: 1px solid #dce2ec; border-radius: 9px; background: #fff; }
 .location-card { min-width: 0; padding: 18px; }
+/* AI-generated (location thumbnail styling awaits human review) */
+.location-card-image { position: relative; width: 100%; aspect-ratio: 16 / 9; margin-bottom: 14px; overflow: hidden; border-radius: 6px; background: #eef2f7; }
+.location-card-image img { object-fit: cover; }
+.location-image-fallback { display: grid; place-items: center; width: 100%; height: 100%; color: #66758b; font-size: 12px; }
 .location-card-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .location-card h3 { margin: 0; font-size: 16px; line-height: 21px; }
 .location-card-heading span { flex: none; padding: 5px 8px; border-radius: 999px; background: #eaf1ff; color: #315ba8; font-size: 11px; }

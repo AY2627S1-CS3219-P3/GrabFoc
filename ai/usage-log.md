@@ -2027,3 +2027,12 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Merged the updated frontend integration base into PR #37, retained both AI-log histories, and combined shared frontend disclosures. Verified the combined frontend before pushing.
 - Files: `ai/usage-log.md`, `frontend/README.md`, `frontend/app/globals.css`, `frontend/test/routes.test.mjs`.
 - Human review: Pending PR review.
+
+## 2026-10-01 — Supplier location thumbnails
+
+- Tool and mode: Codex (GPT-6), generate and explain.
+- Usage scenario: Show Supplier location images in the existing frontend without changing the service contract.
+- Exact user prompts: “how does the frontend load the images for the supplier service now? theres definitiely a better way of showing it on the UI and also loading it rather than just a pure image right?”; “how does the second lazy load thing work? and how does nextjs image optimization work when the database stores url?”; “so the frontend server will be storing the image somewhere in its cache isit? it will load from the URL and then store it to load on the UI?”; “how will it know to NOT fetch it again?”; “ok branch out to implement this and open a PR”.
+- Key response: Added lazy, fixed-ratio card thumbnails using the existing `image_url`; configured Next.js optimization for the seeded template image path, kept other HTTPS URLs direct, and provided a missing/broken-image placeholder. No Supplier API or schema change.
+- Files: `frontend/app/components/location-image.tsx`, `frontend/app/components/location-browser.tsx`, `frontend/app/globals.css`, `frontend/next.config.ts`, `frontend/README.md`, `ai/usage-log.md`.
+- Human review: Pending PR review and manual image inspection.
