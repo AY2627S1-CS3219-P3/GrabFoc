@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-01
-Scope: Added lazy location thumbnails and omitted empty image panels after UI review.
+Scope: Added lazy location thumbnails, omitted empty image panels, and enabled Next.js image optimization.
 Author review: Pending human review.
 */
 "use client";
@@ -31,7 +31,6 @@ export function LocationImage({ source, name }: { source: string | null; name: s
       fill
       sizes="(max-width: 639px) 100vw, (max-width: 1279px) 50vw, 33vw"
       loading="lazy"
-      unoptimized
       onError={() => setFailedSource(imageSource)}
     /> : <span className="location-image-fallback" aria-label="No location image available">No image available</span>}
   </div>;

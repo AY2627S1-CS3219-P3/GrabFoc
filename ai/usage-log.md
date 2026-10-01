@@ -2054,3 +2054,12 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Reverted the proposed Supplier endpoint, gateway route, Dockerfile, and service documentation after the user specified that Supplier Service files must not be touched. The existing Supplier API only returns an image URL; it cannot supply image bytes through its current endpoints. Kept frontend-only layout improvements.
 - Files: `frontend/app/components/location-image.tsx`, `frontend/app/components/location-browser.tsx`, `frontend/app/globals.css`, `frontend/next.config.ts`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `ai/usage-log.md`.
 - Human review: Pending PR review; image source decision remains open.
+
+## 2026-10-01 — Enable seeded location image optimization
+
+- Tool and mode: Codex (GPT-6), debug and generate.
+- Usage scenario: Enable Next.js optimization for location thumbnails using the existing Supplier image URLs.
+- Exact user prompts: “why isit when it is unoptimized, the images load successfully, but when i remove it the images dont load”; “is this rlly the best way to handle loading images”; “enable optimization and configure the allowed path”.
+- Key response: Removed the component's `unoptimized` prop and allowed HTTPS images only from `raw.githubusercontent.com/CS3219-AY2627S1/FoC-Template/main/data/images/**`, without query strings or custom ports. Retained lazy loading and the error fallback.
+- Files: `frontend/next.config.ts`, `frontend/app/components/location-image.tsx`, `ai/usage-log.md`.
+- Human review: Pending human review and runtime image inspection.
