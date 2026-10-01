@@ -2063,3 +2063,30 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Removed the component's `unoptimized` prop and allowed HTTPS images only from `raw.githubusercontent.com/CS3219-AY2627S1/FoC-Template/main/data/images/**`, without query strings or custom ports. Retained lazy loading and the error fallback.
 - Files: `frontend/next.config.ts`, `frontend/app/components/location-image.tsx`, `ai/usage-log.md`.
 - Human review: Pending human review and runtime image inspection.
+
+## 2026-10-01 — Preserve external HTTPS location thumbnails
+
+- Tool and mode: Codex (GPT-6), debug.
+- Usage scenario: Fix valid Supplier HTTPS image URLs rejected by the restricted Next.js optimizer path.
+- Exact user prompt: “When an admin saves a valid HTTPS URL outside this single GitHub path (the Supplier contract and integration fixtures accept URLs such as https://example.com/canteen.jpg), LocationImage passes it to next/image, but the optimizer rejects it because it does not match remotePatterns, causing the card to show ‘No image available’ even though the full-image link works. This is distinct from the previously reported HTTP-only issue: the newly added restrictive pattern also breaks contract-valid HTTPS hosts, so provide a compatible rendering path or align the service contract. AGENTS.md reference: frontend/AGENTS.md:L18-L22”.
+- Key response: Optimize images matching the configured GitHub host, path, port and query restrictions; render other valid HTTPS URLs with unoptimized delivery. Supplier contract is unchanged.
+- Files: `frontend/app/components/location-image.tsx`, `ai/usage-log.md`.
+- Human review: Pending human review.
+
+## 2026-10-01 � Location thumbnail fallback and stale optimizer build
+
+- Tool and mode: Codex (GPT-6), debug.
+- Exact user prompts: `"url" parameter is not allowed`; `the location cards should all have a location image thumbnail and only show it if the url isnt there from the supplier service`.
+- Key response: Found the saved Next.js build had no remotePatterns despite the current configuration allowing seeded GitHub images. Rebuilt the frontend. Kept a thumbnail area on every location card, using Supplier image_url when available and the existing placeholder when missing or unavailable.
+- Files: `frontend/app/components/location-image.tsx`, `ai/usage-log.md`.
+- Human review: Pending human review.
+
+## 2026-10-01 — Avoid server fetches for location thumbnails
+
+- Tool and mode: Codex (GPT-6), debug.
+- Usage scenario: Next.js returned 400 while fetching a remote location image URL.
+- Exact user prompt: “i get a 400 Bad request response , the next.js server cant access the image URL”.
+- Key response: Rendered every valid HTTPS location image directly from its URL with `next/image`'s `unoptimized` prop, so Next.js no longer fetches it. Removed the unused remote image allowlist. Kept the existing placeholder for missing or failed images.
+- Files: `frontend/app/components/location-image.tsx`, `frontend/next.config.ts`, `ai/usage-log.md`.
+- Verification: `npm.cmd run build` and `npx.cmd eslint app/components/location-image.tsx next.config.ts` passed.
+- Human review: Pending human review and browser check of a live image URL.
