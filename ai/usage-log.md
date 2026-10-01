@@ -850,7 +850,9 @@ PR #45.
 
 **Verification:** Run by Claude Code with test secrets: the container's variables went from 29 to the
 15 it reads (plus `NODE_ENV` from the Dockerfile); the whole stack started and sign-up, login, the admin
-bootstrap and location CRUD all worked through the gateway, as on `main`.
+bootstrap and location CRUD all worked through the gateway, as on `main`. Then checked by me on
+2026-10-01: `docker compose -f user-service/compose.yaml config` shows the container's environment
+limited to `LOG_LEVEL` and the 14 `USER_*` variables, with no `env_file`.
 
 ### 2026-09-30 — Supplier Service unit and integration tests
 
