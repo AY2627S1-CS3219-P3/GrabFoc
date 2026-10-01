@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented frontend gateway requests, BFF-managed refresh, local configuration, reusable User Service error feedback, and Supplier browsing and management; removed the obsolete /locations redirect reference, added Compose setup, recorded the styling choice on 2026-09-30, and documented thumbnails on 2026-10-01.
+Scope: Documented frontend gateway requests, BFF-managed refresh, local configuration, reusable User Service error feedback, and Supplier browsing and management; removed the obsolete /locations redirect reference, added Compose setup, recorded the styling choice on 2026-09-30, and documented local seeded thumbnails on 2026-10-01.
 Author review: Jie Yang reviewed the earlier documentation and confirmed Tailwind CSS with shadcn/ui; thumbnail documentation awaits review.
 -->
 
@@ -15,7 +15,7 @@ From the repository root, copy `.env.example` to `.env`, fill in the required Us
 
 Start the gateway, User Service, and Supplier Service, then run `npm install` and `npm run dev` from this folder. The sign-in screen is `/signin`, the app Home is `/home`, and `/` checks the session before redirecting. Home shows live Supplier locations with name search, type, building, opening-time and name-order filters, plus pagination. Admins can use `/admin/locations` to create, edit, deactivate and restore locations; Supplier Service enforces the role independently.
 
-Location cards lazy-load images from Supplier's `image_url`. Seeded template images use Next.js image optimization and its disk cache; other HTTPS image URLs load directly. Missing or failed images show a stable placeholder. The full-image link remains available.
+Location cards lazy-load the HTTPS `image_url` returned by Supplier Service. Locations without an image omit the image area; failed images show a placeholder. The full-image link remains available. Supplier Service currently returns image URLs rather than image bytes, so image availability depends on the URL host.
 
 Registration, resend, and password recovery use the same-origin `/api/gateway/*` rewrite. Sign-in and registration verification call Next.js `/api/session/*` handlers, which call the gateway and put tokens in HttpOnly, SameSite cookies. Protected profile and status requests send the bearer access token from Next.js. On a missing or rejected access token, Next.js calls `POST /auth/refresh` through the gateway, rotates both cookies, and retries the protected request once. Refresh 401 clears both cookies; an unavailable refresh keeps the session retryable. Browser tabs use Web Locks to serialize cookie-backed requests and session mutations; the Next.js process also coalesces requests presenting the same refresh token. Process coordination does not extend across multiple Next.js instances. Logout clears local cookies even if User Service logout fails; Sign In then warns that remote token revocation was not confirmed. The six-digit registration code is sent to `/auth/register/verify`. Profile displays User Service data; credit and order totals remain pending their own services.
 

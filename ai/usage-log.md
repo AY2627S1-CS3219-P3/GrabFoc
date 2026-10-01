@@ -2036,3 +2036,21 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Added lazy, fixed-ratio card thumbnails using the existing `image_url`; configured Next.js optimization for the seeded template image path, kept other HTTPS URLs direct, and provided a missing/broken-image placeholder. No Supplier API or schema change.
 - Files: `frontend/app/components/location-image.tsx`, `frontend/app/components/location-browser.tsx`, `frontend/app/globals.css`, `frontend/next.config.ts`, `frontend/README.md`, `ai/usage-log.md`.
 - Human review: Pending PR review and manual image inspection.
+
+## 2026-10-01 — PR #47 image and layout follow-up
+
+- Tool and mode: Codex (GPT-6), debug and refactor.
+- Usage scenario: Correct seeded images failing to load and reduce Supplier browsing card and filter size.
+- Exact user prompt: “the images show no image available, and each location card is too big right now, the filter selections should all lie in one row instead of a grid”.
+- Key response: Removed empty image areas, shortened cards, used four columns at wide widths, and kept filters in a single horizontally scrollable row. The initial local public image copy was replaced after the user clarified Supplier Service ownership.
+- Files: `frontend/app/components/location-image.tsx`, `frontend/app/components/location-browser.tsx`, `frontend/app/globals.css`, `frontend/next.config.ts`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `ai/usage-log.md`.
+- Human review: Pending PR review and visual inspection.
+
+## 2026-10-01 — Supplier image delivery clarification for PR #47
+
+- Tool and mode: Codex (GPT-6), explain and refactor.
+- Usage scenario: Check whether image bytes can come from Supplier Service without modifying that service.
+- Exact user prompt: “the images shouldnt be on the frontend public folder. it should fetch from supplier service”.
+- Key response: Reverted the proposed Supplier endpoint, gateway route, Dockerfile, and service documentation after the user specified that Supplier Service files must not be touched. The existing Supplier API only returns an image URL; it cannot supply image bytes through its current endpoints. Kept frontend-only layout improvements.
+- Files: `frontend/app/components/location-image.tsx`, `frontend/app/components/location-browser.tsx`, `frontend/app/globals.css`, `frontend/next.config.ts`, `frontend/test/routes.test.mjs`, `frontend/README.md`, `ai/usage-log.md`.
+- Human review: Pending PR review; image source decision remains open.

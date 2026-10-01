@@ -1,8 +1,8 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified session flows, Supplier management and responsive layout, downstream 401 handling, and recovery after an edit conflict.
-Author review: Jie Yang reviewed the earlier tests; responsive and conflict assertions await his review.
+Scope: Verified session flows, Supplier management and responsive layout, downstream 401 handling, and recovery after an edit conflict; updated filter and card layout assertions.
+Author review: Jie Yang reviewed the earlier tests; updated layout assertions await review.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -971,12 +971,12 @@ test("Supplier browsing and management use responsive Tailwind layouts", async (
     await admin.getByRole("button", { name: "Sign In" }).click();
     await admin.waitForURL("**/home");
     await admin.getByRole("heading", { name: "COM3 Basement" }).waitFor();
-    assert.equal(await columns(".home-section .location-filters"), 1);
+    assert.equal(await admin.locator(".location-filters").evaluate((element) => getComputedStyle(element).flexWrap), "nowrap");
     assert.equal(await columns(".location-grid"), 1);
 
     await admin.setViewportSize({ width: 1280, height: 900 });
-    assert.equal(await columns(".home-section .location-filters"), 5);
-    assert.equal(await columns(".location-grid"), 3);
+    assert.equal(await admin.locator(".location-filters").evaluate((element) => getComputedStyle(element).flexWrap), "nowrap");
+    assert.equal(await columns(".location-grid"), 4);
 
     await admin.getByRole("link", { name: "Manage Locations" }).click();
     await admin.waitForURL("**/admin/locations");
