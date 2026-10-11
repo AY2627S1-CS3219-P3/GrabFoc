@@ -11,6 +11,8 @@
  * Author review: Read in full; `npm run test:int` passes against a real Redis — see
  *                otp.service.int.spec.ts. Exercised indirectly through Step 12's endpoints,
  *                verified via Postman on 2026-09-28 — see /ai/usage-log.md.
+ *                2026-10-11 (Claude Code, Claude Opus 5.5): comment only — check() is now also
+ *                used by password reset.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Redis } from 'ioredis';
@@ -109,7 +111,8 @@ export class OtpService {
    * the caller decides when it's safe to, via `discard()`, once its own business validation
    * (that a correct code alone can't cover) has also passed. See `CHECK_OTP_LUA` for why this
    * matters: `EMAIL_CHANGE` (`POST /users/me/email`) and `PASSWORD_CHANGE` (`POST
-   * /users/me/password`) are the two purposes that use this instead of `verify()`.
+   * /users/me/password`) use this instead of `verify()`. `PASSWORD_RESET` (`POST
+   * /auth/password/reset`) uses this first and then `verify()` to spend the code.
    *
    * A wrong or missing code still throws `OTP_INVALID`/`OTP_EXPIRED` exactly as `verify()`
    * does — the attempt cap is enforced identically either way.

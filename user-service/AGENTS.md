@@ -14,6 +14,9 @@ Scope: Transcribed the team's User Service design (roles, storage, credential ha
        when rows exist but no ACTIVE admin does. All four are adopted as team decisions by the
        author review below.
 Author review: Read in full; checked against the team's work plan.
+2026-10-11 (Claude Code, Claude Opus 5.5): updated the OTP exceptions rule and removed the
+       "a reset costs the code" edge case, after the service owner chose check-then-verify for
+       password reset. Author review: Read
 -->
 
 # AGENTS.md — User Service
@@ -161,7 +164,7 @@ _Origin: Team (Backlog USFR1–6, NFR5.1 and team decisions)_
 
 The OTP is **submitted together with the action**, never verified in a separate call. A separate `/otp/verify` would mean the server had to remember "this user is verified" and leave a gap between the two requests.
 
-- **Two exceptions to "single use, consumed the instant it's checked":** the `EMAIL_CHANGE` code on `POST /users/me/email` and the `PASSWORD_CHANGE` code on `POST /users/me/password` are checked for correctness first, but not actually spent until that endpoint's own business validation (`EMAIL_TAKEN`; "must differ from current password") also passes — so a caller who submits a taken new email, or resubmits their current password by mistake, can retry with the *same* code instead of requesting a new one. This is deliberately different from `POST /auth/password/reset`, which does consume its code even on the equivalent rejection: reset's version of that check sits behind a code tied to reading a real inbox, so there's nothing to gain by probing it for free. `changePassword` calls no request-limiter of its own, so if its reuse check ran *before* the code check instead, anyone holding a valid access token — including a leaked one — could submit throwaway codes with guessed passwords and read from the rejection whether a guess matches the account's real password, with no rate limit and no lockout. Checking the code first closes that off, at the cost of `OtpService` needing a non-consuming check (`check`/`checkRecord`, via `CHECK_OTP_LUA`) alongside the consuming one (`verify`/`verifyRecord`), plus an explicit `discard()` once the caller decides it's safe to spend it.
+- **Three exceptions to "single use, consumed the instant it's checked":** the `EMAIL_CHANGE` code on `POST /users/me/email`, the `PASSWORD_CHANGE` code on `POST /users/me/password` and the `PASSWORD_RESET` code on `POST /auth/password/reset` are checked for correctness first, but not actually spent until that endpoint's own business validation (`EMAIL_TAKEN`; "must differ from current password") also passes — so a caller who submits a taken new email, or resubmits their current password by mistake, can retry with the *same* code instead of requesting a new one. Reset spends its code with `verify()` rather than `discard()`, so of two requests racing with one code only one sets a password; the other gets `OTP_EXPIRED`. `changePassword` calls no request-limiter of its own, so if its reuse check ran *before* the code check instead, anyone holding a valid access token — including a leaked one — could submit throwaway codes with guessed passwords and read from the rejection whether a guess matches the account's real password, with no rate limit and no lockout. Checking the code first closes that off, at the cost of `OtpService` needing a non-consuming check (`check`/`checkRecord`, via `CHECK_OTP_LUA`) alongside the consuming one (`verify`/`verifyRecord`), plus an explicit `discard()` once the caller decides it's safe to spend it.
 
 **Login** (U2.1.2, U2.1.3, U2.3.1)
 
@@ -383,7 +386,6 @@ All prefixed `USER_` except the shared `LOG_LEVEL`. All are listed in the root `
 - **Redis data loss** resets counters and drops in-flight OTPs and pending sign-ups. Users retry; AOF `everysec` keeps this rare.
 - **Account enumeration via register** — 409 `EMAIL_TAKEN` reveals that an address has an account. U1.1.3 requires the check, so this is accepted. Login, forgot-password and reset deliberately do *not* leak it.
 - **Forgot-password timing** — a real account sends an email and an unknown address does not, so the 202 comes back measurably sooner for an address with no account. The body, status and Redis state are identical, and the 3-per-10-minutes limit bounds how often it can be measured, but the timing itself is a residual leak. Closing it needs the send moved off the request, which is the deferred outbox; accepted until then.
-- **A reset costs the code even when it is refused** for reusing the current password, because the OTP is consumed before the comparison. Verifying without consuming would mean splitting the Lua script that makes the attempt cap unraceable, which is the worse trade; the user asks for another code.
 - **A reset against an account deactivated in the last five minutes** is refused with the same `OTP_INVALID` as a wrong code, so a valid code cannot bring an account back.
 - **Lockout as griefing** — anyone can lock another person out for 15 minutes by typing wrong passwords against their email. Accepted; it is the standard trade-off for a lockout policy.
 - **Mail is slow or down** — one retry with a 5 s timeout, then 503. The pending sign-up or OTP still exists, so the user can resend.

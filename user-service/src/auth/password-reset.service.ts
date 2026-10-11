@@ -7,6 +7,12 @@
  * Author review: Read in full; every rule checked against the backlog ID it cites, and both
  *                endpoints run against the compose stack — including a reset against an
  *                address with no account, compared byte for byte with a real one.
+ *
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
+ * Scope: Reordered `reset()` so a code is checked (otp.check) before the "must differ" reuse
+ *        check and only spent (otp.verify) once it passes, so a rejected same-password reset no
+ *        longer costs the user their code. Solution chosen by the service owner.
+ * Author review: Read in full
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
@@ -100,10 +106,13 @@ export class PasswordResetService {
   async reset(input: ResetPasswordInput): Promise<void> {
     const emailHash = hashEmail(input.email);
 
-    // Throws 400 OTP_INVALID (with attemptsRemaining) or OTP_EXPIRED, and consumes the record so
-    // one code cannot set two passwords. An address with no account reaches here too, against
-    // the decoy record `forgot` wrote, and fails in exactly the same words.
-    await this.otp.verify(OtpPurpose.PASSWORD_RESET, emailHash, input.otp);
+    // Throws 400 OTP_INVALID (with attemptsRemaining) or OTP_EXPIRED, but leaves a correct code
+    // alive — it is spent by `verify()` below, once the reuse check has passed. An address with
+    // no account reaches here too, against the decoy record `forgot` wrote, and fails in exactly
+    // the same words. The code check has to come before the reuse check: run the other way
+    // round, anyone could submit a junk code with a guessed password and read "must be
+    // different" as "that is the current password", with no lockout.
+    await this.otp.check(OtpPurpose.PASSWORD_RESET, emailHash, input.otp);
 
     const user = await this.users.findByEmailHash(emailHash);
 
@@ -116,11 +125,8 @@ export class PasswordResetService {
 
     // AGENTS.md: a new password matching the current one is rejected, and the check is skipped
     // when the stored hash is NULL — that is the bootstrap admin claiming its account, which has
-    // no current password to differ from.
-    //
-    // This costs the user their code, because the code was consumed above. Verifying without
-    // consuming would mean splitting the Lua script that makes the attempt cap unraceable, which
-    // is a worse trade than one extra round trip through "forgot password".
+    // no current password to differ from. The code is still live here, so the user can retry
+    // with a different password and the same code.
     if (user.passwordHash && (await verifyPassword(input.newPassword, user.passwordHash))) {
       throw new AppError(
         400,
@@ -128,6 +134,11 @@ export class PasswordResetService {
         'Your new password must be different from your current one.',
       );
     }
+
+    // Spends the code. `verify()` rather than `check()` + `discard()`: its match-and-delete is
+    // one Lua script, so of two requests racing with the same code only one gets past here —
+    // the other gets OTP_EXPIRED — and one code still cannot set two passwords.
+    await this.otp.verify(OtpPurpose.PASSWORD_RESET, emailHash, input.otp);
 
     const passwordHash = await hashPassword(input.newPassword);
 

@@ -5,6 +5,11 @@
  *        collaborators, including the ones that pin the enumeration-resistance rules.
  * Author review: Read in full; each enumeration and ordering assertion was confirmed to fail
  *                against a deliberately broken version of the service.
+ *
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
+ * Scope: Updated the reset tests for check-then-verify: a same-password rejection keeps the
+ *        code, the code is spent after the reuse check, and a lost race changes nothing.
+ * Author review: Read in full
  */
 import { Pool, PoolClient } from 'pg';
 import { AppError } from '../common/app-error';
@@ -65,6 +70,10 @@ function build(user: UserRecord | null = activeUser()) {
     issue: jest.fn<Promise<IssuedOtp>, [OtpPurpose, string, string?]>(async () => {
       record('issue');
       return { code: '123456', expiresAt: new Date('2026-09-26T10:05:00Z') };
+    }),
+    check: jest.fn<Promise<string | undefined>, [OtpPurpose, string, string]>(async () => {
+      record('check');
+      return undefined;
     }),
     verify: jest.fn<Promise<string | undefined>, [OtpPurpose, string, string]>(async () => {
       record('verify');
@@ -226,32 +235,39 @@ describe('reset', () => {
     expect(stored).not.toContain(RESET.newPassword);
   });
 
-  it('consumes the code before touching the database', async () => {
+  it('checks the code before touching the database', async () => {
     // Looking the user up first would let a caller with no code learn whether an address exists
     // by timing the response.
     const { service, calls } = build();
 
     await service.reset(RESET);
 
-    expect(calls.indexOf('verify')).toBeLessThan(calls.indexOf('findByEmailHash'));
+    expect(calls.indexOf('check')).toBeLessThan(calls.indexOf('findByEmailHash'));
   });
 
-  it('verifies the code under PASSWORD_RESET and the email hash', async () => {
+  it('spends the code only after the reuse check, and before writing', async () => {
+    const { service, calls } = build();
+
+    await service.reset(RESET);
+
+    expect(calls.indexOf('findByEmailHash')).toBeLessThan(calls.indexOf('verify'));
+    expect(calls.indexOf('verify')).toBeLessThan(calls.indexOf('sql:BEGIN'));
+  });
+
+  it('checks and spends the code under PASSWORD_RESET and the email hash', async () => {
     const { service, otp } = build();
 
     await service.reset(RESET);
 
-    expect(otp.verify).toHaveBeenCalledWith(
-      OtpPurpose.PASSWORD_RESET,
-      expect.any(String),
-      '123456',
-    );
-    expect(otp.verify.mock.calls[0][1]).toMatch(/^[0-9a-f]{64}$/);
+    for (const fn of [otp.check, otp.verify]) {
+      expect(fn).toHaveBeenCalledWith(OtpPurpose.PASSWORD_RESET, expect.any(String), '123456');
+      expect(fn.mock.calls[0][1]).toMatch(/^[0-9a-f]{64}$/);
+    }
   });
 
   it('changes nothing when the code is wrong', async () => {
     const { service, otp, users, refreshTokens, lockout } = build();
-    otp.verify.mockRejectedValueOnce(
+    otp.check.mockRejectedValueOnce(
       new AppError(400, ErrorCode.OTP_INVALID, 'That code is not correct.', {
         attemptsRemaining: 2,
       }),
@@ -263,14 +279,31 @@ describe('reset', () => {
     expect(lockout.clear).not.toHaveBeenCalled();
   });
 
-  it('rejects a new password that matches the current one', async () => {
-    const { service, users, refreshTokens } = build();
+  it('rejects a new password that matches the current one, without spending the code', async () => {
+    const { service, otp, users, refreshTokens } = build();
 
     await expect(
       service.reset({ ...RESET, newPassword: 'Passw0rdSafe' }),
     ).rejects.toMatchObject({ status: 400, code: ErrorCode.VALIDATION_ERROR });
+    expect(otp.verify).not.toHaveBeenCalled();
     expect(users.updatePasswordHash).not.toHaveBeenCalled();
     expect(refreshTokens.revokeAllForUser).not.toHaveBeenCalled();
+
+    // Same code, different password: goes through.
+    await service.reset(RESET);
+    expect(users.updatePasswordHash).toHaveBeenCalled();
+  });
+
+  it('changes nothing when another request spent the code first', async () => {
+    // Two resets racing with one code both pass `check()`; `verify()` lets only one through.
+    const { service, otp, users, lockout } = build();
+    otp.verify.mockRejectedValueOnce(
+      new AppError(400, ErrorCode.OTP_EXPIRED, 'That code has expired.'),
+    );
+
+    await expect(service.reset(RESET)).rejects.toMatchObject({ code: ErrorCode.OTP_EXPIRED });
+    expect(users.updatePasswordHash).not.toHaveBeenCalled();
+    expect(lockout.clear).not.toHaveBeenCalled();
   });
 
   it('skips the reuse check when the account has no password yet', async () => {

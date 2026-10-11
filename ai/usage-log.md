@@ -2107,7 +2107,7 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Files: `frontend/app/components/location-image.tsx`, `ai/usage-log.md`.
 - Human review: Pending human review.
 
-## 2026-10-01 � Location thumbnail fallback and stale optimizer build
+## 2026-10-01 � Location thumbnail fallback and stale optimizer build
 
 - Tool and mode: Codex (GPT-6), debug.
 - Exact user prompts: `"url" parameter is not allowed`; `the location cards should all have a location image thumbnail and only show it if the url isnt there from the supplier service`.
@@ -2124,3 +2124,23 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Files: `frontend/app/components/location-image.tsx`, `frontend/next.config.ts`, `ai/usage-log.md`.
 - Verification: `npm.cmd run build` and `npx.cmd eslint app/components/location-image.tsx next.config.ts` passed.
 - Human review: Pending human review and browser check of a live image URL.
+
+## 2026-10-11 — Password reset keeps the OTP when the new password is rejected
+
+- Tool and mode: Claude Code (Claude Opus 5.5), explain and debug.
+- Usage scenario: `POST /auth/password/reset` spent the OTP before the "must differ from current password" check, so a rejected reset forced the user back through forgot-password.
+- Exact user prompts: “this is an issue [screenshot: the code is used up when the new password matches the current one]”; “this is an issue, dont implement, just discuss solution”; “summarise this issue, what the system does now, solution, what the system is expected to do after applying solution”; “fix the issue "reset password uses up the otp when the new password is rejected"” with the solution: “otp.check() confirms the code without deleting it. Wrong codes still count against the attempt cap / Load the user and check the account is ACTIVE (unchanged). / Compare the new password with the current one. If they match, return 400 and keep the code. / otp.verify() uses up the code, then the password is updated and sessions revoked as now”.
+- Key response: The documented reason for accepting this (no non-consuming OTP check) no longer held, because `otp.check()` was added in Step 12. Running the password comparison before the code check was rejected because it would let anyone test guessed passwords with no lockout. `reset()` now runs `check()`, then the reuse check, then `verify()`, so a racing second request with the same code gets `OTP_EXPIRED`. The user chose the solution.
+- Files: `user-service/src/auth/password-reset.service.ts`, `user-service/src/auth/password-reset.service.spec.ts`, `user-service/src/otp/otp.service.ts` (comment only), `user-service/AGENTS.md`, `ai/usage-log.md`.
+- Verification: `npm run build` passed; `npx jest` passed 273/273. One run had 2 failures in `jwt.service.spec.ts`, which is unrelated to this change and passed alone and on the rerun (flaky).
+- Human review: Confirmed with Postman that a same-password reset returns 400 and the same code then works with a different password. Tested on frontend too
+
+## 2026-10-11 — Postman: same-password reset request and change-email description
+
+- Tool and mode: Claude Code (Claude Opus 5.5), generate.
+- Usage scenario: Cover the password-reset OTP fix in the Postman collection and correct an out-of-date description.
+- Exact user prompts: “you also updated the postman collection?”; “add same password reset test into postman collection, fix the change email part too”.
+- Key response: Added "400 reset to the current password keeps the code" before "Reset password" in the Password reset folder. It sends the account's current password with the Mailpit code and expects 400 `VALIDATION_ERROR`; "Reset password" then reuses the same code and expects 204. Changed the "Change email - request" description: a 409 `EMAIL_TAKEN` no longer spends the code (true since Step 12).
+- Files: `user-service/postman/user-service.postman_collection.json`, `ai/usage-log.md`.
+- Verification: `newman run --folder "Password reset"` against the running compose stack: 10 requests, 12 assertions, 0 failures.
+- Human review: Ran the postman collection successfully
