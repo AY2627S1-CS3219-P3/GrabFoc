@@ -1,3 +1,10 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-05
+Scope: §9 D2 demo checks: replaced the stale `status=INACTIVE` / `ALL` query with `includeInactive=true`, the parameter documented in supplier-service/AGENTS.md and implemented by the Supplier Service.
+Author review (Jian Bing): Checked the whole end-to-end flow locally.
+-->
+
 # AGENTS.md — FoC (CS3219 AY26/27 S1, Project Group 3)
 
 Context for AI coding agents and new contributors. Read this before changing code or docs.
@@ -310,8 +317,8 @@ _Origin: Restated from the D2 brief and Lecture; Team (the admin, 403, 401, Post
 Service-specific edge cases are in each service's `AGENTS.md`.
 
 - An ADMIN can create, edit, deactivate and restore a location.
-- A USER can browse, search and filter locations, but gets **403** on `POST /locations`, `PATCH /locations/:id` and `GET /locations?status=INACTIVE`, and can't open the admin screens.
-- An ADMIN can list deactivated locations (`status=INACTIVE` or `ALL`) and restore one from the UI.
+- A USER can browse, search and filter locations, but gets **403** on `POST /locations`, `PATCH /locations/:id` and `GET /locations?includeInactive=true`, and can't open the admin screens.
+- An ADMIN can list deactivated locations (`includeInactive=true`) and restore one from the UI.
 - No token → **401**. The Order Service doesn't exist until D3, so demo this against a Supplier endpoint (e.g. `GET /locations`).
 - The same CRUD calls work from **Postman** with the UI stopped.
 - The UI shows live data and adapts from desktop to mobile.
