@@ -2,25 +2,25 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Recorded the CodeQL workflow configuration and expanded pull request coverage.
-Author review: Initial setup approved in PR #23; expanded PR coverage pending human review.
+Author review: Initial setup approved in PR #23; for the expanded PR coverage, Jian Bing skimmed most of the code on PR #27 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Moved the CodeQL entries under the Jian Bing section when merging main into PR #27; entry text unchanged.
-Author review: Pending human review on PR #27.
+Author review: Jian Bing skimmed most of the code on PR #27 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Wrote the PR #30 review-fix entry under the Jian Bing section.
-Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #30.
+Author review: Jian Bing supplied the prompts quoted in that entry, skimmed most of the code on PR #30 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations.
 Tool: Claude Code (model: Claude Opus 5), date: 2026-09-29
 Scope: Wrote the Cole Lin entries for PRs #7, #28, #30 and #33 from his prompts in the session.
 Author review: Cole Lin confirmed the prompts, decisions and verification described.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Wrote the SoCLaaS TLS stopgap entry under the Jian Bing section (PR #36).
-Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #36.
+Author review: Jian Bing supplied the prompts quoted in that entry, skimmed most of the code on PR #36 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Moved lihloway's four Supplier Service entries under the Cole Lin section when merging main into PR #33; entry text unchanged.
-Author review: Pending review by Jian Bing and lihloway on PR #33.
+Author review: Jian Bing skimmed most of the code on PR #33 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations; pending lihloway's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Wrote the Supplier Service Docker Compose entry under the Jian Bing section (PR #33).
-Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #33.
+Author review: Jian Bing supplied the prompts quoted in that entry, skimmed most of the code on PR #33 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations.
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Combined PR #33 entries with the frontend and gateway log while merging PR #33.
 Author review: Pending team review of the merged log.
@@ -39,6 +39,12 @@ Author review: Pending Jie Yang's review of the Compose change.
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Recorded the frontend origin-check fix and Docker regression verification.
 Author review: Pending Jie Yang's review of the security fix.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-05
+Scope: Wrote the end-to-end UI check and §9 demo-check entry under the Jian Bing section.
+Author review: Jian Bing supplied the prompts quoted in that entry and checked the whole end-to-end flow locally.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
+Scope: Wrote the Credit Service design and implementation entry under the Jian Bing section.
+Author review: Jian Bing supplied the prompts quoted in that entry; pending his review.
 -->
 
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
@@ -823,6 +829,125 @@ any real mailbox — not a service outage.
 - Verification: Ran it with Postman against PostgreSQL in Docker: the seed loads all 21 locations, CRUD and search work, and the 401 and 403 cases behave as documented.
 
 ## Jian Bing
+
+### 2026-10-11 — Credit Service design (learning mode) and first implementation
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `credit-service/**` (new), `compose.yaml`, `.env.example` (incl. `credit-service/postman/credit.postman_collection.json`)
+
+**Scenario:** Design the Credit Service myself in learning mode (Claude asked for my approach at
+each step, explained concepts and flagged mistakes), then have Claude implement the agreed design.
+
+**Prompts (exact):**
+> /superpowers:brainstorming /Users/user/Downloads/cs3219-group3-D1.pdf  using this product document, help me plan out the order service
+
+> sorry,  imean to do credit service isntead
+
+> lets do path 1: where after a courier with 10 credits deliver it and completes, the order serivce will send a message to credit, whcih then releases the resevreed credits to the courier, and hence finishing the transaction, so now the ocurier will have 13 creidts, and the requester will still have 7 credits sicne to make an order, the order serivce will call the credit serivce to resevr ethe 3 credits. now when the order gets cancelled, the reserved credits in credit service go back to the requester, wher eorder service wil lmake this call
+
+> the creidt would become 4/6 which si wrong, so we would need it to be idempotent, whic hwe can do by checking the orderid to see if its the same request, and since we know if an orderid has had its creidt reserved, we can check against this
+
+> operation role: we have a valid state machine or transition cycle, then if 2 simualtaenous duplciates come, we write and check atomically through a transaction? i dont know if databse transaction is suitable for this thoug, but i dont want to reinvent the wheel either. also the reply shoudl definitely be success for the 1st time, but a fail on the 2nd time, but i dont think order should see an error, since the transaction can proceed if credit service does its job scope eproperly, it would be coupling to make order servic ehandle duplciate response causing an error
+
+> yup the correct state transition was exactly what i had in mind. okay for this duplciate same order race, i think we use both the unique order id and its operation type and amout to uniquely identify if we have procsessed the order before?
+
+> 1. order id + action only, and the amount stays as a data field ,which if the same x, reserve request comes it, with a different value, we overwrite hte prev value 2. so we use a custom record id? 3. database constraint that cen work as al ookup in code?
+
+> what r u saying, if the overwriting isnt possible, so if the x,reverve came in 2 times, with a different amount, it means my oder service is stupdi cause it shoudlnt allow that i nthe first palce no? and also the cshape a and b the row id i jsut said? why are you repeating the same thing to me
+
+> for 2. no i meant liek before i mentioned record id, u wanted to me to find a way to deduplicate commands, and regarldess, if we are going to do either shape a or b, isnt there still the the duplicate same-order race and the two-orders-at-once race?
+
+> i literally was suggestin shape a from the start, did i nto mention using psotgres transaction?! thanks but i will jsut pick shape a regardless for the idempotency it provides. then for 2 orders a tonce, if they ar edifferne torders they have different uid so its already solved no? also i dont liek the fact that we r using psotgres to help handle idempotency, there has to be a better way
+
+> okay use database, also if anythign for the 2 orders at once, im pretty sure there is a constraint where an user cant cant have mroe than 1 ongoing order at ocne, it shoudl be written i nthe project document somewhere, so this cas eshoudl even happen, why am i handling this?
+
+> okay then nvm, lets stick to the original requirement
+
+> conditional uupdate, add a apart that says where user.amount > requested amount
+
+> can you implement a post for reserving credit, and a post for releasing credit, whichh all is order calling i think it makes sense, also can you go straight to implementation
+
+> can you gime me a collection ot import with
+
+Choices made in pickers: confirmed the design summary ("Confirm and continue"); in the
+implementation plan, "Add transfer too", "X-Service-Key on /internal" and "Implement this step".
+
+**What it produced:** Explanations of check-then-act races, what a transaction does and doesn't
+guarantee, and the two ways to make a per-order record unique. After my design was confirmed, a
+NestJS service with `POST /internal/credits/reserve`, `/transfer` and `/release`, a service-key
+guard, the schema, Docker and compose wiring, a README and `credit-service/AGENTS.md`, plus 18 unit
+and 19 integration tests (including ten identical reserves at once, five orders racing for one
+balance, and transfer racing release).
+
+**What I changed or rejected:** My design: one hold per order with states RESERVED → TRANSFERRED |
+RELEASED, idempotency on order id + action with the amount as data, duplicates returning success,
+PostgreSQL enforcing it, and a conditional update for the balance. Claude corrected my `>` to `>=`,
+pointed out that D1 limits only couriers to one order, and talked me out of overwriting a
+mismatched amount. I asked for reserve and release; Claude flagged that transfer was missing and I
+added it. Claude proposed the table columns, paths, status codes and the X-Service-Key pattern,
+flagged under the AI policy, and I approved them. Claude changed the compose key from `:?` to
+`:-` so a missing key stops only the Credit container, not the whole stack.
+
+**Verification:** Run by Claude Code: `npm test` 18/18 and `npm run test:int` 19/19 against
+PostgreSQL in Docker. Removing the `available >= amount` condition failed 3 tests and letting
+release ignore the state failed 2, so the race tests do catch those bugs. The built container
+answered 401 without a key, 201 then 200 for a repeated reserve, 409 for a mismatch and for
+release after transfer, and left the requester at 7/0 and the courier at 13/0. The Postman collection ran
+with Newman against the container: 17 requests, 21 assertions, 0 failures.
+
+### 2026-10-11 — Find and fill in my pending author reviews
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `AGENTS.md`, `ai/usage-log.md`
+
+**Scenario:** List the AI disclosures still waiting on my review, then record what I checked.
+
+**Prompts (exact):**
+> help me find all the author review liens under jianbing in the repo that are missing
+
+> help me fill up my pending review lines, i checked through hthe whole end to end flow locslly, and ensured all test cases passed, as well as overviewed the whole flow and made sure the tests amde snese, whereas the pr themselves, i skimmed through most of the code and using the copilot and codex github connectors, ran through their results and advice, and made sure they were sound before resolving the conversations
+
+**What it produced:** Used `git grep` and `git blame` to find 21 pending Author review lines that
+name me or that I committed, and two of my log entries (the CodeQL ones) that have no "What I
+changed or rejected" line. It then copied my statement above into those lines: the
+end-to-end check for the §9 fix, and the code skim plus Copilot and Codex review for PRs #27, #30,
+#33 and #36. No code changed. The 14 lines for the PR #44 Supplier test files (and
+`.env.example`) were dropped when this work was rebased onto `main`, because PR #45 had already
+recorded my review of those tests on 2026-10-01.
+
+**What I changed or rejected:** The review wording is my own statement; Claude Code only placed it.
+
+**Verification:** `git grep` finds no Author review line still pending on me.
+
+### 2026-10-05 — End-to-end UI check with Playwright, and a §9 demo-check fix
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `AGENTS.md`
+
+**Scenario:** Drive the running Docker Compose stack through the browser to confirm the D2 flows
+work end to end, then correct a demo instruction the check found to be wrong.
+
+**Prompts (exact):**
+> try using the playwright cli to access the ui to see if end to end works
+
+> help me change the status=inative wording, whatever that means
+
+**What it produced:** Using playwright-cli on `localhost:3000`, Claude signed up a USER (OTP read
+from Mailpit), browsed locations with search, type filter, sort and paging, toggled requester and
+courier mode, and checked the profile. The USER was redirected away from `/admin/locations` and got
+403 on create, edit and `includeInactive=true`; the gateway returned 401 with no token. It claimed
+the bootstrap ADMIN through Forgot Password and ran create, edit, deactivate and restore from the UI,
+and checked the 390px mobile layout for horizontal overflow. It found that `AGENTS.md` §9 told the
+demo to use `GET /locations?status=INACTIVE` (and `ALL`), which the Supplier Service rejects with
+400; the documented parameter is `includeInactive=true`. It changed the two §9 lines to match. No
+code changed. Other findings reported but not acted on: the header avatar is a hard-coded "?"
+placeholder, Deactivate has no confirmation, the mobile header wraps above the logo, and the
+requester/courier mode resets on navigation.
+
+**What I changed or rejected:** Pending my review.
+
+**Verification:** `GET /locations?includeInactive=true` returned 403 for the USER and listed the
+inactive test location for the ADMIN, through the frontend proxy and the gateway.
 
 ### 2026-10-01 — Pass the User Service container only its own variables
 

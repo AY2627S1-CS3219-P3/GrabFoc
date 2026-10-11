@@ -8,6 +8,9 @@
 # Author review: Pending Jie Yang's review of the four-service stack.
 # Author review: Read in full; verified the full stack builds and runs, and that the database survives a down/up cycle.
 # Author review (Jian Bing, the supplier include): see supplier-service/compose.yaml.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
+# Scope: Included credit-service/compose.yaml.
+# Author review: pending — Jian Bing to record what he checked.
 #
 # One command for the whole project (M7). Each service keeps its own compose.yaml in its own
 # folder, with its OWN database container — services must not share a database (root
@@ -25,6 +28,8 @@ include:
     # here, so the root .env must exist: `cp .env.example .env` first.
     env_file: .env
   - path: supplier-service/compose.yaml
+    env_file: .env
+  - path: credit-service/compose.yaml
     env_file: .env
   - path: api-gateway/compose.yaml
     env_file: .env
