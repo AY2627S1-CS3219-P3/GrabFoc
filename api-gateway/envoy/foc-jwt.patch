@@ -1,0 +1,468 @@
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-10-12
+# Scope: Native FoC JWT and request-ID compatibility extension.
+# Author review: Pending human review.
+--- a/source/extensions/filters/http/jwt_authn/authenticator.cc
++++ b/source/extensions/filters/http/jwt_authn/authenticator.cc
+@@ -1,3 +1,9 @@
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: FoC JWT compatibility extension in a pinned custom Envoy build.
++Author review: Implementation approved; code review pending.
++*/
+ #include "source/extensions/filters/http/jwt_authn/authenticator.h"
+ 
+ #include "envoy/http/async_client.h"
+@@ -71,6 +77,8 @@
+ private:
+   // Returns the name of the authenticator. For debug logging only.
+   std::string name() const;
++
++  bool focCompatibility() const { return provider_ && *provider_ == "foc_user"; }
+ 
+   // Verify with a specific public key.
+   void verifyKey();
+@@ -189,7 +197,8 @@
+   }
+ 
+   if (!use_jwt_cache) {
+-    ENVOY_LOG(debug, "{}: Parse Jwt {}", name(), curr_token_->token());
++    // Do not log bearer tokens, even at debug level.
++    ENVOY_LOG(debug, "{}: Parse Jwt", name());
+     owned_jwt_ = std::make_unique<JwtVerify::Jwt>();
+     status = owned_jwt_->parseFromString(curr_token_->token());
+     jwt_ = owned_jwt_.get();
+@@ -222,9 +231,29 @@
+     return;
+   }
+ 
++  // AI-generated FoC compatibility: validate before making any JWKS request.
++  const uint64_t foc_now = DateUtil::nowToSeconds(timeSource());
++  if (focCompatibility()) {
++    const auto kid = jwt_->header_pb_.fields().find("kid");
++    if (kid == jwt_->header_pb_.fields().end() ||
++        kid->second.kind_case() != Protobuf::Value::kStringValue ||
++        (jwt_->alg_ != "RS256" && jwt_->alg_ != "ES256")) {
++      doneWithStatus(Status::JwtVerificationFail);
++      return;
++    }
++    if (jwt_->exp_ == 0 || jwt_->exp_ <= foc_now) {
++      doneWithStatus(Status::JwtExpired);
++      return;
++    }
++    if (jwt_->nbf_ > foc_now) {
++      doneWithStatus(Status::JwtNotYetValid);
++      return;
++    }
++  }
++
+   // Default is 60 seconds
+   uint64_t clock_skew_seconds = JwtVerify::kClockSkewInSecond;
+-  if (jwks_data_->getJwtProvider().clock_skew_seconds() > 0) {
++  if (focCompatibility() || jwks_data_->getJwtProvider().clock_skew_seconds() > 0) {
+     clock_skew_seconds = jwks_data_->getJwtProvider().clock_skew_seconds();
+   }
+   const uint64_t unix_timestamp = DateUtil::nowToSeconds(timeSource());
+@@ -268,16 +297,19 @@
+ 
+   auto jwks_obj = jwks_data_->getJwksObj();
+   if (jwks_obj != nullptr && !jwks_data_->isExpired()) {
+-    // TODO(qiwzhang): It would seem there's a window of error whereby if the JWT issuer
+-    // has started signing with a new key that's not in our cache, then the
+-    // verification will fail even though the JWT is valid. A simple fix
+-    // would be to check the JWS kid header field; if present check we have
+-    // the key cached, if we do proceed to verify else try a new JWKS retrieval.
+-    // JWTs without a kid header field in the JWS we might be best to get each
+-    // time? This all only matters for remote JWKS.
+-
+-    verifyKey();
+-    return;
++    // FoC refreshes cached keys once when a new signing-key ID appears.
++    bool known_kid = false;
++    for (const auto& key : jwks_obj->keys()) {
++      if (key->kid_present_ && key->kid_ == jwt_->kid_) {
++        known_kid = true;
++        break;
++      }
++    }
++    if (!focCompatibility() || known_kid ||
++        !jwks_data_->getJwtProvider().has_remote_jwks()) {
++      verifyKey();
++      return;
++    }
+   }
+ 
+   // TODO(potatop): potential optimization.
+@@ -314,9 +346,10 @@
+   }
+ }
+ 
+-void AuthenticatorImpl::onJwksError(Failure) {
++void AuthenticatorImpl::onJwksError(Failure failure) {
+   jwks_cache_.stats().jwks_fetch_failed_.inc();
+-  doneWithStatus(Status::JwksFetchFail);
++  doneWithStatus(focCompatibility() && failure == Failure::EmptyKeys
++                     ? Status::JwksNoValidKeys : Status::JwksFetchFail);
+ }
+ 
+ void AuthenticatorImpl::onDestroy() {
+@@ -327,7 +360,7 @@
+ 
+ // Verify with a specific public key.
+ void AuthenticatorImpl::verifyKey() {
+-  const Status status = JwtVerify::verifyJwtWithoutTimeChecking(*jwt_, *jwks_data_->getJwksObj());
++  const Status status = JwtVerify::verifyJwtWithoutTimeChecking(*jwt_, *jwks_data_->getJwksObj(), focCompatibility());
+ 
+   if (status != Status::Ok) {
+     doneWithStatus(status);
+--- a/source/extensions/filters/http/jwt_authn/filter_config.h
++++ b/source/extensions/filters/http/jwt_authn/filter_config.h
+@@ -1,3 +1,9 @@
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: FoC JWT compatibility extension in a pinned custom Envoy build.
++Author review: Implementation approved; code review pending.
++*/
+ #pragma once
+ 
+ #include "envoy/api/api.h"
+@@ -48,6 +54,8 @@
+ 
+   virtual bool stripFailureResponse() const PURE;
+ 
++  virtual bool focCompatibility() const { return false; }
++
+   // Finds the matcher that matched the header
+   virtual const Verifier* findVerifier(const Http::RequestHeaderMap& headers,
+                                        const StreamInfo::FilterState& filter_state) const PURE;
+@@ -83,6 +91,8 @@
+   bool bypassCorsPreflightRequest() const override { return proto_config_.bypass_cors_preflight(); }
+ 
+   bool stripFailureResponse() const override { return proto_config_.strip_failure_response(); }
++
++  bool focCompatibility() const override { return proto_config_.providers().count("foc_user") != 0; }
+ 
+   const Verifier* findVerifier(const Http::RequestHeaderMap& headers,
+                                const StreamInfo::FilterState& filter_state) const override {
+--- a/source/extensions/filters/http/jwt_authn/filter.cc
++++ b/source/extensions/filters/http/jwt_authn/filter.cc
+@@ -1,3 +1,9 @@
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: FoC JWT compatibility extension in a pinned custom Envoy build.
++Author review: Implementation approved; code review pending.
++*/
+ #include "source/extensions/filters/http/jwt_authn/filter.h"
+ 
+ #include "source/common/http/headers.h"
+@@ -120,6 +126,20 @@
+   if (Status::Ok != status) {
+     stats_.denied_.inc();
+     state_ = Responded;
++    // AI-generated FoC response contract. Native verification stays in this process.
++    if (config_->focCompatibility()) {
++      const bool unavailable = status == Status::JwksFetchFail ||
++          status == Status::JwksParseError || status == Status::JwksNoKeys ||
++          status == Status::JwksBadKeys;
++      decoder_callbacks_->sendLocalReply(
++          unavailable ? Http::Code::ServiceUnavailable : Http::Code::Unauthorized,
++          unavailable ? "{\"error\":\"Authentication service unavailable\"}"
++                      : "{\"error\":\"Unauthorized\"}",
++          [](Http::ResponseHeaderMap& headers) {
++            headers.setContentType("application/json");
++          }, absl::nullopt, unavailable ? "foc_authentication_unavailable" : "foc_unauthorized");
++      return;
++    }
+     // verification failed
+     Http::Code code =
+         status == Status::JwtAudienceNotAllowed ? Http::Code::Forbidden : Http::Code::Unauthorized;
+--- a/source/common/jwt/jwks.h
++++ b/source/common/jwt/jwks.h
+@@ -1,3 +1,9 @@
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: FoC JWT compatibility extension in a pinned custom Envoy build.
++Author review: Implementation approved; code review pending.
++*/
+ #pragma once
+ 
+ // Copyright 2018 Google LLC
+@@ -46,6 +52,8 @@
+     std::string kid_;
+     std::string kty_;
+     std::string alg_;
++    bool kid_present_ = false;
++    std::string use_; // AI-generated: retain JWK use for FoC signing-key selection.
+     std::string crv_;
+     bssl::UniquePtr<RSA> rsa_;
+     bssl::UniquePtr<EC_KEY> ec_key_;
+--- a/source/common/jwt/jwks.cc
++++ b/source/common/jwt/jwks.cc
+@@ -1,3 +1,9 @@
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: FoC JWT compatibility extension in a pinned custom Envoy build.
++Author review: Implementation approved; code review pending.
++*/
+ // Copyright 2018 Google LLC
+ // Copyright Envoy Project Authors
+ // SPDX-License-Identifier: Apache-2.0
+@@ -322,8 +328,13 @@
+ 
+   // "kid" and "alg" are optional, if they do not exist, set them to
+   // empty. https://tools.ietf.org/html/rfc7517#page-8
+-  jwk_getter.GetString("kid", &jwk->kid_);
+-  jwk_getter.GetString("alg", &jwk->alg_);
++  jwk->kid_present_ = jwk_getter.GetString("kid", &jwk->kid_) == StructUtils::OK;
++  if (jwk_getter.GetString("alg", &jwk->alg_) == StructUtils::WRONG_TYPE) {
++    jwk->alg_ = "invalid";
++  }
++  if (jwk_getter.GetString("use", &jwk->use_) == StructUtils::WRONG_TYPE) {
++    jwk->use_ = "invalid";
++  }
+ 
+   // Extract public key according to "kty" value.
+   // https://tools.ietf.org/html/rfc7518#section-6.1
+--- a/source/common/jwt/verify.h
++++ b/source/common/jwt/verify.h
+@@ -1,3 +1,9 @@
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: FoC JWT compatibility extension in a pinned custom Envoy build.
++Author review: Implementation approved; code review pending.
++*/
+ #pragma once
+ 
+ // Copyright 2018 Google LLC
+@@ -21,7 +27,8 @@
+  * @param jwks is Jwks object
+  * @return the verification status
+  */
+-Status verifyJwtWithoutTimeChecking(const Jwt& jwt, const Jwks& jwks);
++Status verifyJwtWithoutTimeChecking(const Jwt& jwt, const Jwks& jwks,
++                                    bool foc_compatibility = false);
+ 
+ /**
+  * This function verifies JWT signature is valid and that it has not expired
+--- a/source/common/jwt/verify.cc
++++ b/source/common/jwt/verify.cc
+@@ -1,3 +1,9 @@
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: FoC JWT compatibility extension in a pinned custom Envoy build.
++Author review: Implementation approved; code review pending.
++*/
+ // Copyright 2018 Google LLC
+ // Copyright Envoy Project Authors
+ // SPDX-License-Identifier: Apache-2.0
+@@ -189,11 +195,17 @@
+ 
+ } // namespace
+ 
+-Status verifyJwtWithoutTimeChecking(const Jwt& jwt, const Jwks& jwks) {
++Status verifyJwtWithoutTimeChecking(const Jwt& jwt, const Jwks& jwks, bool foc_compatibility) {
+   // Verify signature
+   std::string signed_data = jwt.header_str_base64url_ + '.' + jwt.payload_str_base64url_;
+   bool kid_alg_matched = false;
+   for (const auto& jwk : jwks.keys()) {
++    // AI-generated: exact ID, algorithm, key type and signing use for FoC.
++    if (foc_compatibility &&
++        (!jwk->kid_present_ || jwk->kid_ != jwt.kid_ || (!jwk->use_.empty() && jwk->use_ != "sig") ||
++         jwk->kty_ != (jwt.alg_ == "RS256" ? "RSA" : "EC"))) {
++      continue;
++    }
+     // If kid is specified in JWT, JWK with the same kid is used for
+     // verification.
+     // If kid is not specified in JWT, try all JWK.
+@@ -268,6 +280,9 @@
+         return status;
+       }
+     }
++    if (foc_compatibility) {
++      return Status::JwtVerificationFail; // Only the first eligible key is used.
++    }
+   }
+ 
+   // Verification failed.
+--- a/source/extensions/filters/http/common/jwks_fetcher.h
++++ b/source/extensions/filters/http/common/jwks_fetcher.h
+@@ -1,3 +1,9 @@
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: FoC native authentication compatibility and regression coverage.
++Author review: Pending human review.
++*/
+ #pragma once
+ 
+ #include "envoy/common/pure.h"
+@@ -25,6 +31,7 @@
+   class JwksReceiver {
+   public:
+     enum class Failure {
++      EmptyKeys, // AI-generated: valid JWKS array without a usable signing key.
+       /* A network error occurred causing JWKS retrieval failure. */
+       Network,
+       /* A failure occurred when trying to parse the retrieved JWKS data. */
+--- a/source/extensions/filters/http/common/jwks_fetcher.cc
++++ b/source/extensions/filters/http/common/jwks_fetcher.cc
+@@ -1,3 +1,9 @@
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: FoC native authentication compatibility and regression coverage.
++Author review: Pending human review.
++*/
+ #include "source/extensions/filters/http/common/jwks_fetcher.h"
+ 
+ #include "envoy/config/core/v3/base.pb.h"
+@@ -90,7 +96,9 @@
+           receiver_->onJwksSuccess(std::move(jwks));
+         } else {
+           ENVOY_LOG(debug, "{}: fetch pubkey [uri = {}]: invalid jwks", __func__, uri);
+-          receiver_->onJwksError(JwksFetcher::JwksReceiver::Failure::InvalidJwks);
++          receiver_->onJwksError(jwks->getStatus() == Envoy::JwtVerify::Status::JwksNoValidKeys
++              ? JwksFetcher::JwksReceiver::Failure::EmptyKeys
++              : JwksFetcher::JwksReceiver::Failure::InvalidJwks);
+         }
+       } else {
+         ENVOY_LOG(debug, "{}: fetch pubkey [uri = {}]: body is empty", __func__, uri);
+--- a/source/extensions/request_id/uuid/config.cc
++++ b/source/extensions/request_id/uuid/config.cc
+@@ -1,3 +1,9 @@
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: Preserve FoC request-ID validation in the custom Envoy build.
++Author review: Pending human review.
++*/
+ #include "source/extensions/request_id/uuid/config.h"
+ 
+ #include "envoy/http/header_map.h"
+@@ -13,6 +19,20 @@
+ 
+ void UUIDRequestIDExtension::set(Http::RequestHeaderMap& request_headers, bool edge_request,
+                                  bool keep_external_id) {
++  // AI-generated FoC request-ID contract: retain only 1-128 safe ASCII characters.
++  const auto incoming_id = request_headers.getRequestIdValue();
++  bool valid_id = !incoming_id.empty() && incoming_id.size() <= 128;
++  for (const unsigned char c : incoming_id) {
++    if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
++          (c >= '0' && c <= '9') || c == '.' || c == '_' || c == ':' || c == '-')) {
++      valid_id = false;
++      break;
++    }
++  }
++  if (!valid_id) {
++    request_headers.setRequestId(random_.uuid());
++    return;
++  }
+   const Http::HeaderEntry* request_id_header = request_headers.RequestId();
+ 
+   // No request ID then set new one anyway.
+--- a/test/extensions/filters/http/jwt_authn/authenticator_test.cc
++++ b/test/extensions/filters/http/jwt_authn/authenticator_test.cc
+@@ -1,3 +1,9 @@
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: FoC native authentication compatibility and regression coverage.
++Author review: Pending human review.
++*/
+ #include "envoy/config/core/v3/http_uri.pb.h"
+ #include "envoy/extensions/filters/http/jwt_authn/v3/config.pb.h"
+ 
+@@ -1194,6 +1200,86 @@
+   EXPECT_TRUE(TestUtility::protoEqual(out_extracted_data_, expected_payload));
+ }
+ 
++/*
++AI Assistance Disclosure:
++Tool: Codex (model: GPT-6), date: 2026-10-12
++Scope: Native regression tests for strict FoC JWT checks and key-cache refresh.
++Author review: Pending human review.
++*/
++// AI-generated; review pending. This text is inserted into authenticator_test.cc.
++class FocAuthenticatorTest : public AuthenticatorTest {
++public:
++  void SetUp() override {
++    TestUtility::loadFromYaml(ExampleConfig, proto_config_);
++    auto provider = proto_config_.providers().at(std::string(ProviderName));
++    provider.clear_issuer();
++    provider.clear_audiences();
++    proto_config_.clear_providers();
++    (*proto_config_.mutable_providers())["foc_user"] = provider;
++    createAuthenticator(nullptr, "foc_user");
++  }
++
++  uint64_t now() {
++    return std::chrono::duration_cast<std::chrono::seconds>(
++        filter_config_->timeSource().systemTime().time_since_epoch()).count();
++  }
++
++  std::string token(const std::string& header, const std::string& payload) {
++    return Base64Url::encode(header.data(), header.size()) + "." +
++        Base64Url::encode(payload.data(), payload.size()) + ".AA";
++  }
++
++  void expectToken(Status status, const std::string& header, const std::string& payload) {
++    Http::TestRequestHeaderMapImpl headers{{"authorization", "Bearer " + token(header, payload)}};
++    expectVerifyStatus(status, headers);
++  }
++};
++
++TEST_F(FocAuthenticatorTest, FocRejectsExpiryAtCurrentSecondBeforeFetching) {
++  EXPECT_CALL(*raw_fetcher_, fetch(_, _)).Times(0);
++  expectToken(Status::JwtExpired, R"({"alg":"RS256","kid":"old"})",
++              "{\"exp\":" + std::to_string(now()) + "}");
++}
++
++TEST_F(FocAuthenticatorTest, FocRejectsNotBeforeWithoutClockTolerance) {
++  EXPECT_CALL(*raw_fetcher_, fetch(_, _)).Times(0);
++  expectToken(Status::JwtNotYetValid, R"({"alg":"RS256","kid":"old"})",
++              "{\"exp\":" + std::to_string(now() + 100) +
++              ",\"nbf\":" + std::to_string(now() + 1) + "}");
++}
++
++TEST_F(FocAuthenticatorTest, FocRequiresKidBeforeFetching) {
++  EXPECT_CALL(*raw_fetcher_, fetch(_, _)).Times(0);
++  expectToken(Status::JwtVerificationFail, R"({"alg":"RS256"})",
++              "{\"exp\":" + std::to_string(now() + 100) + "}");
++}
++
++TEST_F(FocAuthenticatorTest, FocRejectsSymmetricAlgorithmsBeforeFetching) {
++  EXPECT_CALL(*raw_fetcher_, fetch(_, _)).Times(0);
++  expectToken(Status::JwtVerificationFail, R"({"alg":"HS256","kid":"old"})",
++              "{\"exp\":" + std::to_string(now() + 100) + "}");
++}
++
++TEST_F(FocAuthenticatorTest, FocRefreshesUnknownKidInUnexpiredCacheOnce) {
++  filter_config_->getJwksCache().findByProvider("foc_user")->setRemoteJwks(
++      Jwks::createFrom(PublicKey, Jwks::JWKS));
++  EXPECT_CALL(*raw_fetcher_, fetch(_, _))
++      .WillOnce(Invoke([this](Tracing::Span&, JwksFetcher::JwksReceiver& receiver) {
++        receiver.onJwksSuccess(std::move(jwks_));
++      }));
++  expectToken(Status::JwksKidAlgMismatch, R"({"alg":"RS256","kid":"rotated"})",
++              "{\"exp\":" + std::to_string(now() + 100) + "}");
++}
++
++TEST_F(FocAuthenticatorTest, FocReportsJwksFetchFailure) {
++  EXPECT_CALL(*raw_fetcher_, fetch(_, _))
++      .WillOnce(Invoke([](Tracing::Span&, JwksFetcher::JwksReceiver& receiver) {
++        receiver.onJwksError(JwksFetcher::JwksReceiver::Failure::Network);
++      }));
++  expectToken(Status::JwksFetchFail, R"({"alg":"RS256","kid":"old"})",
++              "{\"exp\":" + std::to_string(now() + 100) + "}");
++}
++
+ } // namespace
+ } // namespace JwtAuthn
+ } // namespace HttpFilters

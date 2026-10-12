@@ -4,6 +4,7 @@
 # Author review: Pending human review.
 # AI-generated addition; review pending.
 api-gateway/.build/
+api-gateway/envoy/__pycache__/
 
 # Build output
 dist/

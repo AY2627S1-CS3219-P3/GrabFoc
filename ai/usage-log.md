@@ -2140,3 +2140,13 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Usage scenario: Replace gateway proxy runtime after compatibility verification, retaining the existing gateway as reference.
 - Files: .gitignore, api-gateway/envoy/README.md, ai/usage-log.md.
 - Human review: User approved implementation and incremental commits; review of generated changes pending.
+
+
+## 2026-10-12 - Custom Envoy migration, stage 2
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompt: "implement this, commit incrementally, and update me on the progress".
+- Key response: Added a pinned native JWT compatibility patch, request-ID compatibility, six native regressions, and a Linux/Bazel build script. No helper is used.
+- Verification: Existing Node gateway baseline passes 22 tests. Custom compilation is in progress; runtime acceptance remains pending.
+- Files: .gitignore, api-gateway/envoy build scripts, extension selection, foc-jwt.patch and refresh_patch.py, ai/usage-log.md.
+- Human review: Implementation approved; generated code review pending.
