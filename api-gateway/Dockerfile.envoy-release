@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-10-13
+# Scope: Compile and test the native extension only when releasing a custom Envoy base image.
+# Author review: User approved workflow separation; generated changes review pending.
+# AI-generated; release-only build, not used by normal Compose.
+FROM docker.io/envoyproxy/envoy-build@sha256:20656853fae51927cda557e7af80ccff175f5de6f84bd0f092cd8672b2a6e0fe AS native-build
+COPY envoy/build.sh envoy/foc-jwt.patch /input/
+COPY envoy/extensions/ /input/extensions/
+# Reuse the original BuildKit cache without compiling on ordinary app builds.
+RUN --mount=type=cache,id=foc-envoy-native-build,target=/workspace,sharing=locked \
+    /bin/bash /input/build.sh
+
+FROM debian:trixie-slim AS engine
+RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=native-build /output/bin/envoy /usr/local/bin/envoy
+RUN chmod 755 /usr/local/bin/envoy
+LABEL org.opencontainers.image.source="https://github.com/AY2627S1-CS3219-P3/GrabFoc"
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/envoy"]

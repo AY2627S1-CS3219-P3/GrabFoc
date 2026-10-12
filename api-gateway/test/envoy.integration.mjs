@@ -1,6 +1,6 @@
 /*
 AI Assistance Disclosure:
-Tool: Codex (model: GPT-6), date: 2026-10-12
+Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Compare custom Envoy HTTP/JWT behaviour with the existing gateway and test balancing.
 Author review: Pending human review.
 */
@@ -72,6 +72,7 @@ async function startEnvoy(overrides = {}) {
     SUPPLIER_SERVICE_URL: `http://host.docker.internal:${ports[1]}`,
     USER_SERVICE_JWKS_URL: `http://host.docker.internal:${ports[0]}/.well-known/jwks.json`, ...overrides };
   const args = ['run', '-d', '--label', 'foc.task=envoy-integration', '-p', '127.0.0.1::3003'];
+  if (process.platform === 'linux') args.push('--add-host', 'host.docker.internal:host-gateway');
   for (const [name, value] of Object.entries(env)) args.push('-e', `${name}=${value}`);
   const id = docker(...args, 'foc-envoy:local');
   containers.push(id);

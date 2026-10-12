@@ -2178,3 +2178,12 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: The standalone native build had not produced the executable. Replaced the host-binary COPY with a pinned Docker native build/test stage and locked BuildKit cache, followed by a runtime stage. Compose no longer requires a separately generated executable.
 - Files: api-gateway/Dockerfile.envoy, compose.yaml, AGENTS.md, README.md, envoy/README.md, ai/usage-log.md.
 - Human review: Debug fix within the approved custom-build scope; review pending.
+
+
+## 2026-10-13 - Separate native Envoy releases from app builds
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompts: "wait idw it to take so long everytime its first built..."; "yes do that,".
+- Key response: Moved native compilation/tests to Dockerfile.envoy-release and an explicitly dispatched release workflow; normal Dockerfile.envoy copies config onto a versioned custom base. Prepared optional GHCR publishing only after native and HTTP acceptance tests pass. No package was published and no workflow dispatched.
+- Files: gateway Dockerfiles, Compose build arguments, environment examples, gateway documentation, HTTP test host mapping, .github/workflows/envoy-release.yml.
+- Human review: User approved separating releases and normal builds; generated changes review pending.

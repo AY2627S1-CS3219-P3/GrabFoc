@@ -1,5 +1,5 @@
 # AI Assistance Disclosure:
-# Tool: Codex (model: GPT-6), date: 2026-10-12
+# Tool: Codex (model: GPT-6), date: 2026-10-13
 # Scope: Switch the existing gateway service to the approved custom Envoy image for migration testing.
 # Author review: Pending Jie Yang's review and live integration check.
 
@@ -7,11 +7,13 @@ name: foc
 
 services:
   api-gateway:
-    # AI-generated; Dockerfile.envoy builds and tests the native executable.
+    # AI-generated; package configuration on a prebuilt native release, without Bazel.
     image: foc-envoy:local
     build:
       context: .
       dockerfile: Dockerfile.envoy
+      args:
+        FOC_ENVOY_BASE_IMAGE: ${FOC_ENVOY_BASE_IMAGE:-ghcr.io/ay2627s1-cs3219-p3/grabfoc-envoy:v1.38.6-foc.1}
     environment:
       GATEWAY_PORT: 3003
       USER_SERVICE_URL: http://user-service:3001

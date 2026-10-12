@@ -8,8 +8,10 @@ Author review: Jie Yang reviewed earlier documentation; Envoy implementation app
 # API Gateway
 
 The current Compose stack selects the custom Envoy runtime in `Dockerfile.envoy`.
-`docker compose build api-gateway` builds and tests its native executable inside Docker;
-the first build takes substantial time. See [Envoy build, tests and rollback](envoy/README.md).
+`docker compose build api-gateway` packages configuration on a versioned, prebuilt
+custom Envoy base image. Native compilation and tests run separately during release.
+The first native release must be built and published before a fresh machine can pull it.
+See [Envoy release, tests and rollback](envoy/README.md).
 The Node implementation below remains a reference for compatibility testing; `npm run dev`
 starts that reference, not Envoy. Do not remove it until native and HTTP migration tests pass.
 
