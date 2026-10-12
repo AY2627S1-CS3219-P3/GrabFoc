@@ -1,3 +1,10 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
+Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
+Author review: Pending Jian Bing's review on PR #68.
+-->
+
 # AI Usage Log — Cole Lin
 
 Cole Lin's entries for the FoC AI usage log. The template and rules are in

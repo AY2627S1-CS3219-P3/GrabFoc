@@ -1,3 +1,10 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
+Scope: Moved Jian Bing's section out of ai/usage-log.md into this file (issue #65), plus a CodeQL entry that git blame attributes to Jian Bing from the end of Jie Yang's section; entry text unchanged. Wrote the 2026-10-12 usage-log split entry from Jian Bing's prompts.
+Author review: Pending Jian Bing's review on PR #68.
+-->
+
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
@@ -16,10 +23,13 @@ Jian Bing's entries for the FoC AI usage log. The template and rules are in
 
 > yes looks good, but i think with regards to ref, maybe we can close this issue #65, and then we open a new issue isntead ot merge this ai-usag ea tthe end isntead
 
+> the pr reviewer left some comments for pr 68 (with screenshots of the two Codex review comments)
+
 **What it produced:** Moved each `##` member section, word for word, into
 `ai/usage-log/<member>.md`, and kept `ai/usage-log.md` (the path the brief names) as the index with
 the rules, template and links. A script checked that every line of the original appears exactly
-once across the new files. Updated the logging rule in `AGENTS.md`.
+once across the new files. Updated the logging rule in `AGENTS.md`. After Codex review: added a disclosure
+header to each member file and made `AGENTS.md` name the member file as the entry destination.
 **What I changed or rejected:** Claude proposed "Refs #65"; I chose to close #65 and open a separate
 issue for merging the files back into one log at the end.
 **Verification:** Pending my review on the PR.

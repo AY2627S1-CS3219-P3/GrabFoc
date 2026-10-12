@@ -1,3 +1,10 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
+Scope: Moved Jie Yang's section out of ai/usage-log.md into this file (issue #65); entry text unchanged except one invalid dash byte fixed to a UTF-8 em dash.
+Author review: Pending Jian Bing's review on PR #68.
+-->
+
 # AI Usage Log — Jie Yang
 
 Jie Yang's entries for the FoC AI usage log. The template and rules are in
