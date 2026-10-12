@@ -2124,3 +2124,29 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Files: `frontend/app/components/location-image.tsx`, `frontend/next.config.ts`, `ai/usage-log.md`.
 - Verification: `npm.cmd run build` and `npx.cmd eslint app/components/location-image.tsx next.config.ts` passed.
 - Human review: Pending human review and browser check of a live image URL.
+## 2026-10-11 — Order Service implementation branch
+
+- Tool and mode: Codex (GPT-6), generate and explain.
+- Exact user prompt: “# Create Order Service Schema #50 Create a new branch for Order Service Implementation, then run me through the potential schema”.
+- Usage scenario: Create a local implementation branch for issue #50; inspect service context before discussing schema design.
+- Key response: Created feat/order-service-implementation from main. order-service/AGENTS.md and README.md are empty. Warned that proposing a schema is design work under AGENTS.md; awaiting explicit confirmation before proposing it. No schema or implementation files changed.
+- Human review: Branch creation requested by user; schema-design confirmation pending.
+## 2026-10-11 — Order Service AGENTS.md
+
+- Timestamp: 2026-10-11 (Asia/Singapore; exact time not recorded).
+- Tool and mode: Codex (GPT-6), generate.
+- Exact user prompt: “Oh wait can you generate the AGENTS.md for Order Service first?”.
+- Usage scenario: Populate empty service context from the user-supplied OSFR1–OSFR6 backlog, root AGENTS.md and meeting discussion, without selecting designs.
+- Key response: Added origin/status labels, source references and ownership, creation/read/edit/acceptance/lifecycle/cancellation/history/event requirements, existing communication decisions, cross-cutting rules, verification guidance and unresolved team inputs. Schema, API contracts, database choice, acknowledgement ambiguity and recovery patterns remain open/proposed. Flagged meeting async-reservation proposal against the recorded synchronous decision. No code, schema or interface introduced.
+- Files: order-service/AGENTS.md, ai/usage-log.md.
+- Verification: Checked diff whitespace and reviewed the document against supplied requirement IDs and root decisions.
+- Human review: Document creation requested; content pending team review. Earlier schema-proposal confirmation is still pending.
+## 2026-10-12 — Order schema review and draft implementation PR
+
+- Tool and mode: Codex (GPT-6), generate and explain.
+- Exact user prompts: “gimme a schema”; “yes”; “Snap shot approach is good, what else do i need to confirm, credit minimum should be 1”; “Yes database is postgresSQL”; “give me the schema, create a PR for the order service implementation branch first”.
+- Usage scenario: Prepare a reviewable schema draft on feat/order-service-implementation, without implementing unapproved migrations or contracts.
+- Key response: README documents proposed orders/items/history/confirmations tables, types, constraints/indexes, snapshots, external references and unresolved details. Updated service context for user-confirmed PostgreSQL, snapshot approach and minimum 1 credit. Schema discussion followed explicit confirmation after AI-policy warning; only those three decisions are confirmed. Remaining schema/design choices need team review and an approved implementation plan.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Verification: git diff --check passed; documentation-only draft, no runtime tests applicable.
+- Human review: User requested draft PR; documentation and remaining proposals pending review.
