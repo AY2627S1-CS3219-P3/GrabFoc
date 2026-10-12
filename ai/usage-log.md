@@ -2165,3 +2165,11 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Replaced order_items with orders.order_description TEXT NOT NULL in the README and PR comment; recorded confirmed interpretation in service context. Other schema proposals remain pending review; no migration added.
 - Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
 - Human review: User explicitly approved the description change and requested publication; remaining design choices pending team review.
+## 2026-10-12 — Consolidate description and explain chat storage
+
+- Tool and mode: Codex (GPT-6), generate and explain.
+- Exact user prompt: “remove the separate field, just an order description where the user can put in specific details on what to do and special instructions. we’ll have a real time chat feature with the order service too that can handle the other communications. does that need its own table too?”.
+- Usage scenario: Apply confirmed description consolidation to schema draft and PR comment; explain persistent chat storage without choosing its service boundary or schema.
+- Key response: Removed delivery_description, keeping order_description for tasks/instructions and delivery coordinates for drop-off location. Chat persistence would need separate message records if history is required; table details and whether Order or a separate chat service owns them remain unapproved. Chat does not automatically replace lifecycle confirmations.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Human review: Description removal explicitly requested; chat design pending confirmation.

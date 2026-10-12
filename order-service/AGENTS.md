@@ -38,7 +38,7 @@ _Origin: Team / Restated from root AGENTS.md; AI doc (implementation status)_
 
 _Origin: Team (OSFR1.1–OSFR1.2); Restated from root identity and credit rules_
 
-- **[Decided]** Interpret item description(s) as one free-text `order_description` on the order, confirmed by the user on 2026-10-12. No separate item table.
+- **[Decided]** Interpret item description(s) as one free-text `order_description` on the order, confirmed by the user on 2026-10-12. It captures task details and special instructions; no separate item table or delivery-description field.
 - Requester inputs: pickup point, drop-off point, item description(s), timing window and credit offer (O1.1.1). Credits are whole numbers.
 - Generate order identifier and timestamp in the system (O1.1.2). Requester identity comes only from verified authentication, never body fields (O1.1.3 and root §8).
 - Use a default timing window when omitted (O1.1.4); **[Open]** the default value and exact validation limits.
