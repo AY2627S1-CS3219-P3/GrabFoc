@@ -1,8 +1,8 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-12
-Scope: Documented a proposed Order schema and confirmed PostgreSQL, pickup snapshots and minimum credit offer.
-Author review: User approved those three decisions and requested a schema/PR; remaining proposals pending team review.
+Scope: Documented the schema draft; replaced separate items with user-confirmed order_description.
+Author review: User approved PostgreSQL, snapshots, minimum credit and a single order description and requested a schema/PR; remaining proposals pending team review.
 -->
 
 # Order Service — schema review draft
@@ -16,6 +16,7 @@ _Origin: Team (confirmed in chat on 2026-10-12)_
 - PostgreSQL for Order.
 - Save pickup details as a snapshot; later Supplier edits do not silently replace the saved pickup details.
 - Whole-number credit offer of at least 1.
+- One free-text `order_description` on `orders` represents the requested items; no separate item table.
 
 ## Proposed schema
 
@@ -25,8 +26,7 @@ Types match the documented external identifiers: User UUID and Supplier INTEGER.
 
 | Table | Proposed columns |
 |---|---|
-| `orders` | `id UUID PK`; `requester_id UUID NOT NULL`; `courier_id UUID NULL`; `pickup_location_id INTEGER NOT NULL`; `pickup_name TEXT NOT NULL`; `pickup_lat NUMERIC NOT NULL`; `pickup_lon NUMERIC NOT NULL`; `delivery_description TEXT NOT NULL`; `delivery_lat NUMERIC NOT NULL`; `delivery_lon NUMERIC NOT NULL`; `credit_offer INTEGER NOT NULL CHECK >= 1`; `status TEXT NOT NULL`; `window_start TIMESTAMPTZ NOT NULL`; `window_end TIMESTAMPTZ NOT NULL`; `created_at TIMESTAMPTZ NOT NULL`; `updated_at TIMESTAMPTZ NOT NULL`; `version INTEGER NOT NULL` |
-| `order_items` | `id UUID PK`; `order_id UUID NOT NULL FK`; `description TEXT NOT NULL` |
+| `orders` | `id UUID PK`; `order_description TEXT NOT NULL`; `requester_id UUID NOT NULL`; `courier_id UUID NULL`; `pickup_location_id INTEGER NOT NULL`; `pickup_name TEXT NOT NULL`; `pickup_lat NUMERIC NOT NULL`; `pickup_lon NUMERIC NOT NULL`; `delivery_description TEXT NOT NULL`; `delivery_lat NUMERIC NOT NULL`; `delivery_lon NUMERIC NOT NULL`; `credit_offer INTEGER NOT NULL CHECK >= 1`; `status TEXT NOT NULL`; `window_start TIMESTAMPTZ NOT NULL`; `window_end TIMESTAMPTZ NOT NULL`; `created_at TIMESTAMPTZ NOT NULL`; `updated_at TIMESTAMPTZ NOT NULL`; `version INTEGER NOT NULL` |
 | `order_history` | `id UUID PK`; `order_id UUID NOT NULL FK`; `actor_id UUID NULL`; `action TEXT NOT NULL`; `previous_status TEXT NULL`; `new_status TEXT NULL`; `change_details JSONB NULL`; `occurred_at TIMESTAMPTZ NOT NULL` |
 | `order_confirmations` | `id UUID PK`; `order_id UUID NOT NULL FK`; `kind TEXT NOT NULL`; `proposed_by UUID NOT NULL`; `proposed_window_start TIMESTAMPTZ NULL`; `proposed_window_end TIMESTAMPTZ NULL`; `requester_response TEXT NOT NULL`; `courier_response TEXT NOT NULL`; `status TEXT NOT NULL`; `created_at TIMESTAMPTZ NOT NULL`; `resolved_at TIMESTAMPTZ NULL` |
 

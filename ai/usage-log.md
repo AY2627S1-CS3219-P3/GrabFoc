@@ -2150,3 +2150,18 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
 - Verification: git diff --check passed; documentation-only draft, no runtime tests applicable.
 - Human review: User requested draft PR; documentation and remaining proposals pending review.
+## 2026-10-12 — PR schema comment
+
+- Tool and mode: Codex (GPT-6), generate.
+- Exact user prompt: “put the prposed schema in the comment of the PR”.
+- Usage scenario: Publish existing schema review draft as a top-level conversation comment on PR #66.
+- Key response: Posted tables, constraints, indexes, snapshot/reference behaviour and remaining decisions, distinguishing the three user-confirmed decisions from proposals. Included AI disclosure. GitHub returned comment ID 6122427501: https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/66#issuecomment-6122427501.
+- Human review: Comment publication requested by user; remaining design choices pending team review.
+## 2026-10-12 — Single order description schema revision
+
+- Tool and mode: Codex (GPT-6), generate.
+- Exact user prompts: “items seem abit useless?”; “isnt it more of order description?”; “yes its correct now change the proposed schema and update the comment in the PR”.
+- Usage scenario: Apply user-confirmed interpretation of item description(s) to the proposed schema and existing PR #66 schema comment.
+- Key response: Replaced order_items with orders.order_description TEXT NOT NULL in the README and PR comment; recorded confirmed interpretation in service context. Other schema proposals remain pending review; no migration added.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Human review: User explicitly approved the description change and requested publication; remaining design choices pending team review.
