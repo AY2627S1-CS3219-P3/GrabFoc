@@ -2150,3 +2150,13 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Verification: Existing Node gateway baseline passes 22 tests. Custom compilation is in progress; runtime acceptance remains pending.
 - Files: .gitignore, api-gateway/envoy build scripts, extension selection, foc-jwt.patch and refresh_patch.py, ai/usage-log.md.
 - Human review: Implementation approved; generated code review pending.
+
+
+## 2026-10-12 - Custom Envoy migration, stage 3
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompt: "implement this, commit incrementally, and update me on the progress".
+- Key response: Added the configuration renderer, header compatibility filter, candidate image/Compose file and HTTP comparison suite. Main stack remains unchanged until runtime checks pass.
+- Verification: Configuration validated against pinned Envoy v1.38.6; Python syntax and JavaScript syntax checked. Native release build and runtime acceptance pending.
+- Files: api-gateway/envoy/render.py and compatibility.lua, Dockerfile.envoy, compose.envoy-candidate.yaml, .dockerignore, .env.example, test/envoy.integration.mjs, ai/usage-log.md.
+- Human review: Implementation approved; generated code review pending.

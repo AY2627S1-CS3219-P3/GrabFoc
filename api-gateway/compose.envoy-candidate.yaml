@@ -1,0 +1,18 @@
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-10-12
+# Scope: Run the custom Envoy candidate beside the existing gateway.
+# Author review: Pending human review.
+# AI-generated; review pending.
+name: foc
+services:
+  envoy-candidate:
+    build:
+      context: .
+      dockerfile: Dockerfile.envoy
+    environment:
+      GATEWAY_PORT: 3003
+      USER_SERVICE_URL: http://user-service:3001
+      SUPPLIER_SERVICE_URL: http://supplier-service:3002
+      USER_SERVICE_JWKS_URL: http://user-service:3001/.well-known/jwks.json
+    ports:
+      - "3004:3003"

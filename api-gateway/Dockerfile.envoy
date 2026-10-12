@@ -1,0 +1,14 @@
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-10-12
+# Scope: Package the custom Envoy binary; render config before replacing the process.
+# Author review: Pending human review.
+# AI-generated; review pending.
+FROM debian:trixie-slim
+RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates libstdc++6 \
+    && rm -rf /var/lib/apt/lists/*
+COPY .build/bin/envoy /usr/local/bin/envoy
+COPY envoy/render.py envoy/compatibility.lua /opt/foc/
+RUN chmod 755 /usr/local/bin/envoy
+USER 65532:65532
+EXPOSE 3003
+ENTRYPOINT ["python3", "/opt/foc/render.py", "/tmp/foc-envoy.json", "--exec"]
