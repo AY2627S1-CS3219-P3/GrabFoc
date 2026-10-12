@@ -8,8 +8,8 @@ Author review: Jie Yang reviewed earlier documentation; Envoy implementation app
 # API Gateway
 
 The current Compose stack selects the custom Envoy runtime in `Dockerfile.envoy`.
-Build its native executable with `./api-gateway/envoy/build.ps1` from the repository
-root before `docker compose build api-gateway`. See [Envoy build, tests and rollback](envoy/README.md).
+`docker compose build api-gateway` builds and tests its native executable inside Docker;
+the first build takes substantial time. See [Envoy build, tests and rollback](envoy/README.md).
 The Node implementation below remains a reference for compatibility testing; `npm run dev`
 starts that reference, not Envoy. Do not remove it until native and HTTP migration tests pass.
 
@@ -28,10 +28,10 @@ Every completed request has a JSON log with request ID, method, path, target ser
 Copy `api-gateway/.env.example` to `api-gateway/.env`, set the service URLs, then run `npm install` and `npm run dev` from `api-gateway/`. The gateway loads only its own `.env`, regardless of its working directory; it never reads the repo-root or another service's `.env`. Shell variables take precedence, and a missing `.env` is allowed when the environment supplies the required URLs. Local defaults are User Service 3001, Supplier Service 3002, and gateway 3003. Use `npm test` and `npm run build` to verify. `GET /health` reports gateway process health only. If an upstream is absent, proxy requests return 502.
 
 From the repository root, copy `.env.example` to `.env`, fill in the required settings,
-run `./api-gateway/envoy/build.ps1`, then run `docker compose up --build`. The gateway
+run `docker compose up --build`. The gateway
 is available at `http://localhost:3003` and uses the User and Supplier container hostnames
 inside the Compose network. It can also start by itself with
-`docker compose -f api-gateway/compose.yaml up --build` after the native build;
+`docker compose -f api-gateway/compose.yaml up --build`;
 upstream requests then need the corresponding service containers in the same `foc` project.
 
 Before connecting the frontend, confirm paths and payloads with User and Supplier owners. Confirm User Service's JWKS path, signing algorithm, issuer and audience. Decide whether each service re-verifies tokens or accepts gateway identity as recorded in the root `AGENTS.md`; this gateway currently forwards the bearer token and creates no identity headers.

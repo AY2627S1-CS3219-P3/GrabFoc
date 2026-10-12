@@ -1,12 +1,19 @@
+# syntax=docker/dockerfile:1
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-10-12
-# Scope: Package the custom Envoy binary; render config before replacing the process.
+# Scope: Build and test custom Envoy inside Docker, then package its runtime without a host-binary prerequisite.
 # Author review: Pending human review.
 # AI-generated; review pending.
-FROM debian:trixie-slim
+FROM docker.io/envoyproxy/envoy-build@sha256:20656853fae51927cda557e7af80ccff175f5de6f84bd0f092cd8672b2a6e0fe AS native-build
+COPY envoy/ /input/
+# Keep source/dependency/compiler caches across image builds. Serialize access to Bazel.
+RUN --mount=type=cache,id=foc-envoy-native-build,target=/workspace,sharing=locked \
+    /bin/bash /input/build.sh
+
+FROM debian:trixie-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
-COPY .build/bin/envoy /usr/local/bin/envoy
+COPY --from=native-build /output/bin/envoy /usr/local/bin/envoy
 COPY envoy/render.py envoy/compatibility.lua /opt/foc/
 RUN chmod 755 /usr/local/bin/envoy
 USER 65532:65532

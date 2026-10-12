@@ -7,7 +7,7 @@ name: foc
 
 services:
   api-gateway:
-    # AI-generated; custom binary prerequisite: ./envoy/build.ps1
+    # AI-generated; Dockerfile.envoy builds and tests the native executable.
     image: foc-envoy:local
     build:
       context: .

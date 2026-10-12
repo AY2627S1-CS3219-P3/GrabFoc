@@ -16,26 +16,26 @@ cryptographic primitives. Native sources and build caches live in ignored `.buil
 Production runs only Envoy; any configuration renderer runs before the image starts.
 
 The current Node gateway remains the reference for compatibility tests. At the user's
-request, the main Compose gateway now selects `Dockerfile.envoy`; the native executable
-must be built before Compose can build its runtime image. The main stack keeps one
+request, the main Compose gateway now selects `Dockerfile.envoy`, which builds and tests
+the native executable in its own Docker stage. The main stack keeps one
 instance per service; load balancing is demonstrated with two isolated test upstreams.
 
 ## Build and test from the repository root (PowerShell)
 
 ```powershell
-./api-gateway/envoy/build.ps1
 docker compose build api-gateway
 docker compose up -d --no-deps api-gateway
 ```
 
-The source and build cache stay in the `foc-envoy-native` Docker volume. The pinned
-toolchain compiles the six FoC native JWT regressions and then the executable, copied
-to ignored `api-gateway/.build/bin/envoy`. The first build is substantial; later builds
-reuse cached dependencies and compilation. The runtime container replaces its Python
+The Dockerfile uses the pinned toolchain to compile six FoC native JWT regressions and
+the executable. Source and compiler caches remain in a locked Docker BuildKit cache;
+the executable is copied directly between image stages. No local `.build/bin/envoy`
+file is required. The first build is substantial; later builds reuse cached dependencies
+and compilation. The runtime container replaces its Python
 configuration renderer with Envoy, without a Node authentication helper.
 
 If User and Supplier are not running, start the full root stack with
-`docker compose up -d --build` after the native build. `/health` reports process health,
+`docker compose up -d --build`. `/health` reports process health,
 not upstream readiness. Test authenticated `/locations` through port 3003 for integration.
 
 Run the HTTP comparison suite separately:
@@ -51,6 +51,10 @@ The suite uses generated ephemeral signing keys, controlled local upstreams, and
 isolated Envoy containers. It compares route, token, header, ID and response behaviour,
 tests JWKS rotation/outages, and confirms traffic reaches two Supplier test replicas.
 Windows Docker Desktop must allow containers to reach `host.docker.internal`.
+
+For standalone native development, `./api-gateway/envoy/build.ps1` uses a separate
+`foc-envoy-native` Docker volume and exports ignored `.build/bin/envoy`. This is optional
+and its cache is separate from Dockerfile builds; avoid running both cold builds together.
 
 ## Roll back to the Node reference
 

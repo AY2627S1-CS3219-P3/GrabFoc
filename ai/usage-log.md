@@ -2169,3 +2169,12 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Changed api-gateway/compose.yaml to select Dockerfile.envoy and foc-envoy:local, retaining the Node reference and an explicit rollback override. Native compilation and runtime acceptance remain pending.
 - Files: api-gateway/compose.yaml, compose.node-reference.yaml, AGENTS.md, envoy/README.md, ai/usage-log.md.
 - Human review: User explicitly approved the current Compose switch for testing; removal is deferred until test results and an explicit removal request.
+
+
+## 2026-10-12 - Make Envoy image builds self-contained
+
+- Tool and mode: Codex (GPT-6), debug and generate.
+- Exact user prompt: failed to solve: failed to compute cache key: failed to calculate checksum of ref ndmuapygnsk40eu7nky41bva3::v49y3fv9g7r74rlvkcmhbuvz4: "/.build/bin/envoy": not found
+- Key response: The standalone native build had not produced the executable. Replaced the host-binary COPY with a pinned Docker native build/test stage and locked BuildKit cache, followed by a runtime stage. Compose no longer requires a separately generated executable.
+- Files: api-gateway/Dockerfile.envoy, compose.yaml, AGENTS.md, README.md, envoy/README.md, ai/usage-log.md.
+- Human review: Debug fix within the approved custom-build scope; review pending.
