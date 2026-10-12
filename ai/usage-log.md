@@ -2187,3 +2187,13 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Moved native compilation/tests to Dockerfile.envoy-release and an explicitly dispatched release workflow; normal Dockerfile.envoy copies config onto a versioned custom base. Prepared optional GHCR publishing only after native and HTTP acceptance tests pass. No package was published and no workflow dispatched.
 - Files: gateway Dockerfiles, Compose build arguments, environment examples, gateway documentation, HTTP test host mapping, .github/workflows/envoy-release.yml.
 - Human review: User approved separating releases and normal builds; generated changes review pending.
+
+
+## 2026-10-13 - Switch to official Envoy defaults
+
+- Tool and mode: Codex (GPT-6), generate, refactor and debug.
+- Exact user prompt: "just change it to the ENVOY defaults but note down all the differences in behaviour".
+- Key response: Replaced the custom native image with official Envoy v1.38.6 pinned by digest; removed native patches/build scripts/release workflow and registry overrides. Retained route allowlist, bearer forwarding, expiry requirement and header stripping. Documented JWT timing, key selection/cache, algorithm/claim parsing, errors, request-ID, logging and proxy differences.
+- Verification: Official image built in about 30 seconds; 16 stock integration tests passed. Compose gateway started; GET /health returned 200 and missing-token GET /locations returned 401. Docker recovered from engine errors with a restart; obsolete compilation is stopped. No secrets or database state were changed.
+- Files: gateway runtime Dockerfile/Compose, envoy renderer and behaviour-differences.md, integration tests, gateway documentation, environment templates; removed native release assets.
+- Human review: User explicitly accepted stock behaviours after the policy warning and explanations; generated code/documentation review pending.

@@ -1,11 +1,13 @@
 # syntax=docker/dockerfile:1
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-10-13
-# Scope: On 2026-10-13 separate normal gateway packaging from native release compilation.
+# Scope: Use the official precompiled Envoy release and render only application configuration.
 # Author review: Pending human review.
 # AI-generated; review pending.
-ARG FOC_ENVOY_BASE_IMAGE=ghcr.io/ay2627s1-cs3219-p3/grabfoc-envoy:v1.38.6-foc.1
-FROM ${FOC_ENVOY_BASE_IMAGE} AS runtime
+FROM envoyproxy/envoy:v1.38.6@sha256:93a82e7584cb8181ad408e4e49477a3ae1d775f698214841eda4e9309fc06a06
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 COPY envoy/render.py envoy/compatibility.lua /opt/foc/
 USER 65532:65532
 EXPOSE 3003

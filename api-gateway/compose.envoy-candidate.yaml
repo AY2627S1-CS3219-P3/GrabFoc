@@ -1,6 +1,6 @@
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-10-13
-# Scope: Run the custom Envoy candidate beside the existing gateway.
+# Scope: Run an optional stock Envoy candidate on a separate host port.
 # Author review: Pending human review.
 # AI-generated; review pending.
 name: foc
@@ -9,8 +9,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.envoy
-      args:
-        FOC_ENVOY_BASE_IMAGE: ${FOC_ENVOY_BASE_IMAGE:-ghcr.io/ay2627s1-cs3219-p3/grabfoc-envoy:v1.38.6-foc.1}
     environment:
       GATEWAY_PORT: 3003
       USER_SERVICE_URL: http://user-service:3001

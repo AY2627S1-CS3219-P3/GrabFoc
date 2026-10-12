@@ -1,6 +1,6 @@
 """AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-12
-Scope: Render the Envoy configuration from the existing gateway environment contract.
+Scope: Render stock Envoy configuration; use its native JWT, request-ID and error behaviour.
 Author review: Pending human review.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
@@ -135,7 +135,7 @@ def configuration(env):
         "typed_per_filter_config": {JWT: {"@type": TYPE +
             "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig", "disabled": True}}})
     provider = {"from_headers": [{"name": "Authorization", "value_prefix": "Bearer "}],
-                "forward": True, "require_expiration": True, "clock_skew_seconds": 0,
+                "forward": True, "require_expiration": True,
                 "remote_jwks": {"http_uri": {"uri": jwks, "cluster": "jwks", "timeout": "3s"},
                                 "cache_duration": "60s"}}
     if env.get("GATEWAY_JWT_ISSUER"):
@@ -148,33 +148,24 @@ def configuration(env):
             "durationMs": "%DURATION%", "path": "%DYNAMIC_METADATA(foc:path)%"}
     hcm = {"@type": TYPE + "envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager",
         "stat_prefix": "foc", "normalize_path": False, "merge_slashes": False,
-        "preserve_external_request_id": True, "always_set_request_id_in_response": True,
-        "request_id_extension": {"typed_config": {"@type": TYPE +
-            "envoy.extensions.request_id.uuid.v3.UuidRequestIdConfig", "pack_trace_reason": False}},
+        "always_set_request_id_in_response": True,
         "http_protocol_options": {"allow_absolute_url": False},
         "route_config": {"name": "foc_routes", "virtual_hosts": [{"name": "foc", "domains": ["*"],
             "routes": routes}]},
         "http_filters": [
             {"name": "envoy.filters.http.lua", "typed_config": {"@type": TYPE +
-                "envoy.extensions.filters.http.lua.v3.Lua", "default_source_code": {"inline_string": lua}}},
+                "envoy.extensions.filters.http.lua.v3.Lua", "clear_route_cache": False,
+                "default_source_code": {"inline_string": lua}}},
             {"name": JWT, "typed_config": {"@type": TYPE +
                 "envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication",
                 "providers": {"foc_user": provider}, "requirement_map": {"user_token": {
                     "provider_name": "foc_user"}}}},
             {"name": "envoy.filters.http.router", "typed_config": {"@type": TYPE +
                 "envoy.extensions.filters.http.router.v3.Router"}}],
-        "local_reply_config": {"mappers": [
-            {"filter": {"response_flag_filter": {"flags": ["UF", "UH", "UT", "UC", "UR", "URX", "UPE"]}},
-             "status_code": 502, "body": {"inline_string": '{"error":"Upstream unavailable"}'},
-             "body_format_override": {"text_format_source": {"inline_string": "%LOCAL_REPLY_BODY%"}, "content_type": "application/json"}},
-            {"filter": {"status_code_filter": {"comparison": {"op": "EQ", "value": {"default_value": 400}}}},
-             "body": {"inline_string": '{"error":"Invalid request target"}'},
-             "body_format_override": {"text_format_source": {"inline_string": "%LOCAL_REPLY_BODY%"}, "content_type": "application/json"}}]},
         "access_log": [{"name": "envoy.access_loggers.stdout", "typed_config": {
             "@type": TYPE + "envoy.extensions.access_loggers.stream.v3.StdoutAccessLog",
             "log_format": {"json_format": logs}}}]}
-    for event, code in [("unauthorized_access", 401), ("authentication_unavailable", 503),
-                        ("upstream_failure", 502), ("gateway_error", 500)]:
+    for event, code in [("unauthorized_access", 401), ("unauthorized_access", 403)]:
         hcm["access_log"].append({"name": "envoy.access_loggers.stdout", "filter": {
             "status_code_filter": {"comparison": {"op": "EQ", "value": {"default_value": code}}}},
             "typed_config": {"@type": TYPE + "envoy.extensions.access_loggers.stream.v3.StdoutAccessLog",

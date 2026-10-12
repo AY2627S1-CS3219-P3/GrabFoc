@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
-Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented gateway boundaries; on 2026-10-12 documented the approved custom Envoy runtime and retained Node reference.
+Tool: Codex (model: GPT-6), date: 2026-10-13
+Scope: Document the stock Envoy runtime and user-approved behaviour differences on 2026-10-13.
 Author review: Jie Yang reviewed earlier notes; Envoy approach approved by the user, new documentation review pending.
 -->
 
@@ -12,9 +12,9 @@ _Origin: AI doc; implements the project-wide gateway direction in `../AGENTS.md`
 - The gateway is the frontend's entry point and verifies bearer access tokens against User Service JWKS for protected routes.
 - User Service owns registration and sign-in. Supplier Service owns location data and authorization. Do not add business logic or persistent data here.
 - Route only the implemented User and Supplier methods and paths. The `/auth` and `/locations` prefixes remain configurable; keep upstream paths unchanged.
-- Compose uses the custom Envoy image built with `Dockerfile.envoy`. `envoy/render.py` renders routes and startup configuration; `envoy/foc-jwt.patch` implements JWT/request-ID compatibility. The gateway checks public versus authenticated access, not service roles.
-- The existing `src/` Node implementation and its tests are retained as the migration reference. Do not remove them until the custom build and HTTP compatibility tests pass and the human requests removal.
-- Normal `docker compose build api-gateway` only packages configuration on the prebuilt `FOC_ENVOY_BASE_IMAGE`. Native compilation/testing belongs in `Dockerfile.envoy-release` and the manually dispatched Custom Envoy release workflow. `envoy/build.ps1` is optional standalone native development. Do not substitute a stock Envoy image: it does not preserve the agreed JWT behaviour.
+- Compose packages the official Envoy v1.38.6 image with `Dockerfile.envoy`. `envoy/render.py` renders routes and startup configuration. The user accepted stock JWT/error/request-ID behaviour on 2026-10-13; differences are in `envoy/behaviour-differences.md`. The gateway checks public versus authenticated access, not service roles.
+- The existing `src/` Node implementation and its tests are retained as the migration reference. Do not remove them until the stock Envoy integration tests pass and the human requests removal.
+- Normal Compose builds use the official precompiled binary. There are no native patches, Bazel builds, helper service or custom-image release workflow.
 - Gateway configuration loads `api-gateway/.env` when present; existing process environment variables take precedence. Do not read another service's `.env`.
 - Do not log credentials, tokens or personal data. Log 401/403 attempts in structured form without sensitive values.
 - The project has not settled whether each service re-verifies JWTs or trusts gateway identity headers. This gateway forwards the bearer token and does not create identity headers.

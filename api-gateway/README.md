@@ -1,19 +1,17 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented gateway setup and contracts; Codex GPT-6 updated custom Envoy Compose instructions on 2026-10-12.
+Scope: Documented gateway setup and contracts; Codex GPT-6 documented stock Envoy and its approved differences on 2026-10-13.
 Author review: Jie Yang reviewed earlier documentation; Envoy implementation approved, new documentation review pending.
 -->
 
 # API Gateway
 
-The current Compose stack selects the custom Envoy runtime in `Dockerfile.envoy`.
-`docker compose build api-gateway` packages configuration on a versioned, prebuilt
-custom Envoy base image. Native compilation and tests run separately during release.
-The first native release must be built and published before a fresh machine can pull it.
-See [Envoy release, tests and rollback](envoy/README.md).
-The Node implementation below remains a reference for compatibility testing; `npm run dev`
-starts that reference, not Envoy. Do not remove it until native and HTTP migration tests pass.
+The Compose stack runs official Envoy v1.38.6, with its built-in JWT verification.
+`docker compose up -d --build --no-deps api-gateway` builds a small configuration image;
+no native compilation or custom registry release is required.
+See [build and tests](envoy/README.md) and [behaviour differences](envoy/behaviour-differences.md).
+The Node implementation remains a reference; `npm run dev` starts that reference.
 
 _Origin: AI doc; implementation of the gateway direction recorded in the project `AGENTS.md`._
 
@@ -25,7 +23,7 @@ The gateway currently verifies a User Service bearer JWT for protected requests 
 
 Route definitions live under `src/routing/`, one list per service. `src/app.ts` matches a route, checks whether it is public or authenticated, and proxies it to the configured service origin. Service-level role checks remain in the services. `src/server.ts` only loads configuration and starts listening.
 
-Every completed request has a JSON log with request ID, method, path, target service, status and duration. The gateway forwards a valid incoming `X-Request-Id`, or creates one, and returns it in the response. Authentication and upstream failures have separate JSON events. A missing or invalid token returns 401; JWKS failure returns 503; an unavailable upstream returns 502; an unexpected gateway error returns 500.
+Every completed request has a JSON log with request ID, method, path, target service, status and duration. Envoy applies its default context-sensitive request-ID handling and returns the resulting ID in the response. Authentication and upstream failures have separate JSON events. Stock Envoy authentication failures return text responses (audience mismatch is 403); a JWKS fetch failure is 401 and an upstream connection failure is 503. See the behaviour-differences document for the full comparison.
 
 Copy `api-gateway/.env.example` to `api-gateway/.env`, set the service URLs, then run `npm install` and `npm run dev` from `api-gateway/`. The gateway loads only its own `.env`, regardless of its working directory; it never reads the repo-root or another service's `.env`. Shell variables take precedence, and a missing `.env` is allowed when the environment supplies the required URLs. Local defaults are User Service 3001, Supplier Service 3002, and gateway 3003. Use `npm test` and `npm run build` to verify. `GET /health` reports gateway process health only. If an upstream is absent, proxy requests return 502.
 
