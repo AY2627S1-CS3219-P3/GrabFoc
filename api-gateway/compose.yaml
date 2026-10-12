@@ -1,13 +1,17 @@
 # AI Assistance Disclosure:
-# Tool: Codex (model: GPT-6), date: 2026-09-29
-# Scope: Added the API Gateway container to the root Compose stack.
+# Tool: Codex (model: GPT-6), date: 2026-10-12
+# Scope: Switch the existing gateway service to the approved custom Envoy image for migration testing.
 # Author review: Pending Jie Yang's review and live integration check.
 
 name: foc
 
 services:
   api-gateway:
-    build: .
+    # AI-generated; custom binary prerequisite: ./envoy/build.ps1
+    image: foc-envoy:local
+    build:
+      context: .
+      dockerfile: Dockerfile.envoy
     environment:
       GATEWAY_PORT: 3003
       USER_SERVICE_URL: http://user-service:3001

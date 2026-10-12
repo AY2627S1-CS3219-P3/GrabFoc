@@ -1,0 +1,11 @@
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-10-12
+# Scope: Retain an explicit Compose rollback to the existing Node gateway.
+# Author review: Pending human review.
+# AI-generated; review pending. Use as an override after root compose.yaml.
+services:
+  api-gateway:
+    image: foc-node-gateway:reference
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile

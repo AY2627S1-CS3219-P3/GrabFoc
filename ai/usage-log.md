@@ -2160,3 +2160,12 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Verification: Configuration validated against pinned Envoy v1.38.6; Python syntax and JavaScript syntax checked. Native release build and runtime acceptance pending.
 - Files: api-gateway/envoy/render.py and compatibility.lua, Dockerfile.envoy, compose.envoy-candidate.yaml, .dockerignore, .env.example, test/envoy.integration.mjs, ai/usage-log.md.
 - Human review: Implementation approved; generated code review pending.
+
+
+## 2026-10-12 - Select Envoy in the current Compose stack
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompt: "edit the current compose, i want to test the envoy migration and possibly remove the old implementation".
+- Key response: Changed api-gateway/compose.yaml to select Dockerfile.envoy and foc-envoy:local, retaining the Node reference and an explicit rollback override. Native compilation and runtime acceptance remain pending.
+- Files: api-gateway/compose.yaml, compose.node-reference.yaml, AGENTS.md, envoy/README.md, ai/usage-log.md.
+- Human review: User explicitly approved the current Compose switch for testing; removal is deferred until test results and an explicit removal request.
