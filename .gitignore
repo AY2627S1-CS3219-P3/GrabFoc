@@ -1,3 +1,10 @@
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-10-12
+# Scope: Ignore downloaded Envoy sources and native build artifacts.
+# Author review: Pending human review.
+# AI-generated addition; review pending.
+api-gateway/.build/
+
 # Build output
 dist/
 build/

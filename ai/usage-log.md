@@ -1,5 +1,12 @@
 <!--
 AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-10-12
+Scope: Append the approved custom Envoy migration record; preserve existing log bytes.
+Author review: Implementation approved; code review pending.
+-->
+
+<!--
+AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Recorded the CodeQL workflow configuration and expanded pull request coverage.
 Author review: Initial setup approved in PR #23; expanded PR coverage pending human review.
@@ -2124,3 +2131,12 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Files: `frontend/app/components/location-image.tsx`, `frontend/next.config.ts`, `ai/usage-log.md`.
 - Verification: `npm.cmd run build` and `npx.cmd eslint app/components/location-image.tsx next.config.ts` passed.
 - Human review: Pending human review and browser check of a live image URL.
+
+## 2026-10-12 ? Custom Envoy migration, stage 1
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompts: "create a new branch and implement the migration to envoy"; "preserve exisitng behaviour"; "can we use a custom envoy extension and build"; "implement this, commit incrementally, and update me on the progress".
+- Key response: Implement the approved custom native Envoy build on feat/envoy-gateway; preserve HTTP/JWT behaviour without an authentication helper; test balancing with isolated replicas.
+- Usage scenario: Replace gateway proxy runtime after compatibility verification, retaining the existing gateway as reference.
+- Files: .gitignore, api-gateway/envoy/README.md, ai/usage-log.md.
+- Human review: User approved implementation and incremental commits; review of generated changes pending.
