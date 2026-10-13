@@ -1,6 +1,6 @@
 """AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Verify route-file discovery and rejection of malformed authentication configuration.
+Scope: Verify route-file discovery, malformed authentication configuration, and environment-configurable Envoy settings.
 Author review: Pending human review.
 """
 # AI-generated; review pending.
@@ -61,6 +61,41 @@ class RouteFilesTest(unittest.TestCase):
         self.write_service({**valid, "service": "user"})
         with self.assertRaises(ValueError):
             self.renderer.configuration(self.env)
+
+    def test_infrastructure_settings_keep_defaults_and_accept_overrides(self):
+        base = self.renderer.configuration(self.env)
+        clusters = base["static_resources"]["clusters"]
+        self.assertTrue(all(c["lb_policy"] == "ROUND_ROBIN" and
+                            c["connect_timeout"] == "3s" for c in clusters))
+        override = {**self.env, "GATEWAY_LB_POLICY": "LEAST_REQUEST",
+                    "GATEWAY_CONNECT_TIMEOUT": "500ms", "GATEWAY_ROUTE_TIMEOUT": "5s",
+                    "GATEWAY_ROUTE_IDLE_TIMEOUT": "30s", "GATEWAY_JWKS_FETCH_TIMEOUT": "1s",
+                    "GATEWAY_JWKS_CACHE_DURATION": "120s", "GATEWAY_WORKERS": "4"}
+        config = self.renderer.configuration(override)
+        resources = config["static_resources"]
+        self.assertTrue(all(c["lb_policy"] == "LEAST_REQUEST" and
+                            c["connect_timeout"] == "0.5s" for c in resources["clusters"]))
+        hcm = resources["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
+        user_route = next(r for r in hcm["route_config"]["virtual_hosts"][0]["routes"]
+                          if r.get("route"))
+        self.assertEqual(user_route["route"]["timeout"], "5s")
+        self.assertEqual(user_route["route"]["idle_timeout"], "30s")
+        jwks = hcm["http_filters"][1]["typed_config"]["providers"]["foc_user"]["remote_jwks"]
+        self.assertEqual(jwks["http_uri"]["timeout"], "1s")
+        self.assertEqual(jwks["cache_duration"], "120s")
+        self.assertEqual(self.renderer.infrastructure_settings(override)["workers"], "4")
+
+    def test_invalid_infrastructure_settings_fail_at_startup(self):
+        for name, value in (("GATEWAY_LB_POLICY", "INVALID"),
+                            ("GATEWAY_CONNECT_TIMEOUT", "0s"),
+                            ("GATEWAY_ROUTE_TIMEOUT", "forever"),
+                            ("GATEWAY_ROUTE_IDLE_TIMEOUT", "-1s"),
+                            ("GATEWAY_JWKS_FETCH_TIMEOUT", "0s"),
+                            ("GATEWAY_JWKS_CACHE_DURATION", "0s"),
+                            ("GATEWAY_WORKERS", "0")):
+            with self.subTest(name=name):
+                with self.assertRaises(ValueError):
+                    self.renderer.configuration({**self.env, name: value})
 
 
 if __name__ == "__main__":

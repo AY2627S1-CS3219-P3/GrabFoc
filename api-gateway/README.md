@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented stock Envoy configuration, testing and removal of the legacy Node gateway on 2026-10-13. Includes the approved JWKS 503 exception.
+Scope: Documented stock Envoy configuration, testing, existing infrastructure environment settings and removal of the legacy Node gateway. Includes the approved JWKS 503 exception.
 Author review: Jie Yang reviewed earlier documentation; Envoy implementation approved, new documentation review pending.
 -->
 
@@ -62,11 +62,23 @@ An empty `USER_SERVICE_JWKS_URL` derives the key endpoint from `USER_SERVICE_URL
 The container listener stays at port 3003. After changing `.env`, recreate the
 gateway with `docker compose up -d --no-deps api-gateway` (no image rebuild needed).
 
-Upstream clusters use `STRICT_DNS` discovery and `ROUND_ROBIN` load balancing.
+Upstream clusters use `STRICT_DNS` discovery and `ROUND_ROBIN` load balancing by default.
 With a single resolved endpoint, all requests go there. With multiple DNS-resolved
 endpoints, Envoy distributes requests among them. The isolated integration test
 also verifies two explicit Supplier endpoints using `FOC_TEST_SUPPLIER_URLS`;
 leave that test override empty in ordinary use. These settings do not create
 replicas or enable application health checks automatically.
+
+The current infrastructure settings can be changed in `api-gateway/.env` without
+rebuilding the image. Copy the corresponding entries from `.env.example` and
+recreate the container. `GATEWAY_LB_POLICY` applies to all upstream clusters,
+including JWKS, and accepts `ROUND_ROBIN`, `LEAST_REQUEST`, or `RANDOM`.
+`GATEWAY_CONNECT_TIMEOUT` defaults to `3s`; `GATEWAY_ROUTE_TIMEOUT` defaults to
+`0s` (no overall route timeout); `GATEWAY_ROUTE_IDLE_TIMEOUT` defaults to `10s`;
+`GATEWAY_JWKS_FETCH_TIMEOUT` defaults to `3s`; and
+`GATEWAY_JWKS_CACHE_DURATION` defaults to `60s`. Durations accept whole-number
+`ms`, `s`, or `m` values. `GATEWAY_WORKERS` defaults to `2` Envoy worker threads.
+The JWKS cache holds signing keys, not verified access tokens. No distributed rate
+limiter or verified-token cache is currently deployed.
 
 Before connecting the frontend, confirm paths and payloads with User and Supplier owners. Confirm User Service's JWKS path, signing algorithm, issuer and audience. Decide whether each service re-verifies tokens or accepts gateway identity as recorded in the root `AGENTS.md`; this gateway currently forwards the bearer token and creates no identity headers.

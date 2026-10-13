@@ -1,6 +1,6 @@
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-10-13
-# Scope: Run an optional stock Envoy candidate with environment-configurable settings on a separate host port.
+# Scope: Run an optional stock Envoy candidate with environment-configurable routes and infrastructure settings.
 # Author review: Pending human review.
 # AI-generated; review pending.
 name: foc
@@ -11,6 +11,13 @@ services:
       dockerfile: Dockerfile.envoy
     environment:
       GATEWAY_PORT: 3003
+      GATEWAY_LB_POLICY: ${GATEWAY_LB_POLICY:-ROUND_ROBIN}
+      GATEWAY_CONNECT_TIMEOUT: ${GATEWAY_CONNECT_TIMEOUT:-3s}
+      GATEWAY_ROUTE_TIMEOUT: ${GATEWAY_ROUTE_TIMEOUT:-0s}
+      GATEWAY_ROUTE_IDLE_TIMEOUT: ${GATEWAY_ROUTE_IDLE_TIMEOUT:-10s}
+      GATEWAY_JWKS_FETCH_TIMEOUT: ${GATEWAY_JWKS_FETCH_TIMEOUT:-3s}
+      GATEWAY_JWKS_CACHE_DURATION: ${GATEWAY_JWKS_CACHE_DURATION:-60s}
+      GATEWAY_WORKERS: ${GATEWAY_WORKERS:-2}
       USER_SERVICE_URL: ${USER_SERVICE_URL:-http://user-service:3001}
       SUPPLIER_SERVICE_URL: ${SUPPLIER_SERVICE_URL:-http://supplier-service:3002}
       USER_SERVICE_JWKS_URL: ${USER_SERVICE_JWKS_URL:-}

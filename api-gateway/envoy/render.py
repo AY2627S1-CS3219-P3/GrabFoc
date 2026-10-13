@@ -1,6 +1,6 @@
 """AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Render route files and expose JWT failure metadata for approved JWKS 503 response mapping.
+Scope: Render route files, expose JWT failure metadata, and read existing Envoy infrastructure settings from environment variables.
 Author review: Pending human review.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
@@ -13,6 +13,34 @@ from urllib.parse import urlsplit, urljoin
 
 TYPE = "type.googleapis.com/"
 JWT = "envoy.filters.http.jwt_authn"
+
+def infrastructure_settings(env):
+    policy = env.get("GATEWAY_LB_POLICY", "ROUND_ROBIN")
+    if policy not in {"ROUND_ROBIN", "LEAST_REQUEST", "RANDOM"}:
+        raise ValueError("GATEWAY_LB_POLICY must be ROUND_ROBIN, LEAST_REQUEST, or RANDOM")
+    settings = {"lb_policy": policy}
+    for name, default, allow_zero in (
+            ("GATEWAY_CONNECT_TIMEOUT", "3s", False),
+            ("GATEWAY_ROUTE_TIMEOUT", "0s", True),
+            ("GATEWAY_ROUTE_IDLE_TIMEOUT", "10s", False),
+            ("GATEWAY_JWKS_FETCH_TIMEOUT", "3s", False),
+            ("GATEWAY_JWKS_CACHE_DURATION", "60s", False)):
+        value = env.get(name, default)
+        match = re.fullmatch(r"(0|[1-9][0-9]*)(ms|s|m)", value)
+        if not match or (int(match[1]) == 0 and not allow_zero):
+            raise ValueError(f"{name} must be a positive duration (ms, s, m)" +
+                             (" or 0s" if allow_zero else ""))
+        amount, unit = int(match[1]), match[2]
+        if unit == "ms":
+            seconds = f"{amount // 1000}.{amount % 1000:03d}".rstrip("0").rstrip(".")
+            settings[name] = f"{seconds}s"
+        else:
+            settings[name] = f"{amount * (60 if unit == 'm' else 1)}s"
+    workers = env.get("GATEWAY_WORKERS", "2")
+    if not re.fullmatch(r"[1-9][0-9]*", workers) or int(workers) > 64:
+        raise ValueError("GATEWAY_WORKERS must be between 1 and 64")
+    settings["workers"] = workers
+    return settings
 
 def load_local_env(env):
     """Read optional gateway .env; process environment takes precedence."""
@@ -46,7 +74,7 @@ def origin(value):
         raise ValueError("Service URLs must be HTTP(S) origins without credentials")
     return url
 
-def cluster(name, urls):
+def cluster(name, urls, settings):
     endpoints = []
     parsed = [origin(url) for url in urls]
     if len({url.scheme for url in parsed}) != 1:
@@ -54,8 +82,8 @@ def cluster(name, urls):
     for url in parsed:
         endpoints.append({"endpoint": {"address": {"socket_address": {
             "address": url.hostname, "port_value": url.port or (443 if url.scheme == "https" else 80)}}}})
-    result = {"name": name, "type": "STRICT_DNS", "connect_timeout": "3s",
-              "lb_policy": "ROUND_ROBIN", "load_assignment": {
+    result = {"name": name, "type": "STRICT_DNS", "connect_timeout": settings["GATEWAY_CONNECT_TIMEOUT"],
+              "lb_policy": settings["lb_policy"], "load_assignment": {
                   "cluster_name": name, "endpoints": [{"lb_endpoints": endpoints}]}}
     if parsed[0].scheme == "https":
         if len({url.hostname for url in parsed}) != 1:
@@ -130,6 +158,7 @@ def load_routes(env):
 
 
 def configuration(env):
+    settings = infrastructure_settings(env)
     port = int(env.get("GATEWAY_PORT", "3003"))
     if not 1 <= port <= 65535:
         raise ValueError("GATEWAY_PORT must be between 1 and 65535")
@@ -147,7 +176,8 @@ def configuration(env):
         match = {"headers": [{"name": ":method", "string_match": {"exact": method}}]}
         match["safe_regex" if regex else "path"] = {"regex": path} if regex else path
         routes.append({"match": match, "route": {"cluster": service,
-            "timeout": "0s", "idle_timeout": "10s", "auto_host_rewrite": True},
+            "timeout": settings["GATEWAY_ROUTE_TIMEOUT"],
+            "idle_timeout": settings["GATEWAY_ROUTE_IDLE_TIMEOUT"], "auto_host_rewrite": True},
             "typed_per_filter_config": {JWT: {"@type": TYPE +
                 "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig",
                 **({"disabled": True} if public else {"requirement_name": "user_token"})}}})
@@ -174,8 +204,9 @@ def configuration(env):
     provider = {"from_headers": [{"name": "Authorization", "value_prefix": "Bearer "}],
                 "forward": True, "require_expiration": True,
                 "failed_status_in_metadata": "verification_failure",
-                "remote_jwks": {"http_uri": {"uri": jwks, "cluster": "jwks", "timeout": "3s"},
-                                "cache_duration": "60s"}}
+                "remote_jwks": {"http_uri": {"uri": jwks, "cluster": "jwks",
+                                              "timeout": settings["GATEWAY_JWKS_FETCH_TIMEOUT"]},
+                                "cache_duration": settings["GATEWAY_JWKS_CACHE_DURATION"]}}
     if env.get("GATEWAY_JWT_ISSUER"):
         provider["issuer"] = env["GATEWAY_JWT_ISSUER"]
     if env.get("GATEWAY_JWT_AUDIENCE"):
@@ -214,17 +245,19 @@ def configuration(env):
         urls = [env[definition["urlEnv"]]]
         if definition["service"] == "supplier":
             urls = json.loads(env.get("FOC_TEST_SUPPLIER_URLS") or "null") or urls
-        upstreams.append(cluster(definition["service"], urls))
+        upstreams.append(cluster(definition["service"], urls, settings))
     return {"static_resources": {"listeners": [{"name": "gateway", "address": {
         "socket_address": {"address": "0.0.0.0", "port_value": port}}, "filter_chains": [{
             "filters": [{"name": "envoy.filters.network.http_connection_manager", "typed_config": hcm}]}]}],
-        "clusters": upstreams + [cluster("jwks", [key_origin])]}}
+        "clusters": upstreams + [cluster("jwks", [key_origin], settings)]}}
 
 if __name__ == "__main__":
     try:
         output = sys.argv[1] if len(sys.argv) > 1 else "/tmp/foc-envoy.json"
-        Path(output).write_text(json.dumps(configuration(load_local_env(os.environ)), indent=2))
+        env = load_local_env(os.environ)
+        Path(output).write_text(json.dumps(configuration(env), indent=2))
         if "--exec" in sys.argv:
-            os.execv("/usr/local/bin/envoy", ["envoy", "-c", output, "--log-level", "warning", "--concurrency", "2"])
+            os.execv("/usr/local/bin/envoy", ["envoy", "-c", output, "--log-level", "warning",
+                                                "--concurrency", infrastructure_settings(env)["workers"]])
     except (ValueError, KeyError) as error:
         sys.exit(f"Invalid gateway configuration: {error}")
