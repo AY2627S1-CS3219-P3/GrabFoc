@@ -1,13 +1,20 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Drafted the frontend and API Gateway implementation sequence; recorded the User frontend integration branch on 2026-09-28.
+Scope: Drafted the original implementation sequence and recorded replacement/removal of its Node gateway on 2026-10-13.
 Author review: User authorized part 1 and directed the gateway to forward JWTs; service contracts remain for team review.
 -->
 
 # Frontend and API Gateway implementation plan
 
 _Origin: AI doc. The user authorized part 1 on 2026-09-27 after the architecture and interface warning._
+
+## Gateway migration update (2026-10-13)
+
+The user approved stock Envoy and requested removal of the original Node gateway
+after its migration checks passed. The gateway file lists and implementation steps
+below are historical; current configuration and tests live in `api-gateway/envoy/`
+and `api-gateway/test/`. See `api-gateway/README.md` for current commands.
 
 ## Goal and boundaries
 
