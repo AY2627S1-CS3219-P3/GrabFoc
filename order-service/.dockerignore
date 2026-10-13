@@ -1,0 +1,11 @@
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-10-13
+# Scope: Implemented the user-approved Order database-only plan.
+# Author review: Design and plan approved by user; implementation review pending.
+# AI-generated; human review pending.
+node_modules
+dist
+.env
+.env.*
+!.env.example
+.git
