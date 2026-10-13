@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
-Tool: Codex (model: GPT-6), date: 2026-10-12
-Scope: Append the approved custom Envoy migration record; preserve existing log bytes.
+Tool: Codex (model: GPT-6), date: 2026-10-13
+Scope: Append the approved custom Envoy migration record and duplicate Postman health removal; preserve existing log entries.
 Author review: Implementation approved; code review pending.
 -->
 
@@ -2278,3 +2278,13 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Removed the unused `api-gateway/compose.envoy-candidate.yaml`, renamed the gateway's only Dockerfile from `Dockerfile.envoy` to standard `Dockerfile`, and updated Compose and documentation references. Kept root Compose and each active service's own Compose/Dockerfile.
 - Verification: Standalone and root Compose service listings resolve the gateway; the gateway image builds from the renamed Dockerfile; no active references to the retired filenames remain.
 - Author review: Pending human review.
+
+
+### 2026-10-13 16:53 SGT - Remove duplicate gateway Postman health request
+
+- Tool: Codex (model: GPT-6), mode: refactor.
+- Exact prompt: "just remove the duplicate health request from the gateway postman collection".
+- Scenario: User authorized removing the User Service health request that actually calls the gateway liveness endpoint.
+- Key response: Removed User Service / Public / Health from the gateway collection, retained the Gateway smoke health check, and updated the collection disclosure.
+- Verification: Collection parses as JSON; exactly one request targets {{baseUrl}}/health; all other collection items are unchanged.
+- Author review: Removal explicitly requested; final diff review pending.

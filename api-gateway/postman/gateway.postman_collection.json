@@ -1,6 +1,6 @@
 {
   "info": {
-    "description": "AI Assistance Disclosure:\nTool: Codex (model: GPT-6), date: 2026-10-13\nScope: Combine existing User/Supplier request formats for gateway testing, add safe smoke checks, and adapt missing-token assertions to stock Envoy.\nAuthor review: Pending human review.\n\nFoC Gateway (official Envoy v1.38.6). Import this file into Postman. baseUrl defaults to http://localhost:3003; never change it to 3001/3002 when testing the gateway.\n\nStart with Gateway smoke checks: no credentials and no state changes. User and Supplier folders reuse the service collections' workflows and change account/location data. Do not run the whole collection against important accounts: Profile changes email/password and deactivates its generated account; Admin resets the bootstrap admin password, reactivates an account and changes roles; Supplier Write creates/updates/deactivates/restores a location.\n\nExisting USER: set signupEmail and password, then send User Service / Session / Login (locate Login in the imported folder). It saves accessToken and refreshToken. Existing ADMIN: set adminEmail and adminPassword, then send Admin: login only; it saves adminAccessToken. Supplier requests use those same variables automatically. Token values start empty; do not export/share live token or password values.\n\nFor full User workflows, Mailpit must be reachable at mailpitUrl (default http://localhost:8025). Registration/Profile scripts generate account addresses and retrieve OTPs there. Full Admin workflow also needs adminEmail matching USER_BOOTSTRAP_ADMIN_EMAIL and a bootstrapped admin. Run User before Supplier; expired tokens require login/refresh again. Stock gateway 401 errors are text, while forwarded service validation errors remain service JSON. See api-gateway/envoy/behaviour-differences.md.\n\nSource request examples: user-service/postman/user-service.postman_collection.json and supplier-service/postman/supplier.postman_collection.json. Earlier service-specific disclosures remain attributable in those source files.",
+    "description": "AI Assistance Disclosure:\nTool: Codex (model: GPT-6), date: 2026-10-13\nScope: Combine existing User/Supplier request formats for gateway testing, add safe smoke checks, and adapt missing-token assertions to stock Envoy; remove the duplicate User Service health request.\nAuthor review: Pending human review.\n\nFoC Gateway (official Envoy v1.38.6). Import this file into Postman. baseUrl defaults to http://localhost:3003; never change it to 3001/3002 when testing the gateway.\n\nStart with Gateway smoke checks: no credentials and no state changes. User and Supplier folders reuse the service collections' workflows and change account/location data. Do not run the whole collection against important accounts: Profile changes email/password and deactivates its generated account; Admin resets the bootstrap admin password, reactivates an account and changes roles; Supplier Write creates/updates/deactivates/restores a location.\n\nExisting USER: set signupEmail and password, then send User Service / Session / Login (locate Login in the imported folder). It saves accessToken and refreshToken. Existing ADMIN: set adminEmail and adminPassword, then send Admin: login only; it saves adminAccessToken. Supplier requests use those same variables automatically. Token values start empty; do not export/share live token or password values.\n\nFor full User workflows, Mailpit must be reachable at mailpitUrl (default http://localhost:8025). Registration/Profile scripts generate account addresses and retrieve OTPs there. Full Admin workflow also needs adminEmail matching USER_BOOTSTRAP_ADMIN_EMAIL and a bootstrapped admin. Run User before Supplier; expired tokens require login/refresh again. Stock gateway 401 errors are text, while forwarded service validation errors remain service JSON. See api-gateway/envoy/behaviour-differences.md.\n\nSource request examples: user-service/postman/user-service.postman_collection.json and supplier-service/postman/supplier.postman_collection.json. Earlier service-specific disclosures remain attributable in those source files.",
     "name": "FoC Gateway - User and Supplier",
     "_postman_id": "75bed629-cb17-49ea-98bc-92d35e0290f7",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -248,27 +248,6 @@
         {
           "name": "Public",
           "item": [
-            {
-              "name": "Health",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": "{{baseUrl}}/health",
-                "description": "Unauthenticated on purpose: compose and the gateway need it before anyone has a token. 503 if the database is unreachable."
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('200 OK', () => pm.response.to.have.status(200));",
-                      "pm.test('reports ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"
-                    ]
-                  }
-                }
-              ]
-            },
             {
               "name": "JWKS",
               "request": {
