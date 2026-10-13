@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Document the stock Envoy runtime and user-approved behaviour differences on 2026-10-13.
+Scope: Document the stock Envoy runtime, per-service route files and user-approved behaviour differences on 2026-10-13.
 Author review: Jie Yang reviewed earlier notes; Envoy approach approved by the user, new documentation review pending.
 -->
 
@@ -13,6 +13,7 @@ _Origin: AI doc; implements the project-wide gateway direction in `../AGENTS.md`
 - User Service owns registration and sign-in. Supplier Service owns location data and authorization. Do not add business logic or persistent data here.
 - Route only the implemented User and Supplier methods and paths. The `/auth` and `/locations` prefixes remain configurable; keep upstream paths unchanged.
 - Compose packages the official Envoy v1.38.6 image with `Dockerfile.envoy`. `envoy/render.py` renders routes and startup configuration. The user accepted stock JWT/error/request-ID behaviour on 2026-10-13; differences are in `envoy/behaviour-differences.md`. The gateway checks public versus authenticated access, not service roles.
+- Envoy service routes live in `envoy/routes/*.routes.json`, loaded in filename order. Declare the service name, its URL environment variable and explicit methods/paths there; JWT is required unless `public` is explicitly true. Add approved service routes through these files rather than hard-coding them in the renderer. See `envoy/README.md` for prefixes and tests.
 - The existing `src/` Node implementation and its tests are retained as the migration reference. Do not remove them until the stock Envoy integration tests pass and the human requests removal.
 - Normal Compose builds use the official precompiled binary. There are no native patches, Bazel builds, helper service or custom-image release workflow.
 - Gateway configuration loads `api-gateway/.env` when present; existing process environment variables take precedence. Do not read another service's `.env`.

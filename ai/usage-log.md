@@ -2207,3 +2207,16 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Created api-gateway/postman/gateway.postman_collection.json with 92 requests, default baseUrl http://localhost:3003, shared login token variables, empty initial tokens, no development identity headers, and six safe gateway smoke checks. Updated missing-token logout checks for stock Envoy text responses. Added import/login instructions and documented existing workflows that mutate account/location data.
 - Verification: Official Postman v2.1 schema validation passed; 113 embedded scripts parsed successfully; six safe requests against the running gateway returned expected 200/401/404 responses. Full account/location workflows were not run.
 - Author review: Pending human review.
+
+
+### 2026-10-13 - Extract Envoy service route files
+
+- Tool: Codex (model: GPT-6), mode: refactor / explain.
+- Exact prompts: "yes refactor this"; "what does compatibility lua do?"
+- Scenario: User approved moving existing gateway routes into per-service JSON files with automatic renderer loading, retaining current behavior.
+- Key responses: Extracted User and Supplier routes into envoy/routes/10-user.routes.json and 20-supplier.routes.json. Renderer discovers files in filename order, generates upstream clusters using declared URL variables, validates definitions, keeps JWT protected by default, and preserves configurable prefixes, health, final 404 and Supplier test replicas. Dockerfile packages the route directory. Added loader tests and updated gateway documentation/agent notes. Explained that compatibility.lua strips selected headers on requests/responses, rejects malformed targets, and records paths without queries; JWT verification belongs to Envoy. Lua was unchanged.
+- Verification: Three complete generated configurations exactly match pre-refactor baselines (defaults, custom prefixes/issuer/audience, HTTPS/replicas). Two route-loader tests passed, including new-service discovery and malformed authentication definitions. Lightweight image built successfully; all 16 isolated Envoy integration tests passed. Final validation changes and disclosure updates do not alter generated configuration.
+- Author review: Pending human review.
+
+- Follow-up exact prompt: "why isit 10-user.route
+20-supplier route". Response: Numeric filename prefixes define deterministic load/route precedence; gaps permit insertion between existing services, and are unrelated to ports or IDs.

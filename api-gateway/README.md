@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented gateway setup and contracts; Codex GPT-6 documented stock Envoy, its approved differences and Postman testing on 2026-10-13.
+Scope: Documented gateway setup and contracts; Codex GPT-6 documented stock Envoy, per-service routes and Postman testing on 2026-10-13.
 Author review: Jie Yang reviewed earlier documentation; Envoy implementation approved, new documentation review pending.
 -->
 
@@ -23,7 +23,11 @@ Supplier routes are `GET /location-types`, `GET` and `POST /locations`, `GET` an
 
 The gateway currently verifies a User Service bearer JWT for protected requests and forwards the bearer token unchanged. It strips caller-supplied `X-User-Id` and `X-User-Role` headers. This is an interim handoff while the team decides the final service authentication contract. The upstream receives the same path and query string. The gateway does not implement sign-in, registration, OTP, profile or location authorization.
 
-Route definitions live under `src/routing/`, one list per service. `src/app.ts` matches a route, checks whether it is public or authenticated, and proxies it to the configured service origin. Service-level role checks remain in the services. `src/server.ts` only loads configuration and starts listening.
+The running Envoy gateway loads route definitions from `envoy/routes/*.routes.json`,
+one file per service. `envoy/render.py` generates the upstream clusters and route
+configuration from those files at startup. See [route-file instructions](envoy/README.md#route-files).
+Service-level role checks remain in the services. `src/routing/`, `src/app.ts` and
+`src/server.ts` belong to the retained Node reference implementation.
 
 Every completed request has a JSON log with request ID, method, path, target service, status and duration. Envoy applies its default context-sensitive request-ID handling and returns the resulting ID in the response. Authentication and upstream failures have separate JSON events. Stock Envoy authentication failures return text responses (audience mismatch is 403); a JWKS fetch failure is 401 and an upstream connection failure is 503. See the behaviour-differences document for the full comparison.
 

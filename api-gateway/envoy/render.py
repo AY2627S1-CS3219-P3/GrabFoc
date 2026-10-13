@@ -1,6 +1,6 @@
 """AI Assistance Disclosure:
-Tool: Codex (model: GPT-6), date: 2026-10-12
-Scope: Render stock Envoy configuration; use its native JWT, request-ID and error behaviour.
+Tool: Codex (model: GPT-6), date: 2026-10-13
+Scope: Render stock Envoy configuration; load per-service route files while preserving existing behaviour.
 Author review: Pending human review.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
@@ -71,21 +71,73 @@ def cluster(name, urls):
                     "exact": parsed[0].hostname}}]}}}}
     return result
 
+def load_routes(env):
+    """Load service files in filename order; reject invalid configuration at startup."""
+    files = sorted(Path(__file__).with_name("routes").glob("*.routes.json"))
+    if not files:
+        raise ValueError("No service route files found")
+    services, prefixes, names = [], {}, {"jwks"}
+    for file in files:
+        definition = json.loads(file.read_text(encoding="utf-8"))
+        if not isinstance(definition, dict) or set(definition) - {
+                "_disclosure", "service", "urlEnv", "prefixes", "routes"}:
+            raise ValueError(f"Invalid service definition: {file.name}")
+        name = definition.get("service", "")
+        if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_-]*", name) or name in names:
+            raise ValueError(f"Invalid or duplicate service name: {file.name}")
+        names.add(name)
+        url_env = definition.get("urlEnv", "")
+        if not isinstance(url_env, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", url_env):
+            raise ValueError(f"Invalid URL variable: {file.name}")
+        origin(env[url_env])
+        specs = definition.get("prefixes", {})
+        if not isinstance(specs, dict):
+            raise ValueError(f"Invalid prefixes: {file.name}")
+        for key, spec in specs.items():
+            if (not re.fullmatch(r"[a-z][a-z0-9_]*", key) or key in prefixes or
+                    not isinstance(spec, dict) or set(spec) != {"env", "default"} or
+                    not isinstance(spec["env"], str) or
+                    not re.fullmatch(r"[A-Z][A-Z0-9_]*", spec["env"]) or
+                    not isinstance(spec["default"], str)):
+                raise ValueError(f"Invalid prefix definition: {file.name}")
+            value = env.get(spec["env"], spec["default"])
+            if (not re.fullmatch(r"/[a-zA-Z0-9/-]+", value) or
+                    (len(value) > 1 and value.endswith("/"))):
+                raise ValueError("Invalid gateway route prefix")
+            prefixes[key] = value
+        entries = definition.get("routes")
+        if not isinstance(entries, list) or not entries:
+            raise ValueError(f"Missing service routes: {file.name}")
+        services.append(definition)
+    values = list(prefixes.values())
+    for index, value in enumerate(values):
+        for other in values[index + 1:]:
+            if value == other or value.startswith(other + "/") or other.startswith(value + "/"):
+                raise ValueError("Gateway route prefixes must not overlap")
+    for definition in services:
+        for entry in definition["routes"]:
+            if (not isinstance(entry, dict) or set(entry) - {"method", "path", "regex", "public"} or
+                    entry.get("method") not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} or
+                    (("path" in entry) == ("regex" in entry)) or
+                    type(entry.get("public", False)) is not bool):
+                raise ValueError(f"Invalid route entry for {definition['service']}")
+            path = entry.get("path", entry.get("regex"))
+            if not isinstance(path, str) or not path:
+                raise ValueError("Route path must be a nonempty string")
+            for key in re.findall(r"\{([a-z][a-z0-9_]*)\}", path):
+                if key not in prefixes:
+                    raise ValueError(f"Unknown route prefix: {key}")
+    if "user" not in names:
+        raise ValueError("User service routes are required for JWT key discovery")
+    return services, prefixes
+
+
 def configuration(env):
     port = int(env.get("GATEWAY_PORT", "3003"))
     if not 1 <= port <= 65535:
         raise ValueError("GATEWAY_PORT must be between 1 and 65535")
-    user = env["USER_SERVICE_URL"]
-    supplier = env["SUPPLIER_SERVICE_URL"]
-    origin(user)
-    origin(supplier)
-    auth = env.get("GATEWAY_AUTH_PREFIX", "/auth")
-    locations = env.get("GATEWAY_LOCATIONS_PREFIX", "/locations")
-    for prefix in (auth, locations):
-        if not re.fullmatch(r"/[a-zA-Z0-9/-]+", prefix) or (len(prefix) > 1 and prefix.endswith("/")):
-            raise ValueError("Invalid gateway route prefix")
-    if auth == locations or auth.startswith(locations + "/") or locations.startswith(auth + "/"):
-        raise ValueError("Gateway route prefixes must not overlap")
+    services, prefixes = load_routes(env)
+    user = next(env[item["urlEnv"]] for item in services if item["service"] == "user")
     jwks = env.get("USER_SERVICE_JWKS_URL") or urljoin(user, "/.well-known/jwks.json")
     key_url = urlsplit(jwks)
     key_origin = f"{key_url.scheme}://{key_url.netloc}"
@@ -102,27 +154,15 @@ def configuration(env):
             "typed_per_filter_config": {JWT: {"@type": TYPE +
                 "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig",
                 **({"disabled": True} if public else {"requirement_name": "user_token"})}}})
-    public_paths = ["register", "register/verify", "register/resend-otp", "login", "refresh",
-                    "password/forgot", "password/reset"]
-    route("GET", "/.well-known/jwks.json", "user", True)
-    for path in public_paths:
-        route("POST", auth + "/" + path, "user", True)
-    route("POST", auth + "/logout", "user")
-    for method in ("GET", "PATCH"):
-        route(method, "/users/me", "user")
-    for path in ("otp", "email", "email/verify", "password", "deactivate"):
-        route("POST", "/users/me/" + path, "user")
-    route("PATCH", "/users/me/mobile", "user")
-    route("GET", "/admin/users", "user")
-    route("PATCH", r"/admin/users/[^/]+/role", "user", regex=True)
-    route("POST", r"/admin/users/[^/]+/reactivate", "user", regex=True)
-    route("GET", "/location-types", "supplier")
-    for method in ("GET", "POST"):
-        route(method, locations, "supplier")
-    for method in ("GET", "PATCH"):
-        route(method, re.escape(locations) + r"/[^/]+", "supplier", regex=True)
-    for suffix in ("deactivate", "restore"):
-        route("POST", re.escape(locations) + r"/[^/]+/" + suffix, "supplier", regex=True)
+    for definition in services:
+        for entry in definition["routes"]:
+            regex = "regex" in entry
+            path = entry["regex" if regex else "path"]
+            values = {key: re.escape(value) if regex else value
+                      for key, value in prefixes.items()}
+            path = re.sub(r"\{([a-z][a-z0-9_]*)\}", lambda m: values[m[1]], path)
+            route(entry["method"], path, definition["service"],
+                  public=entry.get("public", False), regex=regex)
     routes.insert(0, {"match": {"path": "/health", "headers": [{"name": ":method",
         "string_match": {"exact": "GET"}}]}, "direct_response": {"status": 200,
         "body": {"inline_string": '{"status":"ok"}'}}, "response_headers_to_add": [{
@@ -171,11 +211,16 @@ def configuration(env):
             "typed_config": {"@type": TYPE + "envoy.extensions.access_loggers.stream.v3.StdoutAccessLog",
                 "log_format": {"json_format": {**logs, "event": event}}}})
     # Multiple endpoints are exposed only through explicit test configuration.
-    replicas = json.loads(env.get("FOC_TEST_SUPPLIER_URLS") or "null") or [supplier]
+    upstreams = []
+    for definition in services:
+        urls = [env[definition["urlEnv"]]]
+        if definition["service"] == "supplier":
+            urls = json.loads(env.get("FOC_TEST_SUPPLIER_URLS") or "null") or urls
+        upstreams.append(cluster(definition["service"], urls))
     return {"static_resources": {"listeners": [{"name": "gateway", "address": {
         "socket_address": {"address": "0.0.0.0", "port_value": port}}, "filter_chains": [{
             "filters": [{"name": "envoy.filters.network.http_connection_manager", "typed_config": hcm}]}]}],
-        "clusters": [cluster("user", [user]), cluster("supplier", replicas), cluster("jwks", [key_origin])]}}
+        "clusters": upstreams + [cluster("jwks", [key_origin])]}}
 
 if __name__ == "__main__":
     try:

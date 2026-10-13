@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-10-13
-# Scope: Use the official precompiled Envoy release and render only application configuration.
+# Scope: Use the official precompiled Envoy release and package renderer and per-service route files.
 # Author review: Pending human review.
 # AI-generated; review pending.
 FROM envoyproxy/envoy:v1.38.6@sha256:93a82e7584cb8181ad408e4e49477a3ae1d775f698214841eda4e9309fc06a06
@@ -9,6 +9,7 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY envoy/render.py envoy/compatibility.lua /opt/foc/
+COPY envoy/routes/ /opt/foc/routes/
 USER 65532:65532
 EXPOSE 3003
 ENTRYPOINT ["python3", "/opt/foc/render.py", "/tmp/foc-envoy.json", "--exec"]
