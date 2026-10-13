@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented stock Envoy configuration, testing and removal of the legacy Node gateway on 2026-10-13.
+Scope: Documented stock Envoy configuration, testing and removal of the legacy Node gateway on 2026-10-13. Includes the approved JWKS 503 exception.
 Author review: Jie Yang reviewed earlier documentation; Envoy implementation approved, new documentation review pending.
 -->
 
@@ -28,7 +28,7 @@ one file per service. `envoy/render.py` generates the upstream clusters and rout
 configuration from those files at startup. See [route-file instructions](envoy/README.md#route-files).
 Service-level role checks remain in the services.
 
-Every completed request has a JSON log with request ID, method, path, target service, status and duration. Envoy applies its default context-sensitive request-ID handling and returns the resulting ID in the response. Authentication and upstream failures have separate JSON events. Stock Envoy authentication failures return text responses (audience mismatch is 403); a JWKS fetch failure is 401 and an upstream connection failure is 503. See the behaviour-differences document for the full comparison.
+Every completed request has a JSON log with request ID, method, path, target service, status and duration. Envoy applies its default context-sensitive request-ID handling and returns the resulting ID in the response. Authentication and upstream failures have separate JSON events. Stock Envoy authentication failures return text responses (audience mismatch is 403); a JWKS fetch failure or unusable key set is 503 and an upstream connection failure is 503. See the behaviour-differences document for the full comparison.
 
 Copy `api-gateway/.env.example` to `api-gateway/.env` and set the service URLs.
 The renderer loads optional gateway settings; process environment variables take

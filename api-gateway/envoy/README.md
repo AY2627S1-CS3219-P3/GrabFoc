@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Document Envoy startup, route configuration and standalone tests after legacy gateway removal.
+Scope: Document Envoy startup, tests and the approved JWKS failure response exception.
 Author review: User approved stock defaults; generated changes review pending.
 -->
 
@@ -70,3 +70,18 @@ round-robin balancing; the main stack still has one instance per service.
 The legacy Node gateway, its tests, npm manifests, Dockerfile and rollback Compose
 file were removed at the user's request after the Envoy checks passed. Historical
 comparison results remain in the behaviour-differences document and Git history.
+
+## JWKS availability failures
+
+JWT failure metadata drives a response-status override in `compatibility.lua`:
+fetch failures, malformed/missing/non-array keys and empty/no-valid-key sets return
+503 text. The original verifier error body remains unchanged. Unknown key IDs,
+invalid signatures and expired tokens retain their authentication errors. Service
+401 responses are unaffected. The frontend treats 503 as a temporary failure and
+preserves existing or successfully rotated session cookies. Its BFF currently
+presents non-JSON profile errors as 500 initially or 502 after rotation; session
+preservation is verified separately from that browser error status.
+
+The status-code mapping is verified on pinned Envoy 1.38.6; rerun the gateway and
+frontend session tests when upgrading. This is an explicit user-approved exception
+to stock Envoy defaults, requiring no custom binary or helper service.

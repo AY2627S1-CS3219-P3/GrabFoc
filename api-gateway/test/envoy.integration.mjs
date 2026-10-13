@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Verify the Envoy gateway directly after removal of the legacy Node implementation.
+Scope: Verify Envoy routing and JWT behavior, including approved JWKS 503 mapping and recovery.
 Author review: Pending human review.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
@@ -44,6 +44,8 @@ const upstream = (instance) => createServer((req, res) => {
     res.setHeader('content-type', 'application/json');
     if (keyMode === 'unavailable') { res.writeHead(503); res.end('{}'); return; }
     if (keyMode === 'malformed') { res.end('{broken'); return; }
+    if (keyMode === 'missing-keys') { res.end('{}'); return; }
+    if (keyMode === 'bad-keys') { res.end('{"keys":{}}'); return; }
     res.end(JSON.stringify({ keys })); return;
   }
   const chunks = [];
@@ -53,6 +55,9 @@ const upstream = (instance) => createServer((req, res) => {
     res.setHeader('x-request-id', 'upstream-id');
     if (req.headers['x-test-forbidden'] === 'yes') {
       res.writeHead(403); res.end('{"error":"Forbidden"}'); return;
+    }
+    if (req.headers['x-test-unauthorized'] === 'yes') {
+      res.writeHead(401); res.end('{"error":"Unauthorized"}'); return;
     }
     res.writeHead(instance === 'user' ? 201 : 200);
     res.end(JSON.stringify({ instance, method: req.method, path: req.url,
@@ -196,15 +201,20 @@ test('stock JWT does not refresh valid cached JWKS for an unknown key ID', async
   } finally { keys = [old.jwk, ec.jwk]; }
 });
 
-test('JWKS outages, malformed data and empty sets use stock 401 responses', async () => {
-  for (const mode of ['unavailable', 'malformed', 'empty']) {
+test('JWKS outages, malformed data and empty sets return 503 and recover', async () => {
+  for (const mode of ['unavailable', 'malformed', 'missing-keys', 'bad-keys', 'empty']) {
     keyMode = mode === 'empty' ? 'ok' : mode;
     if (mode === 'empty') keys = [];
     try {
       const url = await startEnvoy();
       const res = await fetch(url + '/locations', { headers: { authorization: `Bearer ${token()}` } });
-      assert.equal(res.status, 401);
+      assert.equal(res.status, 503);
       assert.match(res.headers.get('content-type'), /text\/plain/);
+      await res.text();
+      keyMode = 'ok'; keys = [old.jwk, ec.jwk];
+      const recovered = await fetch(url + '/locations', { headers: { authorization: `Bearer ${token()}` } });
+      assert.equal(recovered.status, 200, 'same session token works after JWKS recovery');
+      await recovered.text();
     } finally { keyMode = 'ok'; keys = [old.jwk, ec.jwk]; }
   }
 });
@@ -312,4 +322,11 @@ test('custom prefixes preserve public/protected routing and retire default paths
   assert.equal((await res.json()).path, '/v2/locations/test-id');
   assert.equal((await fetch(url + '/locations')).status, 404);
   assert.equal((await fetch(url + '/auth/login', { method: 'POST' })).status, 404);
+});
+
+test('upstream credential rejection remains 401 instead of verifier-unavailable', async () => {
+  const res = await fetch(gateway + '/users/me', { headers: {
+    authorization: `Bearer ${token()}`, 'x-test-unauthorized': 'yes' } });
+  assert.equal(res.status, 401);
+  assert.deepEqual(await res.json(), { error: 'Unauthorized' });
 });

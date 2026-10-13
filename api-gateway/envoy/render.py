@@ -1,6 +1,6 @@
 """AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Render stock Envoy configuration; load per-service route files and remove an unused header list while preserving existing behaviour.
+Scope: Render route files and expose JWT failure metadata for approved JWKS 503 response mapping.
 Author review: Pending human review.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
@@ -173,6 +173,7 @@ def configuration(env):
             "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig", "disabled": True}}})
     provider = {"from_headers": [{"name": "Authorization", "value_prefix": "Bearer "}],
                 "forward": True, "require_expiration": True,
+                "failed_status_in_metadata": "verification_failure",
                 "remote_jwks": {"http_uri": {"uri": jwks, "cluster": "jwks", "timeout": "3s"},
                                 "cache_duration": "60s"}}
     if env.get("GATEWAY_JWT_ISSUER"):

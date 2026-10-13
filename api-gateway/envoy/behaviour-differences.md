@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Record the approved Envoy behaviours and preserve their historical comparison after Node gateway removal.
+Scope: Record approved Envoy differences and the subsequent JWKS availability 503 exception.
 Author review: User explicitly accepted Envoy defaults; documentation review pending.
 -->
 
@@ -41,8 +41,8 @@ the broader cases above describe gateway acceptance rules, not changes to issuan
 | Missing, malformed, invalid or expired token | 401 JSON `{"error":"Unauthorized"}` | 401 text describing JWT failure, normally with `WWW-Authenticate`. |
 | Configured issuer mismatch | 401 JSON | 401 text. |
 | Configured audience mismatch | 401 JSON | 403 text; this is distinct from a service role/ownership denial. |
-| JWKS unreachable, non-success response or malformed JSON | 503 JSON `{"error":"Authentication service unavailable"}` | JWT filter returns 401 text. The response no longer reliably distinguishes a bad token from an unavailable verifier. |
-| Empty JWKS | 401 JSON | 401 text from verification/fetch failure. |
+| JWKS unreachable, non-success response or malformed JSON | 503 JSON `{"error":"Authentication service unavailable"}` | JWT failure metadata maps these availability failures to 503 text (approved exception to stock defaults). |
+| Empty/missing/non-array keys | 401 JSON for empty JWKS | 503 text: the verifier has no usable key set. |
 | Upstream connection refused/unavailable | 502 JSON `{"error":"Upstream unavailable"}` | Default 503 text for the connection failure tested. Other resets/protocol/timeouts can have different native statuses and response details. |
 | Absolute-form HTTP request target | 400 JSON | Native 404, empty body in the tested HTTP/1 case. It is never used as a proxy destination. |
 | Network-path target (`//host/...`) | 400 JSON | Still rejected by the retained request-target filter with 400 JSON. Other HTTP codec failures use native responses. |
@@ -50,8 +50,8 @@ the broader cases above describe gateway acceptance rules, not changes to issuan
 | Valid upstream response, including service 403 | Forwarded status/body | Still forwarded; gateway failure mappings do not rewrite service responses. |
 
 Frontends must check status and content type before parsing errors as JSON. A gateway
-401 during a JWKS outage cannot be interpreted as proof the student's credentials are
-invalid. A 403 may represent audience validation or upstream authorization.
+503 for a JWKS failure preserves the frontend session instead of triggering its
+401 refresh/logout flow. Unknown key IDs and invalid signatures remain 401. A 403 may represent audience validation or upstream authorization.
 
 ## Proxying, request IDs and logging
 

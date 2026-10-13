@@ -2249,3 +2249,12 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Verification: Envoy image built successfully. Standalone integration suite passed all 18 tests and Python route loader passed both tests without legacy source or npm dependencies. Local port 3003 smoke checks could not connect because the Compose stack was stopped; no local services were restarted.
 - PR: Prepare feat/envoy-gateway against main with stock image, per-service routes, environment-driven Compose, Postman collection, accepted behavior differences and legacy removal.
 - Author review: Pending human review in the requested PR.
+
+
+### 2026-10-13 - Distinguish JWKS availability failures
+
+- Tool: Codex (model: GPT-6), mode: generate / debug / explain.
+- Exact prompt: "change it to 503" after discussion of JWKS fetch/parse failures and empty key sets. Follow-up: "can you explain how the ENVOY is being used? like in terms of the code base how does it work".
+- Key response: Enabled JWT failure metadata and mapped confirmed JWKS parse/missing/bad/empty/fetch status codes to 503 in the existing Lua response filter. Invalid-token, unknown-key and service 401 responses remain unchanged. Updated behavior documentation and added same-token recovery and browser session tests; frontend production code was unchanged. Explained Compose packaging, startup rendering, route discovery and Envoy request filters/proxying.
+- Verification: Gateway Docker image built; all 19 integration tests and both Python loader tests passed. Browser checks cover existing and rotated cookie preservation during 503 and recovery, plus invalid-session 401 behavior. Non-JSON profile errors currently appear as 500 initially and 502 after rotation; this existing presentation behavior was not changed.
+- Author review: User approved the JWKS 503 response exception; code review pending.
