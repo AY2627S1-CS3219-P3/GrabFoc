@@ -1,6 +1,6 @@
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-10-13
-# Scope: Use stock Envoy and pass existing infrastructure settings through Compose environment interpolation.
+# Scope: Use stock Envoy from the standard Dockerfile and pass existing infrastructure settings through Compose environment interpolation.
 # Author review: Pending Jie Yang's review and live integration check.
 
 name: foc
@@ -11,7 +11,7 @@ services:
     image: foc-envoy:local
     build:
       context: .
-      dockerfile: Dockerfile.envoy
+      dockerfile: Dockerfile
     environment:
       GATEWAY_PORT: 3003
       GATEWAY_LB_POLICY: ${GATEWAY_LB_POLICY:-ROUND_ROBIN}

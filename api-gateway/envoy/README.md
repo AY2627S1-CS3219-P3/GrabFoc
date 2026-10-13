@@ -1,14 +1,14 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Document Envoy startup, tests and the approved JWKS failure response exception.
+Scope: Document Envoy startup, tests, standard Dockerfile and the approved JWKS failure response exception.
 Author review: User approved stock defaults; generated changes review pending.
 -->
 
 # Stock Envoy gateway
 
 The user chose the official Envoy defaults on 2026-10-13. The runtime uses official
-`envoyproxy/envoy:v1.38.6`, pinned by digest in `Dockerfile.envoy`. Python renders configuration
+`envoyproxy/envoy:v1.38.6`, pinned by digest in `Dockerfile`. Python renders configuration
 and then replaces itself with Envoy. No helper service, custom compiler, native patch,
 release pipeline or unpublished base image is involved.
 

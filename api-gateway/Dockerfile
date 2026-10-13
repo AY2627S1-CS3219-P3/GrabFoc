@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-10-13
-# Scope: Use the official precompiled Envoy release and package renderer and per-service route files.
+# Scope: Package the official precompiled Envoy release, renderer and per-service route files in the gateway's standard Dockerfile.
 # Author review: Pending human review.
 # AI-generated; review pending.
 FROM envoyproxy/envoy:v1.38.6@sha256:93a82e7584cb8181ad408e4e49477a3ae1d775f698214841eda4e9309fc06a06

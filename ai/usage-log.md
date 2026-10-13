@@ -2268,3 +2268,13 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Added environment inputs for upstream load-balancing policy, connection timeout, route and idle timeouts, JWKS fetch/cache durations and Envoy worker count. Kept current values as defaults; validated settings at startup; passed them through both Compose files; updated the example and local ignored .env without changing existing values; documented that distributed rate limiting and verified-token caching are deferred.
 - Verification: Four Python route configuration tests, Compose interpolation, all 19 Docker-backed integration tests, and pinned Envoy validation of LEAST_REQUEST plus duration overrides passed. Envoy validation first caught millisecond formatting; the renderer now normalizes durations to protobuf seconds.
 - Author review: Pending human review.
+
+
+### 2026-10-13 - Remove unused Envoy candidate deployment files
+
+- Tool: Codex (model: GPT-6), mode: refactor / explain.
+- Exact prompt: "theres extra compose files and docker files now".
+- Scenario: Clarify the active root/service Compose layout and clean up migration-era deployment files.
+- Key response: Removed the unused `api-gateway/compose.envoy-candidate.yaml`, renamed the gateway's only Dockerfile from `Dockerfile.envoy` to standard `Dockerfile`, and updated Compose and documentation references. Kept root Compose and each active service's own Compose/Dockerfile.
+- Verification: Standalone and root Compose service listings resolve the gateway; the gateway image builds from the renamed Dockerfile; no active references to the retired filenames remain.
+- Author review: Pending human review.
