@@ -2238,3 +2238,14 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Explained ROUND_ROBIN with STRICT_DNS discovery and that one endpoint offers no traffic distribution. Changed gateway/candidate Compose to interpolate service URLs, prefixes and existing JWT/test options; blank JWKS derives from the User origin. Root includes optional gateway .env defaults, subject to root/shell overrides. Updated example to container addresses and explained localhost for host execution. Kept listener/host ports unchanged.
 - Verification: Isolated Compose fixtures verified defaults, per-service .env loading through the root include, standalone/candidate loading, all forwarded settings and shell precedence. No actual credentials printed; live gateway was not recreated. Docker Compose include/interpolation behavior checked against official Docker documentation.
 - Author review: Pending human review.
+
+
+### 2026-10-13 - Remove legacy gateway and prepare migration PR
+
+- Tool: Codex (model: GPT-6), mode: refactor / debug / explain.
+- Exact prompts: "The envoy gateway works right? Remove the Old gateway code"; "create a PR".
+- Scenario: User explicitly requested retiring the Node gateway after verification and opening the migration branch for review.
+- Key responses: Verified all 16 previous migration tests, then removed legacy TypeScript source, old Node Dockerfile, rollback Compose, npm manifests, tsconfig, legacy unit tests and generated Node dependencies/build output. Converted integration checks to test Envoy directly using only Node built-ins and added explicit coverage of protected User/Supplier routes and configurable prefixes. Updated gateway docs and agent notes; retained historical behavior differences and original plan history.
+- Verification: Envoy image built successfully. Standalone integration suite passed all 18 tests and Python route loader passed both tests without legacy source or npm dependencies. Local port 3003 smoke checks could not connect because the Compose stack was stopped; no local services were restarted.
+- PR: Prepare feat/envoy-gateway against main with stock image, per-service routes, environment-driven Compose, Postman collection, accepted behavior differences and legacy removal.
+- Author review: Pending human review in the requested PR.

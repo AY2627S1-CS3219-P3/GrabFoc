@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Document official Envoy startup, integration tests, and per-service JSON route configuration.
+Scope: Document Envoy startup, route configuration and standalone tests after legacy gateway removal.
 Author review: User approved stock defaults; generated changes review pending.
 -->
 
@@ -56,21 +56,17 @@ python api-gateway/test/envoy_routes_test.py
 
 ```powershell
 cd api-gateway
-npm ci
-npm run build
 node --test --test-concurrency=1 test/envoy.integration.mjs
 ```
 
-Tests use ephemeral signing keys and isolated upstreams; they verify retained service
-contracts and deliberate differences from the Node reference. See
+Tests require Node.js 20+ and Docker and use only built-in Node modules; no npm
+install or TypeScript build is needed. They use ephemeral signing keys and isolated
+upstreams to verify routing and the accepted stock Envoy behavior. See
 [behaviour differences](behaviour-differences.md). Two test Supplier replicas demonstrate
 round-robin balancing; the main stack still has one instance per service.
 
-## Roll back
+## Migration history
 
-```powershell
-docker compose -f compose.yaml -f api-gateway/compose.node-reference.yaml up -d --build --no-deps api-gateway
-```
-
-The Node reference is retained for comparison and rollback. Old downloaded sources and
-native caches remain ignored and are not used by the image build.
+The legacy Node gateway, its tests, npm manifests, Dockerfile and rollback Compose
+file were removed at the user's request after the Envoy checks passed. Historical
+comparison results remain in the behaviour-differences document and Git history.

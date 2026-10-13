@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented gateway setup and contracts; Codex GPT-6 documented stock Envoy, per-service routes, environment interpolation and Postman testing on 2026-10-13.
+Scope: Documented stock Envoy configuration, testing and removal of the legacy Node gateway on 2026-10-13.
 Author review: Jie Yang reviewed earlier documentation; Envoy implementation approved, new documentation review pending.
 -->
 
@@ -12,8 +12,8 @@ The Compose stack runs official Envoy v1.38.6, with its built-in JWT verificatio
 no native compilation or custom registry release is required.
 See [build and tests](envoy/README.md) and [behaviour differences](envoy/behaviour-differences.md).
 Import the [gateway Postman collection](postman/gateway.postman_collection.json)
-to test User and Supplier routes through port 3003; see [Postman instructions](postman/README.md).
-The Node implementation remains a reference; `npm run dev` starts that reference.
+to test User and Supplier routes through port 3003. Its collection description
+contains login and smoke-test instructions. The legacy Node gateway has been removed.
 
 _Origin: AI doc; implementation of the gateway direction recorded in the project `AGENTS.md`._
 
@@ -26,12 +26,24 @@ The gateway currently verifies a User Service bearer JWT for protected requests 
 The running Envoy gateway loads route definitions from `envoy/routes/*.routes.json`,
 one file per service. `envoy/render.py` generates the upstream clusters and route
 configuration from those files at startup. See [route-file instructions](envoy/README.md#route-files).
-Service-level role checks remain in the services. `src/routing/`, `src/app.ts` and
-`src/server.ts` belong to the retained Node reference implementation.
+Service-level role checks remain in the services.
 
 Every completed request has a JSON log with request ID, method, path, target service, status and duration. Envoy applies its default context-sensitive request-ID handling and returns the resulting ID in the response. Authentication and upstream failures have separate JSON events. Stock Envoy authentication failures return text responses (audience mismatch is 403); a JWKS fetch failure is 401 and an upstream connection failure is 503. See the behaviour-differences document for the full comparison.
 
-Copy `api-gateway/.env.example` to `api-gateway/.env`, set the service URLs, then run `npm install` and `npm run dev` from `api-gateway/`. The gateway loads only its own `.env`, regardless of its working directory; it never reads the repo-root or another service's `.env`. Shell variables take precedence, and a missing `.env` is allowed when the environment supplies the required URLs. Local defaults are User Service 3001, Supplier Service 3002, and gateway 3003. Use `npm test` and `npm run build` to verify. `GET /health` reports gateway process health only. If an upstream is absent, proxy requests return 502.
+Copy `api-gateway/.env.example` to `api-gateway/.env` and set the service URLs.
+The renderer loads optional gateway settings; process environment variables take
+precedence. `GET /health` reports gateway process health only. Upstream connection
+failures return Envoy's `503` text response.
+
+Run checks from the repository root (Python 3, Node.js 20+ and Docker required):
+
+```powershell
+python api-gateway/test/envoy_routes_test.py
+node --test --test-concurrency=1 api-gateway/test/envoy.integration.mjs
+```
+
+The integration tests use only Node built-ins: no npm dependencies or TypeScript
+build are needed. Build `foc-envoy:local` with Compose before running them.
 
 From the repository root, copy `.env.example` to `.env`, fill in the required settings,
 run `docker compose up --build`. The gateway
@@ -45,8 +57,7 @@ interpolation. When the root Compose file includes the gateway, root project/she
 variables can override the service file's defaults. Gateway URLs default to the
 Compose names `http://user-service:3001` and `http://supplier-service:3002`.
 Inside a container, `localhost` refers to that container; use the service names
-for container upstreams. For the Node reference running on your host, set those
-URLs to `http://localhost:3001` and `http://localhost:3002` instead.
+for container upstreams.
 An empty `USER_SERVICE_JWKS_URL` derives the key endpoint from `USER_SERVICE_URL`.
 The container listener stays at port 3003. After changing `.env`, recreate the
 gateway with `docker compose up -d --no-deps api-gateway` (no image rebuild needed).

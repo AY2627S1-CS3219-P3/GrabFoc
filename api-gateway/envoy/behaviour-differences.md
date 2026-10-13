@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Record the user-approved stock Envoy behaviours compared with the original Node gateway.
+Scope: Record the approved Envoy behaviours and preserve their historical comparison after Node gateway removal.
 Author review: User explicitly accepted Envoy defaults; documentation review pending.
 -->
 
@@ -9,7 +9,9 @@ Author review: User explicitly accepted Envoy defaults; documentation review pen
 
 On 2026-10-13 the user instructed: “just change it to the ENVOY defaults but note down
 all the differences in behaviour”. This replaces the earlier exact-compatibility goal.
-The comparison is against `src/auth.ts`, `src/proxy.ts` and `src/request-logger.ts`, using
+The historical comparison is against `src/auth.ts`, `src/proxy.ts` and
+`src/request-logger.ts` as retained in commit `ee91022`, before their removal on
+2026-10-13. The standalone tests now check Envoy directly, using
 official Envoy **v1.38.6**, pinned by digest in `Dockerfile.envoy`.
 
 ## JWT verification

@@ -1,7 +1,7 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Verify stock Envoy and record deliberate differences from the Node reference.
+Scope: Verify the Envoy gateway directly after removal of the legacy Node implementation.
 Author review: Pending human review.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
@@ -10,7 +10,6 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { createServer, request as rawRequest } from 'node:http';
 import { spawnSync } from 'node:child_process';
 import { before, after, test } from 'node:test';
-import { createGateway } from '../dist/app.js';
 
 function docker(...args) {
   const result = spawnSync('docker', args, { encoding: 'utf8' });
@@ -64,8 +63,7 @@ const upstream = (instance) => createServer((req, res) => {
 });
 const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2')];
 const containers = [];
-let ports, baseline, candidate, balanced;
-let baselineServer;
+let ports, gateway, balanced;
 
 async function startEnvoy(overrides = {}) {
   const env = { GATEWAY_PORT: '3003', USER_SERVICE_URL: `http://host.docker.internal:${ports[0]}`,
@@ -92,23 +90,18 @@ async function startEnvoy(overrides = {}) {
 
 before(async () => {
   ports = await Promise.all(servers.map(listen));
-  baselineServer = createGateway({ port: 3003, userServiceUrl: new URL(`http://127.0.0.1:${ports[0]}`),
-    supplierServiceUrl: new URL(`http://127.0.0.1:${ports[1]}`),
-    jwksUrl: new URL(`http://127.0.0.1:${ports[0]}/.well-known/jwks.json`),
-    authPrefix: '/auth', locationsPrefix: '/locations' });
-  baseline = `http://127.0.0.1:${await listen(baselineServer)}`;
-  candidate = await startEnvoy();
+  gateway = await startEnvoy();
 });
 after(async () => {
   for (const id of containers) docker('rm', '-f', id);
-  for (const server of [...servers, baselineServer].filter(Boolean)) {
+  for (const server of servers) {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
   }
 });
 
 test('health and public authentication keep their existing responses', async () => {
-  for (const url of [baseline, candidate]) {
+  for (const url of [gateway]) {
     assert.deepEqual(await (await fetch(url + '/health')).json(), { status: 'ok' });
     for (const path of ['register', 'register/verify', 'register/resend-otp', 'login', 'refresh',
       'password/forgot', 'password/reset']) {
@@ -120,7 +113,7 @@ test('health and public authentication keep their existing responses', async () 
 });
 
 test('unknown methods, paths and internal APIs stay unavailable without a token', async () => {
-  for (const url of [baseline, candidate]) {
+  for (const url of [gateway]) {
     for (const [method, path] of [['DELETE', '/locations'], ['GET', '/auth/login'],
       ['POST', '/auth/unknown'], ['GET', '/internal/users/123'], ['GET', '/locations/12/extra'],
       ['GET', '/users/123'], ['POST', '/admin/users']]) {
@@ -137,7 +130,7 @@ test('stock JWT rejects malformed, modified, long-expired and missing-expiry tok
   modified[2] = (modified[2][0] === 'A' ? 'B' : 'A') + modified[2].slice(1);
   for (const value of [undefined, 'invalid', modified.join('.'), token(old, { exp: now - 120 }),
     token(old, { nbf: now + 120 }), token(old, { exp: undefined })]) {
-    const res = await fetch(candidate + '/locations', { headers: value ? { authorization: `Bearer ${value}` } : {} });
+    const res = await fetch(gateway + '/locations', { headers: value ? { authorization: `Bearer ${value}` } : {} });
     assert.equal(res.status, 401);
     assert.match(res.headers.get('content-type'), /text\/plain/);
     assert.ok((await res.text()).length > 0);
@@ -148,13 +141,12 @@ test('stock JWT applies default clock tolerance and permits missing kid', async 
   const now = Math.floor(Date.now() / 1000);
   for (const value of [token(old, { exp: now - 10 }), token(old, { nbf: now + 10 }),
     token(old, {}, { kid: undefined })]) {
-    assert.equal((await fetch(baseline + '/locations', { headers: { authorization: `Bearer ${value}` } })).status, 401);
-    assert.equal((await fetch(candidate + '/locations', { headers: { authorization: `Bearer ${value}` } })).status, 200);
+    assert.equal((await fetch(gateway + '/locations', { headers: { authorization: `Bearer ${value}` } })).status, 200);
   }
 });
 
 test('RS256 and ES256 forward verified bearer, body, method and query', async () => {
-  for (const url of [baseline, candidate]) {
+  for (const url of [gateway]) {
     for (const key of [old, ec]) {
       const value = token(key);
       const res = await fetch(url + '/locations/12?search=tea&sort=name', {
@@ -170,18 +162,18 @@ test('RS256 and ES256 forward verified bearer, body, method and query', async ()
 });
 
 test('headers are stripped; internal requests use stock ID handling', async () => {
-  const res = await fetch(candidate + '/locations', { headers: { authorization: `Bearer ${token()}`,
+  const res = await fetch(gateway + '/locations', { headers: { authorization: `Bearer ${token()}`,
     'x-user-id': 'forged', 'x-user-role': 'ADMIN', cookie: 'secret=value', 'x-request-id': 'trace-123' } });
   const data = await res.json();
   assert.equal(data.userId, undefined); assert.equal(data.userRole, undefined); assert.equal(data.cookie, undefined);
   assert.equal(data.requestId, 'trace-123');
   assert.equal(res.headers.get('x-request-id'), data.requestId);
-  const unsafe = await fetch(candidate + '/health', { headers: { 'x-request-id': 'unsafe/id' } });
+  const unsafe = await fetch(gateway + '/health', { headers: { 'x-request-id': 'unsafe/id' } });
   assert.equal(unsafe.headers.get('x-request-id'), 'unsafe/id');
 });
 
 test('service authorization responses are preserved', async () => {
-  for (const url of [baseline, candidate]) {
+  for (const url of [gateway]) {
     const res = await fetch(url + '/locations', { headers: { authorization: `Bearer ${token()}`,
       'x-test-forbidden': 'yes' } });
     assert.equal(res.status, 403); assert.deepEqual(await res.json(), { error: 'Forbidden' });
@@ -244,20 +236,18 @@ test('stock supports additional algorithms when the trusted JWK permits them', a
   try {
     const url = await startEnvoy();
     const value = token(rs384);
-    assert.equal((await fetch(baseline + '/locations', { headers: { authorization: `Bearer ${value}` } })).status, 401);
     assert.equal((await fetch(url + '/locations', { headers: { authorization: `Bearer ${value}` } })).status, 200);
   } finally { keys = [old.jwk, ec.jwk]; }
 });
 
-test('stock parses registered JWT claim types more strictly than the Node reference', async () => {
+test('stock rejects malformed registered JWT claim types', async () => {
   for (const claims of [{ iat: '123' }, { nbf: 'tomorrow' }, { sub: 123 }]) {
     const value = token(old, claims);
-    assert.equal((await fetch(baseline + '/locations', { headers: { authorization: `Bearer ${value}` } })).status, 200);
-    assert.equal((await fetch(candidate + '/locations', { headers: { authorization: `Bearer ${value}` } })).status, 401);
+    assert.equal((await fetch(gateway + '/locations', { headers: { authorization: `Bearer ${value}` } })).status, 401);
   }
 });
 
-test('connection failure uses stock 503 text instead of Node 502 JSON', async () => {
+test('connection failure uses stock 503 text', async () => {
   const url = await startEnvoy({ SUPPLIER_SERVICE_URL: 'http://host.docker.internal:1' });
   const res = await fetch(url + '/locations', { headers: { authorization: `Bearer ${token()}` } });
   assert.equal(res.status, 503);
@@ -267,7 +257,7 @@ test('connection failure uses stock 503 text instead of Node 502 JSON', async ()
 test('non-origin-form request targets cannot redirect the proxy', async () => {
   for (const [path, expected] of [['http://example.com/locations', 404], ['//example.com/locations', 400]]) {
     const status = await new Promise((resolve, reject) => {
-      const req = rawRequest(candidate, { path }, (res) => { res.resume(); resolve(res.statusCode); });
+      const req = rawRequest(gateway, { path }, (res) => { res.resume(); resolve(res.statusCode); });
       req.on('error', reject); req.end();
     });
     assert.equal(status, expected);
@@ -283,4 +273,43 @@ test('round robin reaches two isolated Supplier replicas', async () => {
     assert.equal(res.status, 200); instances.add((await res.json()).instance);
   }
   assert.deepEqual([...instances].sort(), ['supplier-1', 'supplier-2']);
+});
+
+// Explicit contracts exercise both authenticated routing and anonymous rejection.
+test('all protected User and Supplier routes enforce JWT and reach their service', async () => {
+  const cases = [
+    ['POST', '/auth/logout', 201], ['GET', '/users/me', 201], ['PATCH', '/users/me', 201],
+    ['POST', '/users/me/otp', 201], ['POST', '/users/me/email', 201],
+    ['POST', '/users/me/email/verify', 201], ['POST', '/users/me/password', 201],
+    ['POST', '/users/me/deactivate', 201], ['PATCH', '/users/me/mobile', 201],
+    ['GET', '/admin/users', 201], ['PATCH', '/admin/users/test-id/role', 201],
+    ['POST', '/admin/users/test-id/reactivate', 201], ['GET', '/location-types', 200],
+    ['GET', '/locations', 200], ['POST', '/locations', 200], ['GET', '/locations/test-id', 200],
+    ['PATCH', '/locations/test-id', 200], ['POST', '/locations/test-id/deactivate', 200],
+    ['POST', '/locations/test-id/restore', 200],
+  ];
+  for (const [method, path, expected] of cases) {
+    const anonymous = await fetch(gateway + path, { method });
+    assert.equal(anonymous.status, 401, `${method} ${path} requires JWT`);
+    await anonymous.text();
+    const res = await fetch(gateway + path, { method, headers: { authorization: `Bearer ${token()}` } });
+    assert.equal(res.status, expected, `${method} ${path}`);
+    const data = await res.json();
+    assert.equal(data.path, path);
+    assert.equal(data.method, method);
+    assert.equal(data.instance, expected === 201 ? 'user' : 'supplier-1');
+  }
+});
+
+test('custom prefixes preserve public/protected routing and retire default paths', async () => {
+  const url = await startEnvoy({ GATEWAY_AUTH_PREFIX: '/v2/auth', GATEWAY_LOCATIONS_PREFIX: '/v2/locations' });
+  const publicRes = await fetch(url + '/v2/auth/login', { method: 'POST' });
+  assert.equal(publicRes.status, 201);
+  assert.equal((await publicRes.json()).path, '/v2/auth/login');
+  assert.equal((await fetch(url + '/v2/locations')).status, 401);
+  const res = await fetch(url + '/v2/locations/test-id', { headers: { authorization: `Bearer ${token()}` } });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).path, '/v2/locations/test-id');
+  assert.equal((await fetch(url + '/locations')).status, 404);
+  assert.equal((await fetch(url + '/auth/login', { method: 'POST' })).status, 404);
 });
