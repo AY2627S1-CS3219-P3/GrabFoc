@@ -1,6 +1,6 @@
 """AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
-Scope: Render stock Envoy configuration; load per-service route files while preserving existing behaviour.
+Scope: Render stock Envoy configuration; load per-service route files and remove an unused header list while preserving existing behaviour.
 Author review: Pending human review.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
@@ -13,9 +13,6 @@ from urllib.parse import urlsplit, urljoin
 
 TYPE = "type.googleapis.com/"
 JWT = "envoy.filters.http.jwt_authn"
-REMOVED = ["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te",
-           "trailers", "transfer-encoding", "upgrade", "forwarded", "x-forwarded-for",
-           "x-forwarded-host", "x-forwarded-proto", "x-user-id", "x-user-role", "cookie"]
 
 def load_local_env(env):
     """Read optional gateway .env; process environment takes precedence."""

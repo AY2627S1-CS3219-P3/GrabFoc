@@ -2220,3 +2220,12 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 
 - Follow-up exact prompt: "why isit 10-user.route
 20-supplier route". Response: Numeric filename prefixes define deterministic load/route precedence; gaps permit insertion between existing services, and are unrelated to ports or IDs.
+
+
+### 2026-10-13 - Remove unused renderer header list
+
+- Tool: Codex (model: GPT-6), mode: refactor.
+- Exact prompt: "clean it up" (referring to the unused REMOVED list in envoy/render.py).
+- Key response: Removed the unused Python header constant; actual request/response filtering in compatibility.lua is unchanged.
+- Verification: Both existing route-loader tests passed.
+- Author review: Pending human review.
