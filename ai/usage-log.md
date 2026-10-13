@@ -2197,3 +2197,13 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Verification: Official image built in about 30 seconds; 16 stock integration tests passed. Compose gateway started; GET /health returned 200 and missing-token GET /locations returned 401. Docker recovered from engine errors with a restart; obsolete compilation is stopped. No secrets or database state were changed.
 - Files: gateway runtime Dockerfile/Compose, envoy renderer and behaviour-differences.md, integration tests, gateway documentation, environment templates; removed native release assets.
 - Human review: User explicitly accepted stock behaviours after the policy warning and explanations; generated code/documentation review pending.
+
+
+### 2026-10-13 - Gateway Postman collection
+
+- Tool: Codex (model: GPT-6), mode: generate / explain.
+- Exact prompt: "can you create a similar json for the gateway?"
+- Scenario: Create a Postman collection for existing gateway routes, reusing the User and Supplier collections without changing APIs or authentication design.
+- Key response: Created api-gateway/postman/gateway.postman_collection.json with 92 requests, default baseUrl http://localhost:3003, shared login token variables, empty initial tokens, no development identity headers, and six safe gateway smoke checks. Updated missing-token logout checks for stock Envoy text responses. Added import/login instructions and documented existing workflows that mutate account/location data.
+- Verification: Official Postman v2.1 schema validation passed; 113 embedded scripts parsed successfully; six safe requests against the running gateway returned expected 200/401/404 responses. Full account/location workflows were not run.
+- Author review: Pending human review.

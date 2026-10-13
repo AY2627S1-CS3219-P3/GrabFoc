@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented gateway setup and contracts; Codex GPT-6 documented stock Envoy and its approved differences on 2026-10-13.
+Scope: Documented gateway setup and contracts; Codex GPT-6 documented stock Envoy, its approved differences and Postman testing on 2026-10-13.
 Author review: Jie Yang reviewed earlier documentation; Envoy implementation approved, new documentation review pending.
 -->
 
@@ -11,6 +11,8 @@ The Compose stack runs official Envoy v1.38.6, with its built-in JWT verificatio
 `docker compose up -d --build --no-deps api-gateway` builds a small configuration image;
 no native compilation or custom registry release is required.
 See [build and tests](envoy/README.md) and [behaviour differences](envoy/behaviour-differences.md).
+Import the [gateway Postman collection](postman/gateway.postman_collection.json)
+to test User and Supplier routes through port 3003; see [Postman instructions](postman/README.md).
 The Node implementation remains a reference; `npm run dev` starts that reference.
 
 _Origin: AI doc; implementation of the gateway direction recorded in the project `AGENTS.md`._
