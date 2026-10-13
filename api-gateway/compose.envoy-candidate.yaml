@@ -1,6 +1,6 @@
 # AI Assistance Disclosure:
 # Tool: Codex (model: GPT-6), date: 2026-10-13
-# Scope: Run an optional stock Envoy candidate on a separate host port.
+# Scope: Run an optional stock Envoy candidate with environment-configurable settings on a separate host port.
 # Author review: Pending human review.
 # AI-generated; review pending.
 name: foc
@@ -11,8 +11,13 @@ services:
       dockerfile: Dockerfile.envoy
     environment:
       GATEWAY_PORT: 3003
-      USER_SERVICE_URL: http://user-service:3001
-      SUPPLIER_SERVICE_URL: http://supplier-service:3002
-      USER_SERVICE_JWKS_URL: http://user-service:3001/.well-known/jwks.json
+      USER_SERVICE_URL: ${USER_SERVICE_URL:-http://user-service:3001}
+      SUPPLIER_SERVICE_URL: ${SUPPLIER_SERVICE_URL:-http://supplier-service:3002}
+      USER_SERVICE_JWKS_URL: ${USER_SERVICE_JWKS_URL:-}
+      GATEWAY_AUTH_PREFIX: ${GATEWAY_AUTH_PREFIX:-/auth}
+      GATEWAY_LOCATIONS_PREFIX: ${GATEWAY_LOCATIONS_PREFIX:-/locations}
+      GATEWAY_JWT_ISSUER: ${GATEWAY_JWT_ISSUER:-}
+      GATEWAY_JWT_AUDIENCE: ${GATEWAY_JWT_AUDIENCE:-}
+      FOC_TEST_SUPPLIER_URLS: ${FOC_TEST_SUPPLIER_URLS:-}
     ports:
       - "3004:3003"

@@ -2229,3 +2229,12 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Removed the unused Python header constant; actual request/response filtering in compatibility.lua is unchanged.
 - Verification: Both existing route-loader tests passed.
 - Author review: Pending human review.
+
+
+### 2026-10-13 - Configure gateway Compose from environment
+
+- Tool: Codex (model: GPT-6), mode: generate / explain.
+- Exact prompt: "how do i know if load-balancing is enabled ,, also the docker compose shldn supply the container urls directly right? it shld read from env"
+- Key response: Explained ROUND_ROBIN with STRICT_DNS discovery and that one endpoint offers no traffic distribution. Changed gateway/candidate Compose to interpolate service URLs, prefixes and existing JWT/test options; blank JWKS derives from the User origin. Root includes optional gateway .env defaults, subject to root/shell overrides. Updated example to container addresses and explained localhost for host execution. Kept listener/host ports unchanged.
+- Verification: Isolated Compose fixtures verified defaults, per-service .env loading through the root include, standalone/candidate loading, all forwarded settings and shell precedence. No actual credentials printed; live gateway was not recreated. Docker Compose include/interpolation behavior checked against official Docker documentation.
+- Author review: Pending human review.

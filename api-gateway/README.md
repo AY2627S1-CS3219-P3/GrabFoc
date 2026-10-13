@@ -1,7 +1,7 @@
 <!--
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Documented gateway setup and contracts; Codex GPT-6 documented stock Envoy, per-service routes and Postman testing on 2026-10-13.
+Scope: Documented gateway setup and contracts; Codex GPT-6 documented stock Envoy, per-service routes, environment interpolation and Postman testing on 2026-10-13.
 Author review: Jie Yang reviewed earlier documentation; Envoy implementation approved, new documentation review pending.
 -->
 
@@ -39,5 +39,23 @@ is available at `http://localhost:3003` and uses the User and Supplier container
 inside the Compose network. It can also start by itself with
 `docker compose -f api-gateway/compose.yaml up --build`;
 upstream requests then need the corresponding service containers in the same `foc` project.
+
+Compose reads optional `api-gateway/.env` settings through `${VARIABLE:-default}`
+interpolation. When the root Compose file includes the gateway, root project/shell
+variables can override the service file's defaults. Gateway URLs default to the
+Compose names `http://user-service:3001` and `http://supplier-service:3002`.
+Inside a container, `localhost` refers to that container; use the service names
+for container upstreams. For the Node reference running on your host, set those
+URLs to `http://localhost:3001` and `http://localhost:3002` instead.
+An empty `USER_SERVICE_JWKS_URL` derives the key endpoint from `USER_SERVICE_URL`.
+The container listener stays at port 3003. After changing `.env`, recreate the
+gateway with `docker compose up -d --no-deps api-gateway` (no image rebuild needed).
+
+Upstream clusters use `STRICT_DNS` discovery and `ROUND_ROBIN` load balancing.
+With a single resolved endpoint, all requests go there. With multiple DNS-resolved
+endpoints, Envoy distributes requests among them. The isolated integration test
+also verifies two explicit Supplier endpoints using `FOC_TEST_SUPPLIER_URLS`;
+leave that test override empty in ordinary use. These settings do not create
+replicas or enable application health checks automatically.
 
 Before connecting the frontend, confirm paths and payloads with User and Supplier owners. Confirm User Service's JWKS path, signing algorithm, issuer and audience. Decide whether each service re-verifies tokens or accepts gateway identity as recorded in the root `AGENTS.md`; this gateway currently forwards the bearer token and creates no identity headers.
