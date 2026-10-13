@@ -1,0 +1,21 @@
+/*
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-10-13
+Scope: Implemented the user-approved Order database-only plan.
+Author review: Design and plan approved by user; implementation review pending.
+*/
+// AI-generated; human review pending.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "rootDir": "src",
+    "outDir": "dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"]
+}

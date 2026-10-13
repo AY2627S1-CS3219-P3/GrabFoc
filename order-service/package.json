@@ -1,0 +1,13 @@
+{
+  "name": "order-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Assistance Disclosure: Codex (GPT-6), 2026-10-13; approved Order database tooling; human implementation review pending.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "migrate": "node dist/db/migrate-cli.js",
+    "test:int": "npm run build && node --test dist/test/*.test.js"
+  },
+  "dependencies": { "pg": "^8.13.0" },
+  "devDependencies": { "@types/node": "^22.0.0", "@types/pg": "^8.11.0", "typescript": "^5.6.0" }
+}
