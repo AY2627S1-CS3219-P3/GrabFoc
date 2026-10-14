@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
  * Scope: Generated configuration loading, following supplier-service/src/config.ts.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+ * Scope: Added the JWKS URL and optional issuer/audience for the balance route.
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { existsSync } from 'fs';
 import * as path from 'path';
@@ -43,4 +46,12 @@ export const config = {
   databaseUrl: required('CREDIT_DATABASE_URL'),
   // Shared with the Order Service, the only caller of the /internal/credits routes.
   serviceKey,
+  // The User Service publishes its public signing keys here; the balance route verifies every
+  // user token against them (root AGENTS.md §6). The internal routes don't use it.
+  // Typed as possibly undefined because jwks.ts (copied from Supplier) handles an unset URL as
+  // "can't verify" (503), and its tests set it to undefined to check that.
+  jwksUrl: required('CREDIT_JWKS_URL') as string | undefined,
+  // Checked only when set, matching the gateway and the Supplier Service.
+  jwtIssuer: process.env.CREDIT_JWT_ISSUER || undefined,
+  jwtAudience: process.env.CREDIT_JWT_AUDIENCE || undefined,
 };
