@@ -1,0 +1,256 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
+Scope: Moved Zi Yi's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
+Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+Scope: Moved the two 2026-10-11 password-reset entries here from ai/usage-log.md when merging main into fix/password-reset; Files lines now name this file, entry text otherwise unchanged.
+Author review: Pending Zi Yi's review.
+-->
+
+# AI Usage Log — Zi Yi
+
+Zi Yi's entries for the FoC AI usage log. The template and rules are in
+[`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-09-24 to 2026-09-25 — User Service Phase 0 foundation (PRs #9, #10, #12, #13)
+
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** generate, debug, explain
+**Files:** `user-service/**` (source, tests, Dockerfile, README, AGENTS.md),
+`compose.yaml`, `.env.example`, `.gitignore`
+
+**Scenario.** Our User Service design already existed in our own working plan
+(`user-service-work-plan.md`, written by Deanson and me from the D1 backlog). I used Claude
+Code to (a) transcribe that design into `user-service/AGENTS.md` so it lived in the repo, and
+(b) implement Phase 0 steps 1–4 from it: the NestJS skeleton, database and migrations, error
+handling, crypto helpers, RS256 tokens with RBAC, and Redis-backed OTPs with email delivery.
+
+<!-- TODO Zi Yi: check these against your own record and add any I have missed. -->
+
+**Prompts (exact):**
+
+> the code repo is in GrabFoc, my plan is to work on user service. the work plan is in
+> user-service-work-plan.md, and workload split is user-service-workload-split.md. do not make
+> any edits/implementations yet, lets just discuss on the implementation. note that for all the
+> tracked files, try to ensure we keep to the AI guidelines in CS3219-ProjectDocument-FoC.pdf.
+> right now maybe we can focus on setting up the phase 0 foundation. should we do this in a
+> single commit or what? also i am new to this, so it would be good if you further explain on
+> the foundation steps, such as what we need it for
+
+> what is mailpit and mailservice for? for ORM, can you pull branch
+> lihloway:feature/supplier-service to check the orm at supplier service? for "RS256 + JWKS" i
+> think we can be the ones deciding which algorithm to use.
+
+> okay, what will the user-service/AGENTS.md include?
+
+> now lets do step 1, the nestjs skeleton
+
+> how can i test use docker? or how can i make you help me test docker
+
+> lets move on to step 2
+
+> now we shall do step 3
+
+> now lets work on step 4 on a new branch
+
+> for pr 9,10,12,13 which need fixes?
+
+> explain more on src/crypto boundary call on #12
+
+> for now, we shall not have planned rotation
+
+**What it produced.** The implementation code and tests for steps 1–4, the Dockerfile and
+`compose.yaml`, the README, and a transcription of our design into `user-service/AGENTS.md`.
+It also explained concepts I had not used before (Mailpit, database migrations, stacked
+branches, JWKS, the `jose` library) and debugged failures with me.
+
+**Decisions I made, which it did not:**
+
+- **RS256 + JWKS over HS256.** I decided the algorithm; Claude flagged that it was a security
+  trade-off under the AI policy and stopped for my decision.
+- **`pg` with plain SQL, no ORM** — to match the Supplier Service, which the team had already
+  settled.
+- **Numbered migrations rather than startup `CREATE TABLE IF NOT EXISTS`**, after asking
+  whether a database is always recreated from empty.
+- **The `src/crypto` boundary wording** (Option B: name the two real locations rather than
+  move code to satisfy a sentence).
+- **No planned key rotation.** I asked what happens if our key leaks accidentally, which
+  corrected an assumption in the suggestion I had been given.
+- **Stacked pull requests** rather than one large branch.
+- The **error body format across services is still open** — recorded as `[Open]` in
+  `AGENTS.md` rather than decided unilaterally, because it is a cross-service interface and
+  belongs to the team.
+
+**What I changed or rejected:**
+
+<!-- TODO Zi Yi: add anything you edited by hand before committing. -->
+
+**Verification.**
+
+- Read every generated file before committing; the `Author review:` line in each file header
+  records what I checked.
+- `npm test` (81 unit tests) and `npm run test:int` (18 integration tests against a real Redis).
+- `docker compose up --build` — the stack builds and runs; migrations apply; `/health` and
+  `/.well-known/jwks.json` respond; an OTP was delivered to the Mailpit inbox and verified;
+  data survives a `down`/`up` cycle.
+- The schema SQL was applied to PostgreSQL 17 and the columns checked against `AGENTS.md`.
+- A token was verified against the live JWKS the way the gateway will, and a token signed with
+  a different key was rejected.
+
+**Review findings acted on.** Codex flagged six issues across the four pull requests. Five
+were fixed (`logger.fatal` bypassing redaction; SMTP error messages interpolated into a log
+line; the inaccurate `src/crypto` boundary claim; the key-rotation limit; the local startup
+instructions). The sixth was this log.
+
+### 2026-09-26 to 2026-09-27 — User Service Phase 1 steps 5–9: credentials and sessions (PRs #15, #16, #17, #18)
+
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** generate, debug, explain, verify
+**Files:** `user-service/src/auth/**`, `user-service/src/users/**`, `user-service/src/otp/**`,
+`user-service/src/config.ts`, `user-service/README.md`, `user-service/AGENTS.md`,
+`user-service/postman/`, `.env.example`
+
+**Scenario.** All five steps of Person A's Phase 1 track, from the rules already recorded in
+`user-service/AGENTS.md`: sign-up (register / verify / resend), login with lockout, refresh and
+logout, forgot/reset password, and the first-admin bootstrap. The rules were ours; the code, the
+tests and the doc expansions were generated against them. One branch and one PR per step, each
+stacked on the previous one.
+
+**Prompts (exact):**
+
+> implement register, verify and resend otp
+
+> in users.repostiory.ts, is emailhash not required?
+
+> explain the issue simply for POST /auth/register/verify
+
+> keep 400 OTP_EXPIRED
+
+> teach me the steps to do testing on my own
+
+> on a new branch, i want to implement login,lockout,refresh,and logout. but lets implement login
+> and lockout first
+
+> implement refresh and logout
+
+> for refresh, what does it mean from a user perspective? like the user will be logged out after a
+> period of time?
+
+> let user be logged out after 3months instead of 7days
+
+> on a new branch, i want to implement forget and reset password
+
+> currently, how does the account get locked out and what happens to the user? and how is the
+> lockout lifted? also explain simply more on what the decoy record is for
+
+> implement admin bootstrap
+
+**Decisions I made, not the AI:**
+
+- **`OTP_EXPIRED`, not 404, for `/auth/register/verify`** when no sign-up is waiting. The AI
+  found the conflict between two lines of our own `AGENTS.md` and explained both sides; I chose
+  the 400 and had the rule written down.
+- **Refresh tokens last 90 days, not 7.** I asked what the 7 days meant for a user, then decided
+  we would rather people stayed logged in for three months.
+- **Five failures, not three, before a lockout** — already ours from D1, kept here.
+- **The whole admin-bootstrap rule**, which was in `AGENTS.md` before step 9 started: keyed on an
+  environment variable rather than an `ADMIN_PASSWORD`; runs only while the table is empty, so
+  changing the variable later cannot add an admin; the row carries a NULL password; the account is
+  claimed through forgot-password. Deciding it must be claimable that way is also what fixes how
+  the address has to be stored.
+- **I ran the testing myself** rather than taking the AI's verification runs as the record. It
+  found a bug in its own instructions that way: two steps told me to put the variable in front of
+  `docker compose up`, which silently does nothing because `compose.yaml` does not forward it.
+
+**AI-proposed, and I adopted them after reading the reasoning.** All four are marked in
+`AGENTS.md` and in its disclosure header:
+
+- A **decoy OTP record** for an address with no account, so `POST /auth/password/reset` cannot be
+  used to find out who has an account.
+- **Lifting a login lockout** after a successful reset.
+- The **`'Administrator'` display name** for the bootstrap row. `display_name` is NOT NULL and our
+  plan never named one.
+- A **startup warning** when `users` has rows but no ACTIVE admin. Our plan describes that state
+  as needing a manual database change but asks for no warning. I took it because the state is
+  otherwise invisible until someone hits a 403.
+
+One more I want recorded as a judgement call rather than a bare acceptance: validating
+`USER_BOOTSTRAP_ADMIN_EMAIL` at startup and **refusing to boot** on a bad value. Our plan does not
+say what to do with a malformed address. The argument for failing loudly is that forgot-password
+only accepts NUS addresses, so any other domain would silently create an admin account nobody
+could ever claim. I agreed, but it changes startup behaviour, so it is called out in `AGENTS.md`
+and in the README's troubleshooting list.
+
+**What I changed or rejected:**
+
+<!-- TODO Zi Yi: add anything you edited by hand before committing. -->
+
+**Verification.**
+
+- Read every generated file before committing; each file header's `Author review:` line records
+  what I checked.
+- `npm test` (213 unit tests) and `npm run test:int` (41 integration tests against a real Redis).
+- Ran all five flows against the compose stack with codes read from Mailpit: sign-up, five wrong
+  passwords into a 423, refresh rotation, token reuse revoking every session, a full password
+  reset, and the bootstrap admin claiming its account.
+- **Checked the enumeration rules by measuring, not by reading the code.** An unknown address and
+  a wrong password returned byte-identical 401s at 237 ms and 225 ms. `POST /auth/password/reset`
+  returned byte-identical 400s for a real account and a made-up address, `attemptsRemaining` and
+  all. Confirmed in `psql` that a reset revoked every refresh token (1 live → 0) and in Redis that
+  an address with no account still gets an OTP record.
+- For step 9, rehearsed the guarded `INSERT … SELECT … WHERE NOT EXISTS … ON CONFLICT DO NOTHING`
+  in `psql` against PostgreSQL 17 before trusting it, then checked the concurrency claim with two
+  real psql sessions, the first holding its transaction open while the second ran the same
+  statement. No duplicate-key error and exactly one row afterwards, so two containers starting
+  together cannot crash the boot.
+- Ran the bootstrap on a **scratch database**, so the dev data was not wiped: migrations applied,
+  then `ADMIN_BOOTSTRAPPED`, then a row with `role=ADMIN`, `status=ACTIVE` and NULL password,
+  country code and mobile. Login before claiming gave 401; forgot → code from Mailpit → reset
+  (204) → login returned `"role":"ADMIN"`, and the token decoded to the bootstrapped `sub`.
+  Restarted twice more, once with a different address: both skipped, still one row.
+- Confirmed step 9's three failure paths: an invalid or non-NUS address stops the boot with a
+  message naming the variable and exit code 1; an unset variable boots normally and inserts
+  nothing; demoting the only admin then restarting produced the "No ACTIVE admin exists" warning.
+- Confirmed the tests actually catch what they claim, by breaking the service on purpose each
+  time. Steps 5–8: removing the decoy record, letting the mail 503 through, dropping the status
+  check, moving the lockout clear before the commit. Step 9: skipping normalisation, accepting a
+  non-NUS address, putting the address in the audit event, running the no-admin query on the
+  success path. Each failed the matching test and only that one.
+- Grepped the service and startup logs for a plaintext `u.nus.edu` address: none.
+
+**Mistakes worth recording.**
+
+- A mutation written as `if (false)` stopped the file compiling, so Jest reported `Tests: 0 total`
+  and that briefly read as "nothing caught it". A mutation has to stay compilable to prove
+  anything. It happened twice, in step 8 and again in step 9.
+- One `npm test` run reported 2 failures in 1 suite and was never reproduced — 11 later runs,
+  including under CPU load, were clean, and the suite name was not captured. Recorded here rather
+  than treated as fixed.
+
+**Review findings acted on.** One finding on PR #15 (account creation and session issuance were
+not atomic) — fixed by wrapping the insert and the first refresh token in one transaction, with a
+test. One CodeQL alert (`js/insufficient-password-hash` on `hashOtp`) was a false positive: the
+"password" it saw is the literal enum member name `PASSWORD_CHANGE`. Traced every call site before
+dismissing it.
+
+<!-- TODO Zi Yi: confirm the PR numbers in the heading — #17 and #18 were guessed before GitHub
+     assigned them. -->
+
+### 2026-10-11 — Password reset keeps the OTP when the new password is rejected
+
+- Tool and mode: Claude Code (Claude Opus 5.5), explain and debug.
+- Usage scenario: `POST /auth/password/reset` spent the OTP before the "must differ from current password" check, so a rejected reset forced the user back through forgot-password.
+- Exact user prompts: “this is an issue [screenshot: the code is used up when the new password matches the current one]”; “this is an issue, dont implement, just discuss solution”; “summarise this issue, what the system does now, solution, what the system is expected to do after applying solution”; “fix the issue "reset password uses up the otp when the new password is rejected"” with the solution: “otp.check() confirms the code without deleting it. Wrong codes still count against the attempt cap / Load the user and check the account is ACTIVE (unchanged). / Compare the new password with the current one. If they match, return 400 and keep the code. / otp.verify() uses up the code, then the password is updated and sessions revoked as now”.
+- Key response: The documented reason for accepting this (no non-consuming OTP check) no longer held, because `otp.check()` was added in Step 12. Running the password comparison before the code check was rejected because it would let anyone test guessed passwords with no lockout. `reset()` now runs `check()`, then the reuse check, then `verify()`, so a racing second request with the same code gets `OTP_EXPIRED`. The user chose the solution.
+- Files: `user-service/src/auth/password-reset.service.ts`, `user-service/src/auth/password-reset.service.spec.ts`, `user-service/src/otp/otp.service.ts` (comment only), `user-service/AGENTS.md`, `ai/usage-log/zi-yi.md`.
+- Verification: `npm run build` passed; `npx jest` passed 273/273. One run had 2 failures in `jwt.service.spec.ts`, which is unrelated to this change and passed alone and on the rerun (flaky).
+- Human review: Confirmed with Postman that a same-password reset returns 400 and the same code then works with a different password. Tested on frontend too
+
+### 2026-10-11 — Postman: same-password reset request and change-email description
+
+- Tool and mode: Claude Code (Claude Opus 5.5), generate.
+- Usage scenario: Cover the password-reset OTP fix in the Postman collection and correct an out-of-date description.
+- Exact user prompts: “you also updated the postman collection?”; “add same password reset test into postman collection, fix the change email part too”.
+- Key response: Added "400 reset to the current password keeps the code" before "Reset password" in the Password reset folder. It sends the account's current password with the Mailpit code and expects 400 `VALIDATION_ERROR`; "Reset password" then reuses the same code and expects 204. Changed the "Change email - request" description: a 409 `EMAIL_TAKEN` no longer spends the code (true since Step 12).
+- Files: `user-service/postman/user-service.postman_collection.json`, `ai/usage-log/zi-yi.md`.
+- Verification: `newman run --folder "Password reset"` against the running compose stack: 10 requests, 12 assertions, 0 failures.
+- Human review: Ran the postman collection successfully
