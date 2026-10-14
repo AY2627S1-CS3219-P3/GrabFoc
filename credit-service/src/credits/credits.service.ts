@@ -6,9 +6,13 @@
  *        the original result, mismatches are rejected, and the balance is changed with a
  *        conditional update in the same transaction as the hold.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+ * Scope: Added error codes; added getBalance (Task 3).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
+import { ErrorCode } from '../common/error-codes';
 import { ProblemException } from '../common/problem';
 import { PG_POOL } from '../db/database';
 import type { ReleaseRequest, ReserveRequest, TransferRequest } from './credit.schemas';
@@ -100,6 +104,7 @@ export class CreditsService {
           throw new ProblemException(
             409,
             `Order ${orderId} already has credits reserved with a different requester or amount.`,
+            ErrorCode.HOLD_MISMATCH,
           );
         }
         return { hold: existing, created: false };
@@ -114,7 +119,7 @@ export class CreditsService {
       );
       if (debited.rowCount === 0) {
         // Throwing rolls back the hold inserted above.
-        throw new ProblemException(409, 'Insufficient credits to reserve this amount.');
+        throw new ProblemException(409, 'Insufficient credits to reserve this amount.', ErrorCode.INSUFFICIENT_CREDITS);
       }
 
       return { hold: toHold(inserted.rows[0]), created: true };
@@ -137,18 +142,26 @@ export class CreditsService {
 
       if (moved.rowCount === 0) {
         const existing = await findHold(client, orderId);
-        if (!existing) throw new ProblemException(404, `No credits are reserved for order ${orderId}.`);
+        if (!existing) {
+          throw new ProblemException(404, `No credits are reserved for order ${orderId}.`, ErrorCode.HOLD_NOT_FOUND);
+        }
         if (existing.state === 'TRANSFERRED' && existing.courierId === courierId) {
           return { hold: existing, created: false };
         }
         if (existing.state === 'RESERVED') {
-          throw new ProblemException(409, 'The courier cannot be the order’s requester.');
+          throw new ProblemException(409, 'The courier cannot be the order’s requester.', ErrorCode.COURIER_IS_REQUESTER);
+        }
+        if (existing.state === 'RELEASED') {
+          throw new ProblemException(
+            409,
+            `Order ${orderId}'s credits were already released to the requester.`,
+            ErrorCode.ALREADY_RELEASED,
+          );
         }
         throw new ProblemException(
           409,
-          existing.state === 'RELEASED'
-            ? `Order ${orderId}'s credits were already released to the requester.`
-            : `Order ${orderId}'s credits were already transferred to a different courier.`,
+          `Order ${orderId}'s credits were already transferred to a different courier.`,
+          ErrorCode.ALREADY_TRANSFERRED,
         );
       }
 
@@ -185,9 +198,15 @@ export class CreditsService {
 
       if (moved.rowCount === 0) {
         const existing = await findHold(client, orderId);
-        if (!existing) throw new ProblemException(404, `No credits are reserved for order ${orderId}.`);
+        if (!existing) {
+          throw new ProblemException(404, `No credits are reserved for order ${orderId}.`, ErrorCode.HOLD_NOT_FOUND);
+        }
         if (existing.state === 'RELEASED') return { hold: existing, created: false };
-        throw new ProblemException(409, `Order ${orderId}'s credits were already transferred to its courier.`);
+        throw new ProblemException(
+          409,
+          `Order ${orderId}'s credits were already transferred to its courier.`,
+          ErrorCode.ALREADY_TRANSFERRED,
+        );
       }
 
       const hold = toHold(moved.rows[0]);

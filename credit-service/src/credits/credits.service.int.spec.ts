@@ -198,3 +198,38 @@ describe('transfer and release racing on one order', () => {
     }
   });
 });
+
+describe('error codes', () => {
+  async function codeOf(promise: Promise<unknown>): Promise<string | undefined> {
+    try {
+      await promise;
+    } catch (err) {
+      if (err instanceof ProblemException) return err.code;
+      throw err;
+    }
+    throw new Error('expected the call to fail');
+  }
+
+  it('labels every reserve, transfer and release failure', async () => {
+    const reserved = randomUUID();
+    await service.reserve({ orderId: reserved, requesterId: requester, amount: 3 });
+    expect(await codeOf(service.reserve({ orderId: randomUUID(), requesterId: requester, amount: 99 }))).toBe(
+      'INSUFFICIENT_CREDITS',
+    );
+    expect(await codeOf(service.reserve({ orderId: reserved, requesterId: requester, amount: 4 }))).toBe('HOLD_MISMATCH');
+    expect(await codeOf(service.transfer({ orderId: reserved, courierId: requester }))).toBe('COURIER_IS_REQUESTER');
+    expect(await codeOf(service.transfer({ orderId: randomUUID(), courierId: courier }))).toBe('HOLD_NOT_FOUND');
+    expect(await codeOf(service.release({ orderId: randomUUID() }))).toBe('HOLD_NOT_FOUND');
+
+    const paid = randomUUID();
+    await service.reserve({ orderId: paid, requesterId: requester, amount: 1 });
+    await service.transfer({ orderId: paid, courierId: courier });
+    expect(await codeOf(service.transfer({ orderId: paid, courierId: randomUUID() }))).toBe('ALREADY_TRANSFERRED');
+    expect(await codeOf(service.release({ orderId: paid }))).toBe('ALREADY_TRANSFERRED');
+
+    const refunded = randomUUID();
+    await service.reserve({ orderId: refunded, requesterId: requester, amount: 1 });
+    await service.release({ orderId: refunded });
+    expect(await codeOf(service.transfer({ orderId: refunded, courierId: courier }))).toBe('ALREADY_RELEASED');
+  });
+});
