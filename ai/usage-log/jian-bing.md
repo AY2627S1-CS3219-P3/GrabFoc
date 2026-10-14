@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Jian Bing's section out of ai/usage-log.md into this file (issue #65), plus a CodeQL entry that git blame attributes to Jian Bing from the end of Jie Yang's section; entry text unchanged. Wrote the 2026-10-12 usage-log split entry from Jian Bing's prompts.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+Scope: Wrote the 2026-10-14 CI workflow entry (issue #57, PR #74) from Jian Bing's prompts.
+Author review: Jian Bing supplied the quoted prompts and the wording of the entry's Verification line.
 -->
 
 # AI Usage Log — Jian Bing
