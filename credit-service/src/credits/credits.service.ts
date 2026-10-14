@@ -27,6 +27,12 @@ export interface Hold {
   state: HoldState;
 }
 
+export interface Balance {
+  userId: string;
+  available: number;
+  reserved: number;
+}
+
 /** `created` is false when the request repeated one already applied, so nothing changed. */
 export interface HoldResult {
   hold: Hold;
@@ -218,5 +224,17 @@ export class CreditsService {
       );
       return { hold, created: true };
     });
+  }
+
+  /** A user's balance; 404 WALLET_NOT_FOUND when their wallet doesn't exist yet. Never creates one. */
+  async getBalance(userId: string): Promise<Balance> {
+    const { rows } = await this.pool.query<{ user_id: string; available: number; reserved: number }>(
+      'SELECT user_id, available, reserved FROM credit_accounts WHERE user_id = $1',
+      [userId],
+    );
+    if (!rows[0]) {
+      throw new ProblemException(404, 'This user has no credit wallet yet.', ErrorCode.WALLET_NOT_FOUND);
+    }
+    return { userId: rows[0].user_id, available: rows[0].available, reserved: rows[0].reserved };
   }
 }

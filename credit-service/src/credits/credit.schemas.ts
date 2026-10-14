@@ -4,6 +4,9 @@
  * Scope: Generated strict Zod schemas for the reserve, transfer and release request bodies, and
  *        the 400 helper copied from supplier-service/src/locations/location.schemas.ts.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+ * Scope: Added the path id schema for GET /credits/:userId.
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -30,6 +33,12 @@ export const releaseSchema = z
     orderId: z.string().uuid(),
   })
   .strict();
+
+// The path id for GET /credits/:userId. Lower-cased so it compares equal to the token's `sub`.
+export const userIdParamSchema = z
+  .string()
+  .uuid()
+  .transform((id) => id.toLowerCase());
 
 export type ReserveRequest = z.infer<typeof reserveSchema>;
 export type TransferRequest = z.infer<typeof transferSchema>;
