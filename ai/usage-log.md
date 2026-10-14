@@ -839,11 +839,9 @@ any real mailbox â€” not a service outage.
 each step, explained concepts and flagged mistakes), then have Claude implement the agreed design.
 
 **Prompts (exact):**
-> /superpowers:brainstorming /Users/user/Downloads/cs3219-group3-D1.pdf  using this product document, help me plan out the order service
+> /superpowers:brainstorming /Users/user/Downloads/cs3219-group3-D1.pdf  using the requirmeents I have set in this product document, help me plan out the credit service
 
-> sorry,  imean to do credit service isntead
-
-> lets do path 1: where after a courier with 10 credits deliver it and completes, the order serivce will send a message to credit, whcih then releases the resevreed credits to the courier, and hence finishing the transaction, so now the ocurier will have 13 creidts, and the requester will still have 7 credits sicne to make an order, the order serivce will call the credit serivce to resevr ethe 3 credits. now when the order gets cancelled, the reserved credits in credit service go back to the requester, wher eorder service wil lmake this call
+> lets do path 1: where after a courier with 10 credits deliver it and completes, the order serivce will send a message to credit, whcih then releases the resevreed credits to the courier, and hence finishing the transaction, so now the courier will have 13 creidts, and the requester will still have 7 credits sicne to make an order, the order serivce will call the credit serivce to reserve the 3 credits. now when the order gets cancelled, the reserved credits in credit service go back to the requester, where order service will make this call
 
 > the creidt would become 4/6 which si wrong, so we would need it to be idempotent, whic hwe can do by checking the orderid to see if its the same request, and since we know if an orderid has had its creidt reserved, we can check against this
 
@@ -853,21 +851,13 @@ each step, explained concepts and flagged mistakes), then have Claude implement 
 
 > 1. order id + action only, and the amount stays as a data field ,which if the same x, reserve request comes it, with a different value, we overwrite hte prev value 2. so we use a custom record id? 3. database constraint that cen work as al ookup in code?
 
-> what r u saying, if the overwriting isnt possible, so if the x,reverve came in 2 times, with a different amount, it means my oder service is stupdi cause it shoudlnt allow that i nthe first palce no? and also the cshape a and b the row id i jsut said? why are you repeating the same thing to me
+> okay lets stick to the original requirement
 
-> for 2. no i meant liek before i mentioned record id, u wanted to me to find a way to deduplicate commands, and regarldess, if we are going to do either shape a or b, isnt there still the the duplicate same-order race and the two-orders-at-once race?
-
-> i literally was suggestin shape a from the start, did i nto mention using psotgres transaction?! thanks but i will jsut pick shape a regardless for the idempotency it provides. then for 2 orders a tonce, if they ar edifferne torders they have different uid so its already solved no? also i dont liek the fact that we r using psotgres to help handle idempotency, there has to be a better way
-
-> okay use database, also if anythign for the 2 orders at once, im pretty sure there is a constraint where an user cant cant have mroe than 1 ongoing order at ocne, it shoudl be written i nthe project document somewhere, so this cas eshoudl even happen, why am i handling this?
-
-> okay then nvm, lets stick to the original requirement
-
-> conditional uupdate, add a apart that says where user.amount > requested amount
+> conditional update, add a apart that says where user.amount > requested amount
 
 > can you implement a post for reserving credit, and a post for releasing credit, whichh all is order calling i think it makes sense, also can you go straight to implementation
 
-> can you gime me a collection ot import with
+> can you gime me a collection to import with
 
 Choices made in pickers: confirmed the design summary ("Confirm and continue"); in the
 implementation plan, "Add transfer too", "X-Service-Key on /internal" and "Implement this step".
@@ -2232,7 +2222,7 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Files: `frontend/app/components/location-image.tsx`, `ai/usage-log.md`.
 - Human review: Pending human review.
 
-## 2026-10-01 — Location thumbnail fallback and stale optimizer build
+## 2026-10-01 ï¿½ Location thumbnail fallback and stale optimizer build
 
 - Tool and mode: Codex (GPT-6), debug.
 - Exact user prompts: `"url" parameter is not allowed`; `the location cards should all have a location image thumbnail and only show it if the url isnt there from the supplier service`.
