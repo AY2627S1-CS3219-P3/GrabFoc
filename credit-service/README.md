@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
 Scope: Wrote the run and test instructions for the Credit Service.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+Scope: Added reading a balance and the Postman Balance folder.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service
@@ -38,11 +41,22 @@ curl -X POST localhost:3004/internal/credits/reserve \
 Send it twice: the first answers 201, the second 200 with the same body, and the balance only
 moves once.
 
+### Read a balance
+
+With a user's access token (their own id, or any id as an ADMIN). Until the gateway route is
+added (PR #69), call the service directly:
+
+    curl localhost:3004/credits/<userId> -H "authorization: Bearer <accessToken>"
+
+`404` with `"code":"WALLET_NOT_FOUND"` means the user has no wallet yet. The service checks the
+token against the User Service's public keys, so User Service must be running.
+
 ### With Postman
 
 Import `postman/credit.postman_collection.json`, set its `serviceKey` variable to your
 `CREDIT_SERVICE_KEY`, and run each folder top to bottom. Every folder starts with fresh ids, so
-you can re-run it as often as you like.
+you can re-run it as often as you like. For the **4. Balance** folder, also set `userToken` (an
+access token from `/auth/login`) and `userId` (that user's id).
 
 ## Test it
 

@@ -4,6 +4,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
 Scope: Wrote this file from Jian Bing's Credit Service design (learning-mode session) and the
        details Claude Code proposed and he approved in the implementation plan.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+Scope: Documented the balance route, JWT verification and error codes (redesign Phase 1).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -88,8 +91,15 @@ Details (`application/problem+json`), as in the Supplier Service.
 | `POST /internal/credits/transfer` | `{orderId, courierId}` | **200**, also for a repeat to the same courier | 404 unknown order; 409 already released, already paid to a different courier, or courier is the requester |
 | `POST /internal/credits/release` | `{orderId}` | **200**, also for a repeat | 404 unknown order; 409 already transferred |
 | any, wrong or missing key | | | 401, logged as `access_denied` without the key |
+| `GET /credits/:userId` (user JWT; through the gateway once PR #69's Envoy route is added) | — | **200** `{userId, available, reserved}` | 400 path id not a UUID; 401 no/invalid token; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
 
-All three return the hold: `{orderId, requesterId, courierId, amount, state}`.
+The three internal routes return the hold: `{orderId, requesterId, courierId, amount, state}`.
+
+Errors carry a machine-readable `code` (`INSUFFICIENT_CREDITS`, `WALLET_NOT_FOUND`, `HOLD_MISMATCH`,
+`ALREADY_TRANSFERRED`, `ALREADY_RELEASED`, `COURIER_IS_REQUESTER`, `HOLD_NOT_FOUND`); validation and
+auth errors have none. The balance route verifies the user JWT itself against `CREDIT_JWKS_URL`
+(the User Service JWKS, as the Supplier Service does); the `/internal` routes keep the service key,
+and neither credential opens the other's routes. The balance route never creates a wallet.
 
 ## Concurrency notes
 
@@ -105,9 +115,10 @@ _Origin: AI doc_
 ## Open items
 
 - Confirm this design with Zi Yi (owner).
-- `GET` own balance for users (CSFR1.2) through the gateway, with JWT auth: not built.
-- Insufficient credits and a mismatch are both 409; Order can only tell them apart by `detail`.
-  A machine-readable `code` field would need a team decision on the error shape.
+- Gateway route for `GET /credits/:userId`: waiting for PR #69 (Envoy); add
+  `api-gateway/envoy/routes/30-credit.routes.json` and `CREDIT_SERVICE_URL` then.
+- Redesign Phases 2–3 (wallets from `UserRegistered`, transfer/release over a broker):
+  `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`.
 - Transaction history (the profile page links to one): not built.
 - Order id format: assumed UUID, matching user ids. Confirm when the Order Service is designed.
 - Record root `AGENTS.md` §8's exception for authenticated service callers, if the team agrees.
