@@ -10,6 +10,31 @@ Author review: Jian Bing checked the logs locally against the AI usage-log guide
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-14 — CI workflow: unit tests and builds on every pull request (issue #57)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `.github/workflows/ci.yml`
+
+**Scenario:** Nothing checked that a pull request kept the services' tests passing. Add a GitHub
+Actions workflow that runs each service's unit tests and build, so a failing PR can be blocked.
+
+**Prompts (exact):**
+> lets get started on cloud deployment and ci, i am using awsto hsot eveyrthing, so tell me what steps i need to proceed form ehre to deploy thsi github and se tup the githbu workflow
+
+> okay lets do ci first, and i already decided to work on that, u can see the correpsodnng github issue  ihave
+
+> Implement this step *(chosen at Claude's implementation checkpoint)*
+
+**What it produced:** `.github/workflows/ci.yml`: one job per service (user-service,
+supplier-service, api-gateway) running `npm ci`, `npm test` and `npm run build` on the Node version
+in its Dockerfile, plus a frontend job running `lint` and `build`. Runs on every pull request and on
+pushes to `main`, read-only permissions, newer pushes cancel older runs. Before pushing, Claude ran
+the same commands locally on a fresh checkout of `main` without a `.env`: all passed (user-service
+271 tests, supplier-service 157, api-gateway 22; frontend lint and build clean).
+**What I changed or rejected:** Kept integration tests and the frontend browser tests
+(`test:routes`) out of this PR as follow-ups; credit-service's job goes in with PR #48.
+**Verification:** Pending my review on the PR and the first CI run.
+
 ### 2026-10-12 — Split the usage log into one file per member (issue #65)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
