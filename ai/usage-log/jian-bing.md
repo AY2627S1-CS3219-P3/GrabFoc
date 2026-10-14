@@ -25,6 +25,8 @@ Actions workflow that runs each service's unit tests and build, so a failing PR 
 
 > Implement this step *(chosen at Claude's implementation checkpoint)*
 
+> yea help me add my verification line, where I akcnolwedged that i haevreviewed the yml file, and also ran the test so nthe pr, and looked through every and most of the output to ensure the yall make sense and work properly
+
 **What it produced:** `.github/workflows/ci.yml`: one job per service (user-service,
 supplier-service, api-gateway) running `npm ci`, `npm test` and `npm run build` on the Node version
 in its Dockerfile, plus a frontend job running `lint` and `build`. Runs on every pull request and on
@@ -33,7 +35,8 @@ the same commands locally on a fresh checkout of `main` without a `.env`: all pa
 271 tests, supplier-service 157, api-gateway 22; frontend lint and build clean).
 **What I changed or rejected:** Kept integration tests and the frontend browser tests
 (`test:routes`) out of this PR as follow-ups; credit-service's job goes in with PR #48.
-**Verification:** Pending my review on the PR and the first CI run.
+**Verification:** I reviewed `ci.yml`, ran the CI checks on PR #74, and went through the job
+output to confirm each step makes sense and works as intended; all four jobs passed.
 
 ### 2026-10-12 — Split the usage log into one file per member (issue #65)
 

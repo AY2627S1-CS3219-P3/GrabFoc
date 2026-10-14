@@ -2,7 +2,8 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 # Scope: Generated the CI workflow that runs each service's unit tests and build on every pull
 #   request and on pushes to main (issue #57).
-# Author review (Jian Bing): Pending review on the PR.
+# Author review (Jian Bing): Reviewed this workflow, ran the CI checks on PR #74, and went through
+#   the job output to confirm each step makes sense and works as intended.
 name: CI
 
 on:
