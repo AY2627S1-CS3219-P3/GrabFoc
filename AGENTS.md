@@ -69,7 +69,7 @@ _Origin: AI doc; Restated from the Lecture and Brief Appendix 2_
     Author review: <what the human validated, edited or added>
     ```
   - **Pasted AI code blocks marked** with a comment such as `// AI-generated (edited by <name>)`.
-  - **An entry in `/ai/usage-log.md`** with the timestamp, tool and mode (generate / refactor / debug / explain), the **exact prompts** and key responses, and the usage scenario. The team keeps this one shared log.
+  - **An entry in your own log, `/ai/usage-log/<member>.md`** (indexed by `/ai/usage-log.md`; don't add entries to the index), with the timestamp, tool and mode (generate / refactor / debug / explain), the **exact prompts** and key responses, and the usage scenario.
   - A human reviews, tests and understands the change before it is merged; each member stays accountable for the whole codebase.
   - Before final submission: a project-level **AI Use Summary** as the last section of `README.md` (tools, prohibited phases avoided, what AI was used for, how outputs were verified, link to the log), and all `AGENTS.md` / `SKILLS.md` files committed.
 - Small changes inside one service that follow the documented rules (a bug fix, a test, a copy change) can go ahead without a separate plan.
