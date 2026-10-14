@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Record approved decisions and database-only implementation/migration/test status.
 Author review: User approved the main schema and database-only plan; implementation review pending.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+Scope: Updated implementation status for Phase A and pointed the logging rule at member files.
+Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.test.yaml` integration tests (27 passed).
 -->
 
 # AGENTS.md — Order Service
@@ -38,8 +41,9 @@ _Origin: Team / Restated from root AGENTS.md; AI doc (implementation status)_
 - **[Decided]** Query indexes approved on 2026-10-13: orders(status, created_at), orders(requester_id, created_at), orders(courier_id, created_at), partial orders(window_end) for PENDING/ACCEPTED/PICKED_UP/IN_PROGRESS, order_history(order_id, occurred_at), order_confirmations(order_id, status). Previously approved unique indexes remain in force.
 - **[Decided]** Confirmation row constraints approved on 2026-10-13: allowed kinds TIMING_CHANGE/CANCELLATION/COMPLETION, responses PENDING/ACCEPTED/REJECTED, states PENDING/APPROVED/REJECTED/EXPIRED/SUPERSEDED. Timing-change proposals require both timing fields with end after start; other kinds require both null. resolved_at is null for PENDING and required for resolved states. APPROVED requires both ACCEPTED; either rejection resolves as REJECTED. Participant/state/expiry checks remain service transaction logic.
 - **[Decided]** Database-only implementation plan approved on 2026-10-13: numbered SQL migration, standalone TypeScript/pg CLI, PostgreSQL Compose database with persistent volume, one-shot migration task and isolated PostgreSQL tests.
-- **[Open]** HTTP framework and Order HTTP contracts; remaining application/integration decisions below are outside the approved database-only scope.
-- Implemented database foundation: `migrations/001_init.sql`, connection configuration, migration CLI/runner, Docker/Compose and PostgreSQL integration tests. No Order HTTP APIs or lifecycle handlers exist yet.
+- **[Decided]** NestJS HTTP server, per the team-consolidated `order-service-plan.md` (2026-10-14). Endpoint list is in that plan §3; response shapes (see README) are **[Proposed]**.
+- Implemented database foundation: `migrations/001_init.sql`, connection configuration, migration CLI/runner, Docker/Compose and PostgreSQL integration tests.
+- Implemented Phase A: JWKS token verification, Zod validation, error envelope, request/denial logging, and the read endpoints `GET /orders/available|mine|assigned|:orderId|:orderId/history`. No create/edit/lifecycle handlers or events yet.
 
 ## Creation and reading [Decided]
 
@@ -140,4 +144,4 @@ _Origin: AI doc (checks derived from supplied requirements); Restated from root 
 - Verify mutual cancellation/completion, timing acknowledgement rejection/expiry and timeout cancellation using the approved details.
 - Verify history, lifecycle timestamps and successful-state event publication, plus the approved credit failure/retry behaviour.
 - Database tests use PostgreSQL 17 in Docker through `compose.test.yaml`, a separate project with temporary storage; database and plan approvals are recorded above.
-- Add disclosure headers to AI-influenced files and exact prompts/key responses to [the shared usage log](../ai/usage-log.md). Human review is required before merge.
+- Add disclosure headers to AI-influenced files and exact prompts/key responses to your own log under [`ai/usage-log/`](../ai/usage-log.md). Human review is required before merge.

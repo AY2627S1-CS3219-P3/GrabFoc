@@ -3,12 +3,70 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Zi Yi's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+Scope: Added the Order Service Phase A entry.
+Author review (Zi Yi): Read the entry in full.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-14 — Order Service Phase A: NestJS and basic access
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** `order-service/src/**` (new `main.ts`, `app.module.ts`, `config.ts`, `auth/`, `common/`,
+`db/database.module.ts`, `health/`, `orders/`, tests), `order-service/package.json`,
+`tsconfig.json`, `Dockerfile`, `compose.yaml`, `.env.example`, `README.md`, `AGENTS.md`,
+root `.env.example`, `ai/usage-log/jie-yang.md` (merge resolution)
+
+**Scenario:** implement Phase A of the team's consolidated `order-service-plan.md` on top of
+Jie Yang's database foundation branch.
+
+**Prompts:**
+> Refer to the created plan order-service-plan.md, implement phase A with respective tests required. After you are done, summarise the code structure and folder structure. Try to keep the code implementation clean, keep comments concise too, structure of code and folder should be organised
+
+**What it produced:** merged `origin/feat/order-service-implementation` into
+`feat/order-service`, moving that branch's Order log entries into `jie-yang.md` (main had
+split the log). Added a NestJS server: RS256 JWKS verification with `jose` (401 bad token,
+503 keys unreachable), strict Zod paging/ID validation, the User Service error envelope,
+structured request and UNAUTHORISED_ACCESS log lines, `/health` and `/health/ready`, and
+`GET /orders/available|mine|assigned|:orderId|:orderId/history` with participant checks and
+`{ items, page, pageSize, total }` pagination. Runtime image now serves HTTP on 3005;
+`order-migrate` overrides the command.
+
+**Design input flagged:** response shapes, paging parameters, health paths and port 3005 are
+not in the plan; they copy Supplier/User conventions and are marked [Proposed] for the team.
+
+**Verification:** `npm test` (7 unit tests) and `compose.test.yaml` (27 tests: unit, 14
+existing database tests, 6 new HTTP tests against PostgreSQL 17 with a stub JWKS) passed.
+Compose stack smoke test: migration then `order-service` started, `/health/ready` 200,
+`/orders/mine` 401 without a token.
+
+**Follow-up prompt:**
+> move auth files into common/ and the health/ is not required
+
+**What I changed or rejected:** moved the JWT guard and its tests into `src/common/`; removed
+the `/health` and `/health/ready` endpoints and the now-unused `@Public` decorator. Tests
+re-run: 27 passed.
+
+**Later prompts (explain / formatting):**
+> list the steps so i can do testing on my own
+
+> what is paging about?
+
+> update the author review lines for me
+
+> yes update the usage log too
+
+Claude Code listed manual test steps and explained the paging design. It declined to write
+review checks I had not stated and asked what I had actually done; the `Author review` lines
+in every Phase A file header now record only those checks.
+
+**Author review:** I read every Phase A file in full and ran `npm test` (7 passed) and the
+`compose.test.yaml` integration tests (27 passed). The manual end-to-end steps have not been
+run yet.
 
 ### 2026-09-24 to 2026-09-25 — User Service Phase 0 foundation (PRs #9, #10, #12, #13)
 

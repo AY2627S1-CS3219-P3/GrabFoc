@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Implemented the user-approved Order database-only plan.
 Author review: Design and plan approved by user; implementation review pending.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+Scope: Enabled decorator metadata for NestJS (Phase A).
+Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.test.yaml` integration tests (27 passed).
 */
 // AI-generated; human review pending.
 {
@@ -15,7 +18,9 @@ Author review: Design and plan approved by user; implementation review pending.
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
   "include": ["src/**/*.ts"]
 }

@@ -3,11 +3,14 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Document the approved schema, database-only implementation, migration commands and verification scope.
 Author review: User approved the main schema and database-only plan; implementation review pending. Application/integration decisions remain open.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+Scope: Added the Phase A HTTP API section and updated status lines.
+Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.test.yaml` integration tests (27 passed).
 -->
 
-# Order Service — schema review draft
+# Order Service
 
-Database-only implementation for #50, under parent #64. The approved schema is in `migrations/001_init.sql`; HTTP APIs and lifecycle handlers are not implemented. Read [AGENTS.md](AGENTS.md) for requirements.
+Database foundation for #50 (under parent #64) plus Phase A of `order-service-plan.md`: a NestJS server with authenticated read endpoints (see [HTTP API](#http-api-phase-a)). Create/edit/accept, lifecycle, confirmations and Kafka are not implemented yet. The approved schema is in `migrations/001_init.sql`. Read [AGENTS.md](AGENTS.md) for requirements.
 
 ## Confirmed decisions
 
@@ -101,8 +104,8 @@ docker compose -f order-service/compose.yaml --env-file .env up --build -d
 
 This starts `order-db` with its own `order-db-data` volume and a one-shot
 `order-migrate` task after database health checks pass. Successful migration exits
-with code 0. The root Compose file includes both. No Order HTTP server starts yet,
-and the database has no published host port.
+with code 0. `order-service` (port 3005) starts once migration succeeds. The root
+Compose file includes all three. The database has no published host port.
 
 Check or rerun migrations explicitly:
 
@@ -150,3 +153,41 @@ Verification on 2026-10-13: TypeScript build, root Compose configuration and all
 PostgreSQL integration tests passed. The production migration image applied
 `001_init.sql`; database-container replacement preserved the schema and migration
 rerun reported up to date.
+
+## HTTP API (Phase A)
+
+_Origin: AI doc; endpoints from `order-service-plan.md` §3, response shapes follow Supplier/User conventions (pending team confirmation)_
+
+Every route needs `Authorization: Bearer <access token>` from the User Service.
+The token is verified locally against `ORDER_JWKS_URL` (RS256); the caller's ID is the
+token's `sub`. Errors use the User Service envelope `{ "error": { "code", "message", "details" } }`.
+
+| Endpoint | Who | Returns |
+|---|---|---|
+| `GET /orders/available` | any user | unexpired `PENDING` orders, excluding the caller's own |
+| `GET /orders/mine` | any user | orders the caller created, any status |
+| `GET /orders/assigned` | any user | orders assigned to the caller as courier, any status |
+| `GET /orders/:orderId` | requester, assigned courier, or anyone while the order is available | one order |
+| `GET /orders/:orderId/history` | requester or assigned courier | `{ items }`, oldest first |
+
+Lists take `page` (default 1) and `pageSize` (1–100, default 20), return
+`{ items, page, pageSize, total }` newest first, and reject unknown query parameters.
+Status codes: 400 invalid input, 401 missing/invalid token, 403 not a participant,
+404 unknown order, 503 User Service keys unreachable.
+
+Run locally (after `npm ci` in `order-service/`), with the five `ORDER_DB_*` settings and
+`ORDER_JWKS_URL` set in the environment:
+
+```powershell
+npm run build
+npm start
+```
+
+`npm test` runs the unit tests (no database needed). The Compose test command above runs
+the unit tests and all PostgreSQL integration tests, including the HTTP tests in
+`src/test/orders.api.test.ts`.
+
+Verification on 2026-10-14: all 27 tests passed in `compose.test.yaml`; the Compose
+stack started `order-service` after migration and `/orders/mine` returned 401 without a token.
+Auth files then moved to `src/common/` and the health endpoints were removed at Zi Yi's
+request; the 27 tests passed again.
