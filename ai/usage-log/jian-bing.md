@@ -2,7 +2,7 @@
 AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Jian Bing's section out of ai/usage-log.md into this file (issue #65), plus a CodeQL entry that git blame attributes to Jian Bing from the end of Jie Yang's section; entry text unchanged. Wrote the 2026-10-12 usage-log split entry from Jian Bing's prompts.
-Author review: Pending Jian Bing's review on PR #68.
+Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
 -->
 
 # AI Usage Log — Jian Bing
@@ -25,6 +25,8 @@ Jian Bing's entries for the FoC AI usage log. The template and rules are in
 
 > the pr reviewer left some comments for pr 68 (with screenshots of the two Codex review comments)
 
+> for all the pending auhtor review, help me edit them to say that I have checked the logs locally, to ensure it follows the guideline given by the professor in the project document, and that oepnign it on my ide shows a nice formatting, and to make sure all the comments and every other component is present
+
 **What it produced:** Moved each `##` member section, word for word, into
 `ai/usage-log/<member>.md`, and kept `ai/usage-log.md` (the path the brief names) as the index with
 the rules, template and links. A script checked that every line of the original appears exactly
@@ -32,7 +34,9 @@ once across the new files. Updated the logging rule in `AGENTS.md`. After Codex 
 header to each member file and made `AGENTS.md` name the member file as the entry destination.
 **What I changed or rejected:** Claude proposed "Refs #65"; I chose to close #65 and open a separate
 issue for merging the files back into one log at the end.
-**Verification:** Pending my review on the PR.
+**Verification:** I checked the logs locally against the AI usage-log guidelines in the project
+document (Appendix 2), confirmed they render with clean formatting in my IDE, and confirmed every
+entry, comment and other component is present.
 
 ### 2026-10-01 — Pass the User Service container only its own variables
 

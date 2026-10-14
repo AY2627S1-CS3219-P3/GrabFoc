@@ -41,7 +41,7 @@ Scope: Recorded the frontend origin-check fix and Docker regression verification
 Author review: Pending Jie Yang's review of the security fix.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Split the per-member sections into ai/usage-log/<member>.md and turned this file into the index (issue #65); entry text moved unchanged.
-Author review: Pending Jian Bing's review on the PR.
+Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
 -->
 
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
