@@ -10,6 +10,27 @@ Author review: Jian Bing checked the logs locally against the AI usage-log guide
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-16 — Frontend: forgot-password feedback (issue #63)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `frontend/app/components/recovery-screen.tsx`, `frontend/test/routes.test.mjs`
+
+**Scenario:** forgot password gave no feedback when the email had no account; fix it on the
+frontend only, as the issue proposes.
+
+**Prompts:**
+> on the current fix/frontend-frogot-password, handle the issue https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/63
+
+**What it produced:** the reset step now shows the issue's wording ("If an account exists for
+that email, we've sent a 6-digit code. It expires in 5 minutes. …") after a forgot-password
+request, for every account the same way. Removed the `message` state, which was never set. Added
+an assertion for the notice to the unknown-account recovery test. No API or backend change.
+
+**Verification:** `npm run lint` clean; `test:routes` 36/36 passed, run on Chrome through a
+temporary copy because the suite hard-codes the `msedge` channel.
+
+**What I changed or rejected:** _(pending my review)_
+
 ### 2026-09-24 to 2026-09-25 — User Service Phase 0 foundation (PRs #9, #10, #12, #13)
 
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** generate, debug, explain

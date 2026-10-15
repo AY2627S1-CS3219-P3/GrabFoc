@@ -3,6 +3,11 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Verified session flows, Supplier management and responsive layout, downstream 401 handling, and recovery after an edit conflict; updated filter and card layout assertions.
 Author review: Jie Yang reviewed the earlier tests; updated layout assertions await review.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: Asserted the reset-code notice in the unknown-account recovery test (issue #63).
+Author review: pending review by Zi Yi.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -453,6 +458,7 @@ test("recovery keeps unknown accounts indistinguishable and handles rate limits 
     await page.getByLabel("Email").fill("unknown@u.nus.edu");
     await page.getByRole("button", { name: "Send reset code" }).click();
     await page.waitForURL("**/reset-password");
+    await page.getByRole("status").getByText("If an account exists for that email, we've sent a 6-digit code. It expires in 5 minutes.", { exact: false }).waitFor();
     await page.getByLabel("New password").fill("NewPassw0rd");
     await page.getByLabel("Confirm password").fill("NewPassw0rd");
     await page.getByLabel("Six-digit code").fill("333333");
