@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS credit_holds (
 -- inspect them and replay credit commands.
 CREATE TABLE IF NOT EXISTS credit_dead_letters (
     id                BIGSERIAL PRIMARY KEY,
-    event_id          UUID UNIQUE,            -- null when the message was too malformed to read
+    event_id          UUID,                   -- null when the message was too malformed to read
     order_id          UUID,
     source_topic      TEXT NOT NULL,          -- where it came from: credit.commands or user.events
     command_type      TEXT,                   -- the message's type field
@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS credit_dead_letters (
     error_code        TEXT,
     attempts          INTEGER NOT NULL CHECK (attempts > 0),
     dead_lettered_at  TIMESTAMPTZ NOT NULL,
-    replayed_at       TIMESTAMPTZ
+    replayed_at       TIMESTAMPTZ,
+    -- One row per message per source: a dead letter from user.events can never overwrite a
+    -- credit command's row, even with the same event id (security review).
+    UNIQUE (source_topic, event_id)
 );
 `;

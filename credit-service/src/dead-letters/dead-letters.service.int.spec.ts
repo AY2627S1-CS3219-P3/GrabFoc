@@ -166,3 +166,28 @@ it('lists newest first', async () => {
   await service.record(deadLetter({ eventId: newer, at: '2026-10-15T12:00:00.000Z' }));
   expect((await service.list('all')).map((r) => r.eventId)).toEqual([newer, older]);
 });
+
+// Security review: dead letters from different sources must not overwrite each other.
+it('keeps a command dead letter when a user-event dead letter reuses its event id', async () => {
+  const eventId = randomUUID();
+  const orderId = randomUUID();
+  await service.record(deadLetter({ eventId, orderId }));
+  await service.record({
+    topic: topics.userEventsDeadLetter,
+    key: 'forged',
+    value: Buffer.from(JSON.stringify({ type: 'UserRegistered', eventId, userId: 'bad' })),
+    headers: {
+      [HEADER.attempt]: '1',
+      [HEADER.error]: 'Invalid UserRegistered event',
+      [HEADER.sourceTopic]: topics.userEvents,
+      [HEADER.deadLetteredAt]: '2026-10-15T12:00:00.000Z',
+    },
+  });
+
+  const rows = await service.list('all');
+  expect(rows.map((r) => r.sourceTopic).sort()).toEqual(['credit.commands', 'user.events']);
+  await service.replay(eventId);
+  expect(publisher.sent).toEqual([
+    { topic: 'credit.commands', key: orderId, value: JSON.stringify({ type: 'ReleaseCredits', eventId, orderId }), headers: {} },
+  ]);
+});

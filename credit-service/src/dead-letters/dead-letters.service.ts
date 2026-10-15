@@ -2,7 +2,8 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Generated the dead-letter table access: copy from both DLTs, list, and replay credit
- *        commands (Jian Bing's decisions K3, K4 and K11; spec §9.2).
+ *        commands (Jian Bing's decisions K3, K4 and K11; spec §9.2). Rows are unique per source
+ *        topic and event id, so one source can't overwrite another's (security review).
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { Inject, Injectable } from '@nestjs/common';
@@ -84,9 +85,8 @@ export class DeadLettersService {
       `INSERT INTO credit_dead_letters
               (event_id, order_id, source_topic, command_type, payload, error, error_code, attempts, dead_lettered_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (event_id) DO UPDATE SET
-              order_id = EXCLUDED.order_id, source_topic = EXCLUDED.source_topic,
-              command_type = EXCLUDED.command_type, payload = EXCLUDED.payload, error = EXCLUDED.error,
+       ON CONFLICT (source_topic, event_id) DO UPDATE SET
+              order_id = EXCLUDED.order_id, command_type = EXCLUDED.command_type, payload = EXCLUDED.payload, error = EXCLUDED.error,
               error_code = EXCLUDED.error_code, attempts = EXCLUDED.attempts,
               dead_lettered_at = EXCLUDED.dead_lettered_at, replayed_at = NULL
         WHERE credit_dead_letters.dead_lettered_at < EXCLUDED.dead_lettered_at`,
@@ -118,21 +118,26 @@ export class DeadLettersService {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      // The row lock makes a second, concurrent replay wait and then see replayed_at set.
+      // Only credit commands can be replayed, so look up the command's row. The row lock makes a
+      // second, concurrent replay wait and then see replayed_at set.
       const { rows } = await client.query<DeadLetterRow>(
-        `SELECT ${COLUMNS} FROM credit_dead_letters WHERE event_id = $1 FOR UPDATE`,
-        [eventId],
+        `SELECT ${COLUMNS} FROM credit_dead_letters WHERE source_topic = $1 AND event_id = $2 FOR UPDATE`,
+        [this.topics.commands, eventId],
       );
       const row = rows[0];
       if (!row) {
-        throw new ProblemException(404, `No dead letter has event id ${eventId}.`, ErrorCode.DEAD_LETTER_NOT_FOUND);
-      }
-      if (row.source_topic !== this.topics.commands) {
-        throw new ProblemException(
-          409,
-          `Dead letter ${eventId} came from ${row.source_topic}; fix it and publish it again from its source.`,
-          ErrorCode.NOT_REPLAYABLE,
+        const other = await client.query<{ source_topic: string }>(
+          'SELECT source_topic FROM credit_dead_letters WHERE event_id = $1 LIMIT 1',
+          [eventId],
         );
+        if (other.rows[0]) {
+          throw new ProblemException(
+            409,
+            `Dead letter ${eventId} came from ${other.rows[0].source_topic}; fix it and publish it again from its source.`,
+            ErrorCode.NOT_REPLAYABLE,
+          );
+        }
+        throw new ProblemException(404, `No dead letter has event id ${eventId}.`, ErrorCode.DEAD_LETTER_NOT_FOUND);
       }
       if (row.replayed_at) {
         throw new ProblemException(409, `Dead letter ${eventId} was already replayed.`, ErrorCode.ALREADY_REPLAYED);
@@ -141,8 +146,9 @@ export class DeadLettersService {
       // If the commit then fails, the command may be sent twice, which the handlers already absorb.
       await this.publisher.send({ topic: this.topics.commands, key: row.order_id, value: row.payload, headers: {} });
       const updated = await client.query<DeadLetterRow>(
-        `UPDATE credit_dead_letters SET replayed_at = now() WHERE event_id = $1 RETURNING ${COLUMNS}`,
-        [eventId],
+        `UPDATE credit_dead_letters SET replayed_at = now() WHERE source_topic = $1 AND event_id = $2
+         RETURNING ${COLUMNS}`,
+        [this.topics.commands, eventId],
       );
       await client.query('COMMIT');
       return toDeadLetter(updated.rows[0]);

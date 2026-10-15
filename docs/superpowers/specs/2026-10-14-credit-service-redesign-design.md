@@ -230,7 +230,8 @@ wallet, so the order matters.
   `x-dead-lettered-at`, logged at `error` as `credit_command_dead_lettered` (ids only, never balances).
 - **Offsets** are stored only after the work (and any retry/DLT publish) succeeds; the handlers are
   idempotent (§4.1, §4.3), so no Kafka transactions or inbox table are needed.
-- **Dead-letter table** `credit_dead_letters`: `id`, `event_id` (unique, null when unreadable),
+- **Dead-letter table** `credit_dead_letters`: `id`, `event_id` (null when unreadable; unique per
+  `source_topic`, so one source can't overwrite another's row — security review, 2026-10-15),
   `order_id`, `source_topic`, `command_type` (the message `type`), `payload`, `error`, `error_code`,
   `attempts`, `dead_lettered_at`, `replayed_at`. A command that dies again after a replay reopens
   its row. Both DLTs are copied into it.
