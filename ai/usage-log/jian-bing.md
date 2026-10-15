@@ -110,6 +110,18 @@ policy points, then wrote the spec, plan, issues and the Phase 2 code with tests
 
 > continue the phase 3 and look at al lthe comments left by the pr reveiwer
 
+> 1. Yes (i dont understand what u r saying but do it) 2. switch? i dont get the retry topics here 3. ill do it later after we resolve all these issues first 4. yes please 5. up to you
+
+> do industry standard dictate people to add dlt topics to a topics,txt?
+
+> i think we woudl want a source of ftruth for all the topcis right, and as such maybe oru initial dea is nto good in that sense? what do you think?
+
+> yes
+
+> for all the conversatiosn in these stacked PRs, coudl oyu resolve them if they have eben resolved?
+
+> could you help me resolve PR 48's merge cofnlicts?
+
 **Key responses:**
 - Compared RabbitMQ, Kafka, Redis Streams and NATS JetStream against FoC's needs (retries/DLQ,
   replay, request/reply, ordering); the choice stayed with the team.
@@ -133,6 +145,10 @@ PR review round (Codex and SoCLaaS comments on #84/#85): fixed upper-case comman
 dead-lettered, negative x-attempt breaking the insert, replay holding a database transaction during
 the Kafka send (and a replay race it exposed), DLT re-encoding bytes, a missing root AGENTS.md
 disclosure and two README gaps, each code fix test-first; unit 113/113, integration 52/52, Kafka 11/11;
+then dead letters recognised by source position plus payload hash (with two security-review fixes),
+and K10 revised by me to option C: topics.txt lists every topic, Credit checks it at startup
+(unit 118/118, integration 55/55, Kafka 12/12); resolved the settled PR threads and merged main into
+the stack (PR #48's only conflict was this log; I kept both sides);
 Phase 3: unit 108/108, integration 49/49, Kafka 10/10, Newman 24 requests / 30 assertions with 0
 failures; a background security review found that dead letters from different topics could
 overwrite each other, fixed with a test (rows unique per source topic and event id); `kafka-init` creates exactly the listed topics and is safe to rerun; the running
