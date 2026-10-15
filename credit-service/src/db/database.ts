@@ -4,6 +4,9 @@
  * Scope: Generated the PostgreSQL pool provider and startup schema creation, following
  *        supplier-service/src/db/database.ts.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added connection and query timeouts (createPool), from the Phase 2 review.
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { Global, Inject, Injectable, Logger, Module, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Pool } from 'pg';
@@ -11,6 +14,21 @@ import { config } from '../config';
 import { SCHEMA_SQL } from './schema';
 
 export const PG_POOL = Symbol('PG_POOL');
+
+/**
+ * Fails fast when the database can't be reached, instead of waiting forever: the Kafka consumer
+ * then pauses and retries the message, rather than stalling until it is evicted from its group.
+ */
+export function createPool(connectionString: string): Pool {
+  return new Pool({
+    connectionString,
+    // Give up on a new connection that gets no answer (e.g. a network partition or failover).
+    connectionTimeoutMillis: 5_000,
+    // Give up on a query whose connection stops answering mid-way. Every query here is a
+    // single-row read or write, so 10 s only trips on a dead connection.
+    query_timeout: 10_000,
+  });
+}
 
 @Injectable()
 export class DatabaseLifecycle implements OnModuleInit, OnModuleDestroy {
@@ -31,7 +49,7 @@ export class DatabaseLifecycle implements OnModuleInit, OnModuleDestroy {
 @Global()
 @Module({
   providers: [
-    { provide: PG_POOL, useFactory: () => new Pool({ connectionString: config.databaseUrl }) },
+    { provide: PG_POOL, useFactory: () => createPool(config.databaseUrl) },
     DatabaseLifecycle,
   ],
   exports: [PG_POOL],

@@ -4,6 +4,9 @@
  * Scope: Generated end-to-end tests against a real Kafka broker and PostgreSQL for wallets from
  *        UserRegistered and the user-event dead-letter topic (spec §7, §9; K11–K12).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added the database-outage retry test (Phase 2 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Logger } from '@nestjs/common';
@@ -22,7 +25,22 @@ import { buildTopics } from './topics';
 const prefix = `test-${randomUUID().slice(0, 8)}.`;
 const topics = buildTopics([1000], prefix);
 
+/** CreditsService whose next `walletFailures` wallet writes fail, as if the database were down. */
+class FlakyCredits extends CreditsService {
+  walletFailures = 0;
+  calls = 0;
+  override createWallet(userId: string) {
+    this.calls++;
+    if (this.walletFailures > 0) {
+      this.walletFailures--;
+      return Promise.reject(new Error('connect ECONNREFUSED (database down)'));
+    }
+    return super.createWallet(userId);
+  }
+}
+
 let pool: Pool;
+let credits: FlakyCredits;
 let connection: KafkaConnection;
 let admin: KafkaJS.Admin;
 let deleteTopics: () => Promise<void>;
@@ -40,7 +58,8 @@ beforeAll(async () => {
   await admin.connect();
   deleteTopics = await createTestTopics(admin, topics);
   await connection.onModuleInit();
-  runner = new KafkaRunner(new CreditsService(pool), connection, topics);
+  credits = new FlakyCredits(pool);
+  runner = new KafkaRunner(credits, connection, topics);
   await runner.onApplicationBootstrap();
 });
 afterAll(async () => {
@@ -51,7 +70,10 @@ afterAll(async () => {
   await pool?.end();
   jest.restoreAllMocks();
 });
-beforeEach(() => emptyTables(pool));
+beforeEach(async () => {
+  credits.walletFailures = 0;
+  await emptyTables(pool);
+});
 
 const send = (key: string, body: unknown) =>
   connection.send({
@@ -114,4 +136,19 @@ it('sends an unreadable UserRegistered to credit.user-events.dlt without stoppin
   } finally {
     await dlt.stop();
   }
+});
+
+// Review Focus 4
+it('retries a wallet whose database write failed, after pausing the partition', async () => {
+  credits.walletFailures = 1;
+  credits.calls = 0;
+  const userId = randomUUID();
+  const started = Date.now();
+  await send(userId, registered(userId));
+
+  await waitFor(() => balanceOf(userId));
+  expect(await balanceOf(userId)).toEqual({ available: 10, reserved: 0 });
+  expect(credits.calls).toBe(2);
+  // The runner rests the partition for 5 s before reading the message again.
+  expect(Date.now() - started).toBeGreaterThanOrEqual(4_500);
 });
