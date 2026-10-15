@@ -6,11 +6,14 @@ Author review: User approved the main schema and database-only plan; implementat
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Added the Phase A HTTP API section and updated status lines.
 Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.test.yaml` integration tests (27 passed).
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Rewrote the HTTP API section for Phase B (create with credit clean-up, edit, accept) and documented migration 002.
+Author review: Reviewed.
 -->
 
 # Order Service
 
-Database foundation for #50 (under parent #64) plus Phase A of `order-service-plan.md`: a NestJS server with authenticated read endpoints (see [HTTP API](#http-api-phase-a)). Create/edit/accept, lifecycle, confirmations and Kafka are not implemented yet. The approved schema is in `migrations/001_init.sql`. Read [AGENTS.md](AGENTS.md) for requirements.
+Database foundation for #50 (under parent #64) plus Phases A and B of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit and accept endpoints (see [HTTP API](#http-api)). Lifecycle transitions, confirmations, cancellation and Kafka are not implemented yet. The approved schema is in `migrations/001_init.sql`; `002_credit_reservation.sql` adds the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_released_at` for the creation flow. Read [AGENTS.md](AGENTS.md) for requirements.
 
 ## Confirmed decisions
 
@@ -52,6 +55,8 @@ Types match the documented external identifiers: User UUID and Supplier INTEGER.
 | `order_confirmations` | `id UUID PK`; `order_id UUID NOT NULL FK`; `kind TEXT NOT NULL`; `proposed_by UUID NOT NULL`; `proposed_window_start TIMESTAMPTZ NULL`; `proposed_window_end TIMESTAMPTZ NULL`; `requester_response TEXT NOT NULL`; `courier_response TEXT NOT NULL`; `status TEXT NOT NULL`; `created_at TIMESTAMPTZ NOT NULL`; `resolved_at TIMESTAMPTZ NULL` |
 
 `status` on orders is restricted to PENDING, ACCEPTED, PICKED_UP, IN_PROGRESS, ARRIVED, COMPLETED and CANCELLED. Require end after start, positive version and distinct requester/courier. Courier is null before assignment; new orders start PENDING. Status/assignment constraints and database-generated UUID/creation defaults are approved as listed above. Version update/concurrency behaviour is approved as listed above.
+
+Migration `002_credit_reservation.sql` (2026-10-15, Zi Yi's revised creation flow, **[Proposed]**) adds the `AWAITING_CREDIT` state (no courier), the `CREDIT_RESERVED` history action and a nullable `orders.credit_released_at TIMESTAMPTZ`. The column default stays `PENDING`; the API inserts `AWAITING_CREDIT` explicitly. No new indexes.
 
 Confirmation kinds: TIMING_CHANGE, CANCELLATION, COMPLETION. Party responses: PENDING, ACCEPTED, REJECTED. Proposal states: PENDING, APPROVED, REJECTED, EXPIRED, SUPERSEDED. Only timing-change proposals carry proposed window fields. Keep resolved proposals for traceability. A history entry with null actor can represent a system action; creation can have null previous status, and edits need not change state.
 
@@ -154,40 +159,95 @@ PostgreSQL integration tests passed. The production migration image applied
 `001_init.sql`; database-container replacement preserved the schema and migration
 rerun reported up to date.
 
-## HTTP API (Phase A)
+## HTTP API
 
-_Origin: AI doc; endpoints from `order-service-plan.md` §3, response shapes follow Supplier/User conventions (pending team confirmation)_
+_Origin: AI doc; endpoints from `docs/order-service-plan.md` §3; response shapes, error codes and paging follow Supplier/User conventions and are **[Proposed]** pending team confirmation_
 
-Every route needs `Authorization: Bearer <access token>` from the User Service.
-The token is verified locally against `ORDER_JWKS_URL` (RS256); the caller's ID is the
-token's `sub`. Errors use the User Service envelope `{ "error": { "code", "message", "details" } }`.
+Every route needs `Authorization: Bearer <access token>` from the User Service, verified locally
+against `ORDER_JWKS_URL` (RS256). The caller's ID is the token's `sub`, never a body field.
+Errors use the User Service envelope `{ "error": { "code", "message", "details" } }`.
 
-| Endpoint | Who | Returns |
+| Endpoint | Who | Does |
 |---|---|---|
+| `POST /orders` | any user | create an order; returns it as `PENDING` (201) |
 | `GET /orders/available` | any user | unexpired `PENDING` orders, excluding the caller's own |
 | `GET /orders/mine` | any user | orders the caller created, any status |
 | `GET /orders/assigned` | any user | orders assigned to the caller as courier, any status |
 | `GET /orders/:orderId` | requester, assigned courier, or anyone while the order is available | one order |
+| `PATCH /orders/:orderId` | requester, `PENDING` only | edit description, locations or timing (200) |
+| `POST /orders/:orderId/accept` | any user except the requester | take the order as courier (200) |
 | `GET /orders/:orderId/history` | requester or assigned courier | `{ items }`, oldest first |
 
-Lists take `page` (default 1) and `pageSize` (1–100, default 20), return
-`{ items, page, pageSize, total }` newest first, and reject unknown query parameters.
-Status codes: 400 invalid input, 401 missing/invalid token, 403 not a participant,
-404 unknown order, 503 User Service keys unreachable.
+Lists take `page` (default 1) and `pageSize` (1–100, default 20) and return
+`{ items, page, pageSize, total }`, newest first.
 
-Run locally (after `npm ci` in `order-service/`), with the five `ORDER_DB_*` settings and
-`ORDER_JWKS_URL` set in the environment:
+**Create** body: `orderDescription`, `pickupLocationId`, `deliveryLocationId`, `creditOffer`
+(whole number ≥ 1), optional `windowStart` / `windowEnd` (ISO 8601 with offset). Omitted start
+is now; omitted end is start + 24 hours. Order Service:
+
+1. checks `windowEnd` is after `windowStart` and has not passed;
+2. fetches both locations from Supplier (`GET /locations/:id`, forwarding the caller's token);
+   both must exist and be `ACTIVE`;
+3. checks the window overlaps the **pickup** location's opening hours (campus time, UTC+8;
+   closing at or before opening means after midnight; no hours = always open). Delivery hours
+   never restrict the window;
+4. saves the order as `AWAITING_CREDIT` with `CREATED` history (couriers cannot see it);
+5. calls Credit `POST /internal/credits/reserve` (`X-Service-Key`, 5 s timeout, no transaction
+   open). On success the order moves to `PENDING` with `CREDIT_RESERVED` history and `version` 2.
+   If Credit refuses, fails or times out, the order moves to `CANCELLED`
+   (`changeDetails.reason = CREDIT_NOT_RESERVED`, no actor) and Order calls
+   `POST /internal/credits/release`, since a timed-out reserve may still have saved a hold.
+
+A clean-up job runs every 10 s (`OrdersService.cleanUpCredits`, started in `main.ts`): it cancels
+`AWAITING_CREDIT` orders older than 30 s and calls release for every `CANCELLED` order without
+`credit_released_at`, setting it when Credit answers 200 or 404. It stops at the first failed
+release and logs a `CREDIT_CLEANUP_FAILED` line with the order ID. Flow revised by Zi Yi on
+2026-10-15 (`docs/order-service-plan.md` §4); **[Proposed]** until the team and Credit owner confirm.
+
+**Edit** body: `version` (required) plus at least one of `orderDescription`,
+`pickupLocationId`, `deliveryLocationId`, `windowStart`, `windowEnd`. `creditOffer` and every
+other field are rejected. A changed location is re-fetched (must be `ACTIVE`) and its snapshot
+replaced; pickup hours are rechecked whenever pickup or timing changes. Writes `EDITED` history
+with `changeDetails` = `{ field: { from, to } }` and increments `version`.
+
+**Accept** body: `{ "version": n }`. One conditional `UPDATE` (still `PENDING`, unassigned,
+unexpired, not the caller's own, same version), so of several couriers accepting at once exactly
+one wins. The partial unique index stops a courier holding two active orders. Writes
+`ACCEPTED` history and increments `version`. The `OrderAccepted` event is Phase D.
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | bad body/query/ID, unknown field, invalid or ended window |
+| 400 | `PICKUP_CLOSED` | window misses the pickup location's opening hours |
+| 401 | `TOKEN_INVALID` | missing, invalid or expired token |
+| 403 | `FORBIDDEN` | not a participant; editing someone else's order; accepting your own |
+| 404 | `NOT_FOUND` | unknown order or location |
+| 409 | `VERSION_CONFLICT` | `version` is stale; reload the order |
+| 409 | `INVALID_STATE` | order not `PENDING`, already taken or expired |
+| 409 | `COURIER_BUSY` | courier already has an active order |
+| 409 | `LOCATION_INACTIVE` | a chosen location is `INACTIVE` |
+| 409 | `INSUFFICIENT_CREDITS` | Credit refused the reservation |
+| 503 | `SERVICE_UNAVAILABLE` | User Service keys, Supplier or Credit unreachable; create stalled over 30 s |
+
+**Known limitation:** Credit's release currently returns 404 for an order it has no hold for.
+If that release arrives while a slow reserve is still running inside Credit, the reserve can
+land afterwards and stay held. Closing this needs Credit to save a `RELEASED` marker on that
+404 (**[Proposed]**, Credit owner).
+
+Run locally (after `npm ci` in `order-service/`) with the five `ORDER_DB_*` settings,
+`ORDER_JWKS_URL`, `ORDER_SUPPLIER_URL`, `ORDER_CREDIT_URL` and `ORDER_CREDIT_SERVICE_KEY` set:
 
 ```powershell
 npm run build
 npm start
 ```
 
+In Compose, `ORDER_CREDIT_SERVICE_KEY` comes from `CREDIT_SERVICE_KEY` in the root `.env`;
+the service refuses to start without it.
+
 `npm test` runs the unit tests (no database needed). The Compose test command above runs
 the unit tests and all PostgreSQL integration tests, including the HTTP tests in
-`src/test/orders.api.test.ts`.
+`src/test/orders.api.test.ts` (which fake Supplier and Credit).
 
-Verification on 2026-10-14: all 27 tests passed in `compose.test.yaml`; the Compose
-stack started `order-service` after migration and `/orders/mine` returned 401 without a token.
-Auth files then moved to `src/common/` and the health endpoints were removed at Zi Yi's
-request; the 27 tests passed again.
+Verification on 2026-10-15: all 42 tests passed in `compose.test.yaml` (12 unit, 14 database,
+16 HTTP); the container refused to start without `ORDER_CREDIT_SERVICE_KEY` and started with it.

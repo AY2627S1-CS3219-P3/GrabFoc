@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Generated PostgreSQL integration checks for the approved schema and migration runner.
 Author review: Test scope approved; implementation review pending.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Updated for migration 002 (applied versions; AWAITING_CREDIT has no courier).
+Author review: Reviewed in full.
 */
 // AI-generated; human review pending.
 import assert from 'node:assert/strict';
@@ -27,7 +30,7 @@ before(async () => {
   // Only this test run's random schema is created/removed; existing tables are untouched.
   await admin.query(`CREATE SCHEMA ${schema}`);
   const results = await Promise.all([runMigrations(pool), runMigrations(pool)]);
-  assert.equal(results.flat().length, 1);
+  assert.deepEqual(results.flat().sort(), ['001_init.sql', '002_credit_reservation.sql']); // each applied once
 });
 after(async () => {
   await pool.end();
@@ -71,7 +74,7 @@ const sqlState = (code: string) => (error: unknown) => {
 test('migrations serialize, run once and create exactly the eight approved indexes', async () => {
   assert.deepEqual(await runMigrations(pool), []);
   const versions = await pool.query('SELECT version FROM schema_migrations');
-  assert.deepEqual(versions.rows, [{ version: '001_init.sql' }]);
+  assert.deepEqual(versions.rows, [{ version: '001_init.sql' }, { version: '002_credit_reservation.sql' }]);
   const indexes = await pool.query(`SELECT indexname FROM pg_indexes
     WHERE schemaname = $1 AND indexname NOT LIKE '%_pkey'`, [schema]);
   assert.equal(indexes.rowCount, 8);
@@ -95,6 +98,7 @@ test('orders reject invalid state, credits, version, window, party and assignmen
     { status: 'UNKNOWN' }, { credit_offer: 0 }, { version: 0 },
     { window_end: '2000-01-01T00:00:00Z' }, { courier_id: courier },
     { status: 'ACCEPTED' }, { status: 'ACCEPTED', courier_id: requester },
+    { status: 'AWAITING_CREDIT', courier_id: courier },
   ]) await assert.rejects(order(fields), sqlState('23514'));
   await assert.rejects(order({ credit_offer: 1.5 }), sqlState('22P02'));
   await assert.rejects(order({ order_description: null }), sqlState('23502'));

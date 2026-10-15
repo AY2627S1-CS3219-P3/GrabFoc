@@ -5,6 +5,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 # Scope: Phase A: order-service HTTP container, started after migrations succeed.
 # Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.test.yaml` integration tests (27 passed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+# Scope: Phase B: Supplier and Credit Service settings for order-service.
+# Author review: Reviewed in full.
 # AI-generated; human review pending.
 name: foc
 services:
@@ -47,6 +50,10 @@ services:
       ORDER_DB_USER: ${ORDER_DB_USER:-foc}
       ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:-change-me-in-dotenv}
       ORDER_JWKS_URL: http://user-service:3001/.well-known/jwks.json
+      ORDER_SUPPLIER_URL: http://supplier-service:3002
+      ORDER_CREDIT_URL: http://credit-service:3004
+      # Must equal the Credit Service's CREDIT_SERVICE_KEY; set it in the root .env.
+      ORDER_CREDIT_SERVICE_KEY: ${CREDIT_SERVICE_KEY:-}
     ports:
       - "3005:3005"
 volumes:

@@ -4,16 +4,29 @@
  * Scope: Generated the error type, codes and global filter, following user-service/src/common
  *        (same `{ error: { code, message, details } }` envelope and 401/403 audit line).
  * Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.test.yaml` integration tests (27 passed).
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added the Phase B error codes.
+ * Author review: Reviewed in full
  */
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
 /** Machine-readable codes; clients switch on these, never on the message. */
 export const ErrorCode = {
+  // 400
   VALIDATION_ERROR: 'VALIDATION_ERROR',
+  PICKUP_CLOSED: 'PICKUP_CLOSED',
+  // 401 / 403 / 404
   TOKEN_INVALID: 'TOKEN_INVALID',
   FORBIDDEN: 'FORBIDDEN',
   NOT_FOUND: 'NOT_FOUND',
+  // 409
+  VERSION_CONFLICT: 'VERSION_CONFLICT',
+  INVALID_STATE: 'INVALID_STATE',
+  COURIER_BUSY: 'COURIER_BUSY',
+  LOCATION_INACTIVE: 'LOCATION_INACTIVE',
+  INSUFFICIENT_CREDITS: 'INSUFFICIENT_CREDITS',
+  // 500 / 503
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
 } as const;

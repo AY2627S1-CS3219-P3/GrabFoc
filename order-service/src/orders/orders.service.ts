@@ -3,26 +3,57 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: Generated the participant authorization rules for the Phase A read endpoints.
  * Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.test.yaml` integration tests (27 passed).
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added create (save AWAITING_CREDIT, reserve, open as PENDING, cancel and release on
+ *        failure), the credit clean-up job, requester edit and courier accept rules (Phase B).
+ * Author review: Reviewed in full
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Caller } from '../common/jwt-auth.guard';
 import { AppError, ErrorCode } from '../common/errors';
-import { OrderList, OrdersRepository } from './orders.repository';
-import type { HistoryEntry, Order, Page, PageQuery } from './orders.schemas';
+import { CreditClient } from '../integrations/credit.client';
+import { Location, SupplierClient } from '../integrations/supplier.client';
+import { OrderEdit, OrderList, OrdersRepository } from './orders.repository';
+import type { CreateOrderBody, EditOrderBody, HistoryEntry, Order, Page, PageQuery } from './orders.schemas';
+import { assertPickupOpen, assertValidWindow, defaultWindow } from './timing';
 
 const isParticipant = (order: Order, caller: Caller) =>
   order.requesterId === caller.id || order.courierId === caller.id;
 
-/** Open for acceptance, so any caller may view it before deciding (plan §3, GET /orders/:orderId). */
 const isAvailable = (order: Order) => order.status === 'PENDING' && order.windowEnd > new Date();
 
-const forbidden = () =>
-  new AppError(403, ErrorCode.FORBIDDEN, 'Only the requester or assigned courier can view this order.');
+const forbidden = (message = 'Only the requester or assigned courier can view this order.') =>
+  new AppError(403, ErrorCode.FORBIDDEN, message);
+
+/** Edits and acceptance need an unexpired PENDING order at the version the client loaded. */
+function assertOpen(order: Order | undefined, version: number, closedMessage: string): asserts order is Order {
+  if (!order || !isAvailable(order)) throw new AppError(409, ErrorCode.INVALID_STATE, closedMessage);
+  if (order.version !== version) {
+    throw new AppError(409, ErrorCode.VERSION_CONFLICT, 'The order has changed since you loaded it. Reload and try again.');
+  }
+}
+
+const pickupSnapshot = (l: Location) => ({ pickupLocationId: l.id, pickupName: l.name, pickupLat: l.lat, pickupLon: l.lon });
+const deliverySnapshot = (l: Location) => ({
+  deliveryLocationId: l.id,
+  deliveryName: l.name,
+  deliveryLat: l.lat,
+  deliveryLon: l.lon,
+});
+
+const logger = new Logger('Order');
+
+const NOT_EDITABLE = 'Only open PENDING orders can be edited.';
+const NOT_AVAILABLE = 'This order is no longer available.';
 
 // Authorization is by ownership/assignment, never by requester/courier UI mode (root AGENTS.md §5).
 @Injectable()
 export class OrdersService {
-  constructor(private readonly orders: OrdersRepository) {}
+  constructor(
+    private readonly orders: OrdersRepository,
+    private readonly supplier: SupplierClient,
+    private readonly credit: CreditClient,
+  ) {}
 
   list(list: OrderList, caller: Caller, page: PageQuery): Promise<Page<Order>> {
     return this.orders.list(list, caller.id, page);
@@ -40,9 +71,184 @@ export class OrdersService {
     return this.orders.history(orderId);
   }
 
+  /**
+   * Saves the order as AWAITING_CREDIT, reserves credits, then opens it as PENDING. If the
+   * reservation fails, the order is cancelled and any hold released; cleanUpCredits() retries.
+   */
+  async create(caller: Caller, authorization: string, body: CreateOrderBody): Promise<Order> {
+    const window = defaultWindow(body.windowStart, body.windowEnd);
+    assertValidWindow(window);
+    const [pickup, delivery] = await Promise.all([
+      this.activeLocation(body.pickupLocationId, authorization),
+      this.activeLocation(body.deliveryLocationId, authorization),
+    ]);
+    assertPickupOpen(window, pickup);
+
+    const order = await this.orders.transaction(async (tx) => {
+      const order = await this.orders.insert(tx, {
+        orderDescription: body.orderDescription,
+        requesterId: caller.id,
+        creditOffer: body.creditOffer,
+        ...window,
+        ...pickupSnapshot(pickup),
+        ...deliverySnapshot(delivery),
+      });
+      await this.orders.addHistory(tx, {
+        orderId: order.id,
+        actorId: caller.id,
+        action: 'CREATED',
+        previousStatus: null,
+        newStatus: 'AWAITING_CREDIT',
+      });
+      return order;
+    });
+
+    try {
+      await this.credit.reserve(order.id, caller.id, order.creditOffer);
+    } catch (error) {
+      // A timed-out reserve may still have saved a hold, so release either way.
+      await this.cancelAwaitingCredit(order.id)
+        .then(() => this.releaseCredits(order.id))
+        .catch(() => undefined); // cleanUpCredits() finishes whatever failed here
+      throw error;
+    }
+
+    const placed = await this.orders.transaction(async (tx) => {
+      const placed = await this.orders.setStatus(tx, order.id, 'AWAITING_CREDIT', 'PENDING');
+      if (placed) {
+        await this.orders.addHistory(tx, {
+          orderId: order.id,
+          actorId: caller.id,
+          action: 'CREDIT_RESERVED',
+          previousStatus: 'AWAITING_CREDIT',
+          newStatus: 'PENDING',
+        });
+      }
+      return placed;
+    });
+    // Only if cleanUpCredits() cancelled it first, which needs this request to stall for 30 s.
+    if (!placed) throw new AppError(503, ErrorCode.SERVICE_UNAVAILABLE, 'Creating the order took too long. Try again.');
+    return placed;
+  }
+
+  /**
+   * Background job (main.ts runs it every 10 s): cancels creates that never finished, then
+   * releases the credits of cancelled orders until Credit confirms. Stops at the first failed
+   * release, since Credit is then likely down.
+   */
+  async cleanUpCredits(): Promise<void> {
+    let orderId: string | undefined;
+    try {
+      for (orderId of await this.orders.staleAwaitingCredit()) await this.cancelAwaitingCredit(orderId);
+      for (orderId of await this.orders.unreleasedCancelled()) await this.releaseCredits(orderId);
+    } catch {
+      logger.warn(JSON.stringify({ event: 'CREDIT_CLEANUP_FAILED', orderId: orderId ?? null }));
+    }
+  }
+
+  /** Requester-only, PENDING-only. Pickup hours are rechecked whenever pickup or timing changes. */
+  async edit(caller: Caller, authorization: string, orderId: string, body: EditOrderBody): Promise<Order> {
+    const order = await this.find(orderId);
+    if (order.requesterId !== caller.id) throw forbidden('Only the requester can edit this order.');
+    assertOpen(order, body.version, NOT_EDITABLE);
+
+    const { version, pickupLocationId, deliveryLocationId, windowStart, windowEnd, orderDescription } = body;
+    const edit: OrderEdit = {};
+    if (orderDescription !== undefined) edit.orderDescription = orderDescription;
+    if (windowStart) edit.windowStart = windowStart;
+    if (windowEnd) edit.windowEnd = windowEnd;
+    const window = { windowStart: windowStart ?? order.windowStart, windowEnd: windowEnd ?? order.windowEnd };
+    if (windowStart || windowEnd) assertValidWindow(window);
+
+    if (pickupLocationId !== undefined || windowStart || windowEnd) {
+      const pickup = await this.activeLocation(pickupLocationId ?? order.pickupLocationId, authorization);
+      assertPickupOpen(window, pickup);
+      if (pickupLocationId !== undefined) Object.assign(edit, pickupSnapshot(pickup));
+    }
+    if (deliveryLocationId !== undefined) {
+      Object.assign(edit, deliverySnapshot(await this.activeLocation(deliveryLocationId, authorization)));
+    }
+
+    return this.orders.transaction(async (tx) => {
+      const updated = await this.orders.update(tx, orderId, version, edit);
+      if (!updated) {
+        assertOpen(await this.orders.findById(orderId, tx), version, NOT_EDITABLE);
+        throw new AppError(409, ErrorCode.INVALID_STATE, NOT_EDITABLE);
+      }
+      const changes = Object.fromEntries(
+        Object.entries(edit).map(([field, to]) => [field, { from: order[field as keyof OrderEdit], to }]),
+      );
+      await this.orders.addHistory(tx, {
+        orderId,
+        actorId: caller.id,
+        action: 'EDITED',
+        previousStatus: 'PENDING',
+        newStatus: 'PENDING',
+        changeDetails: changes,
+      });
+      return updated;
+    });
+  }
+
+  /** Atomic: of several couriers accepting at once, exactly one succeeds. */
+  async accept(caller: Caller, orderId: string, version: number): Promise<Order> {
+    const order = await this.find(orderId);
+    if (order.requesterId === caller.id) throw forbidden('You cannot accept your own order.');
+    assertOpen(order, version, NOT_AVAILABLE);
+
+    return this.orders.transaction(async (tx) => {
+      const accepted = await this.orders.accept(tx, orderId, caller.id, version).catch((error) => {
+        if (error?.constraint === 'orders_one_active_courier_idx') {
+          throw new AppError(409, ErrorCode.COURIER_BUSY, 'You already have an active order. Finish it before accepting another.');
+        }
+        throw error;
+      });
+      if (!accepted) {
+        // Lost a race: report why from the current row.
+        assertOpen(await this.orders.findById(orderId, tx), version, NOT_AVAILABLE);
+        throw new AppError(409, ErrorCode.INVALID_STATE, NOT_AVAILABLE);
+      }
+      await this.orders.addHistory(tx, {
+        orderId,
+        actorId: caller.id,
+        action: 'ACCEPTED',
+        previousStatus: 'PENDING',
+        newStatus: 'ACCEPTED',
+      });
+      return accepted;
+    });
+  }
+
+  private cancelAwaitingCredit(orderId: string): Promise<void> {
+    return this.orders.transaction(async (tx) => {
+      if (!(await this.orders.setStatus(tx, orderId, 'AWAITING_CREDIT', 'CANCELLED'))) return;
+      await this.orders.addHistory(tx, {
+        orderId,
+        actorId: null, // system action
+        action: 'CANCELLED',
+        previousStatus: 'AWAITING_CREDIT',
+        newStatus: 'CANCELLED',
+        changeDetails: { reason: 'CREDIT_NOT_RESERVED' },
+      });
+    });
+  }
+
+  private async releaseCredits(orderId: string): Promise<void> {
+    await this.credit.release(orderId);
+    await this.orders.markCreditReleased(orderId);
+  }
+
   private async find(orderId: string): Promise<Order> {
     const order = await this.orders.findById(orderId);
     if (!order) throw new AppError(404, ErrorCode.NOT_FOUND, 'Order not found.');
     return order;
+  }
+
+  private async activeLocation(id: number, authorization: string): Promise<Location> {
+    const location = await this.supplier.getLocation(id, authorization);
+    if (location.status !== 'ACTIVE') {
+      throw new AppError(409, ErrorCode.LOCATION_INACTIVE, `${location.name} is not currently active.`);
+    }
+    return location;
   }
 }

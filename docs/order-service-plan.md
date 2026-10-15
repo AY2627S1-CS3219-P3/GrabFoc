@@ -1,8 +1,15 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Revised the order-creation flow (AWAITING_CREDIT, cancel and release on failure, clean-up job) across §0–§10 at Zi Yi's direction.
+Author review: Reviewed
+-->
+
 # GrabFoC Order Service — Implementation Plan
 
-**Status:** Team decisions consolidated, 14 October 2026  
+**Status:** Team decisions consolidated, 14 October 2026. Creation flow revised by Zi Yi, 15 October 2026 (§4); confirm with the team and the Credit owner.  
 **Scope:** CS3219 D1 Order Service functional requirements (OSFR1–OSFR6) and D3 integration/demo.  
-**Approach:** Deliver a small, working NestJS service on top of the **existing** PostgreSQL migration. No new tables, no transactional outbox, and **no dedicated repeated-order-creation/idempotency mechanism for now**.
+**Approach:** Deliver a small, working NestJS service on top of the **existing** PostgreSQL migration. No new tables and **no dedicated repeated-order-creation/idempotency mechanism for now**. Migration `002_credit_reservation.sql` adds one order state and one column for the creation flow; the `orders` table itself records which credit releases are still owed (no separate outbox table).
 
 ## 0. Decisions at a glance
 
@@ -13,7 +20,7 @@
 | API conventions | camelCase JSON; User Service error envelope `{ "error": { "code", "message", "details" } }` |
 | Authentication | Independently verify User Service RS256 JWT via JWKS; use JWT `sub` as user ID and `role` for role checks |
 | Requester/courier roles | Both are ordinary `USER` accounts; acting as requester/courier is determined by the order relationship, not a special JWT role |
-| Creation | Requester creates PENDING order; obtain authoritative Supplier location details and check/reserve credits |
+| Creation | Validate Supplier locations and timing, save the order as `AWAITING_CREDIT`, reserve credits over HTTP, then open it as `PENDING`. A failed reservation cancels the order and releases any hold (§4) |
 | Timing | Default `window_end = window_start + 24 hours`; **no maximum custom window duration**; `window_end > window_start` |
 | Pickup hours | Before PICKED_UP, requested timing window must **overlap** pickup location operating hours; no restriction when hours are absent. On changes after PICKED_UP, pickup hours no longer constrain the window |
 | Delivery hours | **No opening-hours restriction** on delivery location |
@@ -30,7 +37,7 @@
 | Supplier deactivation | Supplier Service emits `SupplierDeactivated`; Order Service cancels all affected nonterminal orders, including ARRIVED |
 | Broker | **Kafka**; broker infrastructure/setup is owned by a teammate, not the Order Service implementer |
 | Credit | Synchronous HTTP **reserve** (Credit Service atomically checks sufficiency and reserves); Credit Service consumes `OrderCompleted` for **transfer** and `OrderCancelled` for **release** |
-| Credit failures | Credit Service team owns credit-operation failure/retry/recovery logic; agree on HTTP result contract and event handling with them |
+| Credit failures | Order cancels a create whose reservation failed and calls Credit `release`; a background job every 10 s retries releases Credit has not confirmed and cancels creates stuck in `AWAITING_CREDIT` for over 30 s. Credit must save a `RELEASED` marker when asked to release an unknown order (§4) |
 | Notification | Notification Service consumes Order events; notify other party when a confirmation needs action (event to agree on) |
 | User status checks | No live User Service status lookup before each Order API call for now; rely on JWT and suspension event handling |
 | Creation retries | **Deferred**: no idempotency key store, Redis dependency, or duplicate-create handling for now |
@@ -45,7 +52,7 @@
 - **`order_confirmations`:** `TIMING_CHANGE`, `CANCELLATION`, `COMPLETION`; initiator, optional proposed window, each participant's response, proposal status and resolution timestamps.
 - **Indexes/constraints:** status and requester/courier lookups; `orders_one_active_courier_idx` for a courier's maximum one active order; `order_confirmations_one_pending_idx` for one pending proposal per order; status/assignment/window validation.
 
-Supported order statuses: `PENDING`, `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS`, `ARRIVED`, `COMPLETED`, `CANCELLED`.
+Supported order statuses: `PENDING`, `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS`, `ARRIVED`, `COMPLETED`, `CANCELLED`, plus `AWAITING_CREDIT` from migration `002_credit_reservation.sql`. That migration also adds the `CREDIT_RESERVED` history action and `orders.credit_released_at` (set once Credit confirms a release).
 
 The migration provides schema constraints but **does not automatically increment version, write history, run expirations or publish events**. Implement those in NestJS. A cancelled order may retain an assigned courier ID as historical information. `order_history.actor_id = NULL` for system actions; store the cause in `change_details`.
 
@@ -53,7 +60,9 @@ The migration provides schema constraints but **does not automatically increment
 
 | From | Action / actor | To | Guard / side effect |
 |---|---|---|---|
-| — | Create / authenticated requester | PENDING | Validate locations and pickup-hours overlap; Credit Service reserves offered credits via HTTP; save snapshots; CREATED history |
+| — | Create / authenticated requester | AWAITING_CREDIT | Validate locations and pickup-hours overlap; save snapshots; CREATED history. Not visible to couriers |
+| AWAITING_CREDIT | Credit reserve succeeds | PENDING | CREDIT_RESERVED history; only now listed as available |
+| AWAITING_CREDIT | Reserve refused, failed or timed out; or stuck > 30 s (clean-up job) | CANCELLED | System cancellation, `reason: CREDIT_NOT_RESERVED`; Credit `release` until confirmed; no `OrderCancelled` event |
 | PENDING | Accept / courier | ACCEPTED | Unexpired, no courier already assigned, different from requester, courier has no other active order; ACCEPTED history and event |
 | ACCEPTED | Mark picked up / assigned courier | PICKED_UP | Correct current state/version; history and `OrderPickedUp` |
 | PICKED_UP | Start delivery / assigned courier | IN_PROGRESS | Correct current state/version; history and `OrderInProgress` |
@@ -95,7 +104,7 @@ All protected routes validate JWT. IDs for requester/courier are derived from `s
 
 | Endpoint | Permission / behavior |
 |---|---|
-| `POST /orders` | USER creates own order; validate Supplier locations and timing; reserve credits using Credit Service HTTP; persist PENDING + CREATED history |
+| `POST /orders` | USER creates own order; validate Supplier locations and timing; save AWAITING_CREDIT, reserve credits over HTTP, return the PENDING order (201) |
 | `GET /orders/available` | Authenticated USER; list unexpired PENDING orders, excluding caller's own; pagination |
 | `GET /orders/mine` | Requester's own orders, including history statuses |
 | `GET /orders/assigned` | Orders assigned to caller as courier |
@@ -150,11 +159,23 @@ All protected routes validate JWT. IDs for requester/courier are derived from `s
 
 | Trigger | Credit Service operation | Transport |
 |---|---|---|
-| Creating an order | **Check available credits and reserve** in a single atomic operation keyed by `orderId` | Synchronous HTTP, proposed `POST /internal/credits/reserve` |
+| Creating an order | **Check available credits and reserve** in a single atomic operation keyed by `orderId` | Synchronous HTTP, `POST /internal/credits/reserve` |
+| Creating an order failed | Release any hold for that `orderId` | Synchronous HTTP, `POST /internal/credits/release`, retried by the clean-up job |
 | `OrderCompleted` | Transfer existing reservation to courier | Kafka consumer |
 | `OrderCancelled` (including expiry/deactivation/suspension) | Release existing reservation back to requester | Kafka consumer |
 
-Credit Service **owns** credit failure/retry/recovery behavior and guards against duplicate transfer/release. Order Service must only make a new order available once the reservation has succeeded. Coordinate any result/failure response contract and reservation/creation sequencing with the Credit team; this is a cross-service consistency boundary, not something the existing Order schema alone solves.
+Credit Service guards against duplicate transfer/release. Order Service must only make a new order available once the reservation has succeeded.
+
+**Creation flow (revised by Zi Yi, 15 October 2026):**
+
+1. Save the order as `AWAITING_CREDIT` with `CREATED` history, in a short transaction.
+2. Call `reserve` (synchronous HTTP, 5 s timeout, no transaction open).
+3. Success → move `AWAITING_CREDIT → PENDING` (only if still `AWAITING_CREDIT`), with `CREDIT_RESERVED` history, and return 201.
+4. Refused, failed or timed out → move the order to `CANCELLED` (system action, `reason: CREDIT_NOT_RESERVED`), call `release` once, and return the error. A timed-out reserve may still have saved a hold, so Order releases either way.
+5. Every 10 s, a background job cancels `AWAITING_CREDIT` orders older than 30 s (their request died) and calls `release` for every `CANCELLED` order with no `credit_released_at`, setting it when Credit answers 200 or 404.
+6. **Credit change needed:** `release` for an unknown order must save a `RELEASED` marker instead of only returning 404, so a reserve still running inside Credit cannot hold credits afterwards. Until then, that timing gap remains.
+
+This is a small saga with a compensating action (release), and the `orders` table acts as its outbox. It covers a lost or slow Credit reply, Credit being down, Order's own commit failing and Order crashing mid-create.
 
 ### Notification Service
 
@@ -224,6 +245,8 @@ Credit and Notification must use **different Kafka consumer groups** so both rec
 | OrderCompleted/OrderCancelled event delivered twice to Credit | Credit owner | Credit hold keyed by order and idempotent terminal state handling |
 | Order DB commits but Kafka publish fails | Known limitation | Log/retry where feasible; no outbox in this iteration |
 | Same order creation POST is retried | **Out of scope** | No creation-idempotency implementation now |
+| Credit reserves but its reply is lost, or Order fails before opening the order | Handled | Order cancels and releases; clean-up job retries the release and cancels creates stuck in `AWAITING_CREDIT` |
+| Release reaches Credit before a slow reserve finishes | **Needs Credit change** | Credit saves a `RELEASED` marker for an unknown order, so the late reserve inserts nothing |
 | Suspended user's JWT remains valid before event handled | Known limitation | No live User-status check on every action in this iteration |
 
 ## 7. Suggested NestJS implementation structure
@@ -270,7 +293,7 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 
 - [ ] Supplier HTTP client: ACTIVE locations, snapshot fields, pickup-hours overlap (including overnight hours), delivery-hours unrestricted.
 - [ ] Credit HTTP reservation request as part of create flow; agree minimal reservation result contract with Credit team.
-- [ ] Create PENDING order with default/custom timing and CREATED history.
+- [ ] Create flow from §4: AWAITING_CREDIT → PENDING with default/custom timing, CREATED and CREDIT_RESERVED history; cancel and release on failure; 10-second clean-up job.
 - [ ] Requester-only PENDING editing with `version`, validation and EDITED history.
 - [ ] Atomic courier acceptance; reject self-acceptance and second active courier assignment.
 
@@ -302,14 +325,14 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 ## 9. Remaining coordination (not blockers for Phase A)
 
 1. **Kafka teammate / contracts:** teammate provisions and configures the shared Kafka broker. Obtain connection settings, access credentials (if used), topic-provisioning responsibility and readiness timeline. Separately approve final topic/event names, `locationId` spelling, consumer group IDs, and the optional `OrderConfirmationRequested` event with Supplier/User/Credit/Notification owners.
-2. **Credit contract:** confirm HTTP reservation request/response and outcome semantics; Credit team owns settlement error handling and retries.
+2. **Credit contract:** confirm HTTP reservation request/response and outcome semantics; Credit team owns settlement error handling and retries. Also agree (a) the `RELEASED` marker for releasing an unknown order (§4, step 6), which needs `requester_id`/`amount` to be nullable or sent with `release`; and (b) before Phase C, whether later cancellations are released by the same clean-up job over HTTP (it already picks up every `CANCELLED` order without `credit_released_at`) or by Credit consuming `OrderCancelled`.
 3. **User Service:** ensure the voluntary-deactivation active-order check and administrative `UserSuspended` publication are implemented on their side.
 4. **Supplier Service:** ensure `SupplierDeactivated` is published with the correct integer **location ID**, and confirm HTTP location fields and opening-hours format.
 5. **User-facing scheduling:** decide only if needed whether couriers may accept future-window orders before `window_start`; do not invent an unapproved restriction. The current agreed rule is the pickup-hours overlap check.
 
 ## 10. Scope boundaries and known limitations
 
-**Deliberately deferred:** creation idempotency/retry suppression; Redis for Order Service; transactional outbox; saga/cross-service atomic transactions; per-action User Service status checks; admin order listing; new DB tables; maximum window duration; automated routing/travel-time checks.
+**Deliberately deferred:** creation idempotency/retry suppression; Redis for Order Service; transactional outbox for Kafka events; cross-service atomic transactions (the creation flow in §4 is the only saga); per-action User Service status checks; admin order listing; new DB tables; maximum window duration; automated routing/travel-time checks.
 
 **Important:** Credit reservation via HTTP and order creation are operations in separate services. Credit team handling of its own failures does not itself make the Order/Credit boundary atomic. Likewise, Kafka delivery does not guarantee exactly-once database effects. Capture those as D3 trade-offs and verify the basic happy path and concurrency protection.
 

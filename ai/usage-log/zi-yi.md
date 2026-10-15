@@ -6,12 +6,117 @@ Author review: Jian Bing checked the logs locally against the AI usage-log guide
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Added the Order Service Phase A entry.
 Author review (Zi Yi): Read the entry in full.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added the Order Service Phase B entry.
+Author review (Zi Yi): Read the entry in full.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added the Order Service revised creation flow entry.
+Author review (Zi Yi): Read the entry in full.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-15 — Order Service: revised creation flow (credit release and clean-up)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** new `order-service/migrations/002_credit_reservation.sql`; changed
+`integrations/credit.client.ts`, `orders/orders.{service,repository,schemas}.ts`, `main.ts`,
+`test/orders.api.test.ts`, `test/database.test.ts`, `README.md`, `AGENTS.md`,
+`docs/order-service-plan.md`
+
+**Scenario:** questions about the Phase B code led to the stuck-credit problem in insert,
+reserve, commit; I compared fixes, drafted a message for my teammates, and had the plan and code
+revised to the flow I chose.
+
+**Prompts:**
+> should this part be here or in src/common/zod-validation
+
+> is it better to ask supplier service to give us the exact fields we want so we can use .strict()
+
+> what does this mean _(on the comment about a lost Credit reply leaving a hold)_
+
+> yes change it to Known limitation. what are the possible ways to solve this issue. also list the issue here
+
+> if we implement release after failure, then how cna we handle the case where the credit is down when Order sends the release? should this release by sent as event or what?
+
+> what is commonly used though.
+
+> write the case, issue, common way to solve it as a message here, i will send it to chekc with my teammate
+
+> how are we implementing it right now? the transaction and sync call right
+
+> if i implement release on failure and outbox, there is still the issue of timing gap. what if before credit commits, check order
+
+> _(pasted proposed flow)_ Order creates a committed PENDING record. Order requests a credit reservation. Credit checks that the order is PENDING. If the reservation succeeds, Order commits the actual order and changes its status to CONFIRMED. If creation fails, Order changes the status to CANCELLED and records a release request in its outbox. Credit processes the release. Even if no reservation exists yet, it records a cancellation marker so that a late reservation cannot succeed. A background worker retries failed releases. — what about this
+
+> update the plan and the code according to the revised flow
+
+**Key responses:** keep Supplier's response schema in the client and non-strict (tolerant
+reader); the stuck-hold cases (lost reply, failed commit) and the timing gap where a release
+beats a slow reserve; options compared (release on failure, retry, commit first, Credit sweep,
+outbox, events), with saga plus transactional outbox plus reconciliation named as the usual
+practice; a Credit-side check of Order cannot close the gap (uncommitted row, check-then-act),
+a `RELEASED` marker on Credit's primary key can. On the pasted flow it advised a new
+`AWAITING_CREDIT` state instead of reusing `PENDING`/adding `CONFIRMED`, dropping the
+Credit→Order check, and a job that also cancels stuck creates, with the `orders` table as the
+outbox.
+
+**Design input flagged:** Claude Code warned each time that the new state, column, background
+job, Credit release behaviour and replacing my earlier insert-reserve-commit decision are
+schema, architecture and interface decisions under the AI policy, to confirm with the team and
+the Credit owner. I told it to update the plan and code; the Credit `RELEASED` marker was not
+implemented (it belongs on `feature/credit-service`).
+
+**What it produced:** migration 002 (`AWAITING_CREDIT`, `CREDIT_RESERVED` action,
+`credit_released_at`); create now saves `AWAITING_CREDIT`, reserves outside any transaction,
+opens the order as `PENDING`, or cancels it and calls release; `CreditClient.release`;
+`OrdersService.cleanUpCredits` run every 10 s from `main.ts`; plan §0/§1/§2/§4/§6/§8/§9/§10,
+README and AGENTS.md updated; the teammate message.
+
+**Verification:** `compose.test.yaml`: 42 tests passed (12 unit, 14 database, 16 HTTP), including
+failed reservations cancelling and releasing, and the clean-up job retrying releases while
+Credit is down and cancelling only stale `AWAITING_CREDIT` orders.
+
+**What I changed or rejected:** Reviewed the generated files.
+
+### 2026-10-15 — Order Service Phase B: create, edit and accept
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** new `order-service/src/integrations/supplier.client.ts`, `integrations/credit.client.ts`,
+`orders/timing.ts`, `orders/timing.spec.ts`; changed `config.ts`, `app.module.ts`,
+`common/errors.ts`, `common/zod-validation.pipe.ts`, `orders/orders.{controller,service,repository,schemas}.ts`,
+`test/orders.api.test.ts`, `compose.yaml`, both `.env.example` files, `README.md`, `AGENTS.md`
+
+**Scenario:** implement Phase B of `docs/order-service-plan.md` on top of Phase A.
+
+**Prompts:**
+> implement phase B with the corresponding tests, list the steps for me to run testing on my own, list the new files you added and what they do. keep the code implementation clean, and keep comments concise, avoid unnecessary files
+
+> we should Insert, reserve, commit. ask Credit to reserve, and commit only if the reservation succeeded
+
+**Design input flagged:** Claude Code warned that sequencing the Credit reservation against the
+Order insert is an [Open] consistency trade-off under the AI policy and asked me to choose. I
+chose insert, reserve, commit. It also flagged, without choosing for the team: forwarding the
+caller's token to Supplier, campus time (UTC+8) for opening hours, equal open/close times as
+24 hours, the new error codes, and the conflict between the plan's direct Supplier HTTP calls
+and root AGENTS.md §3's query events.
+
+**What it produced:** `POST /orders` (window defaults/validation, both locations ACTIVE via
+Supplier, pickup-hours overlap including overnight hours, snapshots, CREATED history, Credit
+reserve inside the open transaction); `PATCH /orders/:orderId` (requester-only, PENDING-only,
+version-guarded, snapshot refresh, EDITED history with from/to values); `POST
+/orders/:orderId/accept` (one conditional update, COURIER_BUSY from the partial unique index,
+ACCEPTED history). Matches Credit's existing `/internal/credits/reserve` contract.
+
+**Verification:** `compose.test.yaml`: 41 tests passed (12 unit, 14 database, 15 HTTP against a
+fake Supplier/Credit server, including insufficient credits rolling back and two couriers
+accepting at once). Container refused to start without `ORDER_CREDIT_SERVICE_KEY` and started
+with it.
+
+**What I changed or rejected:** Reviewed the generated files.
 
 ### 2026-10-14 — Order Service Phase A: NestJS and basic access
 

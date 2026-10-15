@@ -3,10 +3,14 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: Generated HTTP integration tests for the Phase A endpoints against PostgreSQL and a stub JWKS.
  * Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.test.yaml` integration tests (27 passed).
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added a fake Supplier/Credit server and create (with credit clean-up), edit and accept tests (Phase B).
+ * Author review: Reviewed in full.
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, test } from 'node:test';
 import type { INestApplication } from '@nestjs/common';
@@ -15,6 +19,7 @@ import { Pool } from 'pg';
 import { AppModule, configureApp } from '../app.module';
 import { PG_POOL } from '../db/database.module';
 import { runMigrations } from '../db/migrator';
+import { OrdersService } from '../orders/orders.service';
 import { startJwksStub, type JwksStub } from './jwks-stub';
 
 const connectionString = process.env.ORDER_TEST_DATABASE_URL;
@@ -32,11 +37,43 @@ let app: INestApplication;
 let baseUrl: string;
 const tokens: Record<string, string> = {};
 
+// Fake Supplier (GET /locations/:id) and Credit (POST /internal/credits/reserve|release) on one server.
+const location = (id: number, name: string, extra: Record<string, unknown> = {}) =>
+  [id, { id, name, lat: 1.2949, lon: 103.7737, status: 'ACTIVE', open_time: null, close_time: null, ...extra }] as const;
+const locations = new Map<number, object>([
+  location(1, 'COM3', { open_time: '0800hrs', close_time: '2000hrs' }),
+  location(2, 'UTown', { lat: 1.305, lon: 103.773 }),
+  location(3, 'Closed Kiosk', { status: 'INACTIVE' }),
+  location(4, 'Early Cafe', { open_time: '0900hrs', close_time: '1000hrs' }),
+  location(5, 'Frontier', { lat: 1.2966, lon: 103.7805 }),
+]);
+let creditStatus = 201;
+let releaseStatus = 200;
+let creditCalls: Record<string, unknown>[] = [];
+let supplierAuthorization: string | undefined;
+const downstream = createServer(async (req, res) => {
+  if (req.method === 'GET' && req.url?.startsWith('/locations/')) {
+    supplierAuthorization = req.headers.authorization;
+    const found = locations.get(Number(req.url.split('/')[2]));
+    return res.writeHead(found ? 200 : 404, { 'content-type': 'application/json' }).end(JSON.stringify(found ?? {}));
+  }
+  let body = '';
+  for await (const chunk of req) body += chunk;
+  const action = req.url?.split('/').pop();
+  creditCalls.push({ action, serviceKey: req.headers['x-service-key'], ...JSON.parse(body) });
+  res.writeHead(action === 'release' ? releaseStatus : creditStatus, { 'content-type': 'application/json' }).end('{}');
+});
+
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
   await runMigrations(pool);
   jwks = await startJwksStub();
   process.env.ORDER_JWKS_URL = jwks.url;
+  await new Promise<void>((resolve) => downstream.listen(0, '127.0.0.1', resolve));
+  const downstreamUrl = `http://127.0.0.1:${(downstream.address() as AddressInfo).port}`;
+  process.env.ORDER_SUPPLIER_URL = downstreamUrl;
+  process.env.ORDER_CREDIT_URL = downstreamUrl;
+  process.env.ORDER_CREDIT_SERVICE_KEY = 'test-service-key';
   for (const id of [alice, bob, carol]) tokens[id] = await jwks.sign({ sub: id });
 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -50,10 +87,16 @@ before(async () => {
 after(async () => {
   await app.close(); // also ends `pool`
   await jwks.stop();
+  downstream.close();
   try { await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`); }
   finally { await admin.end(); }
 });
-beforeEach(() => pool.query('TRUNCATE order_confirmations, order_history, orders'));
+beforeEach(async () => {
+  await pool.query('TRUNCATE order_confirmations, order_history, orders');
+  creditStatus = 201;
+  releaseStatus = 200;
+  creditCalls = [];
+});
 
 async function insertOrder(overrides: Record<string, unknown> = {}): Promise<string> {
   const fields = {
@@ -70,12 +113,21 @@ async function insertOrder(overrides: Record<string, unknown> = {}): Promise<str
   return rows[0].id;
 }
 
-async function get(path: string, userId?: string) {
+async function send(method: string, path: string, userId?: string, body?: unknown) {
   const res = await fetch(baseUrl + path, {
-    headers: userId ? { authorization: `Bearer ${tokens[userId]}` } : {},
+    method,
+    headers: {
+      ...(userId ? { authorization: `Bearer ${tokens[userId]}` } : {}),
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
   });
   return { status: res.status, body: await res.json() };
 }
+const get = (path: string, userId?: string) => send('GET', path, userId);
+const count = async (table: string) => Number((await pool.query(`SELECT count(*) AS n FROM ${table}`)).rows[0].n);
+const row = async (id: string) => (await pool.query('SELECT * FROM orders WHERE id = $1', [id])).rows[0];
+const cleanUpCredits = () => app.get(OrdersService).cleanUpCredits();
 
 const ids = (body: { items: { id: string }[] }) => body.items.map((o) => o.id);
 
@@ -153,4 +205,165 @@ test('history is chronological and limited to participants', async () => {
 
   const pending = await insertOrder();
   assert.equal((await get(`/orders/${pending}/history`, carol)).status, 403);
+});
+
+// ---- Phase B: create, edit, accept ----
+
+const newOrder = (overrides: Record<string, unknown> = {}) => ({
+  orderDescription: 'Collect stationery', pickupLocationId: 1, deliveryLocationId: 2, creditOffer: 3, ...overrides,
+});
+const expectError = (res: { status: number; body: any }, status: number, code: string) => {
+  assert.equal(res.status, status, JSON.stringify(res.body));
+  assert.equal(res.body.error.code, code);
+};
+
+test('create reserves credits, then opens the order as PENDING with snapshots and history', async () => {
+  const { status, body } = await send('POST', '/orders', alice, newOrder());
+  assert.equal(status, 201);
+  assert.equal(body.status, 'PENDING');
+  assert.equal(body.requesterId, alice);
+  assert.equal(body.courierId, null);
+  assert.equal(body.version, 2); // AWAITING_CREDIT → PENDING is an order change
+  assert.deepEqual([body.pickupName, body.deliveryName, body.deliveryLat], ['COM3', 'UTown', 1.305]);
+  assert.equal(Date.parse(body.windowEnd) - Date.parse(body.windowStart), 24 * 60 * 60 * 1000);
+
+  assert.equal(supplierAuthorization, `Bearer ${tokens[alice]}`);
+  assert.deepEqual(creditCalls, [
+    { action: 'reserve', serviceKey: 'test-service-key', orderId: body.id, requesterId: alice, amount: 3 },
+  ]);
+  const history = await get(`/orders/${body.id}/history`, alice);
+  assert.deepEqual(history.body.items.map((h: any) => [h.action, h.actorId, h.newStatus]), [
+    ['CREATED', alice, 'AWAITING_CREDIT'],
+    ['CREDIT_RESERVED', alice, 'PENDING'],
+  ]);
+});
+
+test('create checks pickup hours but never delivery hours', async () => {
+  const window = { windowStart: '2030-01-01T10:30:00+08:00', windowEnd: '2030-01-01T12:00:00+08:00' };
+  const ok = await send('POST', '/orders', alice, newOrder({ ...window, deliveryLocationId: 4 })); // Early Cafe closes 10:00
+  assert.equal(ok.status, 201);
+  assert.equal(ok.body.windowStart, '2030-01-01T02:30:00.000Z');
+
+  const night = { windowStart: '2030-01-01T21:00:00+08:00', windowEnd: '2030-01-01T22:00:00+08:00' };
+  expectError(await send('POST', '/orders', alice, newOrder(night)), 400, 'PICKUP_CLOSED');
+});
+
+test('a failed reservation cancels the order and releases any hold', async () => {
+  creditStatus = 409;
+  expectError(await send('POST', '/orders', alice, newOrder()), 409, 'INSUFFICIENT_CREDITS');
+  creditStatus = 500;
+  expectError(await send('POST', '/orders', alice, newOrder()), 503, 'SERVICE_UNAVAILABLE');
+
+  const { rows } = await pool.query('SELECT id, status, credit_released_at FROM orders');
+  assert.deepEqual(rows.map((r) => [r.status, r.credit_released_at !== null]), [['CANCELLED', true], ['CANCELLED', true]]);
+  assert.deepEqual(creditCalls.map((c) => c.action), ['reserve', 'release', 'reserve', 'release']);
+  const history = (await get(`/orders/${rows[0].id}/history`, alice)).body.items;
+  assert.deepEqual(history.map((h: any) => [h.action, h.actorId, h.newStatus]), [
+    ['CREATED', alice, 'AWAITING_CREDIT'],
+    ['CANCELLED', null, 'CANCELLED'],
+  ]);
+  assert.deepEqual(history[1].changeDetails, { reason: 'CREDIT_NOT_RESERVED' });
+  assert.equal((await get('/orders/available', bob)).body.total, 0);
+});
+
+test('the clean-up job retries failed releases and cancels creates that never finished', async () => {
+  creditStatus = 500;
+  releaseStatus = 503; // Credit fully down
+  expectError(await send('POST', '/orders', alice, newOrder()), 503, 'SERVICE_UNAVAILABLE');
+  const [failed] = (await pool.query('SELECT id FROM orders')).rows;
+  assert.equal((await row(failed.id)).credit_released_at, null);
+
+  const stale = await insertOrder({ status: 'AWAITING_CREDIT', created_at: new Date(Date.now() - 60_000) });
+  const inFlight = await insertOrder({ status: 'AWAITING_CREDIT' });
+  await cleanUpCredits(); // releases still failing: retried next run
+  assert.equal((await row(stale)).status, 'CANCELLED');
+  assert.equal((await row(failed.id)).credit_released_at, null);
+
+  releaseStatus = 404; // Credit back; it never saved a hold for these
+  creditCalls = [];
+  await cleanUpCredits();
+  assert.deepEqual(creditCalls.map((c) => c.orderId).sort(), [failed.id, stale].sort());
+  for (const id of [failed.id, stale]) assert.notEqual((await row(id)).credit_released_at, null);
+  assert.equal((await row(inFlight)).status, 'AWAITING_CREDIT');
+});
+
+test('create rejects bad locations and invalid bodies before reserving credits', async () => {
+  expectError(await send('POST', '/orders', alice, newOrder({ pickupLocationId: 3 })), 409, 'LOCATION_INACTIVE');
+  expectError(await send('POST', '/orders', alice, newOrder({ deliveryLocationId: 99 })), 404, 'NOT_FOUND');
+  for (const body of [
+    newOrder({ requesterId: bob }),
+    newOrder({ creditOffer: 0 }),
+    newOrder({ creditOffer: 1.5 }),
+    newOrder({ orderDescription: ' ' }),
+    newOrder({ windowStart: '2030-01-02T10:00:00+08:00', windowEnd: '2030-01-02T09:00:00+08:00' }),
+    newOrder({ windowStart: '2020-01-01T10:00:00+08:00', windowEnd: '2020-01-01T11:00:00+08:00' }),
+    newOrder({ windowStart: 'tomorrow' }),
+  ]) {
+    expectError(await send('POST', '/orders', alice, body), 400, 'VALIDATION_ERROR');
+  }
+  assert.deepEqual(creditCalls, []);
+  assert.equal(await count('orders'), 0);
+});
+
+test('requester edit refreshes the snapshot, bumps the version and records old and new values', async () => {
+  const id = await insertOrder();
+  const { status, body } = await send('PATCH', `/orders/${id}`, alice, {
+    version: 1, orderDescription: 'Collect printouts', pickupLocationId: 5,
+  });
+  assert.equal(status, 200);
+  assert.deepEqual([body.version, body.orderDescription, body.pickupName, body.pickupLon], [2, 'Collect printouts', 'Frontier', 103.7805]);
+
+  const [edited] = (await get(`/orders/${id}/history`, alice)).body.items;
+  assert.equal(edited.action, 'EDITED');
+  assert.deepEqual(edited.changeDetails.orderDescription, { from: 'Collect stationery', to: 'Collect printouts' });
+  assert.deepEqual(edited.changeDetails.pickupName, { from: 'COM3', to: 'Frontier' });
+});
+
+test('edit rejects other users, stale versions, non-PENDING orders, credit changes and closed pickup windows', async () => {
+  const id = await insertOrder();
+  const patch = (userId: string, body: unknown) => send('PATCH', `/orders/${id}`, userId, body);
+  expectError(await patch(bob, { version: 1, orderDescription: 'x' }), 403, 'FORBIDDEN');
+  expectError(await patch(alice, { version: 2, orderDescription: 'x' }), 409, 'VERSION_CONFLICT');
+  expectError(await patch(alice, { version: 1, creditOffer: 5 }), 400, 'VALIDATION_ERROR');
+  expectError(await patch(alice, { version: 1 }), 400, 'VALIDATION_ERROR');
+  expectError(
+    await patch(alice, { version: 1, windowStart: '2030-01-01T21:00:00+08:00', windowEnd: '2030-01-01T22:00:00+08:00' }),
+    400, 'PICKUP_CLOSED',
+  );
+  expectError(await patch(alice, { version: 1, deliveryLocationId: 3 }), 409, 'LOCATION_INACTIVE');
+  assert.equal((await get(`/orders/${id}`, alice)).body.version, 1);
+  assert.equal(await count('order_history'), 0);
+
+  const accepted = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  expectError(await send('PATCH', `/orders/${accepted}`, alice, { version: 1, orderDescription: 'x' }), 409, 'INVALID_STATE');
+});
+
+test('courier accept assigns the order and records ACCEPTED history', async () => {
+  const id = await insertOrder();
+  const { status, body } = await send('POST', `/orders/${id}/accept`, bob, { version: 1 });
+  assert.equal(status, 200);
+  assert.deepEqual([body.status, body.courierId, body.version], ['ACCEPTED', bob, 2]);
+  const history = await get(`/orders/${id}/history`, bob);
+  assert.deepEqual(history.body.items.map((h: any) => [h.action, h.actorId]), [['ACCEPTED', bob]]);
+});
+
+test('accept rejects self-acceptance, stale versions, expired orders and busy couriers', async () => {
+  const id = await insertOrder();
+  const accept = (orderId: string, userId: string, version = 1) => send('POST', `/orders/${orderId}/accept`, userId, { version });
+  expectError(await accept(id, alice), 403, 'FORBIDDEN');
+  expectError(await accept(id, bob, 2), 409, 'VERSION_CONFLICT');
+  const expired = await insertOrder({ window_start: '2020-01-01T00:00Z', window_end: '2020-01-02T00:00Z' });
+  expectError(await accept(expired, bob), 409, 'INVALID_STATE');
+
+  await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  expectError(await accept(id, bob), 409, 'COURIER_BUSY');
+  assert.equal((await get(`/orders/${id}`, alice)).body.status, 'PENDING');
+});
+
+test('two couriers accepting at once: exactly one wins', async () => {
+  const id = await insertOrder();
+  const results = await Promise.all([bob, carol].map((userId) => send('POST', `/orders/${id}/accept`, userId, { version: 1 })));
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(results.find((r) => r.status === 409)!.body.error.code, 'INVALID_STATE');
+  assert.equal(await count('order_history'), 1);
 });
