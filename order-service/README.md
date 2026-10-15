@@ -13,7 +13,7 @@ Author review: Reviewed.
 
 # Order Service
 
-Database foundation for #50 (under parent #64) plus Phases A and B of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit and accept endpoints (see [HTTP API](#http-api)). Lifecycle transitions, confirmations, cancellation and Kafka are not implemented yet. The approved schema is in `migrations/001_init.sql`; `002_credit_reservation.sql` adds the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_released_at` for the creation flow. Read [AGENTS.md](AGENTS.md) for requirements.
+Database foundation for #50 (under parent #64) plus Phases A and B of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit and accept endpoints (see [HTTP API](#http-api)). Lifecycle transitions, confirmations, cancellation and Kafka are not implemented yet. The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_released_at` for the creation flow. Read [AGENTS.md](AGENTS.md) for requirements.
 
 ## Confirmed decisions
 
@@ -56,7 +56,7 @@ Types match the documented external identifiers: User UUID and Supplier INTEGER.
 
 `status` on orders is restricted to PENDING, ACCEPTED, PICKED_UP, IN_PROGRESS, ARRIVED, COMPLETED and CANCELLED. Require end after start, positive version and distinct requester/courier. Courier is null before assignment; new orders start PENDING. Status/assignment constraints and database-generated UUID/creation defaults are approved as listed above. Version update/concurrency behaviour is approved as listed above.
 
-Migration `002_credit_reservation.sql` (2026-10-15, Zi Yi's revised creation flow, **[Proposed]**) adds the `AWAITING_CREDIT` state (no courier), the `CREDIT_RESERVED` history action and a nullable `orders.credit_released_at TIMESTAMPTZ`. The column default stays `PENDING`; the API inserts `AWAITING_CREDIT` explicitly. No new indexes.
+For Zi Yi's revised creation flow (2026-10-15, **[Proposed]**), `001_init.sql` also has the `AWAITING_CREDIT` state (no courier), the `CREDIT_RESERVED` history action and a nullable `orders.credit_released_at TIMESTAMPTZ`. The column default stays `PENDING`; the API inserts `AWAITING_CREDIT` explicitly. No new indexes.
 
 Confirmation kinds: TIMING_CHANGE, CANCELLATION, COMPLETION. Party responses: PENDING, ACCEPTED, REJECTED. Proposal states: PENDING, APPROVED, REJECTED, EXPIRED, SUPERSEDED. Only timing-change proposals carry proposed window fields. Keep resolved proposals for traceability. A history entry with null actor can represent a system action; creation can have null previous status, and edits need not change state.
 

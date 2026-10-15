@@ -2,6 +2,10 @@
 -- Tool: Codex (model: GPT-6), date: 2026-10-13
 -- Scope: Implemented the user-approved Order database-only plan.
 -- Author review: Design and plan approved by user; implementation review pending.
+-- Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+-- Scope: Added AWAITING_CREDIT, the CREDIT_RESERVED history action and
+--        orders.credit_released_at for the revised creation flow (Phase B).
+-- Author review: Reviewed
 -- AI-generated; human review pending.
 
 CREATE TABLE orders (
@@ -19,16 +23,18 @@ CREATE TABLE orders (
     delivery_lon NUMERIC(12,9) NOT NULL,
     credit_offer INTEGER NOT NULL CHECK (credit_offer >= 1),
     status TEXT NOT NULL DEFAULT 'PENDING'
-        CHECK (status IN ('PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')),
+        CHECK (status IN ('AWAITING_CREDIT','PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')),
     window_start TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     window_end TIMESTAMPTZ NOT NULL DEFAULT (CURRENT_TIMESTAMP + INTERVAL '24 hours'),
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+    -- Set once Credit confirms the release; CANCELLED orders with NULL here are retried.
+    credit_released_at TIMESTAMPTZ,
     CONSTRAINT order_window_ordered CHECK (window_end > window_start),
     CONSTRAINT order_distinct_parties CHECK (courier_id IS NULL OR courier_id <> requester_id),
     CONSTRAINT order_assignment_consistent CHECK (
-        (status = 'PENDING' AND courier_id IS NULL)
+        (status IN ('AWAITING_CREDIT','PENDING') AND courier_id IS NULL)
         OR (status IN ('ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED') AND courier_id IS NOT NULL)
         OR status = 'CANCELLED'
     )
@@ -38,9 +44,9 @@ CREATE TABLE order_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES orders(id),
     actor_id UUID,
-    action TEXT NOT NULL CHECK (action IN ('CREATED','EDITED','ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')),
-    previous_status TEXT CHECK (previous_status IN ('PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')),
-    new_status TEXT CHECK (new_status IN ('PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')),
+    action TEXT NOT NULL CHECK (action IN ('CREATED','CREDIT_RESERVED','EDITED','ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')),
+    previous_status TEXT CHECK (previous_status IN ('AWAITING_CREDIT','PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')),
+    new_status TEXT CHECK (new_status IN ('AWAITING_CREDIT','PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')),
     change_details JSONB,
     occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

@@ -47,7 +47,7 @@ _Origin: Team / Restated from root AGENTS.md; AI doc (implementation status)_
 - **[Decided]** NestJS HTTP server, per the team-consolidated `order-service-plan.md` (2026-10-14). Endpoint list is in that plan §3; response shapes (see README) are **[Proposed]**.
 - Implemented database foundation: `migrations/001_init.sql`, connection configuration, migration CLI/runner, Docker/Compose and PostgreSQL integration tests.
 - Implemented Phase A: JWKS token verification, Zod validation, error envelope, request/denial logging, and the read endpoints `GET /orders/available|mine|assigned|:orderId|:orderId/history`.
-- Implemented Phase B: `POST /orders`, `PATCH /orders/:orderId`, `POST /orders/:orderId/accept`, with Supplier location checks over HTTP, Credit reserve/release and the credit clean-up job; migration `002_credit_reservation.sql`. No lifecycle transitions, confirmations, user cancellation or events yet.
+- Implemented Phase B: `POST /orders`, `PATCH /orders/:orderId`, `POST /orders/:orderId/accept`, with Supplier location checks over HTTP, Credit reserve/release and the credit clean-up job; `AWAITING_CREDIT`, `CREDIT_RESERVED` and `credit_released_at` added to `001_init.sql`. No lifecycle transitions, confirmations, user cancellation or events yet.
 
 ## Creation and reading [Decided]
 

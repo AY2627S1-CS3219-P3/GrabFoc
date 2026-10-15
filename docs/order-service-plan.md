@@ -9,7 +9,7 @@ Author review: Reviewed
 
 **Status:** Team decisions consolidated, 14 October 2026. Creation flow revised by Zi Yi, 15 October 2026 (§4); confirm with the team and the Credit owner.  
 **Scope:** CS3219 D1 Order Service functional requirements (OSFR1–OSFR6) and D3 integration/demo.  
-**Approach:** Deliver a small, working NestJS service on top of the **existing** PostgreSQL migration. No new tables and **no dedicated repeated-order-creation/idempotency mechanism for now**. Migration `002_credit_reservation.sql` adds one order state and one column for the creation flow; the `orders` table itself records which credit releases are still owed (no separate outbox table).
+**Approach:** Deliver a small, working NestJS service on top of the **existing** PostgreSQL migration. No new tables and **no dedicated repeated-order-creation/idempotency mechanism for now**. `001_init.sql` gains one order state and one column for the creation flow; the `orders` table itself records which credit releases are still owed (no separate outbox table).
 
 ## 0. Decisions at a glance
 
@@ -52,7 +52,7 @@ Author review: Reviewed
 - **`order_confirmations`:** `TIMING_CHANGE`, `CANCELLATION`, `COMPLETION`; initiator, optional proposed window, each participant's response, proposal status and resolution timestamps.
 - **Indexes/constraints:** status and requester/courier lookups; `orders_one_active_courier_idx` for a courier's maximum one active order; `order_confirmations_one_pending_idx` for one pending proposal per order; status/assignment/window validation.
 
-Supported order statuses: `PENDING`, `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS`, `ARRIVED`, `COMPLETED`, `CANCELLED`, plus `AWAITING_CREDIT` from migration `002_credit_reservation.sql`. That migration also adds the `CREDIT_RESERVED` history action and `orders.credit_released_at` (set once Credit confirms a release).
+Supported order statuses: `PENDING`, `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS`, `ARRIVED`, `COMPLETED`, `CANCELLED`, plus `AWAITING_CREDIT` for the creation flow. `001_init.sql` also has the `CREDIT_RESERVED` history action and `orders.credit_released_at` (set once Credit confirms a release).
 
 The migration provides schema constraints but **does not automatically increment version, write history, run expirations or publish events**. Implement those in NestJS. A cancelled order may retain an assigned courier ID as historical information. `order_history.actor_id = NULL` for system actions; store the cause in `change_details`.
 

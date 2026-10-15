@@ -30,7 +30,7 @@ before(async () => {
   // Only this test run's random schema is created/removed; existing tables are untouched.
   await admin.query(`CREATE SCHEMA ${schema}`);
   const results = await Promise.all([runMigrations(pool), runMigrations(pool)]);
-  assert.deepEqual(results.flat().sort(), ['001_init.sql', '002_credit_reservation.sql']); // each applied once
+  assert.deepEqual(results.flat(), ['001_init.sql']); // applied once
 });
 after(async () => {
   await pool.end();
@@ -74,7 +74,7 @@ const sqlState = (code: string) => (error: unknown) => {
 test('migrations serialize, run once and create exactly the eight approved indexes', async () => {
   assert.deepEqual(await runMigrations(pool), []);
   const versions = await pool.query('SELECT version FROM schema_migrations');
-  assert.deepEqual(versions.rows, [{ version: '001_init.sql' }, { version: '002_credit_reservation.sql' }]);
+  assert.deepEqual(versions.rows, [{ version: '001_init.sql' }]);
   const indexes = await pool.query(`SELECT indexname FROM pg_indexes
     WHERE schemaname = $1 AND indexname NOT LIKE '%_pkey'`, [schema]);
   assert.equal(indexes.rowCount, 8);

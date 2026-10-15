@@ -12,12 +12,38 @@ Author review (Zi Yi): Read the entry in full.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added the Order Service revised creation flow entry.
 Author review (Zi Yi): Read the entry in full.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added the single-migration entry.
+Author review: Pending review by Zi Yi.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-15 — Order Service: one migration file
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `order-service/migrations/001_init.sql` (changed), `002_credit_reservation.sql` (deleted),
+`src/test/database.test.ts`, `README.md`, `AGENTS.md`, `docs/order-service-plan.md`
+
+**Scenario:** keep the Order schema in a single migration.
+
+**Prompts:**
+> under migrations/, i want only one migration
+
+**What it produced:** folded `002_credit_reservation.sql` into `001_init.sql` (`AWAITING_CREDIT` in
+the status checks and the no-courier rule, the `CREDIT_RESERVED` history action, the nullable
+`orders.credit_released_at`), deleted 002, and updated the tests and docs that named it. Same
+schema as before; no design change.
+
+**Flagged:** a database that has already applied the old `001_init.sql` won't pick up these
+changes, because the runner tracks applied files by name; it has to be recreated.
+
+**Verification:** `compose.test.yaml`: 42 tests passed (12 unit, 14 database, 16 HTTP).
+
+**What I changed or rejected:** _pending Zi Yi's review._
 
 ### 2026-10-15 — Order Service: revised creation flow (credit release and clean-up)
 
