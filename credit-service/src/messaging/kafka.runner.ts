@@ -5,7 +5,7 @@
  *        to credit.user-events.dlt (spec §9.2, K11–K12).
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
- * Scope: Dead-letter the original bytes (PR #84 review).
+ * Scope: Dead-letter the original bytes (PR #84 review); check the topics at startup (K10 revised).
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
@@ -14,7 +14,7 @@ import { config } from '../config';
 import { CreditsService } from '../credits/credits.service';
 import { KafkaConnection, toInbound } from './kafka.connection';
 import { HEADER, InboundMessage, InvalidMessageError, parseUserEvent } from './messages';
-import { Topics, TOPICS } from './topics';
+import { findTopicMismatch, Topics, TOPICS } from './topics';
 
 /** How long a partition rests after an unexpected error (e.g. the database is down). */
 const ERROR_PAUSE_MS = 5000;
@@ -32,6 +32,7 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
+    await this.checkTopics();
     // fromBeginning: a new group starts at the oldest message, so no event sent before Credit
     // first started is missed. Offsets are stored only after eachMessage succeeds.
     this.consumer = this.connection.kafka.consumer({ kafkaJS: { groupId: config.kafkaGroupId, fromBeginning: true } });
@@ -39,6 +40,21 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
     await this.consumer.subscribe({ topics: [this.topics.userEvents] });
     await this.consumer.run({ eachMessage: (payload) => this.onMessage(payload) });
     this.logger.log('Consuming user events');
+  }
+
+  /**
+   * infra/kafka/topics.txt is the one list of topics (K10); stop at startup, with a message saying
+   * what to fix, if it doesn't match CREDIT_RETRY_DELAYS or lacks a topic Credit uses.
+   */
+  private async checkTopics(): Promise<void> {
+    const admin = this.connection.kafka.admin();
+    await admin.connect();
+    try {
+      const mismatch = findTopicMismatch(this.topics, await admin.listTopics());
+      if (mismatch) throw new Error(mismatch);
+    } finally {
+      await admin.disconnect();
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

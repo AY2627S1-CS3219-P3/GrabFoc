@@ -5,8 +5,8 @@
  *        UserRegistered and the user-event dead-letter topic (spec §7, §9; K11–K12).
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
- * Scope: Added the database-outage retry test (Phase 2 review), and the byte-exact dead-letter
- *        test (PR #84 review).
+ * Scope: Added the database-outage retry test (Phase 2 review), the byte-exact dead-letter test
+ *        (PR #84 review), and the startup topic check test (K10 revised).
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
@@ -165,5 +165,19 @@ it('dead-letters an event byte for byte, even when it is not valid UTF-8', async
     expect(message.value).toEqual(bytes);
   } finally {
     await dlt.stop();
+  }
+});
+
+// K10 (revised): topics.txt is the one list of topics, so Credit checks it matches its config.
+it('refuses to start when a retry topic in CREDIT_RETRY_DELAYS is missing from Kafka', async () => {
+  const other = buildTopics([1000, 1000], `test-${randomUUID().slice(0, 8)}.`);
+  const created = [other.userEvents, other.commands, other.retries[0].topic, other.commandsDeadLetter, other.userEventsDeadLetter];
+  await admin.createTopics({ timeout: 30_000, topics: created.map((topic) => ({ topic, numPartitions: 1 })) });
+  const misconfigured = new KafkaRunner(credits, connection, other);
+  try {
+    await expect(misconfigured.onApplicationBootstrap()).rejects.toThrow(/missing.*retry\.1/);
+  } finally {
+    await misconfigured.onModuleDestroy();
+    await admin.deleteTopics({ topics: created, timeout: 30_000 });
   }
 });
