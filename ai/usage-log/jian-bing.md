@@ -127,6 +127,8 @@ policy points, then wrote the spec, plan, issues and the Phase 2 code with tests
 
 > lets resolve the new codex comments and also make the ci test creidt service, and why are the older comments unanswered?
 
+> yes please go throug hthye comment in case and resolve them accordingly
+
 **Key responses:**
 - Compared RabbitMQ, Kafka, Redis Streams and NATS JetStream against FoC's needs (retries/DLQ,
   replay, request/reply, ordering); the choice stayed with the team.
@@ -160,6 +162,12 @@ equal orderId, retry delay measured from the failure, strict replay body, retiri
 documented, each code fix test-first (unit 121/121, integration 60/60, Kafka 12/12); CI now runs
 credit-service's unit tests, build and integration tests on PostgreSQL (`.github/workflows/ci.yml`,
 added on PR #48), passing on all four PRs;
+then the older #48/#73 Codex threads: upper-case request ids, query strings kept out of denial logs,
+the database password moved to PGPASSWORD (a special-character password crashed URL parsing), JWKS
+refetch on the first unknown key id and 503 for a JWKS with no usable keys, docs for the service-key
+scope, CREDIT_JWKS_URL and issuer/audience, and five usage-log prompts restored to their exact
+wording (1a19851 had corrected their typos and removed one); unit 127/127, integration 60/60,
+Kafka 12/12 at the top of the stack;
 Phase 3: unit 108/108, integration 49/49, Kafka 10/10, Newman 24 requests / 30 assertions with 0
 failures; a background security review found that dead letters from different topics could
 overwrite each other, fixed with a test (rows unique per source topic and event id); `kafka-init` creates exactly the listed topics and is safe to rerun; the running
