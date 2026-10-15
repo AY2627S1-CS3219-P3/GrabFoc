@@ -105,6 +105,8 @@ policy points, then wrote the spec, plan, issues and the Phase 2 code with tests
 
 > alright the spec loks good and i reopened the session in the original grabfoc
 
+> continue the phase 3 and look at al lthe comments left by the pr reveiwer
+
 **Key responses:**
 - Compared RabbitMQ, Kafka, Redis Streams and NATS JetStream against FoC's needs (retries/DLQ,
   replay, request/reply, ordering); the choice stayed with the team.
@@ -124,6 +126,10 @@ policy points, then wrote the spec, plan, issues and the Phase 2 code with tests
 Compose broker (10/10 repeated runs after fixing a flaky test setup); a fresh Claude reviewer found
 no critical issues, and its two important code findings were fixed with tests (database timeouts,
 outage-retry test); its minor findings are listed in the PR;
+PR review round (Codex and SoCLaaS comments on #84/#85): fixed upper-case command ids being
+dead-lettered, negative x-attempt breaking the insert, replay holding a database transaction during
+the Kafka send (and a replay race it exposed), DLT re-encoding bytes, a missing root AGENTS.md
+disclosure and two README gaps, each code fix test-first; unit 113/113, integration 52/52, Kafka 11/11;
 Phase 3: unit 108/108, integration 49/49, Kafka 10/10, Newman 24 requests / 30 assertions with 0
 failures; a background security review found that dead letters from different topics could
 overwrite each other, fixed with a test (rows unique per source topic and event id); `kafka-init` creates exactly the listed topics and is safe to rerun; the running
