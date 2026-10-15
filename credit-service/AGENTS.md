@@ -17,6 +17,10 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Documented the dead letters' source position and payload hash (PR #85 and security reviews);
 key check, byte payloads, replay claims and retiring retry delays (second PR #85 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: A repeated reserve returns the hold's current state (PR #48 review); only the /internal
+routes need the service key (PR #73 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -119,12 +123,13 @@ UNIQUE INDEX credit_dead_letters_source_message
 ## API [Proposed]
 
 _Origin: AI doc (paths and status codes proposed by Claude Code, approved by Jian Bing)._
-Every route needs `X-Service-Key`; bodies are strict (unknown fields → 400). Errors use Problem
+The three `/internal/credits/*` routes need `X-Service-Key`, and the balance route a user JWT
+(neither credential opens the other's routes); bodies are strict (unknown fields → 400). Errors use Problem
 Details (`application/problem+json`), as in the Supplier Service.
 
 | Route | Body | Success | Errors |
 |---|---|---|---|
-| `POST /internal/credits/reserve` | `{orderId, requesterId, amount}` | **201** new hold; **200** same body for a repeat | 409 insufficient credits (nothing kept); 409 same order with a different requester or amount |
+| `POST /internal/credits/reserve` | `{orderId, requesterId, amount}` | **201** new hold; **200** for a repeat, with the hold as it is now (its `state` may have moved on to `TRANSFERRED` or `RELEASED`) | 409 insufficient credits (nothing kept); 409 same order with a different requester or amount |
 | `POST /internal/credits/transfer` | `{orderId, courierId}` | **200**, also for a repeat to the same courier | 404 unknown order; 409 already released, already paid to a different courier, or courier is the requester |
 | `POST /internal/credits/release` | `{orderId}` | **200**, also for a repeat | 404 unknown order; 409 already transferred |
 | any, wrong or missing key | | | 401, logged as `access_denied` without the key |

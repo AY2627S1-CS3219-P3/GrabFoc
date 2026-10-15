@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
  * Scope: Generated unit tests for the request schemas.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Added the upper-case id test (PR #48 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { ProblemException } from '../common/problem';
 import { parseOr400, releaseSchema, reserveSchema, transferSchema } from './credit.schemas';
@@ -55,5 +58,24 @@ describe('parseOr400', () => {
       expect((err as ProblemException).getStatus()).toBe(400);
       expect((err as ProblemException).message).toContain('orderId');
     }
+  });
+});
+
+// PR #48 review: PostgreSQL returns UUIDs in lower case, so a repeat in upper case must match.
+describe('ids in upper case', () => {
+  // Hex letters, so upper case actually differs from lower case.
+  const ORDER = 'abcdef01-1111-4111-8111-111111111111';
+  const USER = 'fedcba98-2222-4222-8222-222222222222';
+  it('are lower-cased, so a repeated request still matches the stored hold', () => {
+    expect(reserveSchema.parse({ orderId: ORDER.toUpperCase(), requesterId: USER.toUpperCase(), amount: 3 })).toEqual({
+      orderId: ORDER,
+      requesterId: USER,
+      amount: 3,
+    });
+    expect(transferSchema.parse({ orderId: ORDER.toUpperCase(), courierId: USER.toUpperCase() })).toEqual({
+      orderId: ORDER,
+      courierId: USER,
+    });
+    expect(releaseSchema.parse({ orderId: ORDER.toUpperCase() })).toEqual({ orderId: ORDER });
   });
 });

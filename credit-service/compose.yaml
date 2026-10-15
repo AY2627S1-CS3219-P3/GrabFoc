@@ -9,6 +9,9 @@
 # Scope: Connected the service to Kafka (infra/kafka) and waited for kafka-init; documented the
 #   two-file command for using this file on its own (PR #84 review).
 # Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+# Scope: Database password passed as PGPASSWORD, not inside the URL (PR #48 review).
+# Author review: pending — Jian Bing to record what he checked.
 
 name: foc
 
@@ -46,7 +49,10 @@ services:
     # No env_file: only the variables below reach this container.
     environment:
       CREDIT_PORT: 3004
-      CREDIT_DATABASE_URL: postgres://foc:${CREDIT_POSTGRES_PASSWORD:-change-me-in-dotenv}@credit-db:5432/credit
+      # The password goes in PGPASSWORD, which the PostgreSQL driver reads directly, not in the URL:
+      # a password containing / # ? or @ would break the URL (PR #48 review).
+      CREDIT_DATABASE_URL: postgres://foc@credit-db:5432/credit
+      PGPASSWORD: ${CREDIT_POSTGRES_PASSWORD:-change-me-in-dotenv}
       # No working fallback: without a key of 32+ characters in .env, this container exits with a
       # message saying so. (`:?` would instead stop every compose command for the whole stack.)
       CREDIT_SERVICE_KEY: ${CREDIT_SERVICE_KEY:-}
