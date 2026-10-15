@@ -8,8 +8,8 @@
  * Scope: Added credit_dead_letters (redesign spec §9.2; columns confirmed by Jian Bing).
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
- * Scope: Added source_partition / source_offset and their unique key (PR #85 review; approved by
- *        Jian Bing).
+ * Scope: Added source_partition / source_offset and a unique key on them plus the payload's hash
+ *        (PR #85 review, approved by Jian Bing; payload hash from a security review).
  * Author review: pending — Jian Bing to record what he checked.
  */
 
@@ -57,8 +57,12 @@ CREATE TABLE IF NOT EXISTS credit_dead_letters (
     replayed_at       TIMESTAMPTZ,
     -- One row per message per source: a dead letter from user.events can never overwrite a
     -- credit command's row, even with the same event id (security review).
-    UNIQUE (source_topic, event_id),
-    -- A message with no readable event id is still the same message at the same position.
-    UNIQUE (source_topic, source_partition, source_offset)
+    UNIQUE (source_topic, event_id)
 );
+
+-- A message with no readable event id is recognised on redelivery by where it sat and what it
+-- said. The payload hash matters: Kafka restarts offsets when its volume is reset while this table
+-- keeps its rows, so a position alone can later belong to a different message (security review).
+CREATE UNIQUE INDEX IF NOT EXISTS credit_dead_letters_source_message
+    ON credit_dead_letters (source_topic, source_partition, source_offset, md5(payload));
 `;

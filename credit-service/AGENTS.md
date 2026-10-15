@@ -14,7 +14,7 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Documented Phase 3: credit commands, retries, the dead-letter table and the admin routes.
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
-Scope: Documented the dead letters' source position (PR #85 review).
+Scope: Documented the dead letters' source position and payload hash (PR #85 and security reviews).
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -94,9 +94,10 @@ credit_dead_letters (                           -- copied from Credit's dead-let
     attempts          INTEGER NOT NULL CHECK (attempts > 0),
     dead_lettered_at  TIMESTAMPTZ NOT NULL,
     replayed_at       TIMESTAMPTZ,              -- null while open
-    UNIQUE (source_topic, event_id),
-    UNIQUE (source_topic, source_partition, source_offset)
+    UNIQUE (source_topic, event_id)
 )
+UNIQUE INDEX credit_dead_letters_source_message
+    ON credit_dead_letters (source_topic, source_partition, source_offset, md5(payload))
 ```
 
 - An account is created on first use (`INSERT … ON CONFLICT DO NOTHING`), as agreed in
@@ -107,7 +108,10 @@ credit_dead_letters (                           -- copied from Credit's dead-let
 - A dead letter is unique per `(source_topic, event_id)`, so a message from one topic can never
   overwrite another topic's row. One without a readable event id is recognised by where its
   original message sat (`source_partition`, `source_offset`, carried in the `x-source-partition` /
-  `x-source-offset` headers), so a redelivery doesn't add a second row. A command that dies again after a replay updates its row and
+  `x-source-offset` headers) plus a hash of its payload, so a redelivery doesn't add a second row.
+  The hash matters because Kafka restarts offsets if its volume is reset while this table keeps
+  its rows. A clash on either unique key is logged as `dead_letter_already_recorded` and skipped,
+  never retried forever. A command that dies again after a replay updates its row and
   reopens it; an older copy of the same dead letter changes nothing.
 
 ## API [Proposed]

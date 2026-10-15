@@ -253,3 +253,20 @@ it('records a redelivered unreadable dead letter once', async () => {
   await service.record(message);
   expect(await service.list('all')).toHaveLength(1);
 });
+
+// Security review: Kafka offsets restart when its volume is reset but PostgreSQL keeps its data, so
+// a position alone doesn't identify a message forever.
+describe('a reused Kafka position', () => {
+  it('records a different unreadable message at a reused position', async () => {
+    await service.record(at(deadLetter({ raw: 'not json' }), 0, '5'));
+    await service.record(at(deadLetter({ raw: 'other junk' }), 0, '5'));
+    expect((await service.list('all')).map((r) => r.payload).sort()).toEqual(['not json', 'other junk']);
+  });
+
+  it('records a command at a position an unreadable message once held, instead of failing forever', async () => {
+    const eventId = randomUUID();
+    await service.record(at(deadLetter({ raw: 'not json' }), 0, '5'));
+    await expect(service.record(at(deadLetter({ eventId }), 0, '5'))).resolves.toBeUndefined();
+    expect((await service.list('all')).map((r) => r.eventId)).toEqual(expect.arrayContaining([null, eventId]));
+  });
+});

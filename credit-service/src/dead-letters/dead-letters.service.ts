@@ -7,11 +7,12 @@
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Replay claims the row before the Kafka send and holds no transaction during it; attempts
- *        clamped to at least 1; redelivered unreadable dead letters found by source position
+ *        clamped to at least 1; redelivered unreadable dead letters found by source position and
+ *        payload hash; a unique clash is skipped, not retried forever (security review)
  *        (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
 import { ErrorCode } from '../common/error-codes';
 import { ProblemException } from '../common/problem';
@@ -47,6 +48,9 @@ interface DeadLetterRow {
   replayed_at: Date | null;
 }
 
+/** PostgreSQL's error code for a unique-constraint violation. */
+const UNIQUE_VIOLATION = '23505';
+
 const COLUMNS =
   'event_id, order_id, source_topic, command_type, payload, error, error_code, attempts, dead_lettered_at, replayed_at';
 
@@ -73,6 +77,8 @@ function toDeadLetter(row: DeadLetterRow): DeadLetter {
 
 @Injectable()
 export class DeadLettersService {
+  private readonly logger = new Logger('DeadLetters');
+
   constructor(
     @Inject(PG_POOL) private readonly pool: Pool,
     @Inject(PUBLISHER) private readonly publisher: Publisher,
@@ -89,7 +95,7 @@ export class DeadLettersService {
     const partition = Number.parseInt(message.headers[HEADER.sourcePartition] ?? '', 10);
     const offset = message.headers[HEADER.sourceOffset];
     // With an event id, a new death of the same command updates its row (and reopens it after a
-    // replay). Without one, the original message's position recognises a redelivery.
+    // replay). Without one, the original message's position and payload recognise a redelivery.
     const onConflict = ids.eventId
       ? `ON CONFLICT (source_topic, event_id) DO UPDATE SET
               order_id = EXCLUDED.order_id, command_type = EXCLUDED.command_type,
@@ -98,7 +104,28 @@ export class DeadLettersService {
               source_offset = EXCLUDED.source_offset, dead_lettered_at = EXCLUDED.dead_lettered_at,
               replayed_at = NULL
         WHERE credit_dead_letters.dead_lettered_at < EXCLUDED.dead_lettered_at`
-      : 'ON CONFLICT (source_topic, source_partition, source_offset) DO NOTHING';
+      : 'ON CONFLICT (source_topic, source_partition, source_offset, md5(payload)) DO NOTHING';
+    try {
+      await this.insert(message, ids, onConflict, partition, offset, at);
+    } catch (err) {
+      // A clash on the other unique key (e.g. an event id seen before under a different position)
+      // means this dead letter is already recorded. Skipping it keeps one odd message from blocking
+      // every dead letter behind it, which retrying forever would do.
+      if ((err as { code?: string }).code !== UNIQUE_VIOLATION) throw err;
+      this.logger.warn(
+        JSON.stringify({ event: 'dead_letter_already_recorded', eventId: ids.eventId, sourceTopic: message.headers[HEADER.sourceTopic] ?? message.topic }),
+      );
+    }
+  }
+
+  private async insert(
+    message: InboundMessage,
+    ids: ReturnType<typeof peekIds>,
+    onConflict: string,
+    partition: number,
+    offset: string | undefined,
+    at: Date,
+  ): Promise<void> {
     await this.pool.query(
       `INSERT INTO credit_dead_letters
               (event_id, order_id, source_topic, source_partition, source_offset, command_type, payload,
