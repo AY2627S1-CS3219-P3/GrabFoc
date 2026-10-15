@@ -5,7 +5,7 @@
  *        them, K6) and UserRegistered tolerantly (the User Service owns it, K12).
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
- * Scope: Outbound values may be raw bytes (PR #84 review).
+ * Scope: Outbound values may be raw bytes (PR #84 review); command ids lower-cased (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { z } from 'zod';
@@ -51,10 +51,14 @@ export class InvalidMessageError extends Error {}
 
 const uuid = z.string().uuid();
 
+// PostgreSQL returns UUIDs in lower case; lower-casing here keeps a repeated command written in
+// upper case equal to the stored hold, so it stays a no-op instead of a conflict.
+const id = uuid.transform((v) => v.toLowerCase());
+
 // Credit owns the command contract, so unknown fields are rejected (root AGENTS.md §8).
 export const creditCommandSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('TransferCredits'), eventId: uuid, orderId: uuid, courierId: uuid }).strict(),
-  z.object({ type: z.literal('ReleaseCredits'), eventId: uuid, orderId: uuid }).strict(),
+  z.object({ type: z.literal('TransferCredits'), eventId: id, orderId: id, courierId: id }).strict(),
+  z.object({ type: z.literal('ReleaseCredits'), eventId: id, orderId: id }).strict(),
 ]);
 export type CreditCommand = z.infer<typeof creditCommandSchema>;
 

@@ -5,6 +5,11 @@
  *        commands (Jian Bing's decisions K3, K4 and K11; spec §9.2). Rows are unique per source
  *        topic and event id, so one source can't overwrite another's (security review).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Replay claims the row before the Kafka send and holds no transaction during it; attempts
+ *        clamped to at least 1
+ *        (PR #85 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool } from 'pg';
@@ -98,7 +103,8 @@ export class DeadLettersService {
         message.value?.toString('utf8') ?? '',
         message.headers[HEADER.error] ?? 'Unknown error.',
         message.headers[HEADER.errorCode] ?? null,
-        Number(message.headers[HEADER.attempt]) || 1,
+        // At least 1, whatever the header says, so a bad header can't break the CHECK (attempts > 0).
+        Math.max(1, Math.trunc(Number(message.headers[HEADER.attempt])) || 1),
         Number.isNaN(at.getTime()) ? new Date() : at,
       ],
     );
@@ -113,50 +119,53 @@ export class DeadLettersService {
     return rows.map(toDeadLetter);
   }
 
-  /** Sends a dead credit command back to credit.commands with a fresh attempt count, at most once. */
+  /**
+   * Sends a dead credit command back to credit.commands with a fresh attempt count, at most once.
+   * The row is claimed (marked replayed) in one short statement before Kafka is asked, so no
+   * database connection or lock is held during the send, and a new failure of the replayed command
+   * reopens the row afterwards. If Kafka refuses, the claim is undone so the row can be tried again.
+   */
   async replay(eventId: string): Promise<DeadLetter> {
-    const client = await this.pool.connect();
+    // claimed_at is the exact stored value (microseconds), which a JS Date would round.
+    const claimed = await this.pool.query<DeadLetterRow & { claimed_at: string }>(
+      `UPDATE credit_dead_letters SET replayed_at = clock_timestamp()
+        WHERE source_topic = $1 AND event_id = $2 AND replayed_at IS NULL
+        RETURNING ${COLUMNS}, replayed_at::text AS claimed_at`,
+      [this.topics.commands, eventId],
+    );
+    const row = claimed.rows[0];
+    if (!row) throw await this.whyNotReplayable(eventId);
+
     try {
-      await client.query('BEGIN');
-      // Only credit commands can be replayed, so look up the command's row. The row lock makes a
-      // second, concurrent replay wait and then see replayed_at set.
-      const { rows } = await client.query<DeadLetterRow>(
-        `SELECT ${COLUMNS} FROM credit_dead_letters WHERE source_topic = $1 AND event_id = $2 FOR UPDATE`,
-        [this.topics.commands, eventId],
-      );
-      const row = rows[0];
-      if (!row) {
-        const other = await client.query<{ source_topic: string }>(
-          'SELECT source_topic FROM credit_dead_letters WHERE event_id = $1 LIMIT 1',
-          [eventId],
-        );
-        if (other.rows[0]) {
-          throw new ProblemException(
-            409,
-            `Dead letter ${eventId} came from ${other.rows[0].source_topic}; fix it and publish it again from its source.`,
-            ErrorCode.NOT_REPLAYABLE,
-          );
-        }
-        throw new ProblemException(404, `No dead letter has event id ${eventId}.`, ErrorCode.DEAD_LETTER_NOT_FOUND);
-      }
-      if (row.replayed_at) {
-        throw new ProblemException(409, `Dead letter ${eventId} was already replayed.`, ErrorCode.ALREADY_REPLAYED);
-      }
-      // Publish before committing: if Kafka refuses, the row stays open and can be replayed again.
-      // If the commit then fails, the command may be sent twice, which the handlers already absorb.
       await this.publisher.send({ topic: this.topics.commands, key: row.order_id, value: row.payload, headers: {} });
-      const updated = await client.query<DeadLetterRow>(
-        `UPDATE credit_dead_letters SET replayed_at = now() WHERE source_topic = $1 AND event_id = $2
-         RETURNING ${COLUMNS}`,
-        [this.topics.commands, eventId],
-      );
-      await client.query('COMMIT');
-      return toDeadLetter(updated.rows[0]);
     } catch (err) {
-      await client.query('ROLLBACK');
+      // Undo only our own claim: a newer death may already have reopened the row.
+      await this.pool.query(
+        `UPDATE credit_dead_letters SET replayed_at = NULL
+          WHERE source_topic = $1 AND event_id = $2 AND replayed_at = $3::timestamptz`,
+        [this.topics.commands, eventId, row.claimed_at],
+      );
       throw err;
-    } finally {
-      client.release();
     }
+    return toDeadLetter(row);
+  }
+
+  /** The error for a replay that claimed nothing: unknown id, another source, or already replayed. */
+  private async whyNotReplayable(eventId: string): Promise<ProblemException> {
+    const { rows } = await this.pool.query<{ source_topic: string }>(
+      'SELECT source_topic FROM credit_dead_letters WHERE event_id = $1 ORDER BY source_topic = $2 DESC LIMIT 1',
+      [eventId, this.topics.commands],
+    );
+    if (!rows[0]) {
+      return new ProblemException(404, `No dead letter has event id ${eventId}.`, ErrorCode.DEAD_LETTER_NOT_FOUND);
+    }
+    if (rows[0].source_topic !== this.topics.commands) {
+      return new ProblemException(
+        409,
+        `Dead letter ${eventId} came from ${rows[0].source_topic}; fix it and publish it again from its source.`,
+        ErrorCode.NOT_REPLAYABLE,
+      );
+    }
+    return new ProblemException(409, `Dead letter ${eventId} was already replayed.`, ErrorCode.ALREADY_REPLAYED);
   }
 }

@@ -50,7 +50,7 @@ describe('CommandProcessor', () => {
     expect(next).toEqual({
       topic: 'credit.commands.retry.0',
       key: orderId,
-      value,
+      value: Buffer.from(value),
       headers: {
         [HEADER.attempt]: '1',
         [HEADER.dueAt]: String(NOW + 1000),
@@ -84,7 +84,7 @@ describe('CommandProcessor', () => {
     expect(next).toEqual({
       topic: 'credit.commands.dlt',
       key: orderId,
-      value,
+      value: Buffer.from(value),
       headers: {
         [HEADER.attempt]: '3',
         [HEADER.error]: 'No wallet yet.',
@@ -132,9 +132,17 @@ describe('CommandProcessor', () => {
     const next = await new CommandProcessor(apply, topics).process(message({}, 'not json'), NOW);
     expect(apply).not.toHaveBeenCalled();
     expect(next?.topic).toBe('credit.commands.dlt');
-    expect(next?.value).toBe('not json');
+    expect(next?.value).toEqual(Buffer.from('not json'));
     expect(next?.headers[HEADER.error]).toMatch(/not valid JSON/);
     expect(JSON.parse(String(error.mock.calls[0][0]))).toMatchObject({ eventId: null, orderId: null });
+  });
+
+  // PR #84/#85 review: keep the exact bytes that failed.
+  it('dead-letters a command byte for byte, even when it is not valid UTF-8', async () => {
+    const bytes = Buffer.from([0x7b, 0xff, 0xfe, 0x7d]);
+    const next = await new CommandProcessor(jest.fn(), topics).process({ ...message(), value: bytes }, NOW);
+    expect(next?.topic).toBe('credit.commands.dlt');
+    expect(next?.value).toEqual(bytes);
   });
 
   it('dead-letters at once when no retries are configured', async () => {

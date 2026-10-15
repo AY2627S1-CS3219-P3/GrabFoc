@@ -5,7 +5,8 @@
  *        topic, from Jian Bing's decisions K2–K3 and K11 and the details in spec §9.2.
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
- * Scope: Trust x-attempt and x-due-at only on Credit's own retry topics (security review).
+ * Scope: Trust x-attempt and x-due-at only on Credit's own retry topics (security review);
+ *        forward the original bytes (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { Logger } from '@nestjs/common';
@@ -74,7 +75,8 @@ export class CommandProcessor {
         ...(failure.code ? { [HEADER.errorCode]: failure.code } : {}),
         [HEADER.sourceTopic]: this.topics.commands,
       };
-      const next = { key: message.key, value: message.value?.toString('utf8') ?? '' };
+      // The original bytes, not a UTF-8 re-encoding, so a dead letter keeps exactly what failed.
+      const next = { key: message.key, value: message.value ?? '' };
 
       const retry = failure.retryable ? this.topics.retries[attempts - 1] : undefined;
       if (retry) {
