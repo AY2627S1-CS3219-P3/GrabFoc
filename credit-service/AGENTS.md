@@ -8,7 +8,8 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Documented the balance route, JWT verification and error codes (redesign Phase 1).
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
-Scope: A repeated reserve returns the hold's current state (PR #48 review).
+Scope: A repeated reserve returns the hold's current state (PR #48 review); only the /internal
+routes need the service key (PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -85,7 +86,8 @@ credit_holds (
 ## API [Proposed]
 
 _Origin: AI doc (paths and status codes proposed by Claude Code, approved by Jian Bing)._
-Every route needs `X-Service-Key`; bodies are strict (unknown fields → 400). Errors use Problem
+The three `/internal/credits/*` routes need `X-Service-Key`, and the balance route a user JWT
+(neither credential opens the other's routes); bodies are strict (unknown fields → 400). Errors use Problem
 Details (`application/problem+json`), as in the Supplier Service.
 
 | Route | Body | Success | Errors |

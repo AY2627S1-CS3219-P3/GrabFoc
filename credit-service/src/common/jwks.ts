@@ -3,6 +3,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: Copied from supplier-service/src/common/jwks.ts (only CREDIT_JWKS_URL renamed), so Credit verifies user tokens the same way.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Refetch on the first unknown kid; treat a JWKS with no usable keys as unavailable (PR #73
+ *        review). The Supplier Service's copy has the same two issues.
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
 import { config } from '../config';
@@ -22,6 +26,9 @@ const MIN_REFETCH_MS = 30 * 1000; // don't hammer the User Service when a kid is
 
 let cachedKeys: Jwk[] = [];
 let cachedAt = 0;
+// When an unknown kid last triggered a refetch. Separate from cachedAt, so the first unknown kid
+// after a fetch refetches at once (a key just rotated) and only repeated misses are rate-limited.
+let unknownKidRefetchAt = 0;
 // The fetch in progress, shared so concurrent requests trigger one JWKS request, not one each.
 let inflight: Promise<Jwk[]> | undefined;
 
@@ -59,7 +66,11 @@ async function fetchKeys(): Promise<Jwk[]> {
   if (!isObject(body) || !Array.isArray(body.keys)) {
     throw new JwksUnavailableError('JWKS response has no keys array');
   }
-  cachedKeys = body.keys as Jwk[];
+  // A 200 with no usable keys is as unusable as an error: say so (503) rather than reject valid
+  // tokens (401) or fail on a junk entry (500).
+  const keys = body.keys.filter((k): k is Jwk => isObject(k) && typeof k.kty === 'string');
+  if (!keys.length) throw new JwksUnavailableError('JWKS response has no usable keys');
+  cachedKeys = keys;
   cachedAt = Date.now();
   return cachedKeys;
 }
@@ -78,7 +89,8 @@ async function keysFor(kid: string): Promise<Jwk | undefined> {
 
   let key = cachedKeys.find((k) => k.kid === kid);
   // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
-  if (!key && Date.now() - cachedAt > MIN_REFETCH_MS) {
+  if (!key && Date.now() - unknownKidRefetchAt > MIN_REFETCH_MS) {
+    unknownKidRefetchAt = Date.now();
     await refreshKeys();
     key = cachedKeys.find((k) => k.kid === kid);
   }
@@ -143,5 +155,6 @@ export async function verifyToken(authorization: string | undefined): Promise<To
 export function resetJwksCache(): void {
   cachedKeys = [];
   cachedAt = 0;
+  unknownKidRefetchAt = 0;
   inflight = undefined;
 }

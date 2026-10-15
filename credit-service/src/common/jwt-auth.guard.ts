@@ -4,6 +4,9 @@
  * Scope: JWT guard for the balance route, following supplier-service/src/common/auth.ts without
  *        its dev-auth header fallback or role decorator.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Log the path without its query string (PR #48/#73 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import type { Request } from 'express';
@@ -26,7 +29,8 @@ export function denied(req: Request, status: 401 | 403, detail: string, caller?:
       event: 'access_denied',
       status,
       method: req.method,
-      path: req.originalUrl,
+      // The path only: a query string could carry a secret (PR #48/#73 review).
+      path: req.originalUrl.split('?')[0],
       userId: caller?.id ?? null,
       role: caller?.role ?? null,
     }),

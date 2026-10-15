@@ -6,6 +6,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Added reading a balance and the Postman Balance folder.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: Listed CREDIT_JWKS_URL in the run-outside-Docker steps (PR #73 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service
@@ -26,8 +29,10 @@ docker compose up credit-service      # from the repo root; starts credit-db too
 It listens on port **3004**. Its database is `credit-db` on host port **5435**. The gateway does
 not route to it: only the Order Service calls it.
 
-To run it outside Docker, set `CREDIT_DATABASE_URL` and `CREDIT_SERVICE_KEY` (see `.env.example`),
-then `npm install && npm run start:dev` in this folder.
+To run it outside Docker, start `credit-db` (`docker compose up -d credit-db`) and the User Service
+(for its signing keys), set `CREDIT_DATABASE_URL`, `CREDIT_SERVICE_KEY` and
+`CREDIT_JWKS_URL=http://localhost:3001/.well-known/jwks.json` (see `.env.example`), then
+`npm install && npm run start:dev` in this folder.
 
 ## Try it
 

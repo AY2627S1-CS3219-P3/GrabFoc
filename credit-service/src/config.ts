@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: Added the JWKS URL and optional issuer/audience for the balance route.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Noted that issuer/audience must stay unset until User tokens carry them (PR #73 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { existsSync } from 'fs';
 import * as path from 'path';
@@ -51,7 +54,8 @@ export const config = {
   // Typed as possibly undefined because jwks.ts (copied from Supplier) handles an unset URL as
   // "can't verify" (503), and its tests set it to undefined to check that.
   jwksUrl: required('CREDIT_JWKS_URL') as string | undefined,
-  // Checked only when set, matching the gateway and the Supplier Service.
+  // Checked only when set, matching the gateway and the Supplier Service. Leave unset until the
+  // User Service puts iss/aud in its tokens; it doesn't yet, so setting either rejects every token.
   jwtIssuer: process.env.CREDIT_JWT_ISSUER || undefined,
   jwtAudience: process.env.CREDIT_JWT_AUDIENCE || undefined,
 };
