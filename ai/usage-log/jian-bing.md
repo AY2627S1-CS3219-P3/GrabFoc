@@ -9,12 +9,43 @@ Author review: Jian Bing supplied the prompts quoted in that entry and checked t
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
 Scope: Wrote the Credit Service design and implementation entry under the Jian Bing section.
 Author review: Jian Bing supplied the prompts quoted in that entry; pending his review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+Scope: Wrote the 2026-10-14 CI workflow entry (issue #57, PR #74) from Jian Bing's prompts.
+Author review: Jian Bing supplied the quoted prompts and the wording of the entry's Verification line.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-14 — CI workflow: unit tests and builds on every pull request (issue #57)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `.github/workflows/ci.yml`
+
+**Scenario:** Nothing checked that a pull request kept the services' tests passing. Add a GitHub
+Actions workflow that runs each service's unit tests and build, so a failing PR can be blocked.
+
+**Prompts (exact):**
+> lets get started on cloud deployment and ci, i am using awsto hsot eveyrthing, so tell me what steps i need to proceed form ehre to deploy thsi github and se tup the githbu workflow
+
+> okay lets do ci first, and i already decided to work on that, u can see the correpsodnng github issue  ihave
+
+> Implement this step *(chosen at Claude's implementation checkpoint)*
+
+> yea help me add my verification line, where I akcnolwedged that i haevreviewed the yml file, and also ran the test so nthe pr, and looked through every and most of the output to ensure the yall make sense and work properly
+
+**What it produced:** `.github/workflows/ci.yml`: one job per service (user-service,
+supplier-service, api-gateway) running `npm ci`, `npm test` and `npm run build` on the Node version
+in its Dockerfile, plus a frontend job running `lint` and `build`. Runs on every pull request and on
+pushes to `main`, read-only permissions, newer pushes cancel older runs. Before pushing, Claude ran
+the same commands locally on a fresh checkout of `main` without a `.env`: all passed (user-service
+271 tests, supplier-service 157, api-gateway 22; frontend lint and build clean).
+**What I changed or rejected:** Kept integration tests and the frontend browser tests
+(`test:routes`) out of this PR as follow-ups; credit-service's job goes in with PR #48.
+**Verification:** I reviewed `ci.yml`, ran the CI checks on PR #74, and went through the job
+output to confirm each step makes sense and works as intended; all four jobs passed.
 
 ### 2026-10-12 — Split the usage log into one file per member (issue #65)
 
