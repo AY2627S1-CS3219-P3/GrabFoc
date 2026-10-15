@@ -123,8 +123,8 @@ UNIQUE INDEX credit_dead_letters_source_message
 ## API [Proposed]
 
 _Origin: AI doc (paths and status codes proposed by Claude Code, approved by Jian Bing)._
-The three `/internal/credits/*` routes need `X-Service-Key`, and the balance route a user JWT
-(neither credential opens the other's routes); bodies are strict (unknown fields → 400). Errors use Problem
+The three `/internal/credits/*` routes need `X-Service-Key`; the balance and admin dead-letter routes
+need a user JWT (neither credential opens the other's routes); bodies are strict (unknown fields → 400). Errors use Problem
 Details (`application/problem+json`), as in the Supplier Service.
 
 | Route | Body | Success | Errors |
