@@ -4,6 +4,9 @@
  * Scope: Generated this integration-test helper, following supplier-service/src/test/database.ts:
  *        a separate credit_test database in the credit-db container.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Exported setting() for the Kafka test helpers.
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
@@ -16,7 +19,7 @@ import { SCHEMA_SQL } from '../db/schema';
  * src/config.ts: its process.loadEnvFile writes to the real process environment, which Jest's
  * per-file copy of process.env does not see.
  */
-function setting(name: string): string | undefined {
+export function setting(name: string): string | undefined {
   if (process.env[name]) return process.env[name];
   const envPath = path.resolve(__dirname, '../../../.env');
   return existsSync(envPath) ? parseEnv(readFileSync(envPath, 'utf8'))[name] || undefined : undefined;
