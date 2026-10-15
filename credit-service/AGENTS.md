@@ -168,7 +168,8 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
   They run the same `transfer` / `release` code as the HTTP routes, so a repeat is a no-op.
   - **Retryable** failures (`WALLET_NOT_FOUND`, or an unexpected error such as the database being
     down) step aside to `credit.commands.retry.<n>`, one topic per entry in `CREDIT_RETRY_DELAYS`
-    (default `1s,5s,30s,2m,10m`), with headers `x-attempt` and `x-due-at`. A not-yet-due retry
+    (default `1s,5s,30s,2m,10m`), with headers `x-attempt` and `x-due-at`. The retry topics are
+    listed in `infra/kafka/topics.txt`; Credit refuses to start if they don't match the delays. A not-yet-due retry
     pauses its partition until due; each retry topic has one delay, so this delays nothing behind it.
   - **Permanent** failures (any other error code, including `HOLD_NOT_FOUND`, which is a bug, K11;
     or an invalid message), and retries that run out, go to **`credit.commands.dlt`** with

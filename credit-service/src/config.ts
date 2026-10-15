@@ -65,7 +65,7 @@ export const config = {
     .filter(Boolean),
   // The Kafka tests set their own, so they never take the running service's messages.
   kafkaGroupId: 'credit-service',
-  // Wait before each automatic retry of a credit command. kafka-init creates one retry topic per
-  // entry from the same variable (K10). `||`, not `??`: an unset variable reaches us as "".
+  // Wait before each automatic retry of a credit command. Each entry needs its retry topic in
+  // infra/kafka/topics.txt; the runner checks at startup (K10). `||`, not `??`: unset arrives as "".
   retryDelaysMs: parseDelays(process.env.CREDIT_RETRY_DELAYS || '1s,5s,30s,2m,10m'),
 };

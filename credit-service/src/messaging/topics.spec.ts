@@ -3,8 +3,11 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Generated unit tests for the retry-delay parser and topic names (spec §9.2).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Added the startup topic check tests (decision K10 revised to option C).
+ * Author review: pending — Jian Bing to record what he checked.
  */
-import { buildTopics, parseDelays } from './topics';
+import { buildTopics, findTopicMismatch, parseDelays } from './topics';
 
 describe('parseDelays', () => {
   it('reads the default list', () => {
@@ -47,5 +50,34 @@ describe('buildTopics', () => {
       'test-1.credit.commands.dlt',
       'test-1.credit.user-events.dlt',
     ]);
+  });
+});
+
+// K10 (revised): topics.txt lists every topic; Credit checks at startup that it matches its config.
+describe('findTopicMismatch', () => {
+  const topics = buildTopics([1000, 5000]);
+  const all = [
+    'user.events',
+    'credit.commands',
+    'credit.commands.retry.0',
+    'credit.commands.retry.1',
+    'credit.commands.dlt',
+    'credit.user-events.dlt',
+  ];
+
+  it('accepts a broker with exactly the expected topics, plus unrelated ones', () => {
+    expect(findTopicMismatch(topics, [...all, 'order.events', '__consumer_offsets'])).toBeNull();
+  });
+
+  it('names the topics that are missing, e.g. a delay added without its retry topic', () => {
+    expect(findTopicMismatch(topics, all.filter((t) => t !== 'credit.commands.retry.1'))).toMatch(
+      /missing.*credit\.commands\.retry\.1.*infra\/kafka\/topics\.txt/s,
+    );
+  });
+
+  it('rejects a retry topic with no delay, e.g. a delay removed but its topic left in topics.txt', () => {
+    expect(findTopicMismatch(topics, [...all, 'credit.commands.retry.2'])).toMatch(
+      /credit\.commands\.retry\.2.*CREDIT_RETRY_DELAYS/s,
+    );
   });
 });

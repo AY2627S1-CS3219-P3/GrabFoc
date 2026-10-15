@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Generated the topic names and the retry-delay parser from spec §9.2.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Added findTopicMismatch for the startup check (decision K10 revised to option C).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 
 export interface RetryTopic {
@@ -10,7 +13,7 @@ export interface RetryTopic {
   delayMs: number;
 }
 
-/** The topics Credit reads and writes. kafka-init creates them all (infra/kafka); Credit creates none. */
+/** The topics Credit reads and writes. All are listed in infra/kafka/topics.txt; Credit creates none. */
 export interface Topics {
   userEvents: string;
   commands: string;
@@ -52,4 +55,39 @@ export function buildTopics(delaysMs: number[], prefix = ''): Topics {
     commandsDeadLetter: `${commands}.dlt`,
     userEventsDeadLetter: `${prefix}credit.user-events.dlt`,
   };
+}
+
+/**
+ * Compares the topics Credit needs with those on the broker. infra/kafka/topics.txt is the one list
+ * of topics; CREDIT_RETRY_DELAYS says how long each retry waits. One retry topic per delay keeps
+ * them in step, so a mismatch stops Credit with a message saying which side to fix (K10).
+ * Returns null when they match. Unrelated topics (other services', Kafka's own) are ignored.
+ */
+export function findTopicMismatch(topics: Topics, existing: string[]): string | null {
+  const present = new Set(existing);
+  const needed = [
+    topics.userEvents,
+    topics.commands,
+    ...topics.retries.map((r) => r.topic),
+    topics.commandsDeadLetter,
+    topics.userEventsDeadLetter,
+  ];
+  const missing = needed.filter((topic) => !present.has(topic));
+  if (missing.length) {
+    return (
+      `Kafka topics missing: ${missing.join(', ')}. Add them to infra/kafka/topics.txt and run ` +
+      '`docker compose up kafka-init`, or remove the extra entries from CREDIT_RETRY_DELAYS.'
+    );
+  }
+  const retryPrefix = `${topics.commands}.retry.`;
+  const extra = existing
+    .filter((topic) => topic.startsWith(retryPrefix) && !topics.retries.some((r) => r.topic === topic))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  if (extra.length) {
+    return (
+      `Retry topics ${extra.join(', ')} have no matching delay in CREDIT_RETRY_DELAYS. Add a delay for each, ` +
+      'or remove the topic from infra/kafka/topics.txt and delete it from Kafka.'
+    );
+  }
+  return null;
 }

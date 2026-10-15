@@ -2,6 +2,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 # Scope: Generated the shared Kafka broker, topic init container and Kafka UI (spec §9.2, K7, K9).
 # Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+# Scope: kafka-init no longer reads CREDIT_RETRY_DELAYS (K10 revised).
+# Author review: pending — Jian Bing to record what he checked.
 #
 # Shared by every service, so it lives in infra/ rather than in one service's folder.
 # One KRaft broker (no ZooKeeper), replication factor 1: local only, not for the cloud.
@@ -47,9 +50,6 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    environment:
-      # Same variable and default as the Credit Service, so the retry topics match (K10).
-      CREDIT_RETRY_DELAYS: ${CREDIT_RETRY_DELAYS:-1s,5s,30s,2m,10m}
     volumes:
       - ./topics.txt:/topics.txt:ro
       - ./create-topics.sh:/create-topics.sh:ro

@@ -7,7 +7,7 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Added §9 (Kafka design for Phases 2–3) from Jian Bing's decisions in a learning-mode
        session, with Claude Code's proposals labelled. 2026-10-15: updated §3, §8 and §9 with his
-       walkthrough decisions (K5–K13).
+       walkthrough decisions (K5–K13). 2026-10-16: K10 revised (retry topics listed in topics.txt).
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -193,7 +193,7 @@ wallet, so the order matters.
 | K7 | Kafka's folder is **`infra/kafka/`**. | Terraform for the cloud will live in `infra/` too. |
 | K8 | `user.events` keeps Kafka's **default 7-day retention**. | No requirement for replay. |
 | K9 | **All topics are created centrally** by the `infra/kafka` init container from **one topic list file**; no service creates topics. | Topics spread over many files would make configuration and tracing hard; creating topics is outside a service's scope; one permission model; maps directly onto Terraform. |
-| K10 | **Retry delays: one variable per consumer in the root `.env`** (`CREDIT_RETRY_DELAYS`), read by both the init container and the consumer. | Central config; each consumer keeps its own timing (Claude Code pointed out Notification's 10 s target, NFR3.4). |
+| K10 | **Retry delays: one variable per consumer in the root `.env`** (`CREDIT_RETRY_DELAYS`). *Revised 2026-10-16 (option C):* the retry topics are **listed in `topics.txt`** like every other topic, and the consumer checks at startup that one retry topic exists per delay, refusing to start otherwise. | Central config; each consumer keeps its own timing (Claude Code pointed out Notification's 10 s target, NFR3.4). Revision: one source of truth for all topics (PR #84 review); which topics exist and how long retries wait are two facts, kept in step by the check. |
 | K11 | **Each consumer has its own DLT per source topic**; a malformed `UserRegistered` goes to `credit.user-events.dlt`. A transfer or release with no hold is a bug and is dead-lettered at once. | Not one shared DLT: a message can fail for one consumer and succeed for another. |
 | K12 | **Tolerant reader**: Credit validates only the `UserRegistered` fields it uses (`userId`), plus a contract test in CI (with #54). | Fewer messages count as malformed; breaking changes are caught before deploy. |
 | K13 | **Order → Supplier reads become plain HTTP** (proposal for the team; changes root `AGENTS.md` §3). | Order waits for the answer, so a broker adds machinery without removing the coupling, as with the synchronous reserve (D2). |
@@ -209,12 +209,13 @@ wallet, so the order matters.
   |---|---|---|
   | `user.events` | `userId` | 3 |
   | `credit.commands` | `orderId` | 3 |
-  | `credit.commands.retry.0` … `.retry.N-1` | `orderId` | 1 each, one per entry in `CREDIT_RETRY_DELAYS` (default `1s,5s,30s,2m,10m`) |
+  | `credit.commands.retry.0` … `.retry.4` | `orderId` | 1 each, one per entry in `CREDIT_RETRY_DELAYS` (default `1s,5s,30s,2m,10m`) |
   | `credit.commands.dlt` | `orderId` | 1 |
   | `credit.user-events.dlt` | `userId` | 1 |
 
-  The init container creates the listed topics, plus Credit's retry topics from
-  `CREDIT_RETRY_DELAYS` (K10), so their number can't drift from what Credit expects.
+  The init container creates exactly the listed topics; `topics.txt` is the one list (K10 revised).
+  Credit checks at startup that one retry topic exists per entry in `CREDIT_RETRY_DELAYS` and that
+  no extra one does, and refuses to start, saying what to fix, if not.
 - **Message shapes:** Credit's commands carry a `type` field and are validated strictly:
   `{type: "TransferCredits", eventId, orderId, courierId}`, `{type: "ReleaseCredits", eventId, orderId}`.
   For `UserRegistered`, Credit reads only `userId` (a UUID) and, when present, `eventId` for logs;
