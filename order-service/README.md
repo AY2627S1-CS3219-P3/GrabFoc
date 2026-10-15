@@ -9,11 +9,14 @@ Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Rewrote the HTTP API section for Phase B (create with credit clean-up, edit, accept) and documented migration 002.
 Author review: Reviewed.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Documented the Phase C lifecycle, cancellation and confirmation endpoints.
+Author review: Reviewed
 -->
 
 # Order Service
 
-Database foundation for #50 (under parent #64) plus Phases A and B of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit and accept endpoints (see [HTTP API](#http-api)). Lifecycle transitions, confirmations, cancellation and Kafka are not implemented yet. The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_released_at` for the creation flow. Read [AGENTS.md](AGENTS.md) for requirements.
+Database foundation for #50 (under parent #64) plus Phases A–C of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit, accept, lifecycle, cancellation and confirmation endpoints (see [HTTP API](#http-api)). Kafka events, the expiry worker and suspension/deactivation handling (Phase D) are not implemented yet. The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_released_at` for the creation flow. Read [AGENTS.md](AGENTS.md) for requirements.
 
 ## Confirmed decisions
 
@@ -176,7 +179,14 @@ Errors use the User Service envelope `{ "error": { "code", "message", "details" 
 | `GET /orders/:orderId` | requester, assigned courier, or anyone while the order is available | one order |
 | `PATCH /orders/:orderId` | requester, `PENDING` only | edit description, locations or timing (200) |
 | `POST /orders/:orderId/accept` | any user except the requester | take the order as courier (200) |
+| `POST /orders/:orderId/pick-up` | assigned courier | `ACCEPTED` → `PICKED_UP` (200) |
+| `POST /orders/:orderId/start-delivery` | assigned courier | `PICKED_UP` → `IN_PROGRESS` (200) |
+| `POST /orders/:orderId/arrive` | assigned courier | `IN_PROGRESS` → `ARRIVED` (200) |
+| `POST /orders/:orderId/cancel` | requester, `PENDING` only | cancel straight away (200) |
 | `GET /orders/:orderId/history` | requester or assigned courier | `{ items }`, oldest first |
+| `GET /orders/:orderId/confirmations` | requester or assigned courier | `{ items }`, oldest first |
+| `POST /orders/:orderId/confirmations` | requester or assigned courier | propose a timing change, cancellation or completion (201) |
+| `POST /orders/:orderId/confirmations/:confirmationId/respond` | the other participant | approve or reject (200) |
 
 Lists take `page` (default 1) and `pageSize` (1–100, default 20) and return
 `{ items, page, pageSize, total }`, newest first.
@@ -215,18 +225,59 @@ unexpired, not the caller's own, same version), so of several couriers accepting
 one wins. The partial unique index stops a courier holding two active orders. Writes
 `ACCEPTED` history and increments `version`. The `OrderAccepted` event is Phase D.
 
+**Lifecycle steps** (`pick-up`, `start-delivery`, `arrive`) and **cancel** take `{ "version": n }`
+and return the order. Each is one conditional `UPDATE` on the expected status and version, so a
+repeated or concurrent request gets 409 and writes no second history entry. Lifecycle steps
+refuse an order whose window has ended (expiry wins, plan §6); the Phase D worker will cancel
+it. `arrive` also marks a pending `TIMING_CHANGE` `SUPERSEDED`, since `ARRIVED` allows no timing
+changes. History actions are `PICKED_UP`, `IN_PROGRESS` and `ARRIVED`.
+
+Cancel works on `PENDING` only, even after the window has ended. It writes `CANCELLED` history
+with `changeDetails.reason = REQUESTER_CANCELLED`. Accepted orders need a `CANCELLATION`
+proposal.
+
+**Confirmations.** Body `{ "kind": "CANCELLATION" }`, `{ "kind": "COMPLETION" }` or
+`{ "kind": "TIMING_CHANGE", "windowStart", "windowEnd" }`. There is no `version`, since a
+proposal does not change the order. The proposer's response is recorded as `ACCEPTED`, the
+other participant's as `PENDING`. One pending proposal per order (409 `CONFIRMATION_PENDING`).
+
+| Kind | Who proposes | Order status | Window ended? |
+|---|---|---|---|
+| `TIMING_CHANGE` | requester | `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS` | refused; pickup hours checked only in `ACCEPTED` |
+| `CANCELLATION` | either | `ACCEPTED` to `ARRIVED` | allowed |
+| `COMPLETION` | either | `ARRIVED` | `ARRIVED` never expires |
+
+Respond body: `{ "response": "ACCEPTED" | "REJECTED" }`; returns the confirmation. The order and
+proposal rows are locked and rechecked in one transaction, so two approvals at once finalize once.
+A rejection resolves the proposal as `REJECTED` and leaves the order alone. An approval resolves
+it as `APPROVED`, increments the order's `version` and writes history with the approver as actor:
+
+- `TIMING_CHANGE` → new window; `EDITED` with `{ windowStart, windowEnd: { from, to }, confirmationId }`.
+- `CANCELLATION` → `CANCELLED` with `{ reason: MUTUAL_CANCELLATION, confirmationId }`.
+- `COMPLETION` → `COMPLETED` with `{ confirmationId }`.
+
+A `TIMING_CHANGE` answered once the current window (or its proposed one) has ended becomes
+`EXPIRED` and the respond call returns 409.
+
+**Credits for Phase C:** the clean-up job releases every `CANCELLED` order without
+`credit_released_at` over HTTP, so requester and mutual cancellations are released within about
+10 s. `COMPLETED` orders keep their hold until the Phase D `OrderCompleted` event triggers the
+transfer. The final design (Zi Yi, 2026-10-15) is reserve over HTTP, release and transfer as
+events; until Kafka exists, release stays on HTTP.
+
 | Status | Code | When |
 |---|---|---|
 | 400 | `VALIDATION_ERROR` | bad body/query/ID, unknown field, invalid or ended window |
 | 400 | `PICKUP_CLOSED` | window misses the pickup location's opening hours |
 | 401 | `TOKEN_INVALID` | missing, invalid or expired token |
-| 403 | `FORBIDDEN` | not a participant; editing someone else's order; accepting your own |
+| 403 | `FORBIDDEN` | not a participant; not the requester or assigned courier the action needs; accepting your own |
 | 404 | `NOT_FOUND` | unknown order or location |
 | 409 | `VERSION_CONFLICT` | `version` is stale; reload the order |
-| 409 | `INVALID_STATE` | order not `PENDING`, already taken or expired |
+| 409 | `INVALID_STATE` | order in the wrong status for the action, already taken, or its window ended; proposal already resolved or expired |
 | 409 | `COURIER_BUSY` | courier already has an active order |
 | 409 | `LOCATION_INACTIVE` | a chosen location is `INACTIVE` |
 | 409 | `INSUFFICIENT_CREDITS` | Credit refused the reservation |
+| 409 | `CONFIRMATION_PENDING` | the order already has a pending proposal |
 | 503 | `SERVICE_UNAVAILABLE` | User Service keys, Supplier or Credit unreachable; create stalled over 30 s |
 
 **Known limitation:** Credit's release currently returns 404 for an order it has no hold for.
@@ -251,3 +302,4 @@ the unit tests and all PostgreSQL integration tests, including the HTTP tests in
 
 Verification on 2026-10-15: all 42 tests passed in `compose.test.yaml` (12 unit, 14 database,
 16 HTTP); the container refused to start without `ORDER_CREDIT_SERVICE_KEY` and started with it.
+After Phase C, all 53 passed (12 unit, 14 database, 27 HTTP).

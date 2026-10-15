@@ -7,6 +7,9 @@
  * Scope: Added create (save AWAITING_CREDIT, reserve, open as PENDING, cancel and release on
  *        failure), the credit clean-up job, requester edit and courier accept rules (Phase B).
  * Author review: Reviewed in full
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added the courier lifecycle steps and requester cancellation of PENDING orders (Phase C).
+ * Author review: Reviewed
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { Caller } from '../common/jwt-auth.guard';
@@ -14,7 +17,7 @@ import { AppError, ErrorCode } from '../common/errors';
 import { CreditClient } from '../integrations/credit.client';
 import { Location, SupplierClient } from '../integrations/supplier.client';
 import { OrderEdit, OrderList, OrdersRepository } from './orders.repository';
-import type { CreateOrderBody, EditOrderBody, HistoryEntry, Order, Page, PageQuery } from './orders.schemas';
+import type { CreateOrderBody, EditOrderBody, HistoryEntry, Order, OrderStatus, Page, PageQuery } from './orders.schemas';
 import { assertPickupOpen, assertValidWindow, defaultWindow } from './timing';
 
 const isParticipant = (order: Order, caller: Caller) =>
@@ -25,9 +28,20 @@ const isAvailable = (order: Order) => order.status === 'PENDING' && order.window
 const forbidden = (message = 'Only the requester or assigned courier can view this order.') =>
   new AppError(403, ErrorCode.FORBIDDEN, message);
 
-/** Edits and acceptance need an unexpired PENDING order at the version the client loaded. */
-function assertOpen(order: Order | undefined, version: number, closedMessage: string): asserts order is Order {
-  if (!order || !isAvailable(order)) throw new AppError(409, ErrorCode.INVALID_STATE, closedMessage);
+/**
+ * Writes need the order in one of `statuses`, before its window ends unless `unexpired` is false,
+ * at the version the client loaded. An expired window blocks writes: expiry wins (plan §6).
+ */
+function assertState(
+  order: Order | undefined,
+  version: number,
+  statuses: OrderStatus[],
+  message: string,
+  unexpired = true,
+): asserts order is Order {
+  if (!order || !statuses.includes(order.status) || (unexpired && order.windowEnd <= new Date())) {
+    throw new AppError(409, ErrorCode.INVALID_STATE, message);
+  }
   if (order.version !== version) {
     throw new AppError(409, ErrorCode.VERSION_CONFLICT, 'The order has changed since you loaded it. Reload and try again.');
   }
@@ -45,6 +59,15 @@ const logger = new Logger('Order');
 
 const NOT_EDITABLE = 'Only open PENDING orders can be edited.';
 const NOT_AVAILABLE = 'This order is no longer available.';
+const NOT_CANCELLABLE = 'Only PENDING orders can be cancelled directly. Once accepted, propose a cancellation.';
+
+/** Courier lifecycle steps: the new status, the status it must come from, and why it was refused. */
+const STEPS = {
+  PICKED_UP: { from: 'ACCEPTED', message: 'Only ACCEPTED orders within their window can be picked up.' },
+  IN_PROGRESS: { from: 'PICKED_UP', message: 'Only PICKED_UP orders within their window can start delivery.' },
+  ARRIVED: { from: 'IN_PROGRESS', message: 'Only IN_PROGRESS orders within their window can be marked arrived.' },
+} as const satisfies Record<string, { from: OrderStatus; message: string }>;
+export type Step = keyof typeof STEPS;
 
 // Authorization is by ownership/assignment, never by requester/courier UI mode (root AGENTS.md §5).
 @Injectable()
@@ -66,9 +89,15 @@ export class OrdersService {
   }
 
   async history(caller: Caller, orderId: string): Promise<HistoryEntry[]> {
+    await this.participantOrder(caller, orderId);
+    return this.orders.history(orderId);
+  }
+
+  /** The order, if the caller is its requester or assigned courier. */
+  async participantOrder(caller: Caller, orderId: string): Promise<Order> {
     const order = await this.find(orderId);
     if (!isParticipant(order, caller)) throw forbidden();
-    return this.orders.history(orderId);
+    return order;
   }
 
   /**
@@ -150,7 +179,7 @@ export class OrdersService {
   async edit(caller: Caller, authorization: string, orderId: string, body: EditOrderBody): Promise<Order> {
     const order = await this.find(orderId);
     if (order.requesterId !== caller.id) throw forbidden('Only the requester can edit this order.');
-    assertOpen(order, body.version, NOT_EDITABLE);
+    assertState(order, body.version, ['PENDING'], NOT_EDITABLE);
 
     const { version, pickupLocationId, deliveryLocationId, windowStart, windowEnd, orderDescription } = body;
     const edit: OrderEdit = {};
@@ -172,7 +201,7 @@ export class OrdersService {
     return this.orders.transaction(async (tx) => {
       const updated = await this.orders.update(tx, orderId, version, edit);
       if (!updated) {
-        assertOpen(await this.orders.findById(orderId, tx), version, NOT_EDITABLE);
+        assertState(await this.orders.findById(orderId, tx), version, ['PENDING'], NOT_EDITABLE);
         throw new AppError(409, ErrorCode.INVALID_STATE, NOT_EDITABLE);
       }
       const changes = Object.fromEntries(
@@ -194,7 +223,7 @@ export class OrdersService {
   async accept(caller: Caller, orderId: string, version: number): Promise<Order> {
     const order = await this.find(orderId);
     if (order.requesterId === caller.id) throw forbidden('You cannot accept your own order.');
-    assertOpen(order, version, NOT_AVAILABLE);
+    assertState(order, version, ['PENDING'], NOT_AVAILABLE);
 
     return this.orders.transaction(async (tx) => {
       const accepted = await this.orders.accept(tx, orderId, caller.id, version).catch((error) => {
@@ -205,7 +234,7 @@ export class OrdersService {
       });
       if (!accepted) {
         // Lost a race: report why from the current row.
-        assertOpen(await this.orders.findById(orderId, tx), version, NOT_AVAILABLE);
+        assertState(await this.orders.findById(orderId, tx), version, ['PENDING'], NOT_AVAILABLE);
         throw new AppError(409, ErrorCode.INVALID_STATE, NOT_AVAILABLE);
       }
       await this.orders.addHistory(tx, {
@@ -216,6 +245,53 @@ export class OrdersService {
         newStatus: 'ACCEPTED',
       });
       return accepted;
+    });
+  }
+
+  /** Assigned courier only: ACCEPTED → PICKED_UP → IN_PROGRESS → ARRIVED, one step at a time. */
+  async advance(caller: Caller, orderId: string, version: number, step: Step): Promise<Order> {
+    const { from, message } = STEPS[step];
+    const order = await this.find(orderId);
+    if (order.courierId !== caller.id) throw forbidden('Only the assigned courier can update this order.');
+    assertState(order, version, [from], message);
+
+    return this.orders.transaction(async (tx) => {
+      const updated = await this.orders.transition(tx, orderId, version, from, step, true);
+      if (!updated) {
+        assertState(await this.orders.findById(orderId, tx), version, [from], message);
+        throw new AppError(409, ErrorCode.INVALID_STATE, message);
+      }
+      // ARRIVED allows no timing changes, so a pending one could only block COMPLETION proposals.
+      if (step === 'ARRIVED') await this.orders.supersedePending(tx, orderId, ['TIMING_CHANGE']);
+      await this.orders.addHistory(tx, { orderId, actorId: caller.id, action: step, previousStatus: from, newStatus: step });
+      return updated;
+    });
+  }
+
+  /**
+   * Requester only, PENDING only, even after the window has ended. Accepted orders need a
+   * CANCELLATION proposal. cleanUpCredits() releases the hold, as for every CANCELLED order.
+   */
+  async cancel(caller: Caller, orderId: string, version: number): Promise<Order> {
+    const order = await this.find(orderId);
+    if (order.requesterId !== caller.id) throw forbidden('Only the requester can cancel this order.');
+    assertState(order, version, ['PENDING'], NOT_CANCELLABLE, false);
+
+    return this.orders.transaction(async (tx) => {
+      const cancelled = await this.orders.transition(tx, orderId, version, 'PENDING', 'CANCELLED', false);
+      if (!cancelled) {
+        assertState(await this.orders.findById(orderId, tx), version, ['PENDING'], NOT_CANCELLABLE, false);
+        throw new AppError(409, ErrorCode.INVALID_STATE, NOT_CANCELLABLE);
+      }
+      await this.orders.addHistory(tx, {
+        orderId,
+        actorId: caller.id,
+        action: 'CANCELLED',
+        previousStatus: 'PENDING',
+        newStatus: 'CANCELLED',
+        changeDetails: { reason: 'REQUESTER_CANCELLED' },
+      });
+      return cancelled;
     });
   }
 
@@ -244,7 +320,7 @@ export class OrdersService {
     return order;
   }
 
-  private async activeLocation(id: number, authorization: string): Promise<Location> {
+  async activeLocation(id: number, authorization: string): Promise<Location> {
     const location = await this.supplier.getLocation(id, authorization);
     if (location.status !== 'ACTIVE') {
       throw new AppError(409, ErrorCode.LOCATION_INACTIVE, `${location.name} is not currently active.`);

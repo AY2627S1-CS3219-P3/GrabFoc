@@ -7,6 +7,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added the Phase B error codes.
  * Author review: Reviewed in full
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added CONFIRMATION_PENDING (Phase C).
+ * Author review: Reviewed
  */
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -26,6 +29,7 @@ export const ErrorCode = {
   COURIER_BUSY: 'COURIER_BUSY',
   LOCATION_INACTIVE: 'LOCATION_INACTIVE',
   INSUFFICIENT_CREDITS: 'INSUFFICIENT_CREDITS',
+  CONFIRMATION_PENDING: 'CONFIRMATION_PENDING',
   // 500 / 503
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',

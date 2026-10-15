@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Revised the order-creation flow (AWAITING_CREDIT, cancel and release on failure, clean-up job) across §0–§10 at Zi Yi's direction.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Recorded Zi Yi's credit settlement decision (§0, §4, §9) and the Phase C expired-window rule (§6).
+Author review: Reviewed
 -->
 
 # GrabFoC Order Service — Implementation Plan
@@ -36,7 +39,7 @@ Author review: Reviewed
 | Administrative suspension | User Service emits `UserSuspended`; Order Service cancels all affected nonterminal orders, including ARRIVED |
 | Supplier deactivation | Supplier Service emits `SupplierDeactivated`; Order Service cancels all affected nonterminal orders, including ARRIVED |
 | Broker | **Kafka**; broker infrastructure/setup is owned by a teammate, not the Order Service implementer |
-| Credit | Synchronous HTTP **reserve** (Credit Service atomically checks sufficiency and reserves); Credit Service consumes `OrderCompleted` for **transfer** and `OrderCancelled` for **release** |
+| Credit | Synchronous HTTP **reserve** (Credit Service atomically checks sufficiency and reserves); Credit Service consumes `OrderCompleted` for **transfer** and `OrderCancelled` for **release**. Confirmed by Zi Yi on 2026-10-15; until Kafka exists, the clean-up job releases cancellations over HTTP and completions stay held (§4). Root `AGENTS.md` §3 still says HTTP for transfer and release; the team must update it |
 | Credit failures | Order cancels a create whose reservation failed and calls Credit `release`; a background job every 10 s retries releases Credit has not confirmed and cancels creates stuck in `AWAITING_CREDIT` for over 30 s. Credit must save a `RELEASED` marker when asked to release an unknown order (§4) |
 | Notification | Notification Service consumes Order events; notify other party when a confirmation needs action (event to agree on) |
 | User status checks | No live User Service status lookup before each Order API call for now; rely on JWT and suspension event handling |
@@ -175,6 +178,8 @@ Credit Service guards against duplicate transfer/release. Order Service must onl
 5. Every 10 s, a background job cancels `AWAITING_CREDIT` orders older than 30 s (their request died) and calls `release` for every `CANCELLED` order with no `credit_released_at`, setting it when Credit answers 200 or 404.
 6. **Credit change needed:** `release` for an unknown order must save a `RELEASED` marker instead of only returning 404, so a reserve still running inside Credit cannot hold credits afterwards. Until then, that timing gap remains.
 
+**Settling later cancellations and completions (Zi Yi, 15 October 2026):** the final design is events, as in the table above. Until Phase D, the step-5 job already releases every `CANCELLED` order (requester and mutual cancellations too) over HTTP, and `COMPLETED` orders keep their hold. In Phase D the job can publish events for rows not yet marked, instead of calling HTTP, so a crash between commit and publish cannot lose a release.
+
 This is a small saga with a compensating action (release), and the `orders` table acts as its outbox. It covers a lost or slow Credit reply, Credit being down, Order's own commit failing and Order crashing mid-create.
 
 ### Notification Service
@@ -227,6 +232,7 @@ Credit and Notification must use **different Kafka consumer groups** so both rec
 - Courier accept uses a conditional update with `status='PENDING'`, no courier, unexpired window, matching version; unique partial index prevents the same courier holding multiple active orders.
 - Confirmation approval uses row locks/guarded updates for the **order and confirmation**. Initiator is already accepted, so two almost-simultaneous responses are usually duplicate submissions from the remaining party; one may finalize, the other must not finalize again.
 - Background expiry rechecks status and deadline within its transaction, then changes status, version, history, and pending-proposal resolution consistently.
+- Until that worker exists (Phase D), an order past `window_end` refuses lifecycle steps and timing changes; requester cancellation of PENDING and mutual cancellation stay allowed (Zi Yi, 15 October 2026).
 - Deactivation/suspension events may overlap with user actions. The consumer must lock/recheck order status, avoid repeat cancellation and supersede pending confirmations.
 - Publish Order events **only for successful state changes**; a failed/stale request must not add duplicate history or request duplicate credit side effects.
 
@@ -325,7 +331,7 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 ## 9. Remaining coordination (not blockers for Phase A)
 
 1. **Kafka teammate / contracts:** teammate provisions and configures the shared Kafka broker. Obtain connection settings, access credentials (if used), topic-provisioning responsibility and readiness timeline. Separately approve final topic/event names, `locationId` spelling, consumer group IDs, and the optional `OrderConfirmationRequested` event with Supplier/User/Credit/Notification owners.
-2. **Credit contract:** confirm HTTP reservation request/response and outcome semantics; Credit team owns settlement error handling and retries. Also agree (a) the `RELEASED` marker for releasing an unknown order (§4, step 6), which needs `requester_id`/`amount` to be nullable or sent with `release`; and (b) before Phase C, whether later cancellations are released by the same clean-up job over HTTP (it already picks up every `CANCELLED` order without `credit_released_at`) or by Credit consuming `OrderCancelled`.
+2. **Credit contract:** confirm HTTP reservation request/response and outcome semantics; Credit team owns settlement error handling and retries. Also agree (a) the `RELEASED` marker for releasing an unknown order (§4, step 6), which needs `requester_id`/`amount` to be nullable or sent with `release`; and (b) the event shape Credit consumes for release and transfer (§4; decided by Zi Yi 2026-10-15: events, with HTTP release as the interim), including how a failed create's release avoids a Notification email.
 3. **User Service:** ensure the voluntary-deactivation active-order check and administrative `UserSuspended` publication are implemented on their side.
 4. **Supplier Service:** ensure `SupplierDeactivated` is published with the correct integer **location ID**, and confirm HTTP location fields and opening-hours format.
 5. **User-facing scheduling:** decide only if needed whether couriers may accept future-window orders before `window_start`; do not invent an unapproved restriction. The current agreed rule is the pickup-hours overlap check.

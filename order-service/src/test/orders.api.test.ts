@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added a fake Supplier/Credit server and create (with credit clean-up), edit and accept tests (Phase B).
  * Author review: Reviewed in full.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added lifecycle, requester cancellation and confirmation tests (Phase C).
+ * Author review: Reviewed
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -366,4 +369,189 @@ test('two couriers accepting at once: exactly one wins', async () => {
   assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
   assert.equal(results.find((r) => r.status === 409)!.body.error.code, 'INVALID_STATE');
   assert.equal(await count('order_history'), 1);
+});
+
+// ---- Phase C: lifecycle, cancellation, confirmations ----
+
+const post = (path: string, userId: string, body: unknown) => send('POST', path, userId, body);
+const history = async (id: string) => (await get(`/orders/${id}/history`, alice)).body.items;
+const confirmations = (id: string) => `/orders/${id}/confirmations`;
+const respond = (id: string, proposal: { body: { id: string } }, userId: string, response: string) =>
+  post(`${confirmations(id)}/${proposal.body.id}/respond`, userId, { response });
+const expiredWindow = { window_start: '2020-01-01T00:00Z', window_end: '2020-01-02T00:00Z' };
+const timingChange = { kind: 'TIMING_CHANGE', windowStart: '2030-01-01T10:00:00+08:00', windowEnd: '2030-01-01T12:00:00+08:00' };
+const nightChange = { kind: 'TIMING_CHANGE', windowStart: '2030-01-01T21:00:00+08:00', windowEnd: '2030-01-01T22:00:00+08:00' };
+
+test('the assigned courier moves an order ACCEPTED → PICKED_UP → IN_PROGRESS → ARRIVED with history', async () => {
+  const id = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  let version = 1;
+  for (const [step, status] of [['pick-up', 'PICKED_UP'], ['start-delivery', 'IN_PROGRESS'], ['arrive', 'ARRIVED']]) {
+    const res = await post(`/orders/${id}/${step}`, bob, { version });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.deepEqual([res.body.status, res.body.version], [status, ++version]);
+  }
+  assert.deepEqual((await history(id)).map((h: any) => [h.action, h.actorId, h.previousStatus, h.newStatus]), [
+    ['PICKED_UP', bob, 'ACCEPTED', 'PICKED_UP'],
+    ['IN_PROGRESS', bob, 'PICKED_UP', 'IN_PROGRESS'],
+    ['ARRIVED', bob, 'IN_PROGRESS', 'ARRIVED'],
+  ]);
+});
+
+test('lifecycle steps reject other users, skipped or repeated steps, stale versions and ended windows', async () => {
+  const id = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  expectError(await post(`/orders/${id}/pick-up`, alice, { version: 1 }), 403, 'FORBIDDEN');
+  expectError(await post(`/orders/${id}/pick-up`, carol, { version: 1 }), 403, 'FORBIDDEN');
+  expectError(await post(`/orders/${id}/arrive`, bob, { version: 1 }), 409, 'INVALID_STATE'); // skips a step
+  expectError(await post(`/orders/${id}/pick-up`, bob, { version: 2 }), 409, 'VERSION_CONFLICT');
+  expectError(await post(`/orders/${id}/pick-up`, bob, {}), 400, 'VALIDATION_ERROR');
+  assert.equal((await post(`/orders/${id}/pick-up`, bob, { version: 1 })).status, 200);
+  expectError(await post(`/orders/${id}/pick-up`, bob, { version: 2 }), 409, 'INVALID_STATE'); // repeated
+
+  const expired = await insertOrder({ status: 'ACCEPTED', courier_id: carol, ...expiredWindow });
+  expectError(await post(`/orders/${expired}/pick-up`, carol, { version: 1 }), 409, 'INVALID_STATE');
+  assert.equal(await count('order_history'), 1);
+});
+
+test('the same step sent twice at once succeeds exactly once', async () => {
+  const id = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  const results = await Promise.all([1, 2].map(() => post(`/orders/${id}/pick-up`, bob, { version: 1 })));
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(await count('order_history'), 1);
+});
+
+test('the requester cancels a PENDING order, even after its window, and the clean-up job releases it', async () => {
+  const id = await insertOrder();
+  expectError(await post(`/orders/${id}/cancel`, carol, { version: 1 }), 403, 'FORBIDDEN');
+  const res = await post(`/orders/${id}/cancel`, alice, { version: 1 });
+  assert.deepEqual([res.status, res.body.status, res.body.version], [200, 'CANCELLED', 2]);
+  const [entry] = await history(id);
+  assert.deepEqual([entry.action, entry.actorId, entry.changeDetails], ['CANCELLED', alice, { reason: 'REQUESTER_CANCELLED' }]);
+
+  const expired = await insertOrder(expiredWindow);
+  assert.equal((await post(`/orders/${expired}/cancel`, alice, { version: 1 })).status, 200);
+  await cleanUpCredits();
+  assert.deepEqual(creditCalls.map((c) => [c.action, c.orderId]).sort(), [['release', id], ['release', expired]].sort());
+
+  const accepted = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  expectError(await post(`/orders/${accepted}/cancel`, alice, { version: 1 }), 409, 'INVALID_STATE');
+});
+
+test('completion needs both participants: the second approval completes the order', async () => {
+  const id = await insertOrder({ status: 'ARRIVED', courier_id: bob });
+  const proposed = await post(confirmations(id), bob, { kind: 'COMPLETION' });
+  assert.equal(proposed.status, 201);
+  const { proposedBy, status, requesterResponse, courierResponse } = proposed.body;
+  assert.deepEqual([proposedBy, status, requesterResponse, courierResponse], [bob, 'PENDING', 'PENDING', 'ACCEPTED']);
+  assert.equal((await row(id)).version, 1); // proposing does not change the order
+
+  expectError(await post(confirmations(id), alice, { kind: 'CANCELLATION' }), 409, 'CONFIRMATION_PENDING');
+  expectError(await respond(id, proposed, bob, 'ACCEPTED'), 409, 'INVALID_STATE'); // the proposer already accepted
+  expectError(await respond(id, proposed, carol, 'ACCEPTED'), 403, 'FORBIDDEN');
+
+  const approved = await respond(id, proposed, alice, 'ACCEPTED');
+  assert.deepEqual([approved.status, approved.body.status, approved.body.requesterResponse], [200, 'APPROVED', 'ACCEPTED']);
+  assert.notEqual(approved.body.resolvedAt, null);
+  assert.deepEqual([(await row(id)).status, (await row(id)).version], ['COMPLETED', 2]);
+  const [entry] = await history(id);
+  assert.deepEqual([entry.action, entry.actorId, entry.previousStatus, entry.changeDetails], [
+    'COMPLETED', alice, 'ARRIVED', { confirmationId: proposed.body.id },
+  ]);
+
+  expectError(await respond(id, proposed, alice, 'ACCEPTED'), 409, 'INVALID_STATE'); // already APPROVED
+  await cleanUpCredits();
+  assert.deepEqual(creditCalls, []); // transfer waits for the Phase D events
+});
+
+test('proposals check the order state, who proposes and the body', async () => {
+  const pending = await insertOrder();
+  expectError(await post(confirmations(pending), alice, { kind: 'CANCELLATION' }), 409, 'INVALID_STATE');
+  const accepted = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  expectError(await post(confirmations(accepted), bob, { kind: 'COMPLETION' }), 409, 'INVALID_STATE');
+  expectError(await post(confirmations(accepted), bob, timingChange), 403, 'FORBIDDEN'); // requester only
+  expectError(await post(confirmations(accepted), carol, { kind: 'CANCELLATION' }), 403, 'FORBIDDEN');
+  for (const body of [
+    { kind: 'TIMING_CHANGE' },
+    { kind: 'COMPLETION', windowStart: timingChange.windowStart },
+    { kind: 'REFUND' },
+    { ...timingChange, windowEnd: timingChange.windowStart },
+  ]) {
+    expectError(await post(confirmations(accepted), alice, body), 400, 'VALIDATION_ERROR');
+  }
+  assert.equal(await count('order_confirmations'), 0);
+});
+
+test('mutual cancellation: a rejection changes nothing, an approval cancels even after the window', async () => {
+  const id = await insertOrder({ status: 'PICKED_UP', courier_id: bob, ...expiredWindow });
+  const first = await post(confirmations(id), alice, { kind: 'CANCELLATION' });
+  const rejected = await respond(id, first, bob, 'REJECTED');
+  assert.deepEqual([rejected.status, rejected.body.status, rejected.body.courierResponse], [200, 'REJECTED', 'REJECTED']);
+  assert.deepEqual([(await row(id)).status, (await row(id)).version], ['PICKED_UP', 1]);
+
+  const second = await post(confirmations(id), bob, { kind: 'CANCELLATION' });
+  assert.equal((await respond(id, second, alice, 'ACCEPTED')).status, 200);
+  assert.deepEqual([(await row(id)).status, (await row(id)).version], ['CANCELLED', 2]);
+  const [entry] = await history(id);
+  assert.deepEqual([entry.action, entry.actorId, entry.previousStatus, entry.changeDetails], [
+    'CANCELLED', alice, 'PICKED_UP', { reason: 'MUTUAL_CANCELLATION', confirmationId: second.body.id },
+  ]);
+  await cleanUpCredits();
+  assert.deepEqual(creditCalls.map((c) => [c.action, c.orderId]), [['release', id]]);
+
+  const list = await get(confirmations(id), bob);
+  assert.deepEqual(list.body.items.map((c: any) => [c.id, c.status]), [[first.body.id, 'REJECTED'], [second.body.id, 'APPROVED']]);
+  assert.equal((await get(confirmations(id), carol)).status, 403);
+});
+
+test('an approved timing change updates the window and is recorded as an edit', async () => {
+  const id = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  expectError(await post(confirmations(id), alice, nightChange), 400, 'PICKUP_CLOSED'); // COM3 closes at 20:00
+  const proposed = await post(confirmations(id), alice, timingChange);
+  assert.equal(proposed.body.proposedWindowStart, '2030-01-01T02:00:00.000Z');
+  assert.equal((await respond(id, proposed, bob, 'ACCEPTED')).status, 200);
+
+  const order = (await get(`/orders/${id}`, alice)).body;
+  assert.deepEqual([order.status, order.windowStart, order.windowEnd, order.version], [
+    'ACCEPTED', '2030-01-01T02:00:00.000Z', '2030-01-01T04:00:00.000Z', 2,
+  ]);
+  const [edited] = await history(id);
+  assert.deepEqual([edited.action, edited.actorId, edited.changeDetails.confirmationId], ['EDITED', bob, proposed.body.id]);
+  assert.equal(edited.changeDetails.windowEnd.to, '2030-01-01T04:00:00.000Z');
+
+  // Once picked up, pickup hours no longer constrain the window.
+  await pool.query(`UPDATE orders SET status = 'PICKED_UP' WHERE id = $1`, [id]);
+  assert.equal((await post(confirmations(id), alice, nightChange)).status, 201);
+});
+
+test('a timing change answered after the current window ends becomes EXPIRED and changes nothing', async () => {
+  const id = await insertOrder({ status: 'IN_PROGRESS', courier_id: bob });
+  const proposed = await post(confirmations(id), alice, timingChange);
+  await pool.query('UPDATE orders SET window_start = $2, window_end = $3 WHERE id = $1', [id, expiredWindow.window_start, expiredWindow.window_end]);
+
+  expectError(await respond(id, proposed, bob, 'ACCEPTED'), 409, 'INVALID_STATE');
+  const [expired] = (await get(confirmations(id), alice)).body.items;
+  assert.equal(expired.status, 'EXPIRED');
+  assert.notEqual(expired.resolvedAt, null);
+  assert.equal((await row(id)).version, 1);
+
+  // An ended window blocks new timing changes, but not a cancellation.
+  expectError(await post(confirmations(id), alice, timingChange), 409, 'INVALID_STATE');
+  assert.equal((await post(confirmations(id), bob, { kind: 'CANCELLATION' })).status, 201);
+});
+
+test('arriving supersedes a pending timing change so completion can be proposed', async () => {
+  const id = await insertOrder({ status: 'IN_PROGRESS', courier_id: bob });
+  const proposed = await post(confirmations(id), alice, timingChange);
+  assert.equal((await post(`/orders/${id}/arrive`, bob, { version: 1 })).status, 200);
+  expectError(await respond(id, proposed, bob, 'ACCEPTED'), 409, 'INVALID_STATE');
+  assert.equal((await get(confirmations(id), alice)).body.items[0].status, 'SUPERSEDED');
+  assert.equal((await post(confirmations(id), bob, { kind: 'COMPLETION' })).status, 201);
+});
+
+test('two approvals of the same proposal at once complete the order exactly once', async () => {
+  const id = await insertOrder({ status: 'ARRIVED', courier_id: bob });
+  const proposed = await post(confirmations(id), bob, { kind: 'COMPLETION' });
+  const results = await Promise.all([1, 2].map(() => respond(id, proposed, alice, 'ACCEPTED')));
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(await count('order_history'), 1);
+  assert.equal((await row(id)).version, 2);
 });

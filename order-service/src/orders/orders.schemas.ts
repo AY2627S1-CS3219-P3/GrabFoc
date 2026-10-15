@@ -7,6 +7,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added the create, edit and accept body schemas and the AWAITING_CREDIT status (Phase B).
  * Author review: Reviewed in full.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added the confirmation proposal/response schemas and the Confirmation type (Phase C).
+ * Author review: Reviewed
  */
 import { z } from 'zod';
 
@@ -55,6 +58,17 @@ export type EditOrderBody = z.infer<typeof EditOrderBody>;
 export const VersionBody = z.object({ version: Version }).strict();
 export type VersionBody = z.infer<typeof VersionBody>;
 
+/** No version: a proposal does not change the order; approval rechecks the order's state. */
+export const ProposeBody = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('TIMING_CHANGE'), windowStart: Timestamp, windowEnd: Timestamp }).strict(),
+  z.object({ kind: z.literal('CANCELLATION') }).strict(),
+  z.object({ kind: z.literal('COMPLETION') }).strict(),
+]);
+export type ProposeBody = z.infer<typeof ProposeBody>;
+
+export const RespondBody = z.object({ response: z.enum(['ACCEPTED', 'REJECTED']) }).strict();
+export type RespondBody = z.infer<typeof RespondBody>;
+
 export type OrderStatus =
   | 'AWAITING_CREDIT' // created, Credit has not confirmed the hold yet
   | 'PENDING'
@@ -85,6 +99,22 @@ export interface Order {
   createdAt: Date;
   updatedAt: Date;
   version: number;
+}
+
+export type ConfirmationKind = ProposeBody['kind'];
+export type ConfirmationResponse = 'PENDING' | 'ACCEPTED' | 'REJECTED';
+
+export interface Confirmation {
+  id: string;
+  kind: ConfirmationKind;
+  proposedBy: string;
+  proposedWindowStart: Date | null;
+  proposedWindowEnd: Date | null;
+  requesterResponse: ConfirmationResponse;
+  courierResponse: ConfirmationResponse;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'SUPERSEDED';
+  createdAt: Date;
+  resolvedAt: Date | null;
 }
 
 export interface HistoryEntry {

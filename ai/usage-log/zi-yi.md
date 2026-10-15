@@ -15,12 +15,73 @@ Author review (Zi Yi): Read the entry in full.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added the single-migration entry.
 Author review: Pending review by Zi Yi.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added the Order Service Phase C entry.
+Author review (Zi Yi): Reviewed
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-15 — Order Service: Phase C (lifecycle, cancellation, confirmations)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** new `order-service/src/orders/confirmations.{controller,service}.ts`; changed
+`orders/orders.{controller,service,repository,schemas}.ts`, `common/errors.ts`, `app.module.ts`,
+`test/orders.api.test.ts`, `README.md`, `AGENTS.md`, `docs/order-service-plan.md`
+
+**Scenario:** implement Phase C of the plan. Before writing code, the AI flagged three design
+points under the AI policy (credit settlement, confirmation API shapes, expired orders). I asked
+for explanations and made the decisions.
+
+**Prompts:**
+> implement phase C, list the files changed/created and what they do
+
+> explain the credits question more, whats the difference between using http and kafka events
+
+> why can we have the credit reservation part using http, then for completed or cancelled orders use events?
+
+> for the credit reservation, if anything goes wrong, actually the release cna also use event?
+
+> the final implementation should be reserve is HTTP, release and transfer to be events. but since phase D is not ready to be implemented yet, we can implement as HTTP first? or we jsut implement what we can for now, and wait for the kafka to be set up?
+
+> (question answers) Credits: "Yes, as recommended"; Confirmation API: "As previewed (Recommended)"
+
+> whats the pros and cons
+
+> yes, go with that and implement phase C
+
+**Key responses:** explained HTTP vs Kafka for settlement (HTTP plus the clean-up job never loses
+a release because the `orders` table tracks it; Kafka without an outbox can lose an event between
+commit and publish). Pointed out that root `AGENTS.md` §3 records HTTP for transfer and release,
+which conflicts with the plan's events. Laid out the pros and cons of refusing or allowing
+actions on expired orders before the Phase D worker.
+
+**My decisions:** final design is reserve over HTTP, release and transfer as events. For now
+the clean-up job keeps releasing cancellations over HTTP, and completions stay held until Phase D.
+The confirmation API is as previewed. Expired orders refuse lifecycle steps and timing changes,
+but cancellation stays allowed.
+
+**What it produced:**
+- the courier steps `pick-up`, `start-delivery` and `arrive`;
+- requester cancellation of `PENDING` orders;
+- proposing, listing and answering `TIMING_CHANGE`, `CANCELLATION` and `COMPLETION` confirmations,
+  with the order and proposal locked and rechecked in one transaction;
+- the `CONFIRMATION_PENDING` error code;
+- 11 HTTP tests;
+- doc updates recording the decisions.
+
+**Flagged:**
+- `arrive` marks a pending `TIMING_CHANGE` `SUPERSEDED`. Otherwise it would block `COMPLETION`.
+  This is **[Proposed]**, because it extends SUPERSEDED beyond terminal actions.
+- Root §3 still needs a team update for events.
+- The D3 demo needs transfer, so if Kafka is late, an HTTP transfer fallback may be needed.
+
+**Verification:** `compose.test.yaml`: 53 tests passed (12 unit, 14 database, 27 HTTP).
+
+**What I changed or rejected:** Reviewed the generated files.
 
 ### 2026-10-15 — Order Service: one migration file
 

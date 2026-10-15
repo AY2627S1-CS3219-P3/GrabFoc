@@ -9,6 +9,9 @@ Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Recorded Phase B status and the revised creation flow (AWAITING_CREDIT, cancel and release, clean-up job).
 Author review: Reviewed.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Recorded Phase C status, the credit settlement decision and the expired-window rules Zi Yi confirmed.
+Author review: Reviewed
 -->
 
 # AGENTS.md — Order Service
@@ -47,7 +50,8 @@ _Origin: Team / Restated from root AGENTS.md; AI doc (implementation status)_
 - **[Decided]** NestJS HTTP server, per the team-consolidated `order-service-plan.md` (2026-10-14). Endpoint list is in that plan §3; response shapes (see README) are **[Proposed]**.
 - Implemented database foundation: `migrations/001_init.sql`, connection configuration, migration CLI/runner, Docker/Compose and PostgreSQL integration tests.
 - Implemented Phase A: JWKS token verification, Zod validation, error envelope, request/denial logging, and the read endpoints `GET /orders/available|mine|assigned|:orderId|:orderId/history`.
-- Implemented Phase B: `POST /orders`, `PATCH /orders/:orderId`, `POST /orders/:orderId/accept`, with Supplier location checks over HTTP, Credit reserve/release and the credit clean-up job; `AWAITING_CREDIT`, `CREDIT_RESERVED` and `credit_released_at` added to `001_init.sql`. No lifecycle transitions, confirmations, user cancellation or events yet.
+- Implemented Phase B: `POST /orders`, `PATCH /orders/:orderId`, `POST /orders/:orderId/accept`, with Supplier location checks over HTTP, Credit reserve/release and the credit clean-up job; `AWAITING_CREDIT`, `CREDIT_RESERVED` and `credit_released_at` added to `001_init.sql`.
+- Implemented Phase C: `POST /orders/:orderId/pick-up|start-delivery|arrive|cancel` and `GET|POST /orders/:orderId/confirmations`, `POST /orders/:orderId/confirmations/:confirmationId/respond`. No events, expiry worker or suspension/deactivation handling yet (Phase D).
 
 ## Creation and reading [Decided]
 
@@ -134,7 +138,10 @@ _Origin: Team / Restated from root §3, §6 and §8; AI doc (conflict reminders)
 - **[Decided]** Order publishes Supplier queries, Supplier alone consumes them; queries carry timestamps, stale queries may be rejected, and Order waits with loading/timeout behaviour. **[Open]** Response route, payload, correlation and timeout duration; read `supplier-service/AGENTS.md` before integration.
 - **[Decided by Zi Yi, 2026-10-15; confirm with team]** Creation flow, replacing the earlier insert-reserve-commit decision (`docs/order-service-plan.md` §4): save as `AWAITING_CREDIT` with `CREATED` history; call reserve outside any transaction; on success move to `PENDING` with `CREDIT_RESERVED` history; on refusal, failure or timeout move to `CANCELLED` (system, `reason: CREDIT_NOT_RESERVED`) and call release. A 10-second job cancels `AWAITING_CREDIT` orders older than 30 s and retries release for `CANCELLED` orders without `credit_released_at`. Failed creates must not publish `OrderCancelled` (Notification would email about an order the requester never saw).
 - **[Proposed]** Credit saves a `RELEASED` marker when asked to release an unknown order, so a late reserve cannot hold credits. Needs the Credit owner; until then that timing gap remains.
-- **[Open]** Whether later cancellations (Phase C/D) are released by the same clean-up job over HTTP or by Credit consuming `OrderCancelled`; and recovery for completed orders when transfer is unavailable.
+- **[Decided by Zi Yi, 2026-10-15; confirm with team]** Final credit design: reserve over HTTP; release and transfer by Credit consuming `OrderCancelled` / `OrderCompleted`. Until Kafka exists (Phase D), the clean-up job releases every `CANCELLED` order over HTTP, and `COMPLETED` orders keep their hold. In Phase D the job can republish events for rows not yet marked, instead of calling HTTP.
+- **[Conflict]** Root §3 and the [Decided] HTTP reserve/transfer/release line above still record HTTP for transfer and release. The team must update them; this file does not change them.
+- **[Decided by Zi Yi, 2026-10-15]** Before the Phase D expiry worker, an order past `window_end` in `PENDING`/`ACCEPTED`/`PICKED_UP`/`IN_PROGRESS` refuses lifecycle steps and `TIMING_CHANGE` proposals or approvals (expiry wins, plan §6). Requester cancellation of `PENDING` and `CANCELLATION` proposals and approvals stay allowed, so nothing is stuck before the worker exists.
+- **[Proposed]** `arrive` marks a pending `TIMING_CHANGE` `SUPERSEDED` in the same transaction, since `ARRIVED` allows no timing changes and the pending proposal would otherwise block `COMPLETION`. This extends SUPERSEDED beyond terminal actions; confirm with the team.
 - Reject unknown body fields using strict Zod schemas. Never accept caller identity, role or ownership from body fields.
 - Log 401/403 attempts consistently; never log credentials, tokens, OTPs, handover codes, balances or unmasked personal data.
 - Document every read environment variable in `.env.example`; use safe placeholders and keep secrets out of Git.

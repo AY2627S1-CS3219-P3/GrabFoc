@@ -7,6 +7,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added POST /orders, PATCH /orders/:orderId and POST /orders/:orderId/accept (Phase B).
  * Author review: Reviewed in full.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added POST /orders/:orderId/pick-up|start-delivery|arrive|cancel (Phase C).
+ * Author review: Reviewed
  */
 import { Body, Controller, Get, Headers, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { Caller, CurrentUser } from '../common/jwt-auth.guard';
@@ -16,6 +19,7 @@ import { OrdersService } from './orders.service';
 
 const orderId = new ZodValidationPipe(OrderIdParam);
 const pageQuery = new ZodValidationPipe(PageQuery);
+const versionBody = new ZodValidationPipe(VersionBody);
 
 // The caller's token is forwarded to Supplier, which authorizes location reads itself.
 
@@ -71,9 +75,34 @@ export class OrdersController {
   accept(
     @CurrentUser() caller: Caller,
     @Param('orderId', orderId) id: string,
-    @Body(new ZodValidationPipe(VersionBody)) { version }: VersionBody,
+    @Body(versionBody) { version }: VersionBody,
   ) {
     return this.orders.accept(caller, id, version);
+  }
+
+  @Post(':orderId/pick-up')
+  @HttpCode(200)
+  pickUp(@CurrentUser() caller: Caller, @Param('orderId', orderId) id: string, @Body(versionBody) { version }: VersionBody) {
+    return this.orders.advance(caller, id, version, 'PICKED_UP');
+  }
+
+  @Post(':orderId/start-delivery')
+  @HttpCode(200)
+  startDelivery(@CurrentUser() caller: Caller, @Param('orderId', orderId) id: string, @Body(versionBody) { version }: VersionBody) {
+    return this.orders.advance(caller, id, version, 'IN_PROGRESS');
+  }
+
+  @Post(':orderId/arrive')
+  @HttpCode(200)
+  arrive(@CurrentUser() caller: Caller, @Param('orderId', orderId) id: string, @Body(versionBody) { version }: VersionBody) {
+    return this.orders.advance(caller, id, version, 'ARRIVED');
+  }
+
+  /** PENDING only; accepted orders are cancelled through a CANCELLATION confirmation. */
+  @Post(':orderId/cancel')
+  @HttpCode(200)
+  cancel(@CurrentUser() caller: Caller, @Param('orderId', orderId) id: string, @Body(versionBody) { version }: VersionBody) {
+    return this.orders.cancel(caller, id, version);
   }
 
   @Get(':orderId/history')

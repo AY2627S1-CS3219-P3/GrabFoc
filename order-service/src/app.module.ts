@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Registered the Supplier and Credit clients (Phase B).
  * Author review: Reviewed in full.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Registered the confirmations controller and service (Phase C).
+ * Author review: Reviewed
  */
 import { INestApplication, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
@@ -15,15 +18,18 @@ import { requestLogger } from './common/request-logger';
 import { DatabaseModule } from './db/database.module';
 import { CreditClient } from './integrations/credit.client';
 import { SupplierClient } from './integrations/supplier.client';
+import { ConfirmationsController } from './orders/confirmations.controller';
+import { ConfirmationsService } from './orders/confirmations.service';
 import { OrdersController } from './orders/orders.controller';
 import { OrdersRepository } from './orders/orders.repository';
 import { OrdersService } from './orders/orders.service';
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [OrdersController],
+  controllers: [OrdersController, ConfirmationsController],
   providers: [
     OrdersService,
+    ConfirmationsService,
     OrdersRepository,
     SupplierClient,
     CreditClient,

@@ -7,11 +7,23 @@
  * Scope: Added the transaction helper, insert, guarded update/accept/status changes, history
  *        writes and the credit clean-up queries (Phase B).
  * Author review: Reviewed in full.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added row locking, guarded lifecycle transitions, window changes and the
+ *        order_confirmations queries (Phase C).
+ * Author review: Reviewed
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
 import { PG_POOL } from '../db/database.module';
-import type { HistoryEntry, Order, OrderStatus, Page, PageQuery } from './orders.schemas';
+import type {
+  Confirmation,
+  ConfirmationKind,
+  HistoryEntry,
+  Order,
+  OrderStatus,
+  Page,
+  PageQuery,
+} from './orders.schemas';
 
 /** Fixed WHERE clauses; `$1` is always the caller's ID. Never built from request input. */
 const LISTS = {
@@ -76,6 +88,32 @@ function toOrder(row: Row): Order {
   };
 }
 
+export type Side = 'requester' | 'courier';
+const RESPONSE_COLUMNS = { requester: 'requester_response', courier: 'courier_response' } as const;
+
+export interface NewConfirmation {
+  kind: ConfirmationKind;
+  proposedBy: string;
+  proposerSide: Side;
+  windowStart?: Date;
+  windowEnd?: Date;
+}
+
+function toConfirmation(row: Row): Confirmation {
+  return {
+    id: row.id,
+    kind: row.kind,
+    proposedBy: row.proposed_by,
+    proposedWindowStart: row.proposed_window_start,
+    proposedWindowEnd: row.proposed_window_end,
+    requesterResponse: row.requester_response,
+    courierResponse: row.courier_response,
+    status: row.status,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at,
+  };
+}
+
 function toHistory(row: Row): HistoryEntry {
   return {
     id: row.id,
@@ -110,6 +148,12 @@ export class OrdersRepository {
 
   async findById(id: string, db: Db = this.pool): Promise<Order | undefined> {
     const { rows } = await db.query('SELECT * FROM orders WHERE id = $1', [id]);
+    return rows[0] && toOrder(rows[0]);
+  }
+
+  /** Locks the order row until the transaction ends, so confirmation changes on it run one at a time. */
+  async lock(tx: PoolClient, id: string): Promise<Order | undefined> {
+    const { rows } = await tx.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [id]);
     return rows[0] && toOrder(rows[0]);
   }
 
@@ -157,6 +201,36 @@ export class OrdersRepository {
     return rows[0] && toOrder(rows[0]);
   }
 
+  /**
+   * Moves the order `from` → `to` only at the expected version and, with `unexpired`, before
+   * window_end; undefined otherwise.
+   */
+  async transition(
+    tx: PoolClient,
+    id: string,
+    version: number,
+    from: OrderStatus,
+    to: OrderStatus,
+    unexpired: boolean,
+  ): Promise<Order | undefined> {
+    const { rows } = await tx.query(
+      `UPDATE orders SET status = $4, version = version + 1, updated_at = now()
+       WHERE id = $1 AND version = $2 AND status = $3 ${unexpired ? 'AND window_end > now()' : ''} RETURNING *`,
+      [id, version, from, to],
+    );
+    return rows[0] && toOrder(rows[0]);
+  }
+
+  /** For an approved timing change; the caller holds the row lock and has rechecked the order. */
+  async setWindow(tx: PoolClient, id: string, windowStart: Date, windowEnd: Date): Promise<Order> {
+    const { rows } = await tx.query(
+      `UPDATE orders SET window_start = $2, window_end = $3, version = version + 1, updated_at = now()
+       WHERE id = $1 RETURNING *`,
+      [id, windowStart, windowEnd],
+    );
+    return toOrder(rows[0]);
+  }
+
   /** Applies a requester edit only while PENDING at the expected version; undefined otherwise. */
   async update(tx: PoolClient, id: string, version: number, edit: OrderEdit): Promise<Order | undefined> {
     const keys = Object.keys(edit) as (keyof OrderEdit)[];
@@ -202,6 +276,62 @@ export class OrdersRepository {
 
   async markCreditReleased(id: string): Promise<void> {
     await this.pool.query('UPDATE orders SET credit_released_at = now() WHERE id = $1', [id]);
+  }
+
+  /** Oldest first, like history. */
+  async confirmations(orderId: string): Promise<Confirmation[]> {
+    const { rows } = await this.pool.query(
+      'SELECT * FROM order_confirmations WHERE order_id = $1 ORDER BY created_at, id',
+      [orderId],
+    );
+    return rows.map(toConfirmation);
+  }
+
+  /**
+   * The proposer's own response starts ACCEPTED, the other side's PENDING. The partial unique
+   * index rejects a second PENDING proposal on the order (23505).
+   */
+  async propose(tx: PoolClient, orderId: string, c: NewConfirmation): Promise<Confirmation> {
+    const own = (side: Side) => (side === c.proposerSide ? 'ACCEPTED' : 'PENDING');
+    const { rows } = await tx.query(
+      `INSERT INTO order_confirmations
+         (order_id, kind, proposed_by, proposed_window_start, proposed_window_end, requester_response, courier_response)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [orderId, c.kind, c.proposedBy, c.windowStart ?? null, c.windowEnd ?? null, own('requester'), own('courier')],
+    );
+    return toConfirmation(rows[0]);
+  }
+
+  async lockConfirmation(tx: PoolClient, orderId: string, id: string): Promise<Confirmation | undefined> {
+    const { rows } = await tx.query(
+      'SELECT * FROM order_confirmations WHERE id = $1 AND order_id = $2 FOR UPDATE',
+      [id, orderId],
+    );
+    return rows[0] && toConfirmation(rows[0]);
+  }
+
+  /** Resolves a proposal, first recording the responder's answer when given. */
+  async resolve(
+    tx: PoolClient,
+    id: string,
+    status: Exclude<Confirmation['status'], 'PENDING'>,
+    response?: { side: Side; value: 'ACCEPTED' | 'REJECTED' },
+  ): Promise<Confirmation> {
+    const set = response ? `${RESPONSE_COLUMNS[response.side]} = $3, ` : '';
+    const { rows } = await tx.query(
+      `UPDATE order_confirmations SET ${set}status = $2, resolved_at = now() WHERE id = $1 RETURNING *`,
+      response ? [id, status, response.value] : [id, status],
+    );
+    return toConfirmation(rows[0]);
+  }
+
+  /** Pending proposals of these kinds that an order change has made moot. */
+  async supersedePending(tx: PoolClient, orderId: string, kinds: ConfirmationKind[]): Promise<void> {
+    await tx.query(
+      `UPDATE order_confirmations SET status = 'SUPERSEDED', resolved_at = now()
+       WHERE order_id = $1 AND status = 'PENDING' AND kind = ANY($2)`,
+      [orderId, kinds],
+    );
   }
 
   async addHistory(tx: PoolClient, entry: NewHistory): Promise<void> {
