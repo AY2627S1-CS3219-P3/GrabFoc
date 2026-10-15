@@ -9,6 +9,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: Added error codes; added getBalance (Task 3).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added createWallet (Kafka plan Task 3).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -236,5 +239,14 @@ export class CreditsService {
       throw new ProblemException(404, 'This user has no credit wallet yet.', ErrorCode.WALLET_NOT_FOUND);
     }
     return { userId: rows[0].user_id, available: rows[0].available, reserved: rows[0].reserved };
+  }
+
+  /** Creates a wallet with the starting credits; false when it already existed (spec §4.1). */
+  async createWallet(userId: string): Promise<boolean> {
+    const { rowCount } = await this.pool.query(
+      'INSERT INTO credit_accounts (user_id) VALUES ($1) ON CONFLICT DO NOTHING',
+      [userId],
+    );
+    return rowCount === 1;
   }
 }

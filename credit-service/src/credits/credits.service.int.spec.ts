@@ -4,6 +4,9 @@
  * Scope: Generated integration tests for CreditsService against a real PostgreSQL: reserve,
  *        transfer and release, duplicates, mismatches, and concurrent requests.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added the createWallet tests (Kafka plan Task 3).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
@@ -231,5 +234,21 @@ describe('error codes', () => {
     await service.reserve({ orderId: refunded, requesterId: requester, amount: 1 });
     await service.release({ orderId: refunded });
     expect(await codeOf(service.transfer({ orderId: refunded, courierId: courier }))).toBe('ALREADY_RELEASED');
+  });
+});
+
+describe('createWallet', () => {
+  it('creates a wallet with 10 credits', async () => {
+    const userId = randomUUID();
+    expect(await service.createWallet(userId)).toBe(true);
+    expect(await balance(userId)).toEqual({ available: 10, reserved: 0 });
+  });
+
+  it('does nothing for a repeated event, so credits are never granted twice', async () => {
+    const userId = randomUUID();
+    await service.createWallet(userId);
+    await pool.query('UPDATE credit_accounts SET available = 4 WHERE user_id = $1', [userId]);
+    expect(await service.createWallet(userId)).toBe(false);
+    expect(await balance(userId)).toEqual({ available: 4, reserved: 0 });
   });
 });
