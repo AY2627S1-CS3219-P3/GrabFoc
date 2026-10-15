@@ -4,6 +4,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
 Scope: Wrote this file from Jian Bing's Credit Service design (learning-mode session) and the
        details Claude Code proposed and he approved in the implementation plan.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: A repeated reserve returns the hold's current state (PR #48 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -84,7 +87,7 @@ Details (`application/problem+json`), as in the Supplier Service.
 
 | Route | Body | Success | Errors |
 |---|---|---|---|
-| `POST /internal/credits/reserve` | `{orderId, requesterId, amount}` | **201** new hold; **200** same body for a repeat | 409 insufficient credits (nothing kept); 409 same order with a different requester or amount |
+| `POST /internal/credits/reserve` | `{orderId, requesterId, amount}` | **201** new hold; **200** for a repeat, with the hold as it is now (its `state` may have moved on to `TRANSFERRED` or `RELEASED`) | 409 insufficient credits (nothing kept); 409 same order with a different requester or amount |
 | `POST /internal/credits/transfer` | `{orderId, courierId}` | **200**, also for a repeat to the same courier | 404 unknown order; 409 already released, already paid to a different courier, or courier is the requester |
 | `POST /internal/credits/release` | `{orderId}` | **200**, also for a repeat | 404 unknown order; 409 already transferred |
 | any, wrong or missing key | | | 401, logged as `access_denied` without the key |

@@ -4,6 +4,9 @@
  * Scope: Generated the X-Service-Key guard for the /internal/credits routes (design confirmed by
  *        Jian Bing: the pattern user-service/AGENTS.md documents for its /internal routes).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Log the path without its query string (PR #48 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'crypto';
@@ -45,7 +48,8 @@ export class ServiceKeyGuard implements CanActivate {
         event: 'access_denied',
         status: 401,
         method: req.method,
-        path: req.originalUrl,
+        // The path only: a query string could carry a secret (PR #48 review).
+        path: req.originalUrl.split('?')[0],
         reason: given ? 'invalid_service_key' : 'missing_service_key',
       }),
     );
