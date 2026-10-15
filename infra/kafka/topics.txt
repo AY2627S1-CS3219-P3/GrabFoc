@@ -1,0 +1,18 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+# Scope: Listed the topics from the redesign spec §9.2.
+# Author review: pending — Jian Bing to record what he checked.
+#
+# Every Kafka topic in the system, created by kafka-init (root AGENTS.md §3 Messaging, rule 4).
+# Add a topic by adding a line: <name> <partitions>. Partitions can be raised later, never lowered.
+# Credit's retry topics are not listed: kafka-init creates one per entry in CREDIT_RETRY_DELAYS.
+
+# Events, written by their owner
+user.events 3
+
+# Commands, written to the receiver's topic
+credit.commands 3
+
+# Dead-letter topics, one per consumer and source topic (rule 6)
+credit.commands.dlt 1
+credit.user-events.dlt 1
