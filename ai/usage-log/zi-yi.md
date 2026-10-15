@@ -14,10 +14,10 @@ Scope: Added the Order Service revised creation flow entry.
 Author review (Zi Yi): Read the entry in full.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added the single-migration entry.
-Author review: Pending review by Zi Yi.
+Author review (Zi Yi): Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added the Order Service Phase C entry.
-Author review (Zi Yi): Reviewed
+Author review (Zi Yi): Reviewed; ran `npm test` and the `compose.test.yaml` tests.
 -->
 
 # AI Usage Log — Zi Yi
@@ -81,7 +81,7 @@ but cancellation stays allowed.
 
 **Verification:** `compose.test.yaml`: 53 tests passed (12 unit, 14 database, 27 HTTP).
 
-**What I changed or rejected:** Reviewed the generated files.
+**What I changed or rejected:** Reviewed the generated files and ran `npm test` and the `compose.test.yaml` tests.
 
 ### 2026-10-15 — Order Service: one migration file
 
@@ -104,7 +104,7 @@ changes, because the runner tracks applied files by name; it has to be recreated
 
 **Verification:** `compose.test.yaml`: 42 tests passed (12 unit, 14 database, 16 HTTP).
 
-**What I changed or rejected:** _pending Zi Yi's review._
+**What I changed or rejected:** Reviewed the generated files.
 
 ### 2026-10-15 — Order Service: revised creation flow (credit release and clean-up)
 
