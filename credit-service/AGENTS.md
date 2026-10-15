@@ -10,6 +10,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added the Messaging section for redesign Phase 2 (wallets from UserRegistered over Kafka).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Documented Phase 3: credit commands, retries, the dead-letter table and the admin routes.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -74,6 +77,20 @@ credit_holds (
     state         TEXT NOT NULL  -- RESERVED | TRANSFERRED | RELEASED
     created_at, updated_at TIMESTAMPTZ
 )
+credit_dead_letters (                           -- copied from Credit's dead-letter topics
+    id                BIGSERIAL PRIMARY KEY,
+    event_id          UUID,                     -- null when the message was unreadable
+    order_id          UUID,
+    source_topic      TEXT NOT NULL,            -- credit.commands or user.events
+    command_type      TEXT,                     -- the message's type field
+    payload           TEXT NOT NULL,
+    error             TEXT NOT NULL,
+    error_code        TEXT,
+    attempts          INTEGER NOT NULL CHECK (attempts > 0),
+    dead_lettered_at  TIMESTAMPTZ NOT NULL,
+    replayed_at       TIMESTAMPTZ,              -- null while open
+    UNIQUE (source_topic, event_id)
+)
 ```
 
 - An account is created on first use (`INSERT … ON CONFLICT DO NOTHING`), as agreed in
@@ -81,6 +98,9 @@ credit_holds (
 - `courier_id` was added so a repeated transfer can be told apart from one to a different courier.
 - The `CHECK` constraints are a backstop: code that slipped past the conditional update would fail
   instead of storing a negative balance.
+- A dead letter is unique per `(source_topic, event_id)`, so a message from one topic can never
+  overwrite another topic's row. A command that dies again after a replay updates its row and
+  reopens it; an older copy of the same dead letter changes nothing.
 
 ## API [Proposed]
 
@@ -95,11 +115,14 @@ Details (`application/problem+json`), as in the Supplier Service.
 | `POST /internal/credits/release` | `{orderId}` | **200**, also for a repeat | 404 unknown order; 409 already transferred |
 | any, wrong or missing key | | | 401, logged as `access_denied` without the key |
 | `GET /credits/:userId` (user JWT; through the gateway once PR #69's Envoy route is added) | — | **200** `{userId, available, reserved}` | 400 path id not a UUID; 401 no/invalid token; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
+| `GET /admin/credits/dead-letters?status=open\|replayed\|all` (ADMIN JWT; default `open`) | — | **200** `{items: [...]}`, newest first, at most 100 | 400 unknown status; 401; 403 a USER (logged, checked before validation) |
+| `POST /admin/credits/dead-letters/:eventId/replay` (ADMIN JWT) | — | **200** the dead letter, `replayedAt` set; the command is republished to `credit.commands` with a fresh attempt count | 400 id not a UUID; 401; 403 a USER (logged); 404 `DEAD_LETTER_NOT_FOUND`; 409 `ALREADY_REPLAYED`; 409 `NOT_REPLAYABLE` (a user-event dead letter: fix and re-publish it from the User Service) |
 
 The three internal routes return the hold: `{orderId, requesterId, courierId, amount, state}`.
 
 Errors carry a machine-readable `code` (`INSUFFICIENT_CREDITS`, `WALLET_NOT_FOUND`, `HOLD_MISMATCH`,
-`ALREADY_TRANSFERRED`, `ALREADY_RELEASED`, `COURIER_IS_REQUESTER`, `HOLD_NOT_FOUND`); validation and
+`ALREADY_TRANSFERRED`, `ALREADY_RELEASED`, `COURIER_IS_REQUESTER`, `HOLD_NOT_FOUND`,
+`DEAD_LETTER_NOT_FOUND`, `ALREADY_REPLAYED`, `NOT_REPLAYABLE`); validation and
 auth errors have none. The balance route verifies the user JWT itself against `CREDIT_JWKS_URL`
 (the User Service JWKS, as the Supplier Service does); the `/internal` routes keep the service key,
 and neither credential opens the other's routes. The balance route never creates a wallet.
@@ -127,8 +150,22 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
 - **Local setup:** Node 24 (`.nvmrc`; the Kafka client has prebuilt binaries for Node 18–24),
   `npm run test:kafka` against the Compose broker. The client's install script is approved in
   `package.json` (`allowScripts`), because npm 11 skips dependency install scripts by default.
-- Phase 3 adds `credit.commands` (transfer/release), retry topics, `credit.commands.dlt`, the
-  dead-letter table and the admin routes (#77, #78).
+- **`credit.commands` → transfer and release (Phase 3).** Order sends commands to Credit's topic,
+  keyed by `orderId`; Credit owns their shape and checks it strictly:
+  `{type: "TransferCredits", eventId, orderId, courierId}`, `{type: "ReleaseCredits", eventId, orderId}`.
+  They run the same `transfer` / `release` code as the HTTP routes, so a repeat is a no-op.
+  - **Retryable** failures (`WALLET_NOT_FOUND`, or an unexpected error such as the database being
+    down) step aside to `credit.commands.retry.<n>`, one topic per entry in `CREDIT_RETRY_DELAYS`
+    (default `1s,5s,30s,2m,10m`), with headers `x-attempt` and `x-due-at`. A not-yet-due retry
+    pauses its partition until due; each retry topic has one delay, so this delays nothing behind it.
+  - **Permanent** failures (any other error code, including `HOLD_NOT_FOUND`, which is a bug, K11;
+    or an invalid message), and retries that run out, go to **`credit.commands.dlt`** with
+    `x-error`, `x-error-code`, `x-source-topic`, `x-dead-lettered-at`, logged at `error` as
+    `credit_command_dead_lettered` (ids only).
+- **Dead letters:** Credit copies both DLTs into `credit_dead_letters`; admins list and replay them
+  through the admin routes (API above). Only credit commands can be replayed.
+- The database pool has connection (5 s) and query (10 s) timeouts, so an unreachable database
+  becomes an error the consumer retries instead of a hang.
 
 ## Concurrency notes
 
@@ -146,8 +183,9 @@ _Origin: AI doc_
 - Confirm this design with Zi Yi (owner).
 - Gateway route for `GET /credits/:userId`: waiting for PR #69 (Envoy); add
   `api-gateway/envoy/routes/30-credit.routes.json` and `CREDIT_SERVICE_URL` then.
-- Redesign Phase 3 (transfer/release as Kafka commands, dead letters): #77, #78; then #79 removes
-  lazy wallet creation and the HTTP transfer/release routes once #54 and #53/#56 publish.
+- #79: remove lazy wallet creation and the HTTP transfer/release routes once the User Service
+  publishes `UserRegistered` (#54) and the Order Service sends the commands (#53, #56).
+- Gateway routes for `GET /credits/:userId` and `/admin/credits/**` (#60).
   Spec: `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md` §9.
 - Confirm Kafka and root `AGENTS.md` §3 "Messaging (Kafka)" with the whole team.
 - Transaction history (the profile page links to one): not built.

@@ -31,7 +31,10 @@ Jian Bing's entries for the FoC AI usage log. The template and rules are in
 `credit-service/{compose.yaml,package.json,package-lock.json,.nvmrc,jest.kafka.config.js,AGENTS.md,README.md}`,
 `credit-service/src/{config,app.module}.ts`, `credit-service/src/messaging/{topics,messages,kafka.connection,kafka.runner}.ts`
 (+ `topics.spec`, `messages.spec`, `wallets.kafka.spec`), `credit-service/src/credits/credits.service{,.int.spec}.ts`,
-`credit-service/src/test/{env.setup,database,kafka}.ts`, `credit-service/src/db/database{,.spec}.ts`, `ai/usage-log/jian-bing.md`; GitHub issues #75–#79 and a comment on #54.
+`credit-service/src/test/{env.setup,database,kafka,fake-publisher}.ts`, `credit-service/src/db/{database,database.spec,schema}.ts`,
+Phase 3: `credit-service/src/messaging/{command-processor,commands.kafka.spec,command-processor.spec}.ts`,
+`credit-service/src/dead-letters/*`, `credit-service/src/common/error-codes.ts`, `credit-service/postman/credit.postman_collection.json`,
+`ai/usage-log/jian-bing.md`; GitHub issues #75–#79, a comment on #54, PRs #84 (Phase 2) and the Phase 3 PR.
 
 **Scenario:** Learning mode. I chose the broker with Jie Yang and made every design decision for
 Phases 2–3; Claude compared the brokers and patterns, explained concepts (KRaft, partitions,
@@ -120,7 +123,10 @@ policy points, then wrote the spec, plan, issues and the Phase 2 code with tests
 **Verification:** `tsc` clean; unit 95/95, integration 32/32, Kafka end-to-end 4/4 against the
 Compose broker (10/10 repeated runs after fixing a flaky test setup); a fresh Claude reviewer found
 no critical issues, and its two important code findings were fixed with tests (database timeouts,
-outage-retry test); its minor findings are listed in the PR; `kafka-init` creates exactly the listed topics and is safe to rerun; the running
+outage-retry test); its minor findings are listed in the PR;
+Phase 3: unit 108/108, integration 49/49, Kafka 10/10, Newman 24 requests / 30 assertions with 0
+failures; a background security review found that dead letters from different topics could
+overwrite each other, fixed with a test (rows unique per source topic and event id); `kafka-init` creates exactly the listed topics and is safe to rerun; the running
 service created a wallet from a published `UserRegistered` and sent a malformed one to
 `credit.user-events.dlt`; the Docker image loads the native client.
 

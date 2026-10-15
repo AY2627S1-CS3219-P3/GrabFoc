@@ -9,6 +9,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added Kafka (wallets from UserRegistered), Node 24 and the Kafka tests.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added credit commands, dead letters and the Postman Dead letters folder.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service
@@ -30,6 +33,26 @@ The service consumes `user.events` from the shared Kafka broker ([`infra/kafka`]
 each `UserRegistered` creates that user's wallet with 10 credits. Watch the topics in Kafka UI at
 http://localhost:8085; publishing `{"type":"UserRegistered","userId":"<uuid>"}` to `user.events`
 there creates a wallet. An event without a valid `userId` lands on `credit.user-events.dlt`.
+
+It also consumes `credit.commands`: `{"type":"TransferCredits","eventId","orderId","courierId"}`
+and `{"type":"ReleaseCredits","eventId","orderId"}`. A command that can't be applied yet is
+retried through `credit.commands.retry.*`; one that keeps failing, or never can succeed, lands on
+`credit.commands.dlt`.
+
+### Dead letters (admins)
+
+```bash
+# An ADMIN access token from the User Service
+TOKEN=$(curl -s -X POST localhost:3001/auth/login -H 'content-type: application/json' \
+  -d '{"email":"<admin email>","password":"<password>"}' | jq -r .accessToken)
+
+curl -s localhost:3004/admin/credits/dead-letters -H "authorization: Bearer $TOKEN"          # open ones
+curl -s -X POST localhost:3004/admin/credits/dead-letters/<eventId>/replay -H "authorization: Bearer $TOKEN"
+```
+
+Replay republishes a credit command to `credit.commands`; if it fails again, its row reopens. A
+user-event dead letter can't be replayed (409 `NOT_REPLAYABLE`): the User Service has to fix and
+re-publish it.
 
 It listens on port **3004**. Its database is `credit-db` on host port **5435**. The gateway does
 not route to it: only the Order Service calls it.
@@ -64,7 +87,8 @@ token against the User Service's public keys, so User Service must be running.
 Import `postman/credit.postman_collection.json`, set its `serviceKey` variable to your
 `CREDIT_SERVICE_KEY`, and run each folder top to bottom. Every folder starts with fresh ids, so
 you can re-run it as often as you like. For the **4. Balance** folder, also set `userToken` (an
-access token from `/auth/login`) and `userId` (that user's id).
+access token from `/auth/login`) and `userId` (that user's id). For **5. Dead letters**, also set
+`adminToken` (an ADMIN's access token).
 
 ## Test it
 
