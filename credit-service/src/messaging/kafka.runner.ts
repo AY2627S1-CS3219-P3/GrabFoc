@@ -4,6 +4,9 @@
  * Scope: Generated the Kafka consumer for wallets from UserRegistered, with unreadable events sent
  *        to credit.user-events.dlt (spec §9.2, K11–K12).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Dead-letter the original bytes (PR #84 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
@@ -78,7 +81,8 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
     await this.connection.send({
       topic: this.topics.userEventsDeadLetter,
       key: message.key,
-      value: message.value?.toString('utf8') ?? '',
+      // The original bytes, not a UTF-8 re-encoding, so the dead letter keeps exactly what failed.
+      value: message.value ?? '',
       headers: {
         [HEADER.attempt]: '1',
         [HEADER.error]: err.message.slice(0, 500),

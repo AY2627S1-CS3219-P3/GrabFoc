@@ -4,6 +4,9 @@
  * Scope: Generated the message types, headers and parsers: credit commands strictly (Credit owns
  *        them, K6) and UserRegistered tolerantly (the User Service owns it, K12).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Outbound values may be raw bytes (PR #84 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { z } from 'zod';
 
@@ -18,7 +21,8 @@ export interface InboundMessage {
 export interface OutboundMessage {
   topic: string;
   key: string | null;
-  value: string;
+  /** Raw bytes are passed through untouched, so a dead letter keeps exactly what failed. */
+  value: Buffer | string;
   headers: Record<string, string>;
 }
 

@@ -5,7 +5,8 @@
  *        UserRegistered and the user-event dead-letter topic (spec §7, §9; K11–K12).
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
- * Scope: Added the database-outage retry test (Phase 2 review).
+ * Scope: Added the database-outage retry test (Phase 2 review), and the byte-exact dead-letter
+ *        test (PR #84 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
@@ -151,4 +152,18 @@ it('retries a wallet whose database write failed, after pausing the partition', 
   expect(credits.calls).toBe(2);
   // The runner rests the partition for 5 s before reading the message again.
   expect(Date.now() - started).toBeGreaterThanOrEqual(4_500);
+});
+
+// PR #84 review: a dead letter must keep the bytes that failed, even when they aren't valid UTF-8.
+it('dead-letters an event byte for byte, even when it is not valid UTF-8', async () => {
+  const bytes = Buffer.from([0x7b, 0xff, 0xfe, 0x7d]); // "{", two invalid bytes, "}"
+  const dlt = await collect(connection.kafka, topics.userEventsDeadLetter);
+  try {
+    await connection.send({ topic: topics.userEvents, key: 'bad-bytes', value: bytes, headers: {} });
+    await drain();
+    const message = await waitFor(async () => dlt.messages.find((m) => m.key?.toString() === 'bad-bytes'));
+    expect(message.value).toEqual(bytes);
+  } finally {
+    await dlt.stop();
+  }
 });
