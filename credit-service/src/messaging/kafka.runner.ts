@@ -4,11 +4,16 @@
  * Scope: Generated the Kafka consumer for wallets from UserRegistered, with unreadable events sent
  *        to credit.user-events.dlt (spec §9.2, K11–K12).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Phase 3: credit commands, retries and dead letters (spec §9.2, K2–K3).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { config } from '../config';
 import { CreditsService } from '../credits/credits.service';
+import { DeadLettersService } from '../dead-letters/dead-letters.service';
+import { CommandProcessor, msUntilDue } from './command-processor';
 import { KafkaConnection, toInbound } from './kafka.connection';
 import { HEADER, InboundMessage, InvalidMessageError, parseUserEvent } from './messages';
 import { Topics, TOPICS } from './topics';
@@ -16,26 +21,47 @@ import { Topics, TOPICS } from './topics';
 /** How long a partition rests after an unexpected error (e.g. the database is down). */
 const ERROR_PAUSE_MS = 5000;
 
+/** Thrown to leave a retry message unread until it is due; the client then seeks back to it. */
+class NotDueYet extends Error {}
+
 @Injectable()
 export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('Kafka');
   private readonly timers = new Set<NodeJS.Timeout>();
+  private readonly processor: CommandProcessor;
   private consumer?: KafkaJS.Consumer;
 
   constructor(
     private readonly credits: CreditsService,
+    private readonly deadLetters: DeadLettersService,
     private readonly connection: KafkaConnection,
     @Inject(TOPICS) private readonly topics: Topics,
-  ) {}
+  ) {
+    this.processor = new CommandProcessor(
+      (command) =>
+        command.type === 'TransferCredits'
+          ? credits.transfer({ orderId: command.orderId, courierId: command.courierId })
+          : credits.release({ orderId: command.orderId }),
+      topics,
+    );
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     // fromBeginning: a new group starts at the oldest message, so no event sent before Credit
     // first started is missed. Offsets are stored only after eachMessage succeeds.
     this.consumer = this.connection.kafka.consumer({ kafkaJS: { groupId: config.kafkaGroupId, fromBeginning: true } });
     await this.consumer.connect();
-    await this.consumer.subscribe({ topics: [this.topics.userEvents] });
+    await this.consumer.subscribe({
+      topics: [
+        this.topics.userEvents,
+        this.topics.commands,
+        ...this.topics.retries.map((r) => r.topic),
+        this.topics.commandsDeadLetter,
+        this.topics.userEventsDeadLetter,
+      ],
+    });
     await this.consumer.run({ eachMessage: (payload) => this.onMessage(payload) });
-    this.logger.log('Consuming user events');
+    this.logger.log('Consuming user events and credit commands');
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -44,15 +70,31 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async onMessage({ topic, message, pause }: KafkaJS.EachMessagePayload): Promise<void> {
+    const inbound = toInbound(topic, message);
     try {
-      await this.onUserEvent(toInbound(topic, message));
+      if (topic === this.topics.userEvents) return await this.onUserEvent(inbound);
+      if (topic === this.topics.commandsDeadLetter || topic === this.topics.userEventsDeadLetter) {
+        return await this.deadLetters.record(inbound);
+      }
+
+      const wait = msUntilDue(inbound, Date.now());
+      if (wait > 0) {
+        // Every message in a retry topic has the same delay, so nothing behind this one is due
+        // sooner: resting this partition delays no other message.
+        this.pauseFor(pause, wait);
+        throw new NotDueYet();
+      }
+      const next = await this.processor.process(inbound, Date.now());
+      if (next) await this.connection.send(next);
     } catch (err) {
-      this.logger.error(
-        `Couldn't handle a message from ${topic}; trying again in ${ERROR_PAUSE_MS / 1000}s: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      this.pauseFor(pause, ERROR_PAUSE_MS);
+      if (!(err instanceof NotDueYet)) {
+        this.logger.error(
+          `Couldn't handle a message from ${topic}; trying again in ${ERROR_PAUSE_MS / 1000}s: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        this.pauseFor(pause, ERROR_PAUSE_MS);
+      }
       // Throwing makes the client seek back, so the message is read again after the pause.
       throw err;
     }

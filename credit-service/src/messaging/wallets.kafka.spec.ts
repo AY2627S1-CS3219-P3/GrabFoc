@@ -14,6 +14,7 @@ import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import { config } from '../config';
 import { CreditsService } from '../credits/credits.service';
+import { DeadLettersService } from '../dead-letters/dead-letters.service';
 import { emptyTables, openTestDatabase } from '../test/database';
 import { collect, createTestTopics, testKafkaBrokers, waitFor } from '../test/kafka';
 import { KafkaConnection } from './kafka.connection';
@@ -59,7 +60,7 @@ beforeAll(async () => {
   deleteTopics = await createTestTopics(admin, topics);
   await connection.onModuleInit();
   credits = new FlakyCredits(pool);
-  runner = new KafkaRunner(credits, connection, topics);
+  runner = new KafkaRunner(credits, new DeadLettersService(pool, connection, topics), connection, topics);
   await runner.onApplicationBootstrap();
 });
 afterAll(async () => {
