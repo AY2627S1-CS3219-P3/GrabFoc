@@ -8,8 +8,8 @@
 #
 # Every Kafka topic in the system, and the only list of them: kafka-init creates exactly these
 # (root AGENTS.md §3 Messaging, rule 4). Add a topic by adding a line: <name> <partitions>.
-# Changing a number here doesn't change an existing topic; raise partitions with
-# `kafka-topics.sh --alter` (they can never be lowered).
+# Raising a number here raises the existing topic's partitions the next time kafka-init runs;
+# Kafka can never lower them (kafka-init warns instead).
 
 # Events, written by their owner
 user.events 3

@@ -7,7 +7,8 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Added reading a balance and the Postman Balance folder.
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
-Scope: Added Kafka (wallets from UserRegistered), Node 24 and the Kafka tests.
+Scope: Added Kafka (wallets from UserRegistered), Node 24, the Kafka tests and the two-file
+Compose command (PR #84 review).
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -25,6 +26,10 @@ echo "CREDIT_SERVICE_KEY=$(openssl rand -hex 32)" >> .env
 
 docker compose up credit-service kafka-ui   # from the repo root; starts credit-db and Kafka too
 ```
+
+Kafka is shared by every service, so it lives in [`infra/kafka`](../infra/kafka/README.md), not
+here. To run only this service's Compose file, pass Kafka's too (from the repo root):
+`docker compose --env-file .env -f infra/kafka/compose.yaml -f credit-service/compose.yaml up credit-service`.
 
 The service consumes `user.events` from the shared Kafka broker ([`infra/kafka`](../infra/kafka/README.md)):
 each `UserRegistered` creates that user's wallet with 10 credits. Watch the topics in Kafka UI at
