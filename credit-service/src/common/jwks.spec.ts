@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: Copied from supplier-service/src/common/jwks.spec.ts (only CREDIT_JWKS_URL renamed), so Credit verifies user tokens the same way.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Tests for refreshing on the first unknown kid and rejecting unusable key arrays (PR #73 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { config } from '../config';
 import { JwksStub, makeKey, signToken } from '../test/jwks-stub';
@@ -141,6 +144,9 @@ describe('when the JWKS cannot be used', () => {
     ['invalid JSON', { status: 200, body: '<html>not json' }],
     ['a null body', { status: 200, body: 'null' }],
     ['no keys array', { status: 200, body: '{"keys":"nope"}' }],
+    // PR #73 review: a 200 with no usable keys is as unusable as a 500.
+    ['an empty keys array', { status: 200, body: '{"keys":[]}' }],
+    ['keys that are not JWK objects', { status: 200, body: '{"keys":[1,"x",null]}' }],
   ])('throws JwksUnavailableError on %s', async (_label, reply) => {
     stub.respond = () => reply;
     await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);
@@ -183,20 +189,28 @@ describe('key caching', () => {
     expect(stub.fetches).toBe(2);
   });
 
-  it('refetches for an unknown kid only once 30 seconds have passed', async () => {
+  // PR #73 review: a key rotated just after a fetch must work at once, not after 30 s of 401s.
+  it('refetches on the first unknown kid, even just after a fetch', async () => {
     await verifyToken(bearer(signToken(rsa)));
     const rotated = makeKey('rsa-2');
     stub.keys = [rsa, ec, rotated];
 
-    // Within 30 s: no refetch, so the new key is not known yet.
-    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toBeNull();
-    expect(stub.fetches).toBe(1);
-
-    // After 30 s: one refetch picks up the rotated key.
-    const start = Date.now();
-    jest.spyOn(Date, 'now').mockReturnValue(start + 31 * 1000);
     await expect(verifyToken(bearer(signToken(rotated)))).resolves.toEqual({ sub: 'user-1', role: 'USER' });
     expect(stub.fetches).toBe(2);
+  });
+
+  it('refetches for repeated unknown kids at most once per 30 seconds', async () => {
+    await verifyToken(bearer(signToken(rsa)));
+    const unknown = () => signToken(makeKey(`junk-${Math.random()}`));
+
+    await verifyToken(bearer(unknown())); // first miss: refetch
+    await verifyToken(bearer(unknown())); // second miss within 30 s: no refetch
+    expect(stub.fetches).toBe(2);
+
+    const start = Date.now();
+    jest.spyOn(Date, 'now').mockReturnValue(start + 31 * 1000);
+    await verifyToken(bearer(unknown()));
+    expect(stub.fetches).toBe(3);
   });
 
   it('makes one refetch for 20 simultaneous requests with a new kid', async () => {

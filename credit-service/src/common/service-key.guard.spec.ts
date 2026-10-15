@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
  * Scope: Generated unit tests for the service-key guard.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Added the query-string logging test (PR #48 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
 import { ProblemException } from './problem';
@@ -10,10 +13,10 @@ import { keysMatch, ServiceKeyGuard } from './service-key.guard';
 
 const KEY = process.env.CREDIT_SERVICE_KEY!;
 
-function contextWith(headers: Record<string, string>): ExecutionContext {
+function contextWith(headers: Record<string, string>, originalUrl = '/internal/credits/reserve'): ExecutionContext {
   const req = {
     method: 'POST',
-    originalUrl: '/internal/credits/reserve',
+    originalUrl,
     header: (name: string) => headers[name.toLowerCase()],
   };
   return { switchToHttp: () => ({ getRequest: () => req }) } as unknown as ExecutionContext;
@@ -60,4 +63,16 @@ describe('keysMatch', () => {
     expect(keysMatch('a', 'a much longer key')).toBe(false);
     expect(keysMatch('same', 'same')).toBe(true);
   });
+});
+
+// PR #48 review: a query string can carry a secret, so it never reaches the log.
+it('logs a denied request by its path only, without the query string', () => {
+  const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  expect(() =>
+    new ServiceKeyGuard().canActivate(contextWith({}, '/internal/credits/reserve?token=secret-123')),
+  ).toThrow();
+  const logged = String(warn.mock.calls[0][0]);
+  expect(JSON.parse(logged).path).toBe('/internal/credits/reserve');
+  expect(logged).not.toContain('secret-123');
+  warn.mockRestore();
 });

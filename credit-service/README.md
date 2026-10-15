@@ -10,6 +10,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added Kafka (wallets from UserRegistered), Node 24, the Kafka tests and the two-file
 Compose command (PR #84 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: Listed CREDIT_JWKS_URL in the run-outside-Docker steps (PR #73 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service
@@ -39,10 +42,11 @@ there creates a wallet. An event without a valid `userId` lands on `credit.user-
 It listens on port **3004**. Its database is `credit-db` on host port **5435**. The gateway does
 not route to it: only the Order Service calls it.
 
-To run it outside Docker, start its dependencies (`docker compose up -d credit-db kafka-init` from the
-repo root), set `CREDIT_DATABASE_URL`, `CREDIT_SERVICE_KEY`, `CREDIT_JWKS_URL` and
-`CREDIT_KAFKA_BROKERS=localhost:9094` (see `.env.example`), then `npm install && npm run start:dev` in
-this folder (Node 24, see `.nvmrc`).
+To run it outside Docker, start its dependencies from the repo root (`docker compose up -d
+credit-db kafka-init user-service`; the User Service publishes the signing keys), set
+`CREDIT_DATABASE_URL`, `CREDIT_SERVICE_KEY`, `CREDIT_JWKS_URL=http://localhost:3001/.well-known/jwks.json`
+and `CREDIT_KAFKA_BROKERS=localhost:9094` (see `.env.example`), then `npm install && npm run start:dev`
+in this folder (Node 24, see `.nvmrc`).
 
 ## Try it
 

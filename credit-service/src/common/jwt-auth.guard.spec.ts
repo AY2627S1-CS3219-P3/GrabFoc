@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: Generated unit tests for the JWT guard on the balance route.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Added the query-string logging test (PR #48/#73 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
 import { config } from '../config';
@@ -31,10 +34,10 @@ afterEach(() => {
   error.mockRestore();
 });
 
-function request(authorization?: string) {
+function request(authorization?: string, originalUrl = '/credits/x') {
   const req = {
     method: 'GET',
-    originalUrl: '/credits/x',
+    originalUrl,
     header: (name: string) => (name.toLowerCase() === 'authorization' ? authorization : undefined),
   } as unknown as AuthedRequest;
   const context = { switchToHttp: () => ({ getRequest: () => req }) } as unknown as ExecutionContext;
@@ -74,4 +77,13 @@ it('answers 503 when the JWKS cannot be fetched', async () => {
   stub.respond = () => ({ status: 500, body: 'down' });
   const { context } = request(`Bearer ${signToken(key)}`);
   expect(await statusOf(guard.canActivate(context))).toBe(503);
+});
+
+// PR #48/#73 review: a query string can carry a secret, so it never reaches the log.
+it('logs a denied request by its path only, without the query string', async () => {
+  const { context } = request(undefined, '/credits/x?token=secret-123');
+  await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ProblemException);
+  const logged = String(warn.mock.calls[0][0]);
+  expect(JSON.parse(logged).path).toBe('/credits/x');
+  expect(logged).not.toContain('secret-123');
 });
