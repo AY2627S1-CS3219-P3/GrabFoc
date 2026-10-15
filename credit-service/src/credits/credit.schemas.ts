@@ -7,15 +7,25 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: Added the path id schema for GET /credits/:userId.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Ids lower-cased (PR #48 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
 
+// PostgreSQL returns UUIDs in lower case; lower-casing ids here keeps a repeated request written in
+// upper case equal to the stored hold, so it stays idempotent (PR #48 review).
+const id = z
+  .string()
+  .uuid()
+  .transform((v) => v.toLowerCase());
+
 // Unknown fields are rejected, not ignored (root AGENTS.md §8).
 export const reserveSchema = z
   .object({
-    orderId: z.string().uuid(),
-    requesterId: z.string().uuid(),
+    orderId: id,
+    requesterId: id,
     // Credits are whole numbers (root AGENTS.md §1); capped at PostgreSQL's INTEGER maximum.
     amount: z.number().int().positive().max(2147483647),
   })
@@ -23,14 +33,14 @@ export const reserveSchema = z
 
 export const transferSchema = z
   .object({
-    orderId: z.string().uuid(),
-    courierId: z.string().uuid(),
+    orderId: id,
+    courierId: id,
   })
   .strict();
 
 export const releaseSchema = z
   .object({
-    orderId: z.string().uuid(),
+    orderId: id,
   })
   .strict();
 

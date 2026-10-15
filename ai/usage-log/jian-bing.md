@@ -15,6 +15,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote the 2026-10-14 CI workflow entry (issue #57, PR #74) from Jian Bing's prompts.
 Author review: Jian Bing supplied the quoted prompts and the wording of the entry's Verification line.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: Restored five prompts under "Prompts (exact)" to the wording Jian Bing typed (commit 1a19851 had corrected their typos and removed one; PR #73 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -189,11 +192,13 @@ output to confirm each step makes sense and works as intended; all four jobs pas
 `ai/usage-log.md`. Split it so each member edits only their own file.
 
 **Prompts (exact):**
-> help me make a new pr where we split the usage-log.md into 5 markdown, 1 for each member since as it stands, everyitme we make a pr, there is a merge conflict there, and make it track the corresponging github issue i created
+> help me make a new pr where w esplit the usage-log.md into 5 markdown, 1 for each member since as it stands, everyitme we make a pr, there is a merge conflict there, and make it track the corresponging github issue i created
 
 > yes looks good, but i think with regards to ref, maybe we can close this issue #65, and then we open a new issue isntead ot merge this ai-usag ea tthe end isntead
 
 > the pr reviewer left some comments for pr 68 (with screenshots of the two Codex review comments)
+
+> for all the pending auhtor review, help me edit them to say that I have checked the logs locally, to ensure it follows the guideline given by the professor in the project document, and that oepnign it on my ide shows a nice formatting, and to make sure all the comments and every other component is present
 
 **What it produced:** Moved each `##` member section, word for word, into
 `ai/usage-log/<member>.md`, and kept `ai/usage-log.md` (the path the brief names) as the index with
@@ -432,12 +437,12 @@ was dropped; on PR #33 the build and Cole Lin's 3 tests passed after the merge.
 could not start it for the D2 containerised demo.
 
 **Prompts (exact):**
-> does the suppleir service have any docker compose file
+> does the suppleir service have any docker compsoe file
 
 > okay draft it out on the most udpated supplier service pr
 
 > *(a draft compose file from Jie Yang, written with Codex, pasted with Jie Yang's message)*
-> u can js / add the env
+> u can jjs / add the env
 
 **What it produced:** `supplier-service/compose.yaml` following `user-service/compose.yaml` (its own
 `supplier-db` on a named volume, the image built from the repository root), its `include` in the root
@@ -504,7 +509,7 @@ server has since started sending its full chain, so the stopgap can be removed.
 **Scenario:** Copilot's review of PR #30 left four findings on the Supplier Service token verification.
 
 **Prompts (exact):**
-> okay the mcp is working now, read the review form codesx and resolve the conversations
+> okay the mcp is working now, read the review form codesx and resolv eth econversations
 > accoridngly, then do the same with PR30 for user service
 
 > Approve all 3 fixes (Recommended) *(chosen from the options Claude offered)*
