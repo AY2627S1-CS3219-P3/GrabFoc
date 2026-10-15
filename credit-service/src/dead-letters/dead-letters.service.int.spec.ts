@@ -100,7 +100,7 @@ it('replays a command to credit.commands with a fresh attempt count, once', asyn
     {
       topic: 'credit.commands',
       key: orderId,
-      value: JSON.stringify({ type: 'ReleaseCredits', eventId, orderId }),
+      value: Buffer.from(JSON.stringify({ type: 'ReleaseCredits', eventId, orderId })),
       headers: {},
     },
   ]);
@@ -199,7 +199,7 @@ it('keeps a command dead letter when a user-event dead letter reuses its event i
   expect(rows.map((r) => r.sourceTopic).sort()).toEqual(['credit.commands', 'user.events']);
   await service.replay(eventId);
   expect(publisher.sent).toEqual([
-    { topic: 'credit.commands', key: orderId, value: JSON.stringify({ type: 'ReleaseCredits', eventId, orderId }), headers: {} },
+    { topic: 'credit.commands', key: orderId, value: Buffer.from(JSON.stringify({ type: 'ReleaseCredits', eventId, orderId })), headers: {} },
   ]);
 });
 
@@ -268,5 +268,49 @@ describe('a reused Kafka position', () => {
     await service.record(at(deadLetter({ raw: 'not json' }), 0, '5'));
     await expect(service.record(at(deadLetter({ eventId }), 0, '5'))).resolves.toBeUndefined();
     expect((await service.list('all')).map((r) => r.eventId)).toEqual(expect.arrayContaining([null, eventId]));
+  });
+});
+
+// PR #85 review: PostgreSQL TEXT can't hold a NUL byte; a dead letter must still be recorded, or
+// record() would fail forever and block every dead letter behind it.
+it('records a dead letter containing a NUL byte', async () => {
+  await service.record({ ...at(deadLetter(), 0, '3'), value: Buffer.from([0x6e, 0x00, 0x6f]) });
+  expect(await service.list('all')).toHaveLength(1);
+});
+
+it('replays the exact bytes it recorded, even when they are not valid UTF-8', async () => {
+  const eventId = randomUUID();
+  const orderId = randomUUID();
+  const bytes = Buffer.concat([
+    Buffer.from(`{"type":"ReleaseCredits","eventId":"${eventId}","orderId":"${orderId}","note":"`),
+    Buffer.from([0xff]),
+    Buffer.from('"}'),
+  ]);
+  await service.record({ ...deadLetter({ eventId, orderId }), value: bytes });
+  await service.replay(eventId);
+  expect(publisher.sent[0].value).toEqual(bytes);
+});
+
+// PR #85 review: a crash between claiming a replay and sending it must not leave the row stuck.
+describe('a replay interrupted by a crash', () => {
+  it('can be replayed again once its claim is older than the send timeout', async () => {
+    const eventId = randomUUID();
+    await service.record(deadLetter({ eventId }));
+    // What a crash right after the claim leaves behind: claimed, never sent, never marked.
+    await pool.query(
+      "UPDATE credit_dead_letters SET replay_claimed_at = now() - interval '10 minutes' WHERE event_id = $1",
+      [eventId],
+    );
+    const replayed = await service.replay(eventId);
+    expect(replayed.replayedAt).not.toBeNull();
+    expect(publisher.sent).toHaveLength(1);
+  });
+
+  it('is not replayed twice at once while a fresh claim is in flight', async () => {
+    const eventId = randomUUID();
+    await service.record(deadLetter({ eventId }));
+    await pool.query('UPDATE credit_dead_letters SET replay_claimed_at = now() WHERE event_id = $1', [eventId]);
+    expect(await codeOf(service.replay(eventId))).toBe('ALREADY_REPLAYED');
+    expect(publisher.sent).toEqual([]);
   });
 });

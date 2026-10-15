@@ -14,7 +14,8 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Documented Phase 3: credit commands, retries, the dead-letter table and the admin routes.
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
-Scope: Documented the dead letters' source position and payload hash (PR #85 and security reviews).
+Scope: Documented the dead letters' source position and payload hash (PR #85 and security reviews);
+key check, byte payloads, replay claims and retiring retry delays (second PR #85 review).
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -88,12 +89,13 @@ credit_dead_letters (                           -- copied from Credit's dead-let
     source_partition  INTEGER,                  -- where the original message sat in source_topic
     source_offset     BIGINT,
     command_type      TEXT,                     -- the message's type field
-    payload           TEXT NOT NULL,
+    payload           BYTEA NOT NULL,           -- exact bytes (TEXT can't hold e.g. NUL)
     error             TEXT NOT NULL,
     error_code        TEXT,
     attempts          INTEGER NOT NULL CHECK (attempts > 0),
     dead_lettered_at  TIMESTAMPTZ NOT NULL,
-    replayed_at       TIMESTAMPTZ,              -- null while open
+    replay_claimed_at TIMESTAMPTZ,              -- a replay in progress; reclaimable after 6 min
+    replayed_at       TIMESTAMPTZ,              -- null while open; set once Kafka accepted the replay
     UNIQUE (source_topic, event_id)
 )
 UNIQUE INDEX credit_dead_letters_source_message
@@ -163,20 +165,24 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
   `npm run test:kafka` against the Compose broker. The client's install script is approved in
   `package.json` (`allowScripts`), because npm 11 skips dependency install scripts by default.
 - **`credit.commands` → transfer and release (Phase 3).** Order sends commands to Credit's topic,
-  keyed by `orderId`; Credit owns their shape and checks it strictly:
+  keyed by `orderId` (a command keyed by anything else is dead-lettered, since order holds only per
+  key); Credit owns their shape and checks it strictly:
   `{type: "TransferCredits", eventId, orderId, courierId}`, `{type: "ReleaseCredits", eventId, orderId}`.
   They run the same `transfer` / `release` code as the HTTP routes, so a repeat is a no-op.
   - **Retryable** failures (`WALLET_NOT_FOUND`, or an unexpected error such as the database being
     down) step aside to `credit.commands.retry.<n>`, one topic per entry in `CREDIT_RETRY_DELAYS`
     (default `1s,5s,30s,2m,10m`), with headers `x-attempt` and `x-due-at`. The retry topics are
-    listed in `infra/kafka/topics.txt`; Credit refuses to start if they don't match the delays. A not-yet-due retry
+    listed in `infra/kafka/topics.txt`; Credit refuses to start if they don't match the delays.
+    Retire a delay only after its topic is drained (`infra/kafka/README.md`). A not-yet-due retry
     pauses its partition until due; each retry topic has one delay, so this delays nothing behind it.
   - **Permanent** failures (any other error code, including `HOLD_NOT_FOUND`, which is a bug, K11;
     or an invalid message), and retries that run out, go to **`credit.commands.dlt`** with
     `x-error`, `x-error-code`, `x-source-topic`, `x-dead-lettered-at`, logged at `error` as
     `credit_command_dead_lettered` (ids only).
 - **Dead letters:** Credit copies both DLTs into `credit_dead_letters`; admins list and replay them
-  through the admin routes (API above). Only credit commands can be replayed.
+  through the admin routes (API above). Only credit commands can be replayed. A replay claims its row
+  (`replay_claimed_at`), sends, then sets `replayed_at`; a claim left by a crash can be retaken after
+  6 minutes. The replay route takes no request body (any body is a 400).
 - The database pool has connection (5 s) and query (10 s) timeouts, so an unreachable database
   becomes an error the consumer retries instead of a hang.
 

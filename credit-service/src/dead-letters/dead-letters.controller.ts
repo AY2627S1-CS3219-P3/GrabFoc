@@ -4,14 +4,19 @@
  * Scope: Generated the admin-only routes to list and replay dead letters (Jian Bing's decision K4;
  *        paths and status codes proposed by Claude Code and confirmed by him).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Replay rejects any request body (PR #85 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
-import { Controller, Get, HttpCode, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import { AuthedRequest, denied, JwtAuthGuard } from '../common/jwt-auth.guard';
 import { parseOr400 } from '../credits/credit.schemas';
 import { DeadLetter, DeadLettersService } from './dead-letters.service';
 
 const statusSchema = z.enum(['open', 'replayed', 'all']);
+// Replay takes no body; strict, so any field is a 400 (root AGENTS.md §8).
+const replayBodySchema = z.object({}).strict();
 const eventIdSchema = z
   .string()
   .uuid()
@@ -39,8 +44,13 @@ export class DeadLettersController {
 
   @Post(':eventId/replay')
   @HttpCode(200)
-  replay(@Param('eventId') rawEventId: string, @Req() req: AuthedRequest): Promise<DeadLetter> {
+  replay(
+    @Param('eventId') rawEventId: string,
+    @Body() body: unknown,
+    @Req() req: AuthedRequest,
+  ): Promise<DeadLetter> {
     requireAdmin(req);
+    parseOr400(replayBodySchema, body, 'request body');
     return this.deadLetters.replay(parseOr400(eventIdSchema, rawEventId, 'event id'));
   }
 }

@@ -105,7 +105,7 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
         this.pauseFor(pause, wait);
         throw new NotDueYet();
       }
-      const next = await this.processor.process(inbound, Date.now());
+      const next = await this.processor.process(inbound, Date.now);
       if (next) await this.connection.send(next);
     } catch (err) {
       if (!(err instanceof NotDueYet)) {

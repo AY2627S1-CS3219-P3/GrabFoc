@@ -237,7 +237,10 @@ wallet, so the order matters.
   id is recognised on redelivery by them plus a hash of its payload, since Kafka offsets restart if
   its volume is reset — PR #85 and security reviews, 2026-10-16),
   `order_id`, `source_topic`, `command_type` (the message `type`), `payload`, `error`, `error_code`,
-  `attempts`, `dead_lettered_at`, `replayed_at`. A command that dies again after a replay reopens
+  `attempts`, `dead_lettered_at`, `replay_claimed_at`, `replayed_at`. Second PR #85 review (2026-10-16):
+  `payload` is `BYTEA` (exact bytes; TEXT can't hold NUL); a replay claims the row, sends, then sets
+  `replayed_at`, and a claim left by a crash is retaken after 6 minutes; a command keyed by anything
+  but its `orderId` is dead-lettered; replay takes no request body. A command that dies again after a replay reopens
   its row. Both DLTs are copied into it.
 - **Endpoints** (ADMIN JWT, verified by Credit; a USER gets 403, logged as `access_denied`, before
   any validation):

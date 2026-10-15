@@ -41,12 +41,12 @@ afterEach(() => jest.restoreAllMocks());
 describe('CommandProcessor', () => {
   it('applies a valid command and sends nothing further', async () => {
     const apply = jest.fn().mockResolvedValue(undefined);
-    expect(await new CommandProcessor(apply, topics).process(message(), NOW)).toBeNull();
+    expect(await new CommandProcessor(apply, topics).process(message(), () => NOW)).toBeNull();
     expect(apply).toHaveBeenCalledWith({ type: 'ReleaseCredits', eventId, orderId });
   });
 
   it('sends a missing-wallet failure to the first retry topic, due after the first delay', async () => {
-    const next = await new CommandProcessor(failWith(noWallet()), topics).process(message(), NOW);
+    const next = await new CommandProcessor(failWith(noWallet()), topics).process(message(), () => NOW);
     expect(next).toEqual({
       topic: 'credit.commands.retry.0',
       key: orderId,
@@ -70,7 +70,7 @@ describe('CommandProcessor', () => {
   it('sends the second failure to the second retry topic', async () => {
     const next = await new CommandProcessor(failWith(noWallet()), topics).process(
       { ...message({ [HEADER.attempt]: '1' }), topic: 'credit.commands.retry.0' },
-      NOW,
+      () => NOW,
     );
     expect(next?.topic).toBe('credit.commands.retry.1');
     expect(next?.headers[HEADER.dueAt]).toBe(String(NOW + 5000));
@@ -79,7 +79,7 @@ describe('CommandProcessor', () => {
   it('dead-letters a command once its retries run out, and logs it without balances', async () => {
     const next = await new CommandProcessor(failWith(noWallet()), topics).process(
       { ...message({ [HEADER.attempt]: '2' }), topic: 'credit.commands.retry.1' },
-      NOW,
+      () => NOW,
     );
     expect(next).toEqual({
       topic: 'credit.commands.dlt',
@@ -104,7 +104,7 @@ describe('CommandProcessor', () => {
 
   it('dead-letters a permanent conflict at once', async () => {
     const conflict = new ProblemException(409, 'Already released.', ErrorCode.ALREADY_RELEASED);
-    const next = await new CommandProcessor(failWith(conflict), topics).process(message(), NOW);
+    const next = await new CommandProcessor(failWith(conflict), topics).process(message(), () => NOW);
     expect(next?.topic).toBe('credit.commands.dlt');
     expect(next?.headers[HEADER.attempt]).toBe('1');
     expect(next?.headers[HEADER.errorCode]).toBe(ErrorCode.ALREADY_RELEASED);
@@ -112,7 +112,7 @@ describe('CommandProcessor', () => {
 
   it('dead-letters a release with no hold at once, as a bug (K11)', async () => {
     const noHold = new ProblemException(404, 'No hold.', ErrorCode.HOLD_NOT_FOUND);
-    const next = await new CommandProcessor(failWith(noHold), topics).process(message(), NOW);
+    const next = await new CommandProcessor(failWith(noHold), topics).process(message(), () => NOW);
     expect(next?.topic).toBe('credit.commands.dlt');
   });
 
@@ -120,7 +120,7 @@ describe('CommandProcessor', () => {
   it('retries an unexpected error such as the database being down', async () => {
     const next = await new CommandProcessor(failWith(new Error('connect ECONNREFUSED')), topics).process(
       message(),
-      NOW,
+      () => NOW,
     );
     expect(next?.topic).toBe('credit.commands.retry.0');
     expect(next?.headers[HEADER.errorCode]).toBeUndefined();
@@ -129,7 +129,7 @@ describe('CommandProcessor', () => {
   // Review Focus 3
   it('dead-letters a message that is not JSON without calling the service', async () => {
     const apply = jest.fn();
-    const next = await new CommandProcessor(apply, topics).process(message({}, 'not json'), NOW);
+    const next = await new CommandProcessor(apply, topics).process(message({}, 'not json'), () => NOW);
     expect(apply).not.toHaveBeenCalled();
     expect(next?.topic).toBe('credit.commands.dlt');
     expect(next?.value).toEqual(Buffer.from('not json'));
@@ -140,13 +140,13 @@ describe('CommandProcessor', () => {
   // PR #84/#85 review: keep the exact bytes that failed.
   it('dead-letters a command byte for byte, even when it is not valid UTF-8', async () => {
     const bytes = Buffer.from([0x7b, 0xff, 0xfe, 0x7d]);
-    const next = await new CommandProcessor(jest.fn(), topics).process({ ...message(), value: bytes }, NOW);
+    const next = await new CommandProcessor(jest.fn(), topics).process({ ...message(), value: bytes }, () => NOW);
     expect(next?.topic).toBe('credit.commands.dlt');
     expect(next?.value).toEqual(bytes);
   });
 
   it('dead-letters at once when no retries are configured', async () => {
-    const next = await new CommandProcessor(failWith(noWallet()), buildTopics([])).process(message(), NOW);
+    const next = await new CommandProcessor(failWith(noWallet()), buildTopics([])).process(message(), () => NOW);
     expect(next?.topic).toBe('credit.commands.dlt');
   });
 });
@@ -179,7 +179,7 @@ describe('headers from outside Credit', () => {
   it('ignores a forged x-attempt on credit.commands, so the retries still happen', async () => {
     const next = await new CommandProcessor(failWith(noWallet()), topics).process(
       message({ [HEADER.attempt]: '99' }),
-      NOW,
+      () => NOW,
     );
     expect(next?.topic).toBe('credit.commands.retry.0');
     expect(next?.headers[HEADER.attempt]).toBe('1');
@@ -202,7 +202,7 @@ describe('source position', () => {
   it('stamps where the original command sat in credit.commands', async () => {
     const next = await new CommandProcessor(failWith(noWallet()), topics).process(
       { ...message(), partition: 2, offset: '41' },
-      NOW,
+      () => NOW,
     );
     expect(next?.headers).toMatchObject({ [HEADER.sourcePartition]: '2', [HEADER.sourceOffset]: '41' });
   });
@@ -215,8 +215,35 @@ describe('source position', () => {
         partition: 0,
         offset: '7',
       },
-      NOW,
+      () => NOW,
     );
     expect(next?.headers).toMatchObject({ [HEADER.sourcePartition]: '2', [HEADER.sourceOffset]: '41' });
   });
+});
+
+// PR #85 review: the retry wait starts when the attempt fails, not when it started.
+it('measures the retry delay from when the attempt failed, so a slow failure still waits', async () => {
+  let time = NOW;
+  const slowFailure = jest.fn(async () => {
+    time += 5000; // e.g. a database connection attempt that took 5 s to fail
+    throw new Error('connect ETIMEDOUT');
+  });
+  const next = await new CommandProcessor(slowFailure, topics).process(message(), () => time);
+  expect(next?.headers[HEADER.dueAt]).toBe(String(NOW + 5000 + 1000));
+});
+
+// PR #85 review: per-order ordering relies on the key, so a command keyed by anything else is refused.
+it('dead-letters a command whose Kafka key is not its orderId, without applying it', async () => {
+  const apply = jest.fn();
+  for (const key of [randomUUID(), null]) {
+    const next = await new CommandProcessor(apply, topics).process({ ...message(), key }, () => NOW);
+    expect(next?.topic).toBe('credit.commands.dlt');
+    expect(next?.headers[HEADER.error]).toMatch(/key/);
+  }
+  expect(apply).not.toHaveBeenCalled();
+});
+
+it('accepts a key that differs from orderId only in letter case', async () => {
+  const apply = jest.fn().mockResolvedValue(undefined);
+  expect(await new CommandProcessor(apply, topics).process({ ...message(), key: orderId.toUpperCase() }, () => NOW)).toBeNull();
 });

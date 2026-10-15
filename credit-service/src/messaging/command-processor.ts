@@ -6,7 +6,8 @@
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Trust x-attempt and x-due-at only on Credit's own retry topics (security review);
- *        forward the original bytes and the source position (PR #85 review).
+ *        forward the original bytes and the source position; measure the retry delay from the
+ *        failure; refuse a command keyed by anything but its orderId (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { Logger } from '@nestjs/common';
@@ -69,12 +70,22 @@ export class CommandProcessor {
     private readonly topics: Topics,
   ) {}
 
-  /** Applies one command. Returns where to send it next if it failed, or null when it is done. */
-  async process(message: InboundMessage, now: number): Promise<OutboundMessage | null> {
+  /**
+   * Applies one command. Returns where to send it next if it failed, or null when it is done. The
+   * clock is read after a failure, so a retry waits its full delay however long the attempt took.
+   */
+  async process(message: InboundMessage, clock: () => number): Promise<OutboundMessage | null> {
     try {
-      await this.apply(parseCommand(message.value));
+      const command = parseCommand(message.value);
+      // Kafka keeps order only per key (root AGENTS.md §3 rule 5); a command keyed by anything but
+      // its order id could run alongside another for the same order, so it is refused.
+      if (message.key?.toLowerCase() !== command.orderId) {
+        throw new InvalidMessageError(`The message key must be the command's orderId (${command.orderId}).`);
+      }
+      await this.apply(command);
       return null;
     } catch (err) {
+      const now = clock();
       const failure = describeFailure(err);
       // Only Credit writes to its retry topics; on credit.commands an x-attempt header is ignored,
       // so a sender can't skip the retries by claiming earlier attempts.

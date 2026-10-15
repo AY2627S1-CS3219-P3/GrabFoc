@@ -9,7 +9,8 @@
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
  * Scope: Added source_partition / source_offset and a unique key on them plus the payload's hash
- *        (PR #85 review, approved by Jian Bing; payload hash from a security review).
+ *        (PR #85 review, approved by Jian Bing; payload hash from a security review); payload
+ *        stored as BYTEA and replay_claimed_at (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
 
@@ -49,12 +50,13 @@ CREATE TABLE IF NOT EXISTS credit_dead_letters (
     source_partition  INTEGER,                -- where the original message sat in source_topic,
     source_offset     BIGINT,                 -- which never changes, so a redelivery is one row
     command_type      TEXT,                   -- the message's type field
-    payload           TEXT NOT NULL,
+    payload           BYTEA NOT NULL,         -- the exact bytes, which TEXT can't always hold (e.g. NUL)
     error             TEXT NOT NULL,
     error_code        TEXT,
     attempts          INTEGER NOT NULL CHECK (attempts > 0),
     dead_lettered_at  TIMESTAMPTZ NOT NULL,
-    replayed_at       TIMESTAMPTZ,
+    replay_claimed_at TIMESTAMPTZ,            -- a replay in progress; reclaimable once stale
+    replayed_at       TIMESTAMPTZ,            -- set only once Kafka has accepted the replay
     -- One row per message per source: a dead letter from user.events can never overwrite a
     -- credit command's row, even with the same event id (security review).
     UNIQUE (source_topic, event_id)

@@ -4,6 +4,9 @@
  * Scope: Generated HTTP-level tests for the admin dead-letter routes: admin-only access, listing,
  *        replay, and their errors (spec §9.2).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Added the strict-body test for replay (PR #85 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { INestApplication, Logger, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -130,4 +133,15 @@ it('answers 404 DEAD_LETTER_NOT_FOUND for an unknown event id', async () => {
 
 it('rejects an event id that is not a UUID with 400', async () => {
   expect((await call('POST', '/admin/credits/dead-letters/nope/replay', admin())).status).toBe(400);
+});
+
+// PR #85 review: request bodies are strict (root AGENTS.md §8), and replay takes none.
+it('rejects a replay request that carries a body with 400, and replays nothing', async () => {
+  const res = await fetch(`${baseUrl}/admin/credits/dead-letters/${eventId}/replay`, {
+    method: 'POST',
+    headers: { ...admin(), 'content-type': 'application/json' },
+    body: JSON.stringify({ force: true }),
+  });
+  expect(res.status).toBe(400);
+  expect(publisher.sent).toEqual([]);
 });

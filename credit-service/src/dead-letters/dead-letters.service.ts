@@ -8,7 +8,8 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Replay claims the row before the Kafka send and holds no transaction during it; attempts
  *        clamped to at least 1; redelivered unreadable dead letters found by source position and
- *        payload hash; a unique clash is skipped, not retried forever (security review)
+ *        payload hash; a unique clash is skipped, not retried forever (security review); payload kept
+ *        as bytes; a replay interrupted by a crash becomes reclaimable (PR #85 review)
  *        (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
@@ -40,13 +41,19 @@ interface DeadLetterRow {
   order_id: string | null;
   source_topic: string;
   command_type: string | null;
-  payload: string;
+  payload: Buffer;
   error: string;
   error_code: string | null;
   attempts: number;
   dead_lettered_at: Date;
   replayed_at: Date | null;
 }
+
+/**
+ * After this long a replay claim is taken to be from a crashed replay and can be claimed again.
+ * Longer than the Kafka producer's default send timeout (message.timeout.ms, 300 s).
+ */
+const CLAIM_EXPIRY = '6 minutes';
 
 /** PostgreSQL's error code for a unique-constraint violation. */
 const UNIQUE_VIOLATION = '23505';
@@ -66,7 +73,8 @@ function toDeadLetter(row: DeadLetterRow): DeadLetter {
     orderId: row.order_id,
     sourceTopic: row.source_topic,
     commandType: row.command_type,
-    payload: row.payload,
+    // Shown as text for people; replay sends the stored bytes unchanged.
+    payload: row.payload.toString('utf8'),
     error: row.error,
     errorCode: row.error_code,
     attempts: row.attempts,
@@ -102,7 +110,7 @@ export class DeadLettersService {
               payload = EXCLUDED.payload, error = EXCLUDED.error, error_code = EXCLUDED.error_code,
               attempts = EXCLUDED.attempts, source_partition = EXCLUDED.source_partition,
               source_offset = EXCLUDED.source_offset, dead_lettered_at = EXCLUDED.dead_lettered_at,
-              replayed_at = NULL
+              replayed_at = NULL, replay_claimed_at = NULL
         WHERE credit_dead_letters.dead_lettered_at < EXCLUDED.dead_lettered_at`
       : 'ON CONFLICT (source_topic, source_partition, source_offset, md5(payload)) DO NOTHING';
     try {
@@ -139,7 +147,7 @@ export class DeadLettersService {
         Number.isNaN(partition) ? null : partition,
         offset && /^\d+$/.test(offset) ? offset : null,
         ids.type,
-        message.value?.toString('utf8') ?? '',
+        message.value ?? Buffer.alloc(0),
         message.headers[HEADER.error] ?? 'Unknown error.',
         message.headers[HEADER.errorCode] ?? null,
         // At least 1, whatever the header says, so a bad header can't break the CHECK (attempts > 0).
@@ -160,33 +168,50 @@ export class DeadLettersService {
 
   /**
    * Sends a dead credit command back to credit.commands with a fresh attempt count, at most once.
-   * The row is claimed (marked replayed) in one short statement before Kafka is asked, so no
-   * database connection or lock is held during the send, and a new failure of the replayed command
-   * reopens the row afterwards. If Kafka refuses, the claim is undone so the row can be tried again.
+   * 1. Claim the row in one short statement, so no connection or lock is held while Kafka is asked.
+   * 2. Send. If Kafka refuses, release the claim so the row can be tried again.
+   * 3. Mark it replayed, only if our claim still stands: a new failure of the replayed command
+   *    clears the claim when it reopens the row, so that failure stays visible.
+   * A claim left by a crash between 1 and 3 becomes reclaimable after CLAIM_EXPIRY, which is longer
+   * than the producer's own send timeout, so it can't be taken from a send still in progress.
    */
   async replay(eventId: string): Promise<DeadLetter> {
     // claimed_at is the exact stored value (microseconds), which a JS Date would round.
     const claimed = await this.pool.query<DeadLetterRow & { claimed_at: string }>(
-      `UPDATE credit_dead_letters SET replayed_at = clock_timestamp()
+      `UPDATE credit_dead_letters SET replay_claimed_at = clock_timestamp()
         WHERE source_topic = $1 AND event_id = $2 AND replayed_at IS NULL
-        RETURNING ${COLUMNS}, replayed_at::text AS claimed_at`,
-      [this.topics.commands, eventId],
+          AND (replay_claimed_at IS NULL OR replay_claimed_at < clock_timestamp() - $3::interval)
+        RETURNING ${COLUMNS}, replay_claimed_at::text AS claimed_at`,
+      [this.topics.commands, eventId, CLAIM_EXPIRY],
     );
     const row = claimed.rows[0];
     if (!row) throw await this.whyNotReplayable(eventId);
+    const ours = [this.topics.commands, eventId, row.claimed_at];
 
     try {
       await this.publisher.send({ topic: this.topics.commands, key: row.order_id, value: row.payload, headers: {} });
     } catch (err) {
-      // Undo only our own claim: a newer death may already have reopened the row.
       await this.pool.query(
-        `UPDATE credit_dead_letters SET replayed_at = NULL
-          WHERE source_topic = $1 AND event_id = $2 AND replayed_at = $3::timestamptz`,
-        [this.topics.commands, eventId, row.claimed_at],
+        `UPDATE credit_dead_letters SET replay_claimed_at = NULL
+          WHERE source_topic = $1 AND event_id = $2 AND replay_claimed_at = $3::timestamptz`,
+        ours,
       );
       throw err;
     }
-    return toDeadLetter(row);
+
+    const marked = await this.pool.query<DeadLetterRow>(
+      `UPDATE credit_dead_letters SET replayed_at = clock_timestamp(), replay_claimed_at = NULL
+        WHERE source_topic = $1 AND event_id = $2 AND replay_claimed_at = $3::timestamptz
+        RETURNING ${COLUMNS}`,
+      ours,
+    );
+    if (marked.rows[0]) return toDeadLetter(marked.rows[0]);
+    // The replayed command already failed again and reopened the row; report it as it is now.
+    const { rows } = await this.pool.query<DeadLetterRow>(
+      `SELECT ${COLUMNS} FROM credit_dead_letters WHERE source_topic = $1 AND event_id = $2`,
+      [this.topics.commands, eventId],
+    );
+    return toDeadLetter(rows[0]);
   }
 
   /** The error for a replay that claimed nothing: unknown id, another source, or already replayed. */
@@ -205,6 +230,6 @@ export class DeadLettersService {
         ErrorCode.NOT_REPLAYABLE,
       );
     }
-    return new ProblemException(409, `Dead letter ${eventId} was already replayed.`, ErrorCode.ALREADY_REPLAYED);
+    return new ProblemException(409, `Dead letter ${eventId} was already replayed, or is being replayed.`, ErrorCode.ALREADY_REPLAYED);
   }
 }
