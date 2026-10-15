@@ -6,6 +6,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Added reading a balance and the Postman Balance folder.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added Kafka (wallets from UserRegistered), Node 24 and the Kafka tests.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service
@@ -20,8 +23,13 @@ is cancelled. Design, schema and API: [`AGENTS.md`](AGENTS.md).
 # Once: give it a service key (shared with the Order Service) in the repo-root .env
 echo "CREDIT_SERVICE_KEY=$(openssl rand -hex 32)" >> .env
 
-docker compose up credit-service      # from the repo root; starts credit-db too
+docker compose up credit-service      # from the repo root; starts credit-db and Kafka too
 ```
+
+The service consumes `user.events` from the shared Kafka broker ([`infra/kafka`](../infra/kafka/README.md)):
+each `UserRegistered` creates that user's wallet with 10 credits. Watch the topics in Kafka UI at
+http://localhost:8085; publishing `{"type":"UserRegistered","userId":"<uuid>"}` to `user.events`
+there creates a wallet. An event without a valid `userId` lands on `credit.user-events.dlt`.
 
 It listens on port **3004**. Its database is `credit-db` on host port **5435**. The gateway does
 not route to it: only the Order Service calls it.
@@ -61,10 +69,17 @@ access token from `/auth/login`) and `userId` (that user's id).
 ## Test it
 
 ```bash
-npm test             # unit tests: request schemas, service-key guard
+nvm install && nvm use                # Node 24 (.nvmrc): the Kafka client has no prebuilt binary for Node 26
+npm test             # unit tests: request schemas, service-key guard, message parsing
 docker compose up -d credit-db        # from the repo root
 npm run test:int     # integration tests against the credit_test database
+docker compose up -d kafka            # from the repo root
+npm run test:kafka   # end-to-end tests against the Compose broker (localhost:9094)
 ```
+
+The Kafka tests create their own uniquely named topics and consumer group, so they never touch a
+running Credit Service's messages, and delete the topics afterwards. Set
+`CREDIT_TEST_KAFKA_BROKERS` to use another broker.
 
 The integration tests use their own `credit_test` database in the `credit-db` container and empty
 it before every test. They include concurrent requests: ten identical reserves at once, five
