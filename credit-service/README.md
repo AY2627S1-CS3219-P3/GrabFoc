@@ -26,7 +26,7 @@ is cancelled. Design, schema and API: [`AGENTS.md`](AGENTS.md).
 # Once: give it a service key (shared with the Order Service) in the repo-root .env
 echo "CREDIT_SERVICE_KEY=$(openssl rand -hex 32)" >> .env
 
-docker compose up credit-service      # from the repo root; starts credit-db and Kafka too
+docker compose up credit-service kafka-ui   # from the repo root; starts credit-db and Kafka too
 ```
 
 The service consumes `user.events` from the shared Kafka broker ([`infra/kafka`](../infra/kafka/README.md)):
@@ -57,8 +57,10 @@ re-publish it.
 It listens on port **3004**. Its database is `credit-db` on host port **5435**. The gateway does
 not route to it: only the Order Service calls it.
 
-To run it outside Docker, set `CREDIT_DATABASE_URL` and `CREDIT_SERVICE_KEY` (see `.env.example`),
-then `npm install && npm run start:dev` in this folder.
+To run it outside Docker, start its dependencies (`docker compose up -d credit-db kafka-init` from the
+repo root), set `CREDIT_DATABASE_URL`, `CREDIT_SERVICE_KEY`, `CREDIT_JWKS_URL` and
+`CREDIT_KAFKA_BROKERS=localhost:9094` (see `.env.example`), then `npm install && npm run start:dev` in
+this folder (Node 24, see `.nvmrc`).
 
 ## Try it
 
