@@ -9,6 +9,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added lifecycle, requester cancellation and confirmation tests (Phase C).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Replaced the courier timing-change 403 check with a courier proposal that succeeds.
+ * Author review: Reviewed
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -467,7 +470,6 @@ test('proposals check the order state, who proposes and the body', async () => {
   expectError(await post(confirmations(pending), alice, { kind: 'CANCELLATION' }), 409, 'INVALID_STATE');
   const accepted = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
   expectError(await post(confirmations(accepted), bob, { kind: 'COMPLETION' }), 409, 'INVALID_STATE');
-  expectError(await post(confirmations(accepted), bob, timingChange), 403, 'FORBIDDEN'); // requester only
   expectError(await post(confirmations(accepted), carol, { kind: 'CANCELLATION' }), 403, 'FORBIDDEN');
   for (const body of [
     { kind: 'TIMING_CHANGE' },
@@ -517,9 +519,10 @@ test('an approved timing change updates the window and is recorded as an edit', 
   assert.deepEqual([edited.action, edited.actorId, edited.changeDetails.confirmationId], ['EDITED', bob, proposed.body.id]);
   assert.equal(edited.changeDetails.windowEnd.to, '2030-01-01T04:00:00.000Z');
 
-  // Once picked up, pickup hours no longer constrain the window.
+  // Once picked up, pickup hours no longer constrain the window. The courier can propose too.
   await pool.query(`UPDATE orders SET status = 'PICKED_UP' WHERE id = $1`, [id]);
-  assert.equal((await post(confirmations(id), alice, nightChange)).status, 201);
+  const byCourier = await post(confirmations(id), bob, nightChange);
+  assert.deepEqual([byCourier.status, byCourier.body.courierResponse, byCourier.body.requesterResponse], [201, 'ACCEPTED', 'PENDING']);
 });
 
 test('a timing change answered after the current window ends becomes EXPIRED and changes nothing', async () => {

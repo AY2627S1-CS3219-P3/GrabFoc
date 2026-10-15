@@ -2,8 +2,9 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Generated the TIMING_CHANGE / CANCELLATION / COMPLETION proposal and response rules
- *        (Phase C), from order-service/AGENTS.md and order-service-plan.md §2.
- * Author review: Reviewed
+ *        (Phase C), from order-service/AGENTS.md and order-service-plan.md §2. 2026-10-16: removed
+ *        the requester-only check so either participant can propose a timing change.
+ * Author review: Reviewed (2026-10-15 version). 2026-10-16 change: Reviewed.
  */
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
@@ -57,9 +58,6 @@ export class ConfirmationsService {
 
   async propose(caller: Caller, authorization: string, orderId: string, body: ProposeBody): Promise<Confirmation> {
     const order = await this.ordersService.participantOrder(caller, orderId);
-    if (body.kind === 'TIMING_CHANGE' && order.requesterId !== caller.id) {
-      throw new AppError(403, ErrorCode.FORBIDDEN, 'Only the requester can propose a timing change.');
-    }
     assertAllows(order, body.kind);
     if (body.kind === 'TIMING_CHANGE') {
       assertValidWindow(body);

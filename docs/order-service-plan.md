@@ -95,7 +95,7 @@ The migration provides schema constraints but **does not automatically increment
 2. Enforce only one pending confirmation per order through the existing partial unique index.
 3. The remaining participant responds `ACCEPTED` or `REJECTED`. On rejection, proposal is `REJECTED` and order remains unchanged.
 4. On acceptance, **within one DB transaction**, lock and recheck order and confirmation, validate preconditions, set both responses accepted, resolve proposal `APPROVED`, perform the applicable order change, increment version, and write history.
-5. `TIMING_CHANGE`: requester initiates after acceptance (while timing changes are still allowed), courier confirms. `CANCELLATION`: either participant initiates after acceptance. `COMPLETION`: either participant initiates in ARRIVED.
+5. `TIMING_CHANGE`: either participant initiates after acceptance (while timing changes are still allowed), the other confirms (requester-only until 2026-10-16). `CANCELLATION`: either participant initiates after acceptance. `COMPLETION`: either participant initiates in ARRIVED.
 6. Timing proposals become `EXPIRED` when the current window expires; any remaining pending proposal becomes `SUPERSEDED` when the order is cancelled by a system action.
 7. Only order changes increase `orders.version`; proposal creation, a partial response and rejection do **not** increase the order's version.
 

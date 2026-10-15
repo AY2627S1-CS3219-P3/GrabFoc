@@ -18,12 +18,40 @@ Author review (Zi Yi): Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added the Order Service Phase C entry.
 Author review (Zi Yi): Reviewed; ran `npm test` and the `compose.test.yaml` tests.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: Added the courier timing-change entry.
+Author review (Zi Yi): Reviewed
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-16 — Order Service: courier can propose timing changes
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `order-service/src/orders/confirmations.service.ts`, `src/test/orders.api.test.ts`,
+`README.md`, `AGENTS.md`, `docs/order-service-plan.md`
+
+**Scenario:** change the [Decided] rule (2026-10-13) that only the requester proposes a
+`TIMING_CHANGE` after acceptance.
+
+**Prompts:**
+> why only requester can propose timing change?
+
+> allow both requester and courier to propose timing change
+
+**My decision:** either participant can propose a timing change; the other approves or rejects.
+
+**What it produced:** removed the requester-only 403 check; the test now has the courier propose
+one in `PICKED_UP` (courier ACCEPTED, requester PENDING); the three docs record the change.
+
+**Flagged:** this changes a [Decided] team rule, so the team needs to be told.
+
+**Verification:** `compose.test.yaml`: 53 tests passed.
+
+**What I changed or rejected:** Reviewed the changed files.
 
 ### 2026-10-15 — Order Service: Phase C (lifecycle, cancellation, confirmations)
 
