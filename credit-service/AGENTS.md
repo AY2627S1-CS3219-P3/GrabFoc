@@ -13,6 +13,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Documented Phase 3: credit commands, retries, the dead-letter table and the admin routes.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: Documented the dead letters' source position (PR #85 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -82,6 +85,8 @@ credit_dead_letters (                           -- copied from Credit's dead-let
     event_id          UUID,                     -- null when the message was unreadable
     order_id          UUID,
     source_topic      TEXT NOT NULL,            -- credit.commands or user.events
+    source_partition  INTEGER,                  -- where the original message sat in source_topic
+    source_offset     BIGINT,
     command_type      TEXT,                     -- the message's type field
     payload           TEXT NOT NULL,
     error             TEXT NOT NULL,
@@ -89,7 +94,8 @@ credit_dead_letters (                           -- copied from Credit's dead-let
     attempts          INTEGER NOT NULL CHECK (attempts > 0),
     dead_lettered_at  TIMESTAMPTZ NOT NULL,
     replayed_at       TIMESTAMPTZ,              -- null while open
-    UNIQUE (source_topic, event_id)
+    UNIQUE (source_topic, event_id),
+    UNIQUE (source_topic, source_partition, source_offset)
 )
 ```
 
@@ -99,7 +105,9 @@ credit_dead_letters (                           -- copied from Credit's dead-let
 - The `CHECK` constraints are a backstop: code that slipped past the conditional update would fail
   instead of storing a negative balance.
 - A dead letter is unique per `(source_topic, event_id)`, so a message from one topic can never
-  overwrite another topic's row. A command that dies again after a replay updates its row and
+  overwrite another topic's row. One without a readable event id is recognised by where its
+  original message sat (`source_partition`, `source_offset`, carried in the `x-source-partition` /
+  `x-source-offset` headers), so a redelivery doesn't add a second row. A command that dies again after a replay updates its row and
   reopens it; an older copy of the same dead letter changes nothing.
 
 ## API [Proposed]

@@ -134,6 +134,9 @@ it('sends an unreadable UserRegistered to credit.user-events.dlt without stoppin
     expect(first.headers?.[HEADER.sourceTopic]?.toString()).toBe(topics.userEvents);
     expect(first.headers?.[HEADER.error]?.toString()).toMatch(/userId/);
     expect(first.headers?.[HEADER.attempt]?.toString()).toBe('1');
+    // Where the original sat, so a redelivered dead letter is recognised (PR #85 review).
+    expect(first.headers?.[HEADER.sourcePartition]?.toString()).toBe('0');
+    expect(first.headers?.[HEADER.sourceOffset]?.toString()).toMatch(/^\d+$/);
     expect(second.value?.toString()).toBe('not json');
   } finally {
     await dlt.stop();

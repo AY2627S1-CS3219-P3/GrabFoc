@@ -232,6 +232,8 @@ wallet, so the order matters.
   idempotent (§4.1, §4.3), so no Kafka transactions or inbox table are needed.
 - **Dead-letter table** `credit_dead_letters`: `id`, `event_id` (null when unreadable; unique per
   `source_topic`, so one source can't overwrite another's row — security review, 2026-10-15),
+  `source_partition`, `source_offset` (where the original message sat; a dead letter without an event
+  id is recognised by them on redelivery — PR #85 review, 2026-10-16),
   `order_id`, `source_topic`, `command_type` (the message `type`), `payload`, `error`, `error_code`,
   `attempts`, `dead_lettered_at`, `replayed_at`. A command that dies again after a replay reopens
   its row. Both DLTs are copied into it.

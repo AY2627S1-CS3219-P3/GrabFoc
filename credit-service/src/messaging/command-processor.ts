@@ -6,7 +6,7 @@
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Trust x-attempt and x-due-at only on Credit's own retry topics (security review);
- *        forward the original bytes (PR #85 review).
+ *        forward the original bytes and the source position (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { Logger } from '@nestjs/common';
@@ -49,6 +49,18 @@ export function waitBeforeProcessing(message: InboundMessage, topics: Topics, no
   return retry ? Math.min(msUntilDue(message, now), retry.delayMs) : 0;
 }
 
+/**
+ * Where the original command sat in credit.commands. A retry topic's message carries it forward in
+ * headers; only Credit writes those, so they're read from retry topics alone.
+ */
+function sourcePosition(message: InboundMessage, fromRetry: boolean): Record<string, string> {
+  const partition = fromRetry ? message.headers[HEADER.sourcePartition] : message.partition?.toString();
+  const offset = fromRetry ? message.headers[HEADER.sourceOffset] : message.offset;
+  return partition !== undefined && offset !== undefined
+    ? { [HEADER.sourcePartition]: partition, [HEADER.sourceOffset]: offset }
+    : {};
+}
+
 export class CommandProcessor {
   private readonly logger = new Logger('CreditCommands');
 
@@ -74,6 +86,7 @@ export class CommandProcessor {
         [HEADER.error]: failure.message.slice(0, 500),
         ...(failure.code ? { [HEADER.errorCode]: failure.code } : {}),
         [HEADER.sourceTopic]: this.topics.commands,
+        ...sourcePosition(message, fromRetry),
       };
       // The original bytes, not a UTF-8 re-encoding, so a dead letter keeps exactly what failed.
       const next = { key: message.key, value: message.value ?? '' };

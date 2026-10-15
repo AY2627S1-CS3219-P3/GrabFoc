@@ -50,6 +50,14 @@ function deadLetter(
   };
 }
 
+/** Stamps where the dead letter's original message sat in its source topic. */
+function at(message: InboundMessage, partition: number, offset: string): InboundMessage {
+  return {
+    ...message,
+    headers: { ...message.headers, [HEADER.sourcePartition]: String(partition), [HEADER.sourceOffset]: offset },
+  };
+}
+
 async function codeOf(promise: Promise<unknown>): Promise<string | undefined> {
   try {
     await promise;
@@ -151,8 +159,8 @@ it('does not reopen a replayed row for an older duplicate of the same dead lette
 
 // Review Focus 3
 it('keeps two malformed messages apart instead of overwriting one', async () => {
-  await service.record(deadLetter({ raw: 'not json' }));
-  await service.record(deadLetter({ raw: 'also not json' }));
+  await service.record(at(deadLetter({ raw: 'not json' }), 0, '1'));
+  await service.record(at(deadLetter({ raw: 'also not json' }), 0, '2'));
   const rows = await service.list('all');
   expect(rows.map((r) => [r.eventId, r.payload])).toEqual(
     expect.arrayContaining([
@@ -236,4 +244,12 @@ it('keeps the row open when the replayed command dies again while the replay is 
     service.record(deadLetter({ eventId, at: new Date(Date.now() + 1000).toISOString(), code: 'ALREADY_TRANSFERRED' }));
   await service.replay(eventId);
   expect(await service.list('open')).toEqual([expect.objectContaining({ eventId, errorCode: 'ALREADY_TRANSFERRED' })]);
+});
+
+// PR #85 review: a redelivered unreadable dead letter is the same row, found by its source position.
+it('records a redelivered unreadable dead letter once', async () => {
+  const message = at(deadLetter({ raw: 'not json' }), 1, '99');
+  await service.record(message);
+  await service.record(message);
+  expect(await service.list('all')).toHaveLength(1);
 });

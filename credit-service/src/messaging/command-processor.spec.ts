@@ -195,3 +195,28 @@ describe('headers from outside Credit', () => {
     expect(waitBeforeProcessing(retry(NOW + 86_400_000), topics, NOW)).toBe(5000);
   });
 });
+
+// PR #85 review: a dead letter without an event id is recognised by where its original message
+// sat in Kafka, which never changes, so a redelivery can't make a second row.
+describe('source position', () => {
+  it('stamps where the original command sat in credit.commands', async () => {
+    const next = await new CommandProcessor(failWith(noWallet()), topics).process(
+      { ...message(), partition: 2, offset: '41' },
+      NOW,
+    );
+    expect(next?.headers).toMatchObject({ [HEADER.sourcePartition]: '2', [HEADER.sourceOffset]: '41' });
+  });
+
+  it('carries the original position through the retry topics', async () => {
+    const next = await new CommandProcessor(failWith(noWallet()), topics).process(
+      {
+        ...message({ [HEADER.attempt]: '1', [HEADER.sourcePartition]: '2', [HEADER.sourceOffset]: '41' }),
+        topic: 'credit.commands.retry.0',
+        partition: 0,
+        offset: '7',
+      },
+      NOW,
+    );
+    expect(next?.headers).toMatchObject({ [HEADER.sourcePartition]: '2', [HEADER.sourceOffset]: '41' });
+  });
+});

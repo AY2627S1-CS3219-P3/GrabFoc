@@ -9,7 +9,7 @@
  *        honoured only on retry topics (security review).
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
- * Scope: Dead-letter the original bytes (PR #84 review).
+ * Scope: Dead-letter the original bytes (PR #84 review) and the source position (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
@@ -73,8 +73,8 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
     await this.consumer?.disconnect();
   }
 
-  private async onMessage({ topic, message, pause }: KafkaJS.EachMessagePayload): Promise<void> {
-    const inbound = toInbound(topic, message);
+  private async onMessage({ topic, partition, message, pause }: KafkaJS.EachMessagePayload): Promise<void> {
+    const inbound = toInbound(topic, message, partition);
     try {
       if (topic === this.topics.userEvents) return await this.onUserEvent(inbound);
       if (topic === this.topics.commandsDeadLetter || topic === this.topics.userEventsDeadLetter) {
@@ -130,6 +130,9 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
         [HEADER.attempt]: '1',
         [HEADER.error]: err.message.slice(0, 500),
         [HEADER.sourceTopic]: message.topic,
+        ...(message.partition !== undefined && message.offset !== undefined
+          ? { [HEADER.sourcePartition]: String(message.partition), [HEADER.sourceOffset]: message.offset }
+          : {}),
         [HEADER.deadLetteredAt]: new Date().toISOString(),
       },
     });

@@ -5,7 +5,8 @@
  *        them, K6) and UserRegistered tolerantly (the User Service owns it, K12).
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
- * Scope: Outbound values may be raw bytes (PR #84 review); command ids lower-cased (PR #85 review).
+ * Scope: Outbound values may be raw bytes (PR #84 review); command ids lower-cased and the source
+ *        position headers (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { z } from 'zod';
@@ -13,6 +14,9 @@ import { z } from 'zod';
 /** A message as Credit sees it, whichever Kafka client delivered it. */
 export interface InboundMessage {
   topic: string;
+  /** Where the message sits in its topic; together with the topic, its permanent identity. */
+  partition?: number;
+  offset?: string;
   key: string | null;
   value: Buffer | null;
   headers: Record<string, string>;
@@ -43,6 +47,9 @@ export const HEADER = {
   errorCode: 'x-error-code',
   /** The topic the message originally came from. */
   sourceTopic: 'x-source-topic',
+  /** Where the original message sat in its source topic, so a redelivered dead letter is one row. */
+  sourcePartition: 'x-source-partition',
+  sourceOffset: 'x-source-offset',
   deadLetteredAt: 'x-dead-lettered-at',
 } as const;
 

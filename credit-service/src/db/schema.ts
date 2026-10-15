@@ -7,6 +7,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added credit_dead_letters (redesign spec §9.2; columns confirmed by Jian Bing).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: Added source_partition / source_offset and their unique key (PR #85 review; approved by
+ *        Jian Bing).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 
 /** Every new account starts with this many available credits (Backlog C1.1.1). */
@@ -42,6 +46,8 @@ CREATE TABLE IF NOT EXISTS credit_dead_letters (
     event_id          UUID,                   -- null when the message was too malformed to read
     order_id          UUID,
     source_topic      TEXT NOT NULL,          -- where it came from: credit.commands or user.events
+    source_partition  INTEGER,                -- where the original message sat in source_topic,
+    source_offset     BIGINT,                 -- which never changes, so a redelivery is one row
     command_type      TEXT,                   -- the message's type field
     payload           TEXT NOT NULL,
     error             TEXT NOT NULL,
@@ -51,6 +57,8 @@ CREATE TABLE IF NOT EXISTS credit_dead_letters (
     replayed_at       TIMESTAMPTZ,
     -- One row per message per source: a dead letter from user.events can never overwrite a
     -- credit command's row, even with the same event id (security review).
-    UNIQUE (source_topic, event_id)
+    UNIQUE (source_topic, event_id),
+    -- A message with no readable event id is still the same message at the same position.
+    UNIQUE (source_topic, source_partition, source_offset)
 );
 `;

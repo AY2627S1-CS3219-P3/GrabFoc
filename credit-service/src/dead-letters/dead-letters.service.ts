@@ -7,7 +7,7 @@
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Replay claims the row before the Kafka send and holds no transaction during it; attempts
- *        clamped to at least 1
+ *        clamped to at least 1; redelivered unreadable dead letters found by source position
  *        (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
@@ -86,19 +86,31 @@ export class DeadLettersService {
   async record(message: InboundMessage): Promise<void> {
     const ids = peekIds(message.value);
     const at = new Date(message.headers[HEADER.deadLetteredAt] ?? '');
+    const partition = Number.parseInt(message.headers[HEADER.sourcePartition] ?? '', 10);
+    const offset = message.headers[HEADER.sourceOffset];
+    // With an event id, a new death of the same command updates its row (and reopens it after a
+    // replay). Without one, the original message's position recognises a redelivery.
+    const onConflict = ids.eventId
+      ? `ON CONFLICT (source_topic, event_id) DO UPDATE SET
+              order_id = EXCLUDED.order_id, command_type = EXCLUDED.command_type,
+              payload = EXCLUDED.payload, error = EXCLUDED.error, error_code = EXCLUDED.error_code,
+              attempts = EXCLUDED.attempts, source_partition = EXCLUDED.source_partition,
+              source_offset = EXCLUDED.source_offset, dead_lettered_at = EXCLUDED.dead_lettered_at,
+              replayed_at = NULL
+        WHERE credit_dead_letters.dead_lettered_at < EXCLUDED.dead_lettered_at`
+      : 'ON CONFLICT (source_topic, source_partition, source_offset) DO NOTHING';
     await this.pool.query(
       `INSERT INTO credit_dead_letters
-              (event_id, order_id, source_topic, command_type, payload, error, error_code, attempts, dead_lettered_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       ON CONFLICT (source_topic, event_id) DO UPDATE SET
-              order_id = EXCLUDED.order_id, command_type = EXCLUDED.command_type, payload = EXCLUDED.payload, error = EXCLUDED.error,
-              error_code = EXCLUDED.error_code, attempts = EXCLUDED.attempts,
-              dead_lettered_at = EXCLUDED.dead_lettered_at, replayed_at = NULL
-        WHERE credit_dead_letters.dead_lettered_at < EXCLUDED.dead_lettered_at`,
+              (event_id, order_id, source_topic, source_partition, source_offset, command_type, payload,
+               error, error_code, attempts, dead_lettered_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ${onConflict}`,
       [
         ids.eventId,
         ids.orderId,
         message.headers[HEADER.sourceTopic] ?? message.topic,
+        Number.isNaN(partition) ? null : partition,
+        offset && /^\d+$/.test(offset) ? offset : null,
         ids.type,
         message.value?.toString('utf8') ?? '',
         message.headers[HEADER.error] ?? 'Unknown error.',
