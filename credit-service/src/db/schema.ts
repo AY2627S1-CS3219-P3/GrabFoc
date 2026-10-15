@@ -4,6 +4,9 @@
  * Scope: Wrote the SQL for the schema in credit-service/AGENTS.md (one hold per order, available
  *        and reserved balances with CHECK >= 0), run with IF NOT EXISTS on every start.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added credit_dead_letters (redesign spec §9.2; columns confirmed by Jian Bing).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 
 /** Every new account starts with this many available credits (Backlog C1.1.1). */
@@ -30,5 +33,21 @@ CREATE TABLE IF NOT EXISTS credit_holds (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- A courier is recorded exactly when the credits went to one.
     CHECK ((state = 'TRANSFERRED') = (courier_id IS NOT NULL))
+);
+
+-- Messages from Credit's dead-letter topics (spec §9.2, K3 and K11), copied here so admins can
+-- inspect them and replay credit commands.
+CREATE TABLE IF NOT EXISTS credit_dead_letters (
+    id                BIGSERIAL PRIMARY KEY,
+    event_id          UUID UNIQUE,            -- null when the message was too malformed to read
+    order_id          UUID,
+    source_topic      TEXT NOT NULL,          -- where it came from: credit.commands or user.events
+    command_type      TEXT,                   -- the message's type field
+    payload           TEXT NOT NULL,
+    error             TEXT NOT NULL,
+    error_code        TEXT,
+    attempts          INTEGER NOT NULL CHECK (attempts > 0),
+    dead_lettered_at  TIMESTAMPTZ NOT NULL,
+    replayed_at       TIMESTAMPTZ
 );
 `;
