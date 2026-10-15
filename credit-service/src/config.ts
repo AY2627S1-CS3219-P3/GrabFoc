@@ -6,9 +6,13 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: Added the JWKS URL and optional issuer/audience for the balance route.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added the Kafka brokers, consumer group and retry delays (redesign spec §9.2).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { existsSync } from 'fs';
 import * as path from 'path';
+import { parseDelays } from './messaging/topics';
 
 // Load the repo-root .env if it exists (it is git-ignored). Real env vars take precedence.
 const ENV_PATH = path.resolve(__dirname, '../../.env');
@@ -54,4 +58,14 @@ export const config = {
   // Checked only when set, matching the gateway and the Supplier Service.
   jwtIssuer: process.env.CREDIT_JWT_ISSUER || undefined,
   jwtAudience: process.env.CREDIT_JWT_AUDIENCE || undefined,
+  // Kafka bootstrap servers, comma-separated: kafka:9092 inside Compose, localhost:9094 from the host.
+  kafkaBrokers: required('CREDIT_KAFKA_BROKERS')
+    .split(',')
+    .map((broker) => broker.trim())
+    .filter(Boolean),
+  // The Kafka tests set their own, so they never take the running service's messages.
+  kafkaGroupId: 'credit-service',
+  // Wait before each automatic retry of a credit command. kafka-init creates one retry topic per
+  // entry from the same variable (K10). `||`, not `??`: an unset variable reaches us as "".
+  retryDelaysMs: parseDelays(process.env.CREDIT_RETRY_DELAYS || '1s,5s,30s,2m,10m'),
 };

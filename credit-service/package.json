@@ -14,6 +14,7 @@
     "test:int": "jest --config jest.int.config.js"
   },
   "dependencies": {
+    "@confluentinc/kafka-javascript": "1.11.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.2.6",
@@ -53,5 +54,8 @@
       "/node_modules/",
       "\\.int\\.spec\\.ts$"
     ]
+  },
+  "allowScripts": {
+    "@confluentinc/kafka-javascript@1.11.0": true
   }
 }
