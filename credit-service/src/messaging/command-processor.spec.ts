@@ -3,12 +3,15 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Generated unit tests for the retry and dead-letter routing of credit commands (spec §9.2).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added tests that retry headers are trusted only on Credit's own retry topics (security review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { ErrorCode } from '../common/error-codes';
 import { ProblemException } from '../common/problem';
-import { CommandProcessor, describeFailure, msUntilDue } from './command-processor';
+import { CommandProcessor, describeFailure, msUntilDue, waitBeforeProcessing } from './command-processor';
 import { HEADER, InboundMessage, InvalidMessageError } from './messages';
 import { buildTopics } from './topics';
 
@@ -66,7 +69,7 @@ describe('CommandProcessor', () => {
 
   it('sends the second failure to the second retry topic', async () => {
     const next = await new CommandProcessor(failWith(noWallet()), topics).process(
-      message({ [HEADER.attempt]: '1' }),
+      { ...message({ [HEADER.attempt]: '1' }), topic: 'credit.commands.retry.0' },
       NOW,
     );
     expect(next?.topic).toBe('credit.commands.retry.1');
@@ -75,7 +78,7 @@ describe('CommandProcessor', () => {
 
   it('dead-letters a command once its retries run out, and logs it without balances', async () => {
     const next = await new CommandProcessor(failWith(noWallet()), topics).process(
-      message({ [HEADER.attempt]: '2' }),
+      { ...message({ [HEADER.attempt]: '2' }), topic: 'credit.commands.retry.1' },
       NOW,
     );
     expect(next).toEqual({
@@ -160,5 +163,27 @@ describe('msUntilDue', () => {
     expect(msUntilDue(message({ [HEADER.dueAt]: String(NOW - 5) }), NOW)).toBe(0);
     expect(msUntilDue(message(), NOW)).toBe(0);
     expect(msUntilDue(message({ [HEADER.dueAt]: 'soon' }), NOW)).toBe(0);
+  });
+});
+
+// Security review: x-attempt and x-due-at are Credit's own headers, meaningful only on its retry topics.
+describe('headers from outside Credit', () => {
+  it('ignores a forged x-attempt on credit.commands, so the retries still happen', async () => {
+    const next = await new CommandProcessor(failWith(noWallet()), topics).process(
+      message({ [HEADER.attempt]: '99' }),
+      NOW,
+    );
+    expect(next?.topic).toBe('credit.commands.retry.0');
+    expect(next?.headers[HEADER.attempt]).toBe('1');
+  });
+
+  it('never waits on credit.commands, whatever x-due-at says', () => {
+    expect(waitBeforeProcessing(message({ [HEADER.dueAt]: String(NOW + 86_400_000) }), topics, NOW)).toBe(0);
+  });
+
+  it('waits on a retry topic, but never longer than that topic’s delay', () => {
+    const retry = (dueAt: number): InboundMessage => ({ ...message({ [HEADER.dueAt]: String(dueAt) }), topic: 'credit.commands.retry.1' });
+    expect(waitBeforeProcessing(retry(NOW + 3000), topics, NOW)).toBe(3000);
+    expect(waitBeforeProcessing(retry(NOW + 86_400_000), topics, NOW)).toBe(5000);
   });
 });

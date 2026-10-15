@@ -4,6 +4,9 @@
  * Scope: Generated the routing of failed credit commands to retry topics and the dead-letter
  *        topic, from Jian Bing's decisions K2–K3 and K11 and the details in spec §9.2.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Trust x-attempt and x-due-at only on Credit's own retry topics (security review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { Logger } from '@nestjs/common';
 import { ErrorCode } from '../common/error-codes';
@@ -35,6 +38,16 @@ export function msUntilDue(message: InboundMessage, now: number): number {
   return Number.isFinite(dueAt) && dueAt > now ? dueAt - now : 0;
 }
 
+/**
+ * How long to leave a message unread before applying it. Only Credit's own retry topics carry a
+ * due time, and a due time is never later than that topic's delay: a forged header on
+ * credit.commands, or an inflated one, can't pause a partition for longer.
+ */
+export function waitBeforeProcessing(message: InboundMessage, topics: Topics, now: number): number {
+  const retry = topics.retries.find((r) => r.topic === message.topic);
+  return retry ? Math.min(msUntilDue(message, now), retry.delayMs) : 0;
+}
+
 export class CommandProcessor {
   private readonly logger = new Logger('CreditCommands');
 
@@ -50,7 +63,10 @@ export class CommandProcessor {
       return null;
     } catch (err) {
       const failure = describeFailure(err);
-      const attempts = (Number(message.headers[HEADER.attempt]) || 0) + 1;
+      // Only Credit writes to its retry topics; on credit.commands an x-attempt header is ignored,
+      // so a sender can't skip the retries by claiming earlier attempts.
+      const fromRetry = this.topics.retries.some((r) => r.topic === message.topic);
+      const attempts = (fromRetry ? Number(message.headers[HEADER.attempt]) || 0 : 0) + 1;
       const { eventId, orderId } = peekIds(message.value);
       const headers: Record<string, string> = {
         [HEADER.attempt]: String(attempts),

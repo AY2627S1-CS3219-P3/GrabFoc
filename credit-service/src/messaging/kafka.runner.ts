@@ -5,7 +5,8 @@
  *        to credit.user-events.dlt (spec §9.2, K11–K12).
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
- * Scope: Phase 3: credit commands, retries and dead letters (spec §9.2, K2–K3).
+ * Scope: Phase 3: credit commands, retries and dead letters (spec §9.2, K2–K3); retry headers
+ *        honoured only on retry topics (security review).
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
@@ -13,7 +14,7 @@ import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } f
 import { config } from '../config';
 import { CreditsService } from '../credits/credits.service';
 import { DeadLettersService } from '../dead-letters/dead-letters.service';
-import { CommandProcessor, msUntilDue } from './command-processor';
+import { CommandProcessor, waitBeforeProcessing } from './command-processor';
 import { KafkaConnection, toInbound } from './kafka.connection';
 import { HEADER, InboundMessage, InvalidMessageError, parseUserEvent } from './messages';
 import { Topics, TOPICS } from './topics';
@@ -77,7 +78,7 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
         return await this.deadLetters.record(inbound);
       }
 
-      const wait = msUntilDue(inbound, Date.now());
+      const wait = waitBeforeProcessing(inbound, this.topics, Date.now());
       if (wait > 0) {
         // Every message in a retry topic has the same delay, so nothing behind this one is due
         // sooner: resting this partition delays no other message.
