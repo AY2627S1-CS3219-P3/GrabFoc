@@ -122,6 +122,8 @@ policy points, then wrote the spec, plan, issues and the Phase 2 code with tests
 
 > could you help me resolve PR 48's merge cofnlicts?
 
+> lets resolve the new codex comments and also make the ci test creidt service, and why are the older comments unanswered?
+
 **Key responses:**
 - Compared RabbitMQ, Kafka, Redis Streams and NATS JetStream against FoC's needs (retries/DLQ,
   replay, request/reply, ordering); the choice stayed with the team.
@@ -149,6 +151,12 @@ then dead letters recognised by source position plus payload hash (with two secu
 and K10 revised by me to option C: topics.txt lists every topic, Credit checks it at startup
 (unit 118/118, integration 55/55, Kafka 12/12); resolved the settled PR threads and merged main into
 the stack (PR #48's only conflict was this log; I kept both sides);
+second Codex round on #84/#85: partition raising in create-topics.sh, a two-file Compose command,
+BYTEA dead-letter payloads (a NUL byte blocked the DLT consumer), recoverable replay claims, key must
+equal orderId, retry delay measured from the failure, strict replay body, retiring retry delays
+documented, each code fix test-first (unit 121/121, integration 60/60, Kafka 12/12); CI now runs
+credit-service's unit tests, build and integration tests on PostgreSQL (`.github/workflows/ci.yml`,
+added on PR #48), passing on all four PRs;
 Phase 3: unit 108/108, integration 49/49, Kafka 10/10, Newman 24 requests / 30 assertions with 0
 failures; a background security review found that dead letters from different topics could
 overwrite each other, fixed with a test (rows unique per source topic and event id); `kafka-init` creates exactly the listed topics and is safe to rerun; the running
