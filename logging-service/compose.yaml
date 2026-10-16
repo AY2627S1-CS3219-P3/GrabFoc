@@ -1,0 +1,66 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
+# Scope: Generated this file, following supplier-service/compose.yaml: the Logging Service and
+#        its own PostgreSQL container, included from the root compose.yaml.
+# Author review: pending — Cole Lin to record what he checked.
+#
+# The Logging Service and the database only it uses (root AGENTS.md §3). The root compose.yaml
+# includes this file.
+#
+# Run the whole project from the repo root:   docker compose up --build
+# Run only this service, from the root:       docker compose -f logging-service/compose.yaml --env-file .env up --build
+# Just its database, for the integration tests: docker compose -f logging-service/compose.yaml up -d logging-db
+#
+# Ingest is off until LOGGING_KAFKA_BROKERS is set; the query API runs either way, so this service
+# starts before the shared broker (#75) exists.
+
+# The same project name as the root file, so a standalone run reuses the same containers and
+# named volumes — and so the same database.
+name: foc
+
+services:
+  logging-db:
+    image: postgres:17-alpine
+    environment:
+      # Supplied by the git-ignored .env so no working credential lives in the repository.
+      POSTGRES_USER: foc
+      # Its own password, separate from every other service's.
+      POSTGRES_PASSWORD: ${LOGGING_POSTGRES_PASSWORD:-change-me-in-dotenv}
+      POSTGRES_DB: logging
+    ports:
+      # 5436 on the host: user-db has 5432, supplier-db 5434, credit-db 5435.
+      - "5436:5432"
+    volumes:
+      # Named volume, so the data survives `docker compose down` (root AGENTS.md §8).
+      - logging-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foc -d logging"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  logging-service:
+    build:
+      context: ..
+      dockerfile: logging-service/Dockerfile
+    depends_on:
+      logging-db:
+        condition: service_healthy
+    # No env_file: passing the whole .env would hand this container other services' secrets.
+    # Only the variables below reach it.
+    environment:
+      LOGGING_PORT: 3005
+      LOGGING_DATABASE_URL: postgres://foc:${LOGGING_POSTGRES_PASSWORD:-change-me-in-dotenv}@logging-db:5432/logging
+      LOGGING_JWKS_URL: http://user-service:3001/.well-known/jwks.json
+      # Empty until the shared broker (#75) is merged; then kafka:9092.
+      LOGGING_KAFKA_BROKERS: ${LOGGING_KAFKA_BROKERS:-}
+      LOGGING_KAFKA_TOPIC: ${LOGGING_KAFKA_TOPIC:-logging.lines}
+      LOGGING_RETENTION_DAYS: ${LOGGING_RETENTION_DAYS:-30}
+      # Optional; checked only when set in .env.
+      LOGGING_JWT_ISSUER: ${LOGGING_JWT_ISSUER:-}
+      LOGGING_JWT_AUDIENCE: ${LOGGING_JWT_AUDIENCE:-}
+    ports:
+      - "3005:3005"
+
+volumes:
+  logging-db-data:
