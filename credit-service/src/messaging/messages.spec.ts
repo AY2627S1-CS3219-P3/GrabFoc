@@ -4,6 +4,9 @@
  * Scope: Generated unit tests for the command parser (strict) and the UserRegistered reader
  *        (tolerant, decision K12).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Added the upper-case id test (PR #85 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { randomUUID } from 'crypto';
 import { InvalidMessageError, parseCommand, parseUserEvent, peekIds } from './messages';
@@ -30,6 +33,21 @@ describe('parseCommand', () => {
       eventId,
       orderId,
     });
+  });
+
+  // PR #85 review: PostgreSQL returns UUIDs in lower case, so a repeat in upper case must match.
+  it('lower-cases every id, so a repeated command in upper case still matches the stored hold', () => {
+    const courierId = randomUUID();
+    expect(
+      parseCommand(
+        json({
+          type: 'TransferCredits',
+          eventId: eventId.toUpperCase(),
+          orderId: orderId.toUpperCase(),
+          courierId: courierId.toUpperCase(),
+        }),
+      ),
+    ).toEqual({ type: 'TransferCredits', eventId, orderId, courierId });
   });
 
   it('rejects unknown fields, because Credit owns this contract', () => {

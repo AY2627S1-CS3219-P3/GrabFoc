@@ -5,7 +5,7 @@
  *        a separate credit_test database in the credit-db container.
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
- * Scope: Exported setting() for the Kafka test helpers.
+ * Scope: Exported setting() for the Kafka test helpers; emptyTables also empties credit_dead_letters.
  * Author review: pending — Jian Bing to record what he checked.
  */
 import { existsSync, readFileSync } from 'fs';
@@ -61,7 +61,7 @@ export async function openTestDatabase(): Promise<Pool> {
   return pool;
 }
 
-/** Empties both tables. */
+/** Empties every table. */
 export async function emptyTables(pool: Pool): Promise<void> {
-  await pool.query('TRUNCATE credit_holds, credit_accounts');
+  await pool.query('TRUNCATE credit_holds, credit_accounts, credit_dead_letters');
 }

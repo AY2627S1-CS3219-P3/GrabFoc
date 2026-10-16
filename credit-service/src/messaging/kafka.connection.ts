@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Generated the Kafka client and producer (spec §9.2: @confluentinc/kafka-javascript).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+ * Scope: toInbound keeps the message's partition and offset (PR #85 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
@@ -32,11 +35,18 @@ export class KafkaConnection implements Publisher, OnModuleInit, OnModuleDestroy
 }
 
 /** Converts a consumed message to Credit's own shape; a repeated header keeps its last value. */
-export function toInbound(topic: string, message: KafkaJS.KafkaMessage): InboundMessage {
+export function toInbound(topic: string, message: KafkaJS.KafkaMessage, partition?: number): InboundMessage {
   const headers: Record<string, string> = {};
   for (const [name, raw] of Object.entries(message.headers ?? {})) {
     const value = Array.isArray(raw) ? raw[raw.length - 1] : raw;
     if (value !== undefined) headers[name] = value.toString();
   }
-  return { topic, key: message.key ? message.key.toString() : null, value: message.value ?? null, headers };
+  return {
+    topic,
+    partition,
+    offset: message.offset,
+    key: message.key ? message.key.toString() : null,
+    value: message.value ?? null,
+    headers,
+  };
 }

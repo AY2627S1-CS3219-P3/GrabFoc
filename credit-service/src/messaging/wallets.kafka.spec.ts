@@ -15,6 +15,7 @@ import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import { config } from '../config';
 import { CreditsService } from '../credits/credits.service';
+import { DeadLettersService } from '../dead-letters/dead-letters.service';
 import { emptyTables, openTestDatabase } from '../test/database';
 import { collect, createTestTopics, testKafkaBrokers, waitFor } from '../test/kafka';
 import { KafkaConnection } from './kafka.connection';
@@ -60,7 +61,7 @@ beforeAll(async () => {
   deleteTopics = await createTestTopics(admin, topics);
   await connection.onModuleInit();
   credits = new FlakyCredits(pool);
-  runner = new KafkaRunner(credits, connection, topics);
+  runner = new KafkaRunner(credits, new DeadLettersService(pool, connection, topics), connection, topics);
   await runner.onApplicationBootstrap();
 });
 afterAll(async () => {
@@ -133,6 +134,9 @@ it('sends an unreadable UserRegistered to credit.user-events.dlt without stoppin
     expect(first.headers?.[HEADER.sourceTopic]?.toString()).toBe(topics.userEvents);
     expect(first.headers?.[HEADER.error]?.toString()).toMatch(/userId/);
     expect(first.headers?.[HEADER.attempt]?.toString()).toBe('1');
+    // Where the original sat, so a redelivered dead letter is recognised (PR #85 review).
+    expect(first.headers?.[HEADER.sourcePartition]?.toString()).toBe('0');
+    expect(first.headers?.[HEADER.sourceOffset]?.toString()).toMatch(/^\d+$/);
     expect(second.value?.toString()).toBe('not json');
   } finally {
     await dlt.stop();
@@ -173,7 +177,7 @@ it('refuses to start when a retry topic in CREDIT_RETRY_DELAYS is missing from K
   const other = buildTopics([1000, 1000], `test-${randomUUID().slice(0, 8)}.`);
   const created = [other.userEvents, other.commands, other.retries[0].topic, other.commandsDeadLetter, other.userEventsDeadLetter];
   await admin.createTopics({ timeout: 30_000, topics: created.map((topic) => ({ topic, numPartitions: 1 })) });
-  const misconfigured = new KafkaRunner(credits, connection, other);
+  const misconfigured = new KafkaRunner(credits, new DeadLettersService(pool, connection, other), connection, other);
   try {
     await expect(misconfigured.onApplicationBootstrap()).rejects.toThrow(/missing.*retry\.1/);
   } finally {

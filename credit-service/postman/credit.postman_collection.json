@@ -2,7 +2,7 @@
   "info": {
     "name": "FoC Credit Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: pending — Jian Bing to record what he checked. 2026-10-14 (Claude Code, Claude Opus 5.5): added the Balance folder.\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service with `docker compose up -d credit-service`.\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
+    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: pending — Jian Bing to record what he checked. 2026-10-14 (Claude Code, Claude Opus 5.5): added the Balance folder. 2026-10-15 (Claude Code, Claude Opus 5.5): added the Dead letters folder.\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service with `docker compose up -d credit-service`.\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
   },
   "variable": [
     {
@@ -36,6 +36,11 @@
     {
       "key": "userId",
       "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "description": "An ADMIN's access token from POST /auth/login (folder 5)."
     }
   ],
   "item": [
@@ -1023,6 +1028,118 @@
               "path": [
                 "credits",
                 "me"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Dead letters",
+      "description": "Admin-only routes for Credit's dead letters (redesign spec §9.2). Set adminToken to an ADMIN's access token from POST /auth/login, and userToken as in folder 4.",
+      "item": [
+        {
+          "name": "List open dead letters (ADMIN) → 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status [200]', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('items is an array', () => pm.expect(pm.response.json().items).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{balanceUrl}}/admin/credits/dead-letters",
+              "host": [
+                "{{balanceUrl}}"
+              ],
+              "path": [
+                "admin",
+                "credits",
+                "dead-letters"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List dead letters as a USER → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status [403]', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{balanceUrl}}/admin/credits/dead-letters",
+              "host": [
+                "{{balanceUrl}}"
+              ],
+              "path": [
+                "admin",
+                "credits",
+                "dead-letters"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Replay an unknown dead letter → 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status [404]', () => pm.expect(pm.response.code).to.be.oneOf([404]));",
+                  "pm.test('code DEAD_LETTER_NOT_FOUND', () => pm.expect(pm.response.json().code).to.eql('DEAD_LETTER_NOT_FOUND'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{balanceUrl}}/admin/credits/dead-letters/00000000-0000-4000-8000-000000000000/replay",
+              "host": [
+                "{{balanceUrl}}"
+              ],
+              "path": [
+                "admin",
+                "credits",
+                "dead-letters",
+                "00000000-0000-4000-8000-000000000000",
+                "replay"
               ]
             }
           }

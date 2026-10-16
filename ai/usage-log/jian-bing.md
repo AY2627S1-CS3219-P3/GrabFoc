@@ -37,7 +37,10 @@ Jian Bing's entries for the FoC AI usage log. The template and rules are in
 `credit-service/{compose.yaml,package.json,package-lock.json,.nvmrc,jest.kafka.config.js,AGENTS.md,README.md}`,
 `credit-service/src/{config,app.module}.ts`, `credit-service/src/messaging/{topics,messages,kafka.connection,kafka.runner}.ts`
 (+ `topics.spec`, `messages.spec`, `wallets.kafka.spec`), `credit-service/src/credits/credits.service{,.int.spec}.ts`,
-`credit-service/src/test/{env.setup,database,kafka}.ts`, `credit-service/src/db/database{,.spec}.ts`, `ai/usage-log/jian-bing.md`; GitHub issues #75–#79 and a comment on #54.
+`credit-service/src/test/{env.setup,database,kafka,fake-publisher}.ts`, `credit-service/src/db/{database,database.spec,schema}.ts`,
+Phase 3: `credit-service/src/messaging/{command-processor,commands.kafka.spec,command-processor.spec}.ts`,
+`credit-service/src/dead-letters/*`, `credit-service/src/common/error-codes.ts`, `credit-service/postman/credit.postman_collection.json`,
+`ai/usage-log/jian-bing.md`; GitHub issues #75–#79, a comment on #54, PRs #84 (Phase 2) and the Phase 3 PR.
 
 **Scenario:** Learning mode. I chose the broker with Jie Yang and made every design decision for
 Phases 2–3; Claude compared the brokers and patterns, explained concepts (KRaft, partitions,
@@ -108,6 +111,28 @@ policy points, then wrote the spec, plan, issues and the Phase 2 code with tests
 
 > alright the spec loks good and i reopened the session in the original grabfoc
 
+> continue the phase 3 and look at al lthe comments left by the pr reveiwer
+
+> 1. Yes (i dont understand what u r saying but do it) 2. switch? i dont get the retry topics here 3. ill do it later after we resolve all these issues first 4. yes please 5. up to you
+
+> do industry standard dictate people to add dlt topics to a topics,txt?
+
+> i think we woudl want a source of ftruth for all the topcis right, and as such maybe oru initial dea is nto good in that sense? what do you think?
+
+> yes
+
+> for all the conversatiosn in these stacked PRs, coudl oyu resolve them if they have eben resolved?
+
+> could you help me resolve PR 48's merge cofnlicts?
+
+> lets resolve the new codex comments and also make the ci test creidt service, and why are the older comments unanswered?
+
+> yes please go throug hthye comment in case and resolve them accordingly
+
+> keep the user id as is, and the audit /hisotry we are planning ot have an otificaito nservice so this shoudl be okay
+
+> on a separte note, help me figure out how to manually test credit serrvice and let me do some dev test to ensure and review everything
+
 **Key responses:**
 - Compared RabbitMQ, Kafka, Redis Streams and NATS JetStream against FoC's needs (retries/DLQ,
   replay, request/reply, ordering); the choice stayed with the team.
@@ -126,7 +151,34 @@ policy points, then wrote the spec, plan, issues and the Phase 2 code with tests
 **Verification:** `tsc` clean; unit 95/95, integration 32/32, Kafka end-to-end 4/4 against the
 Compose broker (10/10 repeated runs after fixing a flaky test setup); a fresh Claude reviewer found
 no critical issues, and its two important code findings were fixed with tests (database timeouts,
-outage-retry test); its minor findings are listed in the PR; `kafka-init` creates exactly the listed topics and is safe to rerun; the running
+outage-retry test); its minor findings are listed in the PR;
+PR review round (Codex and SoCLaaS comments on #84/#85): fixed upper-case command ids being
+dead-lettered, negative x-attempt breaking the insert, replay holding a database transaction during
+the Kafka send (and a replay race it exposed), DLT re-encoding bytes, a missing root AGENTS.md
+disclosure and two README gaps, each code fix test-first; unit 113/113, integration 52/52, Kafka 11/11;
+then dead letters recognised by source position plus payload hash (with two security-review fixes),
+and K10 revised by me to option C: topics.txt lists every topic, Credit checks it at startup
+(unit 118/118, integration 55/55, Kafka 12/12); resolved the settled PR threads and merged main into
+the stack (PR #48's only conflict was this log; I kept both sides);
+second Codex round on #84/#85: partition raising in create-topics.sh, a two-file Compose command,
+BYTEA dead-letter payloads (a NUL byte blocked the DLT consumer), recoverable replay claims, key must
+equal orderId, retry delay measured from the failure, strict replay body, retiring retry delays
+documented, each code fix test-first (unit 121/121, integration 60/60, Kafka 12/12); CI now runs
+credit-service's unit tests, build and integration tests on PostgreSQL (`.github/workflows/ci.yml`,
+added on PR #48), passing on all four PRs;
+then the older #48/#73 Codex threads: upper-case request ids, query strings kept out of denial logs,
+the database password moved to PGPASSWORD (a special-character password crashed URL parsing), JWKS
+refetch on the first unknown key id and 503 for a JWKS with no usable keys, docs for the service-key
+scope, CREDIT_JWKS_URL and issuer/audience, and five usage-log prompts restored to their exact
+wording (1a19851 had corrected their typos and removed one); unit 127/127, integration 60/60,
+Kafka 12/12 at the top of the stack;
+while dry-running a manual test guide, stopping credit-db crashed the Credit Service (the pg pool's
+'error' event had no listener); fixed on #48 with a test and merged down (042f53a), then the retry
+demo worked: a transfer sent with the database down was retried 1 s, 5 s, 30 s and applied once it
+was back (unit 128/128, integration 60/60, Kafka 12/12);
+Phase 3: unit 108/108, integration 49/49, Kafka 10/10, Newman 24 requests / 30 assertions with 0
+failures; a background security review found that dead letters from different topics could
+overwrite each other, fixed with a test (rows unique per source topic and event id); `kafka-init` creates exactly the listed topics and is safe to rerun; the running
 service created a wallet from a published `UserRegistered` and sent a malformed one to
 `credit.user-events.dlt`; the Docker image loads the native client.
 
