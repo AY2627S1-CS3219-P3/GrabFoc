@@ -9,9 +9,8 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: After the PR #90 review: log the path without its query string, and keep the JWKS
  *        failure message out of the structured line.
- * Author review (Cole Lin): Read in full; confirmed the denial and error lines carry the id and
- *        that no token or failure message appears in them.
- * Author review: the two review fixes are pending Cole Lin's review.
+ * Author review (Cole Lin): Read in full; confirmed the denial and error lines carry the id, that
+ *        no token or failure message appears in them, and that the logged path has no query string.
  */
 import { CanActivate, ExecutionContext, Injectable, Logger, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';

@@ -5,8 +5,9 @@
  *        in the access_denied log.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Added the logPath cases after the PR #90 review.
- * Author review (Cole Lin): Read in full; ran `npm test` (171 passed) and checked a supplied id,
- *        a minted one and a rejected one all reach the log line and the response header.
+ * Author review (Cole Lin): Read in full; ran `npm test` (176 passed) and checked a supplied id,
+ *        a minted one and a rejected one all reach the log line and the response header, and that
+ *        a query string never reaches a log line.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';

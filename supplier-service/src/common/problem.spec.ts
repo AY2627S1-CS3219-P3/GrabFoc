@@ -7,7 +7,7 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Added the case for a 500 raised as an HttpException, after the PR #90 review found it
  *        was not logged; no other change.
- * Author review: that addition is pending review.
+ * Author review (Cole Lin): Checked the added case is the only change; `npm test` passes (176).
  */
 import { ArgumentsHost, BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { ProblemDetailsFilter, ProblemException } from './problem';

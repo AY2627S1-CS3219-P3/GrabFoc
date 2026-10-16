@@ -9,9 +9,8 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: After the PR #90 review: log every 500, including one thrown as an HttpException, and
  *        log the path without its query string.
- * Author review (Cole Lin): Read in full; confirmed the denial and error lines carry the id and
- *        that no token or failure message appears in them.
- * Author review: the two review fixes are pending Cole Lin's review.
+ * Author review (Cole Lin): Read in full; confirmed the denial and error lines carry the id, that
+ *        no token or failure message appears in them, and that the logged path has no query string.
  */
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';

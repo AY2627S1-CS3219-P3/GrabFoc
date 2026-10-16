@@ -6,9 +6,9 @@
  *        supplier-service/AGENTS.md).
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Added logPath() after the PR #90 review found query strings were reaching the logs.
- * Author review (Cole Lin): Read in full; ran `npm test` (171 passed) and checked a supplied id,
- *        a minted one and a rejected one all reach the log line and the response header.
- * Author review: the logPath() change is pending Cole Lin's review.
+ * Author review (Cole Lin): Read in full; ran `npm test` (176 passed) and checked a supplied id,
+ *        a minted one and a rejected one all reach the log line and the response header, and that
+ *        a query string never reaches a log line.
  */
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
