@@ -15,3 +15,8 @@
 process.env.CREDIT_DATABASE_URL = 'postgres://unused@127.0.0.1:1/unused';
 process.env.CREDIT_SERVICE_KEY = 'test-service-key-0123456789abcdef0123456789abcdef';
 process.env.CREDIT_PORT = '';
+// Nothing listens on port 9, so a test that forgets to point this at its stub fails with
+// JwksUnavailableError instead of reaching a real User Service.
+process.env.CREDIT_JWKS_URL = 'http://127.0.0.1:9/.well-known/jwks.json';
+process.env.CREDIT_JWT_ISSUER = '';
+process.env.CREDIT_JWT_AUDIENCE = '';

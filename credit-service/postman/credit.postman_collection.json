@@ -2,7 +2,7 @@
   "info": {
     "name": "FoC Credit Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: pending — Jian Bing to record what he checked.\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service with `docker compose up -d credit-service`.\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
+    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: pending — Jian Bing to record what he checked. 2026-10-14 (Claude Code, Claude Opus 5.5): added the Balance folder.\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service with `docker compose up -d credit-service`.\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
   },
   "variable": [
     {
@@ -23,6 +23,18 @@
     },
     {
       "key": "courierId",
+      "value": ""
+    },
+    {
+      "key": "balanceUrl",
+      "value": "http://localhost:3004"
+    },
+    {
+      "key": "userToken",
+      "value": ""
+    },
+    {
+      "key": "userId",
       "value": ""
     }
   ],
@@ -878,6 +890,139 @@
                 "internal",
                 "credits",
                 "reserve"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Balance",
+      "description": "Set userToken to an access token from POST /auth/login (User Service or gateway) and userId to that user's id (the token's sub). balanceUrl is the Credit Service itself until the gateway route lands; then set it to http://localhost:3003.",
+      "item": [
+        {
+          "name": "Own balance → 200, or 404 WALLET_NOT_FOUND before the first order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status [200, 404]', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{balanceUrl}}/credits/{{userId}}",
+              "host": [
+                "{{balanceUrl}}"
+              ],
+              "path": [
+                "credits",
+                "{{userId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Another user's balance → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status [403]', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{balanceUrl}}/credits/{{$guid}}",
+              "host": [
+                "{{balanceUrl}}"
+              ],
+              "path": [
+                "credits",
+                "{{$guid}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "No token → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status [401]', () => pm.expect(pm.response.code).to.be.oneOf([401]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{balanceUrl}}/credits/{{userId}}",
+              "host": [
+                "{{balanceUrl}}"
+              ],
+              "path": [
+                "credits",
+                "{{userId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Not a UUID → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status [400]', () => pm.expect(pm.response.code).to.be.oneOf([400]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{balanceUrl}}/credits/me",
+              "host": [
+                "{{balanceUrl}}"
+              ],
+              "path": [
+                "credits",
+                "me"
               ]
             }
           }

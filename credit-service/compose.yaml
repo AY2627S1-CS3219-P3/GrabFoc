@@ -2,6 +2,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
 # Scope: Generated the Credit Service and its database, following supplier-service/compose.yaml.
 # Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+# Scope: Added CREDIT_JWKS_URL and the optional issuer/audience.
+# Author review: pending — Jian Bing to record what he checked.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 # Scope: Database password passed as PGPASSWORD, not inside the URL (PR #48 review).
 # Author review: pending — Jian Bing to record what he checked.
@@ -44,6 +47,11 @@ services:
       # No working fallback: without a key of 32+ characters in .env, this container exits with a
       # message saying so. (`:?` would instead stop every compose command for the whole stack.)
       CREDIT_SERVICE_KEY: ${CREDIT_SERVICE_KEY:-}
+      # The balance route verifies user tokens against the User Service's public keys.
+      CREDIT_JWKS_URL: http://user-service:3001/.well-known/jwks.json
+      # Optional; checked only when set in .env.
+      CREDIT_JWT_ISSUER: ${CREDIT_JWT_ISSUER:-}
+      CREDIT_JWT_AUDIENCE: ${CREDIT_JWT_AUDIENCE:-}
     # Published for local testing with Postman. The gateway never routes here: these are
     # internal routes for the Order Service only.
     ports:
