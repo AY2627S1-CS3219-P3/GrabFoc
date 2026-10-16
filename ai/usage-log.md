@@ -2,25 +2,25 @@
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Recorded the CodeQL workflow configuration and expanded pull request coverage.
-Author review: Initial setup approved in PR #23; expanded PR coverage pending human review.
+Author review: Initial setup approved in PR #23; for the expanded PR coverage, Jian Bing skimmed most of the code on PR #27 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Moved the CodeQL entries under the Jian Bing section when merging main into PR #27; entry text unchanged.
-Author review: Pending human review on PR #27.
+Author review: Jian Bing skimmed most of the code on PR #27 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Wrote the PR #30 review-fix entry under the Jian Bing section.
-Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #30.
+Author review: Jian Bing supplied the prompts quoted in that entry, skimmed most of the code on PR #30 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations.
 Tool: Claude Code (model: Claude Opus 5), date: 2026-09-29
 Scope: Wrote the Cole Lin entries for PRs #7, #28, #30 and #33 from his prompts in the session.
 Author review: Cole Lin confirmed the prompts, decisions and verification described.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Wrote the SoCLaaS TLS stopgap entry under the Jian Bing section (PR #36).
-Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #36.
+Author review: Jian Bing supplied the prompts quoted in that entry, skimmed most of the code on PR #36 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Moved lihloway's four Supplier Service entries under the Cole Lin section when merging main into PR #33; entry text unchanged.
-Author review: Pending review by Jian Bing and lihloway on PR #33.
+Author review: Jian Bing skimmed most of the code on PR #33 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations; pending lihloway's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-29
 Scope: Wrote the Supplier Service Docker Compose entry under the Jian Bing section (PR #33).
-Author review: Jian Bing supplied the prompts quoted in that entry; pending his review on PR #33.
+Author review: Jian Bing supplied the prompts quoted in that entry, skimmed most of the code on PR #33 and went through the GitHub Copilot and Codex review results and advice, confirming they were sound before resolving the conversations.
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Combined PR #33 entries with the frontend and gateway log while merging PR #33.
 Author review: Pending team review of the merged log.

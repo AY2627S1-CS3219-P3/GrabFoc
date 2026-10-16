@@ -3,9 +3,18 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Jian Bing's section out of ai/usage-log.md into this file (issue #65), plus a CodeQL entry that git blame attributes to Jian Bing from the end of Jie Yang's section; entry text unchanged. Wrote the 2026-10-12 usage-log split entry from Jian Bing's prompts.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-05
+Scope: Wrote the end-to-end UI check and §9 demo-check entry under the Jian Bing section.
+Author review: Jian Bing supplied the prompts quoted in that entry and checked the whole end-to-end flow locally.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
+Scope: Wrote the Credit Service design and implementation entry under the Jian Bing section.
+Author review: Jian Bing supplied the prompts quoted in that entry; pending his review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote the 2026-10-14 CI workflow entry (issue #57, PR #74) from Jian Bing's prompts.
 Author review: Jian Bing supplied the quoted prompts and the wording of the entry's Verification line.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: Restored five prompts under "Prompts (exact)" to the wording Jian Bing typed (commit 1a19851 had corrected their typos and removed one; PR #73 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -50,11 +59,13 @@ output to confirm each step makes sense and works as intended; all four jobs pas
 `ai/usage-log.md`. Split it so each member edits only their own file.
 
 **Prompts (exact):**
-> help me make a new pr where we split the usage-log.md into 5 markdown, 1 for each member since as it stands, everyitme we make a pr, there is a merge conflict there, and make it track the corresponging github issue i created
+> help me make a new pr where w esplit the usage-log.md into 5 markdown, 1 for each member since as it stands, everyitme we make a pr, there is a merge conflict there, and make it track the corresponging github issue i created
 
 > yes looks good, but i think with regards to ref, maybe we can close this issue #65, and then we open a new issue isntead ot merge this ai-usag ea tthe end isntead
 
 > the pr reviewer left some comments for pr 68 (with screenshots of the two Codex review comments)
+
+> for all the pending auhtor review, help me edit them to say that I have checked the logs locally, to ensure it follows the guideline given by the professor in the project document, and that oepnign it on my ide shows a nice formatting, and to make sure all the comments and every other component is present
 
 **What it produced:** Moved each `##` member section, word for word, into
 `ai/usage-log/<member>.md`, and kept `ai/usage-log.md` (the path the brief names) as the index with
@@ -66,6 +77,125 @@ issue for merging the files back into one log at the end.
 **Verification:** I checked the logs locally against the AI usage-log guidelines in the project
 document (Appendix 2), confirmed they render with clean formatting in my IDE, and confirmed every
 entry, comment and other component is present.
+
+### 2026-10-11 — Credit Service design (learning mode) and first implementation
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `credit-service/**` (new), `compose.yaml`, `.env.example` (incl. `credit-service/postman/credit.postman_collection.json`)
+
+**Scenario:** Design the Credit Service myself in learning mode (Claude asked for my approach at
+each step, explained concepts and flagged mistakes), then have Claude implement the agreed design.
+
+**Prompts (exact):**
+> /superpowers:brainstorming /Users/user/Downloads/cs3219-group3-D1.pdf  using this product document, help me plan out the order service
+
+> sorry,  imean to do credit service isntead
+
+> lets do path 1: where after a courier with 10 credits deliver it and completes, the order serivce will send a message to credit, whcih then releases the resevreed credits to the courier, and hence finishing the transaction, so now the ocurier will have 13 creidts, and the requester will still have 7 credits sicne to make an order, the order serivce will call the credit serivce to resevr ethe 3 credits. now when the order gets cancelled, the reserved credits in credit service go back to the requester, wher eorder service wil lmake this call
+
+> the creidt would become 4/6 which si wrong, so we would need it to be idempotent, whic hwe can do by checking the orderid to see if its the same request, and since we know if an orderid has had its creidt reserved, we can check against this
+
+> operation role: we have a valid state machine or transition cycle, then if 2 simualtaenous duplciates come, we write and check atomically through a transaction? i dont know if databse transaction is suitable for this thoug, but i dont want to reinvent the wheel either. also the reply shoudl definitely be success for the 1st time, but a fail on the 2nd time, but i dont think order should see an error, since the transaction can proceed if credit service does its job scope eproperly, it would be coupling to make order servic ehandle duplciate response causing an error
+
+> yup the correct state transition was exactly what i had in mind. okay for this duplciate same order race, i think we use both the unique order id and its operation type and amout to uniquely identify if we have procsessed the order before?
+
+> 1. order id + action only, and the amount stays as a data field ,which if the same x, reserve request comes it, with a different value, we overwrite hte prev value 2. so we use a custom record id? 3. database constraint that cen work as al ookup in code?
+
+> what r u saying, if the overwriting isnt possible, so if the x,reverve came in 2 times, with a different amount, it means my oder service is stupdi cause it shoudlnt allow that i nthe first palce no? and also the cshape a and b the row id i jsut said? why are you repeating the same thing to me
+
+> for 2. no i meant liek before i mentioned record id, u wanted to me to find a way to deduplicate commands, and regarldess, if we are going to do either shape a or b, isnt there still the the duplicate same-order race and the two-orders-at-once race?
+
+> i literally was suggestin shape a from the start, did i nto mention using psotgres transaction?! thanks but i will jsut pick shape a regardless for the idempotency it provides. then for 2 orders a tonce, if they ar edifferne torders they have different uid so its already solved no? also i dont liek the fact that we r using psotgres to help handle idempotency, there has to be a better way
+
+> okay use database, also if anythign for the 2 orders at once, im pretty sure there is a constraint where an user cant cant have mroe than 1 ongoing order at ocne, it shoudl be written i nthe project document somewhere, so this cas eshoudl even happen, why am i handling this?
+
+> okay then nvm, lets stick to the original requirement
+
+> conditional uupdate, add a apart that says where user.amount > requested amount
+
+> can you implement a post for reserving credit, and a post for releasing credit, whichh all is order calling i think it makes sense, also can you go straight to implementation
+
+> can you gime me a collection ot import with
+
+Choices made in pickers: confirmed the design summary ("Confirm and continue"); in the
+implementation plan, "Add transfer too", "X-Service-Key on /internal" and "Implement this step".
+
+**What it produced:** Explanations of check-then-act races, what a transaction does and doesn't
+guarantee, and the two ways to make a per-order record unique. After my design was confirmed, a
+NestJS service with `POST /internal/credits/reserve`, `/transfer` and `/release`, a service-key
+guard, the schema, Docker and compose wiring, a README and `credit-service/AGENTS.md`, plus 18 unit
+and 19 integration tests (including ten identical reserves at once, five orders racing for one
+balance, and transfer racing release).
+
+**What I changed or rejected:** My design: one hold per order with states RESERVED → TRANSFERRED |
+RELEASED, idempotency on order id + action with the amount as data, duplicates returning success,
+PostgreSQL enforcing it, and a conditional update for the balance. Claude corrected my `>` to `>=`,
+pointed out that D1 limits only couriers to one order, and talked me out of overwriting a
+mismatched amount. I asked for reserve and release; Claude flagged that transfer was missing and I
+added it. Claude proposed the table columns, paths, status codes and the X-Service-Key pattern,
+flagged under the AI policy, and I approved them. Claude changed the compose key from `:?` to
+`:-` so a missing key stops only the Credit container, not the whole stack.
+
+**Verification:** Run by Claude Code: `npm test` 18/18 and `npm run test:int` 19/19 against
+PostgreSQL in Docker. Removing the `available >= amount` condition failed 3 tests and letting
+release ignore the state failed 2, so the race tests do catch those bugs. The built container
+answered 401 without a key, 201 then 200 for a repeated reserve, 409 for a mismatch and for
+release after transfer, and left the requester at 7/0 and the courier at 13/0. The Postman collection ran
+with Newman against the container: 17 requests, 21 assertions, 0 failures.
+
+### 2026-10-11 — Find and fill in my pending author reviews
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `AGENTS.md`, `ai/usage-log.md`
+
+**Scenario:** List the AI disclosures still waiting on my review, then record what I checked.
+
+**Prompts (exact):**
+> help me find all the author review liens under jianbing in the repo that are missing
+
+> help me fill up my pending review lines, i checked through hthe whole end to end flow locslly, and ensured all test cases passed, as well as overviewed the whole flow and made sure the tests amde snese, whereas the pr themselves, i skimmed through most of the code and using the copilot and codex github connectors, ran through their results and advice, and made sure they were sound before resolving the conversations
+
+**What it produced:** Used `git grep` and `git blame` to find 21 pending Author review lines that
+name me or that I committed, and two of my log entries (the CodeQL ones) that have no "What I
+changed or rejected" line. It then copied my statement above into those lines: the
+end-to-end check for the §9 fix, and the code skim plus Copilot and Codex review for PRs #27, #30,
+#33 and #36. No code changed. The 14 lines for the PR #44 Supplier test files (and
+`.env.example`) were dropped when this work was rebased onto `main`, because PR #45 had already
+recorded my review of those tests on 2026-10-01.
+
+**What I changed or rejected:** The review wording is my own statement; Claude Code only placed it.
+
+**Verification:** `git grep` finds no Author review line still pending on me.
+
+### 2026-10-05 — End-to-end UI check with Playwright, and a §9 demo-check fix
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `AGENTS.md`
+
+**Scenario:** Drive the running Docker Compose stack through the browser to confirm the D2 flows
+work end to end, then correct a demo instruction the check found to be wrong.
+
+**Prompts (exact):**
+> try using the playwright cli to access the ui to see if end to end works
+
+> help me change the status=inative wording, whatever that means
+
+**What it produced:** Using playwright-cli on `localhost:3000`, Claude signed up a USER (OTP read
+from Mailpit), browsed locations with search, type filter, sort and paging, toggled requester and
+courier mode, and checked the profile. The USER was redirected away from `/admin/locations` and got
+403 on create, edit and `includeInactive=true`; the gateway returned 401 with no token. It claimed
+the bootstrap ADMIN through Forgot Password and ran create, edit, deactivate and restore from the UI,
+and checked the 390px mobile layout for horizontal overflow. It found that `AGENTS.md` §9 told the
+demo to use `GET /locations?status=INACTIVE` (and `ALL`), which the Supplier Service rejects with
+400; the documented parameter is `includeInactive=true`. It changed the two §9 lines to match. No
+code changed. Other findings reported but not acted on: the header avatar is a hard-coded "?"
+placeholder, Deactivate has no confirmation, the mobile header wraps above the logo, and the
+requester/courier mode resets on navigation.
+
+**What I changed or rejected:** Pending my review.
+
+**Verification:** `GET /locations?includeInactive=true` returned 403 for the USER and listed the
+inactive test location for the ADMIN, through the frontend proxy and the gateway.
 
 ### 2026-10-01 — Pass the User Service container only its own variables
 
@@ -184,12 +314,12 @@ was dropped; on PR #33 the build and Cole Lin's 3 tests passed after the merge.
 could not start it for the D2 containerised demo.
 
 **Prompts (exact):**
-> does the suppleir service have any docker compose file
+> does the suppleir service have any docker compsoe file
 
 > okay draft it out on the most udpated supplier service pr
 
 > *(a draft compose file from Jie Yang, written with Codex, pasted with Jie Yang's message)*
-> u can js / add the env
+> u can jjs / add the env
 
 **What it produced:** `supplier-service/compose.yaml` following `user-service/compose.yaml` (its own
 `supplier-db` on a named volume, the image built from the repository root), its `include` in the root
@@ -256,7 +386,7 @@ server has since started sending its full chain, so the stopgap can be removed.
 **Scenario:** Copilot's review of PR #30 left four findings on the Supplier Service token verification.
 
 **Prompts (exact):**
-> okay the mcp is working now, read the review form codesx and resolve the conversations
+> okay the mcp is working now, read the review form codesx and resolv eth econversations
 > accoridngly, then do the same with PR30 for user service
 
 > Approve all 3 fixes (Recommended) *(chosen from the options Claude offered)*

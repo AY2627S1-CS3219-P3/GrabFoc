@@ -1,0 +1,53 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
+# Scope: Generated the Credit Service and its database, following supplier-service/compose.yaml.
+# Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+# Scope: Database password passed as PGPASSWORD, not inside the URL (PR #48 review).
+# Author review: pending — Jian Bing to record what he checked.
+
+name: foc
+
+services:
+  credit-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: foc
+      # Its own password, separate from the other databases'. Override it in .env.
+      POSTGRES_PASSWORD: ${CREDIT_POSTGRES_PASSWORD:-change-me-in-dotenv}
+      POSTGRES_DB: credit
+    ports:
+      # 5435 on the host: user-db has 5432 and supplier-db 5434.
+      - "5435:5432"
+    volumes:
+      # Named volume, so the data survives `docker compose down` (root AGENTS.md §8).
+      - credit-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foc -d credit"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  credit-service:
+    build:
+      context: .
+    depends_on:
+      credit-db:
+        condition: service_healthy
+    # No env_file: only the variables below reach this container.
+    environment:
+      CREDIT_PORT: 3004
+      # The password goes in PGPASSWORD, which the PostgreSQL driver reads directly, not in the URL:
+      # a password containing / # ? or @ would break the URL (PR #48 review).
+      CREDIT_DATABASE_URL: postgres://foc@credit-db:5432/credit
+      PGPASSWORD: ${CREDIT_POSTGRES_PASSWORD:-change-me-in-dotenv}
+      # No working fallback: without a key of 32+ characters in .env, this container exits with a
+      # message saying so. (`:?` would instead stop every compose command for the whole stack.)
+      CREDIT_SERVICE_KEY: ${CREDIT_SERVICE_KEY:-}
+    # Published for local testing with Postman. The gateway never routes here: these are
+    # internal routes for the Order Service only.
+    ports:
+      - "3004:3004"
+
+volumes:
+  credit-db-data:
