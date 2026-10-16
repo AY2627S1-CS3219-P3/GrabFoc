@@ -1,20 +1,30 @@
 // AI Assistance Disclosure:
-// Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
-// Scope: Generated TypeScript compiler settings for the NestJS service.
-// Author review: Read in full; `npm run build` compiles clean.
+// Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+// Scope: Nest CLI scaffold settings; the AI switched module/moduleResolution to nodenext (CommonJS output
+//        now that package.json has no "type":"module") and removed resolvePackageJsonExports.
+//        Also removed "incremental": with deleteOutDir it left dist/ half-empty on a no-change rebuild.
+// Author review: Successfully reviewed by Deanson, 2026-10-16.
 {
   "compilerOptions": {
-    "module": "commonjs",
-    "target": "ES2022",
-    "lib": ["ES2022"],
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "esModuleInterop": true,
-    "experimentalDecorators": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "removeComments": true,
     "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2023",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": ".",
     "skipLibCheck": true,
-    "sourceMap": true
-  },
-  "include": ["src"]
+    "strict": true,
+    "strictPropertyInitialization": false,
+    "types": [
+      "vitest/globals",
+      "node"
+    ]
+  }
 }

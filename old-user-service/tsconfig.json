@@ -1,0 +1,20 @@
+// AI Assistance Disclosure:
+// Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
+// Scope: Generated TypeScript compiler settings for the NestJS service.
+// Author review: Read in full; `npm run build` compiles clean.
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "skipLibCheck": true,
+    "sourceMap": true
+  },
+  "include": ["src"]
+}
