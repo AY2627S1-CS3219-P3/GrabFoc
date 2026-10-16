@@ -1,0 +1,11 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+# Scope: Generated the build-context exclusions.
+# Author review: Pending Deanson's review.
+node_modules
+dist
+*.tsbuildinfo
+coverage
+ai
+postman
+.env
