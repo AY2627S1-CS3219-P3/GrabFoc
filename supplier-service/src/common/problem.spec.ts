@@ -4,6 +4,10 @@
  * Scope: Generated these unit tests for the Problem Details error responses.
  * Author review (Jian Bing): Ran `npm test` on 2026-10-01 (157 passed) and verified each test
  *        case in this file by hand.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
+ * Scope: Added the case for a 500 raised as an HttpException, after the PR #90 review found it
+ *        was not logged; no other change.
+ * Author review: that addition is pending review.
  */
 import { ArgumentsHost, BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { ProblemDetailsFilter, ProblemException } from './problem';
@@ -80,5 +84,11 @@ it('logs unexpected errors, but not expected HTTP errors', () => {
   send(new Error('boom'));
   expect(loggedError).toHaveBeenCalledTimes(1);
   send(new ProblemException(404, 'No location with id 7.'));
+  expect(loggedError).toHaveBeenCalledTimes(1);
+});
+
+// A 500 raised deliberately is still a 500, and the docs promise a line for every one of them.
+it('logs a 500 that arrives as an HttpException', () => {
+  send(new ProblemException(500, 'An unexpected error occurred.'));
   expect(loggedError).toHaveBeenCalledTimes(1);
 });

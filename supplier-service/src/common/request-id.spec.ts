@@ -3,6 +3,8 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Generated these unit tests for the correlation-id helpers and for the requestId field
  *        in the access_denied log.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
+ * Scope: Added the logPath cases after the PR #90 review.
  * Author review (Cole Lin): Read in full; ran `npm test` (171 passed) and checked a supplied id,
  *        a minted one and a rejected one all reach the log line and the response header.
  */
@@ -11,7 +13,7 @@ import { Reflector } from '@nestjs/core';
 import type { NextFunction, Request, Response } from 'express';
 import { config } from '../config';
 import { AuthedRequest, JwtAuthGuard } from './auth';
-import { requestIdMiddleware, requestIdOf, resolveRequestId } from './request-id';
+import { logPath, requestIdMiddleware, requestIdOf, resolveRequestId } from './request-id';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -38,6 +40,22 @@ describe('resolveRequestId', () => {
     ['empty', ''],
   ])('replaces a header with %s rather than rejecting the request', (_why, value) => {
     expect(resolveRequestId(value)).toMatch(UUID);
+  });
+});
+
+describe('logPath', () => {
+  // A location search carries the caller's position, so the query must not reach a log line that
+  // also names them (PR #90 review).
+  it('drops the query string, coordinates included', () => {
+    expect(logPath({ originalUrl: '/locations?lat=1.2966&lon=103.7764' } as Request)).toBe('/locations');
+  });
+
+  it('leaves a path with no query alone', () => {
+    expect(logPath({ originalUrl: '/locations/7' } as Request)).toBe('/locations/7');
+  });
+
+  it('survives a request object without a url', () => {
+    expect(logPath({} as Request)).toBe('');
   });
 });
 
@@ -80,8 +98,8 @@ describe('the requestId in the access_denied log', () => {
   afterEach(() => jest.restoreAllMocks());
 
   /** Denies an unauthenticated request and returns the line the guard logged. */
-  async function deniedLine(headers: Record<string, string>) {
-    const req = { headers, header: () => undefined, method: 'POST', originalUrl: '/locations' } as unknown as AuthedRequest;
+  async function deniedLine(headers: Record<string, string>, originalUrl = '/locations') {
+    const req = { headers, header: () => undefined, method: 'POST', originalUrl } as unknown as AuthedRequest;
     requestIdMiddleware(req, { setHeader: () => undefined } as unknown as Response, (() => undefined) as NextFunction);
     await guard
       .canActivate({
@@ -101,6 +119,12 @@ describe('the requestId in the access_denied log', () => {
       method: 'POST',
       path: '/locations',
     });
+  });
+
+  it('logs the path without the query string', async () => {
+    const line = await deniedLine({}, '/locations?lat=1.2966&lon=103.7764');
+    expect(line.path).toBe('/locations');
+    expect(JSON.stringify(line)).not.toContain('103.7764');
   });
 
   it('logs a minted id when none was supplied', async () => {

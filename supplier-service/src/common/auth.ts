@@ -6,8 +6,12 @@
  * Author review (Cole Lin): Read in full; ran it with Postman and checked the 401 and 403 cases, including that dev headers are ignored when a token is sent.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-11
  * Scope: Added the requestId field to the access_denied log line.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
+ * Scope: After the PR #90 review: log the path without its query string, and keep the JWKS
+ *        failure message out of the structured line.
  * Author review (Cole Lin): Read in full; confirmed the denial and error lines carry the id and
  *        that no token or failure message appears in them.
+ * Author review: the two review fixes are pending Cole Lin's review.
  */
 import { CanActivate, ExecutionContext, Injectable, Logger, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -15,7 +19,7 @@ import type { Request } from 'express';
 import { config } from '../config';
 import { JwksUnavailableError, verifyToken } from './jwks';
 import { ProblemException } from './problem';
-import { requestIdOf } from './request-id';
+import { logPath, requestIdOf } from './request-id';
 
 export type Role = 'ADMIN' | 'USER';
 export interface Caller {
@@ -37,7 +41,7 @@ export function denied(req: Request, status: 401 | 403, detail: string, caller?:
       requestId: requestIdOf(req),
       status,
       method: req.method,
-      path: req.originalUrl,
+      path: logPath(req),
       userId: caller?.id ?? null,
       role: caller?.role ?? null,
     }),
@@ -75,14 +79,16 @@ export class JwtAuthGuard implements CanActivate {
       claims = await verifyToken(authorization);
     } catch (err) {
       if (err instanceof JwksUnavailableError) {
+        // The message names the JWKS URL and the underlying failure, so it goes in Nest's
+        // trace argument rather than the structured line, as on the 500 path in problem.ts.
         logger.error(
           JSON.stringify({
             event: 'jwks_unavailable',
             requestId: requestIdOf(req),
             method: req.method,
-            path: req.originalUrl,
-            reason: err.message,
+            path: logPath(req),
           }),
+          err.message,
         );
         throw new ProblemException(503, 'Cannot verify credentials right now. Try again shortly.');
       }

@@ -6,13 +6,17 @@
  * Author review (Cole Lin): Read in full; checked the error responses come back as application/problem+json with the documented status codes.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-11
  * Scope: Made the unhandled-error log line structured and added the requestId field.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
+ * Scope: After the PR #90 review: log every 500, including one thrown as an HttpException, and
+ *        log the path without its query string.
  * Author review (Cole Lin): Read in full; confirmed the denial and error lines carry the id and
  *        that no token or failure message appears in them.
+ * Author review: the two review fixes are pending Cole Lin's review.
  */
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { STATUS_CODES } from 'http';
-import { requestIdOf } from './request-id';
+import { logPath, requestIdOf } from './request-id';
 
 /** Throw this to send a Problem Details response with the given status and detail text. */
 export class ProblemException extends HttpException {
@@ -41,16 +45,19 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       } else {
         detail = exception.message;
       }
-    } else {
-      // The stack goes in Nest's own stack argument, not in the JSON: a failure message can
-      // carry whatever it touched (a connection string, say), and a central log store that
-      // anyone can query is the last place that should hold it.
+    }
+
+    // Every 500 gets a line, whether it arrived as an HttpException or not. The stack goes in
+    // Nest's own stack argument, not in the JSON: a failure message can carry whatever it touched
+    // (a connection string, say), and a central log store that anyone can query is the last place
+    // that should hold it.
+    if (status === 500) {
       this.logger.error(
         JSON.stringify({
           event: 'unhandled_error',
           requestId: requestIdOf(req),
           method: req.method,
-          path: req.originalUrl,
+          path: logPath(req),
         }),
         exception instanceof Error ? exception.stack : String(exception),
       );

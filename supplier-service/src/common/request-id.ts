@@ -4,8 +4,11 @@
  * Scope: Generated the correlation-id middleware and helpers, following the team's decision to
  *        join log lines across services on the gateway's x-request-id (see "Logging" in
  *        supplier-service/AGENTS.md).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
+ * Scope: Added logPath() after the PR #90 review found query strings were reaching the logs.
  * Author review (Cole Lin): Read in full; ran `npm test` (171 passed) and checked a supplied id,
  *        a minted one and a rejected one all reach the log line and the response header.
+ * Author review: the logPath() change is pending Cole Lin's review.
  */
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
@@ -44,4 +47,17 @@ export function requestIdMiddleware(req: Request, res: Response, next: NextFunct
  */
 export function requestIdOf(req: Request): string {
   return (req as TracedRequest).requestId ?? resolveRequestId(req.headers?.['x-request-id']);
+}
+
+/**
+ * The path to put in a log line: the pathname, never the query string. `originalUrl` carries the
+ * query, and this service's own filters put personal data there — `?lat=1.2966&lon=103.7764` is
+ * the caller's position — so the full URL must not reach a line that also names the caller (root
+ * AGENTS.md: never log unmasked personal data). The gateway drops query strings for the same
+ * reason; see api-gateway/envoy/behaviour-differences.md.
+ */
+export function logPath(req: Request): string {
+  const url = req.originalUrl ?? '';
+  const query = url.indexOf('?');
+  return query === -1 ? url : url.slice(0, query);
 }
