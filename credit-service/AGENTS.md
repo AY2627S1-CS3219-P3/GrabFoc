@@ -7,6 +7,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Documented the balance route, JWT verification and error codes (redesign Phase 1).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added the Messaging section for redesign Phase 2 (wallets from UserRegistered over Kafka).
+Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: A repeated reserve returns the hold's current state (PR #48 review); only the /internal
 routes need the service key (PR #73 review).
@@ -106,6 +109,32 @@ auth errors have none. The balance route verifies the user JWT itself against `C
 (the User Service JWKS, as the Supplier Service does); the `/internal` routes keep the service key,
 and neither credential opens the other's routes. The balance route never creates a wallet.
 
+## Messaging [Proposed]
+
+_Origin: Team (Jian Bing's decisions K1–K13 in the redesign spec §9); AI doc (details proposed by
+Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3 "Messaging (Kafka)"._
+
+- **Broker:** the shared Kafka in `infra/kafka/` (`kafka:9092` in Compose, `localhost:9094` from
+  the host). `kafka-init` creates every topic; Credit creates none.
+- **Consumer group** `credit-service`, starting from the oldest message the first time. An offset
+  is stored only after its message's work is saved; a crash re-reads it, which is safe because every
+  handler is idempotent.
+- **`user.events` → wallets (Phase 2).** A `UserRegistered` creates the wallet with the starting
+  credits (`INSERT … ON CONFLICT DO NOTHING`, so a repeat grants nothing).
+  - The User Service owns the event (#54). Credit reads only `type === "UserRegistered"`, a UUID
+    `userId`, and `eventId` for logs when valid; other fields and event types are ignored.
+  - A `UserRegistered` without a valid `userId`, or a value that isn't a JSON object, goes to
+    **`credit.user-events.dlt`** with headers `x-attempt`, `x-error`, `x-source-topic`,
+    `x-dead-lettered-at`, and is logged as `user_event_dead_lettered`. It can't be replayed from
+    Credit: the User Service fixes and re-publishes it.
+  - An unexpected error (e.g. the database is down) pauses the partition for 5 s and retries.
+- Lazy wallet creation (`ensureAccount`) stays until the User Service publishes (#79).
+- **Local setup:** Node 24 (`.nvmrc`; the Kafka client has prebuilt binaries for Node 18–24),
+  `npm run test:kafka` against the Compose broker. The client's install script is approved in
+  `package.json` (`allowScripts`), because npm 11 skips dependency install scripts by default.
+- Phase 3 adds `credit.commands` (transfer/release), retry topics, `credit.commands.dlt`, the
+  dead-letter table and the admin routes (#77, #78).
+
 ## Concurrency notes
 
 _Origin: AI doc_
@@ -122,8 +151,10 @@ _Origin: AI doc_
 - Confirm this design with Zi Yi (owner).
 - Gateway route for `GET /credits/:userId`: waiting for PR #69 (Envoy); add
   `api-gateway/envoy/routes/30-credit.routes.json` and `CREDIT_SERVICE_URL` then.
-- Redesign Phases 2–3 (wallets from `UserRegistered`, transfer/release over a broker):
-  `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`.
+- Redesign Phase 3 (transfer/release as Kafka commands, dead letters): #77, #78; then #79 removes
+  lazy wallet creation and the HTTP transfer/release routes once #54 and #53/#56 publish.
+  Spec: `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md` §9.
+- Confirm Kafka and root `AGENTS.md` §3 "Messaging (Kafka)" with the whole team.
 - Transaction history (the profile page links to one): not built.
 - Order id format: assumed UUID, matching user ids. Confirm when the Order Service is designed.
 - Record root `AGENTS.md` §8's exception for authenticated service callers, if the team agrees.

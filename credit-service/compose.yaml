@@ -5,6 +5,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 # Scope: Added CREDIT_JWKS_URL and the optional issuer/audience.
 # Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+# Scope: Connected the service to Kafka (infra/kafka) and waited for kafka-init; documented the
+#   two-file command for using this file on its own (PR #84 review).
+# Author review: pending — Jian Bing to record what he checked.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 # Scope: Database password passed as PGPASSWORD, not inside the URL (PR #48 review).
 # Author review: pending — Jian Bing to record what he checked.
@@ -37,6 +41,11 @@ services:
     depends_on:
       credit-db:
         condition: service_healthy
+      # Every topic must exist before Credit subscribes; no service creates topics. kafka-init lives
+      # in the shared infra/kafka/compose.yaml, so to use this file without the root one, pass both:
+      #   docker compose -f infra/kafka/compose.yaml -f credit-service/compose.yaml up credit-service
+      kafka-init:
+        condition: service_completed_successfully
     # No env_file: only the variables below reach this container.
     environment:
       CREDIT_PORT: 3004
@@ -52,6 +61,9 @@ services:
       # Optional; checked only when set in .env.
       CREDIT_JWT_ISSUER: ${CREDIT_JWT_ISSUER:-}
       CREDIT_JWT_AUDIENCE: ${CREDIT_JWT_AUDIENCE:-}
+      CREDIT_KAFKA_BROKERS: kafka:9092
+      # One retry topic per entry must be listed in infra/kafka/topics.txt; Credit checks at startup.
+      CREDIT_RETRY_DELAYS: ${CREDIT_RETRY_DELAYS:-1s,5s,30s,2m,10m}
     # Published for local testing with Postman. The gateway never routes here: these are
     # internal routes for the Order Service only.
     ports:

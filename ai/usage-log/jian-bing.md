@@ -12,6 +12,9 @@ Author review: Jian Bing supplied the prompts quoted in that entry; pending his 
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote the 2026-10-14 Credit Service redesign entry from Jian Bing's prompts.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Wrote the 2026-10-14/15 Kafka (redesign Phases 2–3) entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote the 2026-10-14 CI workflow entry (issue #57, PR #74) from Jian Bing's prompts.
 Author review: Jian Bing supplied the quoted prompts and the wording of the entry's Verification line.
@@ -24,6 +27,108 @@ Author review: pending — Jian Bing to record what he checked.
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-14/15 — Credit Service on Kafka: broker choice, design walkthrough and Phase 2
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md` (§3, §8, §9),
+`docs/superpowers/plans/2026-10-14-credit-kafka-phase2-3.md`, `AGENTS.md` (§3 Messaging, §10),
+`infra/kafka/{compose.yaml,topics.txt,create-topics.sh,README.md}`, `compose.yaml`, `.env.example`,
+`credit-service/{compose.yaml,package.json,package-lock.json,.nvmrc,jest.kafka.config.js,AGENTS.md,README.md}`,
+`credit-service/src/{config,app.module}.ts`, `credit-service/src/messaging/{topics,messages,kafka.connection,kafka.runner}.ts`
+(+ `topics.spec`, `messages.spec`, `wallets.kafka.spec`), `credit-service/src/credits/credits.service{,.int.spec}.ts`,
+`credit-service/src/test/{env.setup,database,kafka}.ts`, `credit-service/src/db/database{,.spec}.ts`, `ai/usage-log/jian-bing.md`; GitHub issues #75–#79 and a comment on #54.
+
+**Scenario:** Learning mode. I chose the broker with Jie Yang and made every design decision for
+Phases 2–3; Claude compared the brokers and patterns, explained concepts (KRaft, partitions,
+upstream/downstream, coupling, idempotency), corrected my reasoning where it was wrong, flagged AI
+policy points, then wrote the spec, plan, issues and the Phase 2 code with tests (TDD).
+
+**Prompts (exact):**
+> wait which mq did u use
+
+> can you help me determine the differneces and what tradeoffs i have with the differne tbrokers?
+
+> what is order -> suppleir queries?
+
+> after discussion with jieynag, we decided to use kafka for its industry standard, and the per key ordering. and we like the customisability  depsite havingt  odo mroe work, can we  do phase 2 and pahse 3 now
+
+> step aside, and i think ordering matter since if a requester could get more credits after an roderto make a new order, so in htis case, if they were reverse rodered, it owuld be possible for the credi tto go negative fi the seonc dorder is epensive. also i want the usual kafka patterns
+
+> i think 2 is lesse extensible right? liek if i wanted more retires, i need to hardcode more, which is anti pattern and not good for maintability, compared to usign a rety table? but i think wahat will help me in my decision is what industry standard sue for such scenarios
+
+> ahh then lets do a hybrid? and use the boest of both worlds here
+
+> lets do A
+
+> we chose A due to the more common indsutry set up. and that we want the dlt topic so that we can use the kafka ui to shwo the async workflow easily
+
+> maybe for now we do an admin only endpoint, for a scritp doesnt that mena we need to run it on the cli, so if its on the cloud we will ahev to ssh, and an endpoitn is much more easily accessible thr upostman if i want t osee wha thappened
+
+> looks good
+
+> can we creat ehte corresponding github issues for these tasks, especially for creaitng a borker, beforei proceed on
+
+> actually wlak me throug hthe whoel implementatio nwe have decided, i really want to make sure everything is what  iwant, and that the specs are correct, especially on this broker since it will be used by other services
+
+> a few questions: what is KRaft, what is ZooKeeper, is it industry standard to haev a separate kafka folder as a service? and for the first gap, i think if we want to do 1 directio ndependncy, i dont kow any othe rway of allowing the commadn to nto go to the other reciver topic to follow an orchestrator pattern? since we can psot event here or it iwll fli pthe dependency direction. also what is the difference between topics and partitions ,and how do we do idempotency, do we do kafka transaction?
+
+> i dont really get the point of a partition, why not jsut have onyl topics, i dont see the benefit, also for the kafka folder directory,  ithink /infra make smore sense, since i do plan on using iac, probably terraform later o nfor cloud deployment, and then for gap 2, i think every service decide their own field, as a conformist relationship, so that we can continue development idnependently ,and only if the downstream needs extra data, do we communicate
+
+> also, we have an inbox tbale for credit service already? wait i dont get why credit is the usptrema , itohught order is upstream and the one that calls credit to do the release/trasnfer of credit  thrugh an event? so credit conforms to order?  also i dot understnad this: The trade-off: order holds only within a partition. Keying by orderId gives you both, because one order's messages stay in order while different orders run in parallel. The alternative, "a topic per order", isn't workable.
+> please make an illsutrtion for me to follow
+>
+> also for gap 3: i think keep the 7 day default, sicne their eis currently no reuirement for replay
+
+> wait so if orde ris downstrema, am i nto breaking the one wya dependency, shouldcicdo supplier-custome risntead then? actualyl why not we do credit reacting to orde rocmpleted it its more unifrom as a correct standard, what was the rationale ofr this opposite deiciso nagain? for gap 4, im abit confused, so why are we doing our service creating our own topic at startup vs adding it to inti containe,r acutally what is the differnece even between these 2, they soundhte same to me
+
+> definite an init ocntainer, i think ti will be messy if i have the kfka topci spread over so many files, it makes configuration hard and tracing impossible, and it also means every service gets coupled since thye need to know to create topic themself, breaking the scope of their service, and i jsut prfer the central reading and writing, rather then each service ahving differnt permisisons, plus if it maps directly with terraform, its 1 lesser headache, but with regards to credit_retry_Delay, maybe we jut make a central retry_delay tha tis eud by all services, does tha tmake sense?
+
+> okay then we jsut have the 1 varailbe per ocnsumer in root .env have the config, but maybe there is an opprotunity to put thes econfigs i na separte area later on? remidn me on this later, then for question 2, i think lets stick to what we haev an dkeep roder senidncommand sto creid tsince the directiona ldependnecy remaisn as order deopending on credit, which keeps credit away from knwoing abotu order state, soemthing i find v valuable since roder states r very messy and i wish to abstract taht away as muc has possiblke
+
+> acutally using the plain http will cause coupling irght? liek hwo order is already coupled with credit when doing psot /order throug ha plain http
+
+> i think similar to my first reaso nfor using sync request response for order and credit, if this read is a fast run time, there are much lesser beenfits for async req resp, so i think lets do plain http again, maybe if reading suppliers was a task that took 10 mins, then async request response makes more sense
+
+> yea sure makes sense, add to agents.md
+
+> can you actually clean up all my work tree and cc sessions, so only 2 sessions r here, this current one for fully implementing credit service + broker, and making 1 pr per phase, and anothe rsession on the clodu deployment
+
+> wait can i ask about topics, while for nwo there is not much need since we arent going to scale for a while, can we still make it extensible for future to ahve more topics later on? and for aws, i am wodnering if i run this kafka locally, will ti be different using iac is i use amazon msk, or if i can jsut deploy it on a docker  in an ec2 as a service? what do  uthink, also for the 2 chocies, 1: lets have a DLT for a malformed uderRegistered than, actually si it industry pracitse to have 1 DLT for every service, or a common DLT sahred by al lservices? and for Q2: im okay with this being a bug
+
+> i liek the topic list file, lets do that. also lets do the user-event dead letters, wehre each service;s consumer have their own DLT. imokay with the name and column
+
+> is there a mroe gracefu way of getting around the malformed use revent?
+
+> yea 1 and 2 makes sense
+
+> i dont undersntand whats wrong with the node version, and lets do native execution
+
+> the errro code and table columsn are fine. and lets swithc rto ndoe 24, althoguht can i aks why we are using confluent isntead of kafka?
+
+> alright the spec loks good and i reopened the session in the original grabfoc
+
+**Key responses:**
+- Compared RabbitMQ, Kafka, Redis Streams and NATS JetStream against FoC's needs (retries/DLQ,
+  replay, request/reply, ordering); the choice stayed with the team.
+- Corrected my ordering concern: credit commands can't drive a balance negative, because reserve is
+  synchronous with a conditional update, the key is `orderId`, and transfer/release exclude each
+  other. Retry topics needn't be hardcoded (config-driven, as in Spring's `@RetryableTopic`).
+- Laid out the Kafka retry patterns (blocking, retry topics, retry table, DLQ only); I chose a hybrid
+  (retry topics + DLT copied to a table) and an admin endpoint for replay.
+- In the walkthrough I decided K5–K13 (spec §9.1): commands to the receiver's topic and keeping
+  Order → Credit commands; each topic's owner defines its shape; `infra/kafka`; 7-day retention;
+  central topic creation from one list file; one retry variable per consumer; per-consumer DLTs; a
+  tolerant reader plus a contract test; plain HTTP for Order → Supplier reads (team proposal).
+  Claude pushed back on one shared retry delay for all services (Notification's 10 s NFR3.4).
+- Explained the Node 26 native-build issue (prebuilt binaries for Node 18–24 only); I chose Node 24.
+
+**Verification:** `tsc` clean; unit 95/95, integration 32/32, Kafka end-to-end 4/4 against the
+Compose broker (10/10 repeated runs after fixing a flaky test setup); a fresh Claude reviewer found
+no critical issues, and its two important code findings were fixed with tests (database timeouts,
+outage-retry test); its minor findings are listed in the PR; `kafka-init` creates exactly the listed topics and is safe to rerun; the running
+service created a wallet from a published `UserRegistered` and sent a malformed one to
+`credit.user-events.dlt`; the Docker image loads the native client.
 
 ### 2026-10-14 — Credit Service redesign: design discussion, spec, plan and Phase 1
 

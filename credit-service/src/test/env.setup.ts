@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
  * Scope: Generated this Jest setup, following supplier-service/src/test/env.setup.ts.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+ * Scope: Pinned the Kafka variables.
+ * Author review: pending — Jian Bing to record what he checked.
  */
 
 /**
@@ -20,3 +23,6 @@ process.env.CREDIT_PORT = '';
 process.env.CREDIT_JWKS_URL = 'http://127.0.0.1:9/.well-known/jwks.json';
 process.env.CREDIT_JWT_ISSUER = '';
 process.env.CREDIT_JWT_AUDIENCE = '';
+// Nothing listens on port 1; the Kafka tests use CREDIT_TEST_KAFKA_BROKERS instead.
+process.env.CREDIT_KAFKA_BROKERS = '127.0.0.1:1';
+process.env.CREDIT_RETRY_DELAYS = '';

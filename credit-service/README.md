@@ -6,6 +6,10 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Added reading a balance and the Postman Balance folder.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added Kafka (wallets from UserRegistered), Node 24, the Kafka tests and the two-file
+Compose command (PR #84 review).
+Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Listed CREDIT_JWKS_URL in the run-outside-Docker steps (PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
@@ -23,16 +27,26 @@ is cancelled. Design, schema and API: [`AGENTS.md`](AGENTS.md).
 # Once: give it a service key (shared with the Order Service) in the repo-root .env
 echo "CREDIT_SERVICE_KEY=$(openssl rand -hex 32)" >> .env
 
-docker compose up credit-service      # from the repo root; starts credit-db too
+docker compose up credit-service kafka-ui   # from the repo root; starts credit-db and Kafka too
 ```
+
+Kafka is shared by every service, so it lives in [`infra/kafka`](../infra/kafka/README.md), not
+here. To run only this service's Compose file, pass Kafka's too (from the repo root):
+`docker compose --env-file .env -f infra/kafka/compose.yaml -f credit-service/compose.yaml up credit-service`.
+
+The service consumes `user.events` from the shared Kafka broker ([`infra/kafka`](../infra/kafka/README.md)):
+each `UserRegistered` creates that user's wallet with 10 credits. Watch the topics in Kafka UI at
+http://localhost:8085; publishing `{"type":"UserRegistered","userId":"<uuid>"}` to `user.events`
+there creates a wallet. An event without a valid `userId` lands on `credit.user-events.dlt`.
 
 It listens on port **3004**. Its database is `credit-db` on host port **5435**. The gateway does
 not route to it: only the Order Service calls it.
 
-To run it outside Docker, start `credit-db` (`docker compose up -d credit-db`) and the User Service
-(for its signing keys), set `CREDIT_DATABASE_URL`, `CREDIT_SERVICE_KEY` and
-`CREDIT_JWKS_URL=http://localhost:3001/.well-known/jwks.json` (see `.env.example`), then
-`npm install && npm run start:dev` in this folder.
+To run it outside Docker, start its dependencies from the repo root (`docker compose up -d
+credit-db kafka-init user-service`; the User Service publishes the signing keys), set
+`CREDIT_DATABASE_URL`, `CREDIT_SERVICE_KEY`, `CREDIT_JWKS_URL=http://localhost:3001/.well-known/jwks.json`
+and `CREDIT_KAFKA_BROKERS=localhost:9094` (see `.env.example`), then `npm install && npm run start:dev`
+in this folder (Node 24, see `.nvmrc`).
 
 ## Try it
 
@@ -66,10 +80,17 @@ access token from `/auth/login`) and `userId` (that user's id).
 ## Test it
 
 ```bash
-npm test             # unit tests: request schemas, service-key guard
+nvm install && nvm use                # Node 24 (.nvmrc): the Kafka client has no prebuilt binary for Node 26
+npm test             # unit tests: request schemas, service-key guard, message parsing
 docker compose up -d credit-db        # from the repo root
 npm run test:int     # integration tests against the credit_test database
+docker compose up -d kafka            # from the repo root
+npm run test:kafka   # end-to-end tests against the Compose broker (localhost:9094)
 ```
+
+The Kafka tests create their own uniquely named topics and consumer group, so they never touch a
+running Credit Service's messages, and delete the topics afterwards. Set
+`CREDIT_TEST_KAFKA_BROKERS` to use another broker.
 
 The integration tests use their own `credit_test` database in the `credit-db` container and empty
 it before every test. They include concurrent requests: ten identical reserves at once, five

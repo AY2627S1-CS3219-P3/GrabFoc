@@ -4,6 +4,11 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote this spec from Jian Bing's design decisions (made in a learning-mode brainstorming
        session) and the additions Claude Code proposed and he confirmed as proposals.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+Scope: Added §9 (Kafka design for Phases 2–3) from Jian Bing's decisions in a learning-mode
+       session, with Claude Code's proposals labelled. 2026-10-15: updated §3, §8 and §9 with his
+       walkthrough decisions (K5–K13). 2026-10-16: K10 revised (retry topics listed in topics.txt).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service redesign: wallets from events, async transfer/release, balance read
@@ -55,15 +60,15 @@ User Service existence check (a second way wallets appear, or a Credit → User 
 | Message | From → to | Transport | Payload | Proposed (AI) |
 |---|---|---|---|---|
 | Reserve | Order → Credit | HTTP `POST /internal/credits/reserve` (unchanged) | `{orderId, requesterId, amount}` | |
-| `TransferCredits` | Order → Credit | broker command | `{eventId, orderId, courierId}` | ✓ |
-| `ReleaseCredits` | Order → Credit | broker command | `{eventId, orderId}` | ✓ |
-| `UserRegistered` | User → Credit (and anyone else) | broker event | `{eventId, userId, occurredAt}` | ✓ |
+| `TransferCredits` | Order → Credit | broker command on `credit.commands` | `{type, eventId, orderId, courierId}` | ✓ |
+| `ReleaseCredits` | Order → Credit | broker command on `credit.commands` | `{type, eventId, orderId}` | ✓ |
+| `UserRegistered` | User → Credit (and anyone else) | broker event on `user.events` | Defined by the User Service (K6); suggested `{type, eventId, userId, occurredAt}` | ✓ |
 | Balance read | Frontend → gateway → Credit | HTTP `GET /credits/:userId` | — | ✓ |
 
-**Broker layout (Proposed, AI):** one broker shared by all services, one channel per owner
-(`credit.commands`, `user.events`, later `order.events`). Each service publishes only to its own
-channel. Which broker is the team's decision; for reference, RabbitMQ has dead-lettering built in,
-Kafka needs it built by hand.
+**Broker layout:** one Kafka broker shared by all services (K1). **Events go to the publisher's
+topic; commands go to the receiver's topic** (K5): `user.events` and later `order.events` are
+written by their owners, while Order writes to Credit's `credit.commands`. The topic's owner defines
+its message shape (K6). The rules for every service are in root `AGENTS.md` §3 "Messaging".
 
 Credit publishes nothing in this design. Reserve's result is the HTTP response. Whether Order
 publishes `OrderCreated` (root `AGENTS.md` §10) is Order's decision; if it does, it should be after
@@ -154,11 +159,100 @@ wallet, so the order matters.
 
 ## 8. Open items
 
-- Broker choice (team).
+- Broker choice: **Kafka**, chosen by Jian Bing and Jie Yang (§9). Confirm with the rest of the team,
+  then record it in root `AGENTS.md` §3.
 - Confirm with the mentor that moving transfer/release to the broker changes the [Decided]
   "synchronous HTTP between Order → Credit" in root `AGENTS.md` §3, and update that section.
 - Backfill wallets for existing users before any cloud deployment (D10 covers local data only).
+  `user.events` keeps 7 days (K8), so this needs a one-off script or the User Service re-publishing,
+  not a replay.
+- Contract test in CI that the User Service's `UserRegistered` still has what Credit reads (K12):
+  with #54, written with the User owners.
+- Later: move per-consumer Kafka settings (retry delays, topic list) out of the root `.env` into a
+  separate config area, e.g. with Terraform in `infra/` (Jian Bing's reminder).
+- Cloud (#58): the local broker is one node with no authentication and replication factor 1; the
+  cloud needs a managed Kafka (e.g. Amazon MSK) or a private, authenticated broker. Decided in the
+  cloud work.
 - Who watches the dead-letter queue and the `credit_command_dead_lettered` log (Centralized
   Logging N2H?).
 - Root `AGENTS.md` §8: record the exception that Credit's internal routes take `requesterId` /
   `courierId` from an authenticated service caller.
+
+## 9. Phases 2–3 on Kafka (added 2026-10-14)
+
+### 9.1 Decisions (Jian Bing, with Jie Yang for the broker)
+
+| # | Decision | Reason given |
+|---|---|---|
+| K1 | **Kafka** is the broker. | Industry standard; per-key ordering; customisable, accepting the extra work. |
+| K2 | A command that can't be applied **steps aside** (non-blocking retries) instead of blocking its partition. | Credit commands don't depend on order: reserve is synchronous and checks the live balance, the key is `orderId`, and transfer and release of one hold exclude each other. |
+| K3 | **Hybrid retries**: retry topics for automatic retries; after the last one, the command goes to a dead-letter topic (DLT), and a consumer copies each dead letter into a table. | Retry topics are the common Kafka setup; a DLT lets the team show the async workflow in a Kafka UI; the table makes dead letters easy to inspect. |
+| K4 | Dead letters are listed and replayed through **admin-only HTTP endpoints**. | A script would need terminal (SSH) access in the cloud; an endpoint works from Postman. |
+| K5 | **Events go to the publisher's topic, commands to the receiver's topic.** Order keeps sending commands to Credit rather than Credit reacting to Order's events. | Keeps the one-way Order → Credit dependency (Order orchestrates); Credit stays away from Order's states, which should be abstracted away. |
+| K6 | **Each topic's owner defines its message shape** (customer–supplier: the downstream asks if it needs more). Credit owns the command shape; the User Service owns `UserRegistered`. | Teams can develop independently. |
+| K7 | Kafka's folder is **`infra/kafka/`**. | Terraform for the cloud will live in `infra/` too. |
+| K8 | `user.events` keeps Kafka's **default 7-day retention**. | No requirement for replay. |
+| K9 | **All topics are created centrally** by the `infra/kafka` init container from **one topic list file**; no service creates topics. | Topics spread over many files would make configuration and tracing hard; creating topics is outside a service's scope; one permission model; maps directly onto Terraform. |
+| K10 | **Retry delays: one variable per consumer in the root `.env`** (`CREDIT_RETRY_DELAYS`). *Revised 2026-10-16 (option C):* the retry topics are **listed in `topics.txt`** like every other topic, and the consumer checks at startup that one retry topic exists per delay, refusing to start otherwise. | Central config; each consumer keeps its own timing (Claude Code pointed out Notification's 10 s target, NFR3.4). Revision: one source of truth for all topics (PR #84 review); which topics exist and how long retries wait are two facts, kept in step by the check. |
+| K11 | **Each consumer has its own DLT per source topic**; a malformed `UserRegistered` goes to `credit.user-events.dlt`. A transfer or release with no hold is a bug and is dead-lettered at once. | Not one shared DLT: a message can fail for one consumer and succeed for another. |
+| K12 | **Tolerant reader**: Credit validates only the `UserRegistered` fields it uses (`userId`), plus a contract test in CI (with #54). | Fewer messages count as malformed; breaking changes are caught before deploy. |
+| K13 | **Order → Supplier reads become plain HTTP** (proposal for the team; changes root `AGENTS.md` §3). | Order waits for the answer, so a broker adds machinery without removing the coupling, as with the synchronous reserve (D2). |
+| — | Execution: Node 24 locally (`.nvmrc`), one PR per phase. | The Kafka client has prebuilt binaries for Node 18–24 only. |
+
+### 9.2 Details (Proposed, AI, unless marked; confirmed by Jian Bing on 2026-10-15)
+
+- **Client:** `@confluentinc/kafka-javascript` (KafkaJS-style API; a client library, the broker is
+  Apache Kafka). Fallback: `kafkajs`.
+- **Topics** (all from `infra/kafka/topics.txt`; broker auto-creation off; K9):
+
+  | Topic | Key | Partitions |
+  |---|---|---|
+  | `user.events` | `userId` | 3 |
+  | `credit.commands` | `orderId` | 3 |
+  | `credit.commands.retry.0` … `.retry.4` | `orderId` | 1 each, one per entry in `CREDIT_RETRY_DELAYS` (default `1s,5s,30s,2m,10m`) |
+  | `credit.commands.dlt` | `orderId` | 1 |
+  | `credit.user-events.dlt` | `userId` | 1 |
+
+  The init container creates exactly the listed topics; `topics.txt` is the one list (K10 revised).
+  Credit checks at startup that one retry topic exists per entry in `CREDIT_RETRY_DELAYS` and that
+  no extra one does, and refuses to start, saying what to fix, if not.
+- **Message shapes:** Credit's commands carry a `type` field and are validated strictly:
+  `{type: "TransferCredits", eventId, orderId, courierId}`, `{type: "ReleaseCredits", eventId, orderId}`.
+  For `UserRegistered`, Credit reads only `userId` (a UUID) and, when present, `eventId` for logs;
+  a message with another `type` is ignored (K12). The shape itself is the User Service's (K6).
+- **Wallet events:** a valid `UserRegistered` creates the wallet (idempotent); one without a valid
+  `userId` goes to `credit.user-events.dlt` (K11). An unexpected error (e.g. the database is down)
+  pauses the partition and retries in place.
+- **Retry flow (commands):** a failure is *retryable* (`WALLET_NOT_FOUND`, or an unexpected error)
+  or *permanent* (any other error code, including `HOLD_NOT_FOUND`, or an invalid message). A
+  retryable failure goes to the next retry topic with headers `x-attempt` and `x-due-at`; the
+  consumer pauses that partition until the message is due. After the last retry, or at once for a
+  permanent failure, it goes to `credit.commands.dlt` with `x-error`, `x-error-code`, `x-attempt` and
+  `x-dead-lettered-at`, logged at `error` as `credit_command_dead_lettered` (ids only, never balances).
+- **Offsets** are stored only after the work (and any retry/DLT publish) succeeds; the handlers are
+  idempotent (§4.1, §4.3), so no Kafka transactions or inbox table are needed.
+- **Dead-letter table** `credit_dead_letters`: `id`, `event_id` (unique, null when unreadable),
+  `order_id`, `source_topic`, `command_type` (the message `type`), `payload`, `error`, `error_code`,
+  `attempts`, `dead_lettered_at`, `replayed_at`. A command that dies again after a replay reopens
+  its row. Both DLTs are copied into it.
+- **Endpoints** (ADMIN JWT, verified by Credit; a USER gets 403, logged as `access_denied`, before
+  any validation):
+  - `GET /admin/credits/dead-letters?status=open|replayed|all` (default `open`) → `{items: [...]}`,
+    newest first, at most 100; never balances.
+  - `POST /admin/credits/dead-letters/:eventId/replay` → republishes a credit command to
+    `credit.commands` (fresh attempt count) and sets `replayed_at`; **404** `DEAD_LETTER_NOT_FOUND`;
+    **409** `ALREADY_REPLAYED`; **409** `NOT_REPLAYABLE` for a user-event dead letter (fix and
+    re-publish it from the User Service).
+- **Compose:** `infra/kafka/` (K7): one KRaft broker (`apache/kafka:4.1.0`, replication factor 1,
+  named volume), the init container, and Kafka UI (`ghcr.io/kafbat/kafka-ui:v1.3.0`) on
+  `127.0.0.1:8085`, bound to localhost because it has no login. Host listener `127.0.0.1:9094`.
+- **Phases:** Phase 2 PR = broker, client, wallets from `UserRegistered` and its DLT topic.
+  Phase 3 PR = commands, retries, `credit.commands.dlt`, the dead-letter table and admin routes.
+
+### 9.3 Not in this step
+
+- Removing lazy wallet creation and adding reserve's 409 `WALLET_NOT_FOUND` (§4.1, §4.2): waits
+  for the User Service to publish `UserRegistered`. Until then a transfer never hits a missing
+  wallet, so the retry path is exercised by tests rather than by real traffic.
+- Removing the HTTP transfer/release routes (§4.3): waits for the Order Service to send commands.
+- Gateway routes for `/admin/credits/**`: added with the balance route once PR #69 merges.

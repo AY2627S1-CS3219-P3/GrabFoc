@@ -11,6 +11,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
 # Scope: Included credit-service/compose.yaml.
 # Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+# Scope: Included infra/kafka/compose.yaml.
+# Author review: pending — Jian Bing to record what he checked.
 #
 # One command for the whole project (M7). Each service keeps its own compose.yaml in its own
 # folder, with its OWN database container — services must not share a database (root
@@ -28,6 +31,8 @@ include:
     # here, so the root .env must exist: `cp .env.example .env` first.
     env_file: .env
   - path: supplier-service/compose.yaml
+    env_file: .env
+  - path: infra/kafka/compose.yaml
     env_file: .env
   - path: credit-service/compose.yaml
     env_file: .env
