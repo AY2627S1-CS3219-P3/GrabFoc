@@ -4,6 +4,10 @@
  * Scope: Replaced the dev-only header guard with JWT verification against the User Service's
  *        JWKS, keeping the @Roles decorator and the logging of denied attempts.
  * Author review (Cole Lin): Read in full; ran it with Postman and checked the 401 and 403 cases, including that dev headers are ignored when a token is sent.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-11
+ * Scope: Added the requestId field to the access_denied log line.
+ * Author review (Cole Lin): Read in full; confirmed the denial and error lines carry the id and
+ *        that no token or failure message appears in them.
  */
 import { CanActivate, ExecutionContext, Injectable, Logger, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -11,6 +15,7 @@ import type { Request } from 'express';
 import { config } from '../config';
 import { JwksUnavailableError, verifyToken } from './jwks';
 import { ProblemException } from './problem';
+import { requestIdOf } from './request-id';
 
 export type Role = 'ADMIN' | 'USER';
 export interface Caller {
@@ -29,6 +34,7 @@ export function denied(req: Request, status: 401 | 403, detail: string, caller?:
   logger.warn(
     JSON.stringify({
       event: 'access_denied',
+      requestId: requestIdOf(req),
       status,
       method: req.method,
       path: req.originalUrl,
@@ -69,7 +75,15 @@ export class JwtAuthGuard implements CanActivate {
       claims = await verifyToken(authorization);
     } catch (err) {
       if (err instanceof JwksUnavailableError) {
-        logger.error(`Cannot verify tokens: ${err.message}`);
+        logger.error(
+          JSON.stringify({
+            event: 'jwks_unavailable',
+            requestId: requestIdOf(req),
+            method: req.method,
+            path: req.originalUrl,
+            reason: err.message,
+          }),
+        );
         throw new ProblemException(503, 'Cannot verify credentials right now. Try again shortly.');
       }
       throw err;

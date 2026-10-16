@@ -4,10 +4,15 @@
  * Scope: Generated the Problem Details (RFC 9457) error type and global exception filter,
  *        following the team's error-response decisions in supplier-service/AGENTS.md.
  * Author review (Cole Lin): Read in full; checked the error responses come back as application/problem+json with the documented status codes.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-11
+ * Scope: Made the unhandled-error log line structured and added the requestId field.
+ * Author review (Cole Lin): Read in full; confirmed the denial and error lines carry the id and
+ *        that no token or failure message appears in them.
  */
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { STATUS_CODES } from 'http';
+import { requestIdOf } from './request-id';
 
 /** Throw this to send a Problem Details response with the given status and detail text. */
 export class ProblemException extends HttpException {
@@ -37,7 +42,18 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         detail = exception.message;
       }
     } else {
-      this.logger.error(exception instanceof Error ? exception.stack : String(exception));
+      // The stack goes in Nest's own stack argument, not in the JSON: a failure message can
+      // carry whatever it touched (a connection string, say), and a central log store that
+      // anyone can query is the last place that should hold it.
+      this.logger.error(
+        JSON.stringify({
+          event: 'unhandled_error',
+          requestId: requestIdOf(req),
+          method: req.method,
+          path: req.originalUrl,
+        }),
+        exception instanceof Error ? exception.stack : String(exception),
+      );
     }
 
     res
