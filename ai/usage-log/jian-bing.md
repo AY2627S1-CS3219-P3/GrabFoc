@@ -129,6 +129,10 @@ policy points, then wrote the spec, plan, issues and the Phase 2 code with tests
 
 > yes please go throug hthye comment in case and resolve them accordingly
 
+> keep the user id as is, and the audit /hisotry we are planning ot have an otificaito nservice so this shoudl be okay
+
+> on a separte note, help me figure out how to manually test credit serrvice and let me do some dev test to ensure and review everything
+
 **Key responses:**
 - Compared RabbitMQ, Kafka, Redis Streams and NATS JetStream against FoC's needs (retries/DLQ,
   replay, request/reply, ordering); the choice stayed with the team.
@@ -168,6 +172,10 @@ refetch on the first unknown key id and 503 for a JWKS with no usable keys, docs
 scope, CREDIT_JWKS_URL and issuer/audience, and five usage-log prompts restored to their exact
 wording (1a19851 had corrected their typos and removed one); unit 127/127, integration 60/60,
 Kafka 12/12 at the top of the stack;
+while dry-running a manual test guide, stopping credit-db crashed the Credit Service (the pg pool's
+'error' event had no listener); fixed on #48 with a test and merged down (042f53a), then the retry
+demo worked: a transfer sent with the database down was retried 1 s, 5 s, 30 s and applied once it
+was back (unit 128/128, integration 60/60, Kafka 12/12);
 Phase 3: unit 108/108, integration 49/49, Kafka 10/10, Newman 24 requests / 30 assertions with 0
 failures; a background security review found that dead letters from different topics could
 overwrite each other, fixed with a test (rows unique per source topic and event id); `kafka-init` creates exactly the listed topics and is safe to rerun; the running
