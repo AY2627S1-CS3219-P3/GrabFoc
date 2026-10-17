@@ -7,6 +7,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Exported setting() for the Kafka test helpers; emptyTables also empties credit_dead_letters.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: emptyTables also empties credit_transactions.
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
@@ -63,5 +66,5 @@ export async function openTestDatabase(): Promise<Pool> {
 
 /** Empties every table. */
 export async function emptyTables(pool: Pool): Promise<void> {
-  await pool.query('TRUNCATE credit_holds, credit_accounts, credit_dead_letters');
+  await pool.query('TRUNCATE credit_transactions, credit_holds, credit_accounts, credit_dead_letters');
 }
