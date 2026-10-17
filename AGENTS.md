@@ -208,6 +208,12 @@ Overall plan (from the Gantt chart):
 | Credit Service, service integration, Admin dashboard | Zi Yi |
 | User Service, UI mockup | Deanson |
 
+Since the Gantt chart was drawn, GitHub assignments have moved three of these N2Hs (checked
+2026-10-16; the rows above stay as the original plan):
+
+- **Centralized Logging** → Cole Lin (issue #52, opened by Zi Yi).
+- **CI** → Jian Bing (#57, closed) and **cloud deployment / CD** → Jian Bing (#58).
+
 **[Open]** Deanson has no N2H assigned yet (every member needs one).
 
 ## 4. Milestones

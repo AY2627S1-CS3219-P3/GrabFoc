@@ -10,6 +10,19 @@ Author review: Jian Bing checked the logs locally against the AI usage-log guide
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-16 — Request-id correlation in Supplier, and the convention for every service (PR #90, issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate and review.
+- Usage scenario: Start the Centralized Logging N2H (#52). Before building anything, work out what the service actually is and what it needs from the other five services, then close the one gap that needed no one else's agreement.
+- Prompts (exact):
+  - "I want to start work on the logging service. Ask any questions you need, and if these questions require other services input, let me know as well as I need to coordinate with my team on when they are doing these parts. You can start with a quick excerpt on what you think the logging service is."
+  - "ok I should have an issue assigned now, give me the todo for the service and any fixes"
+  - "will I have to do this for the other services"
+  - "write the convention and post it on 52"
+- Key response: Pointed out that the gateway mints and forwards `x-request-id` but no service downstream reads it, so log lines from different services cannot be matched at all. Added `src/common/request-id.ts` to Supplier (validate, mint, echo, log) and put `requestId` on the denial, JWKS-503 and unhandled-500 lines. Drafted the cross-service convention posted on #52.
+- What I changed or rejected: Rejected opening the same PR into the other five services — User is being rewritten (#62), Order has no `src/` yet (#66) and Credit is mid-review (#84, #85), so a written convention plus one reference implementation is cheaper than five rebases. Chose to replace a malformed id rather than reject the request, since a diagnostic header must not turn a working call into a 400. Had the failure message dropped from the 500's structured line after seeing that the message can carry a connection string and these lines are headed for a queryable store. Left the open questions on #52 open rather than answered, because they are the team's to settle. After the automated reviews on PR #90, took the three findings I agreed with (query strings reaching the logs, the JWKS failure message in the structured line, and 500s raised as an `HttpException` logging nothing) and declined to switch the service to Nest's JSON logger in the same PR: that changes every line in every service, so it is recorded as an open question on #52 and the doc claim was corrected instead.
+- Verification: Ran `npm test` (176 passed, 7 suites; 157 before this change) and `npm run build`. Checked a supplied id, a minted one and a rejected one all reach the log line and the response header. Pulling `main` first also showed the naive version would have broken three of Jian Bing's existing tests. Also ran `npm run test:int` against the `supplier-db` container (51 passed). The review fixes added four cases, including one asserting a caller's coordinates never reach a log line. A Postman pass against the running service is still outstanding.
+
 ### 2026-09-29 — Coordinate search, dev-mode fix and these log entries (PR #33)
 
 - Tool and mode: Claude Code (Claude Opus 5), generate and debug.

@@ -5,6 +5,10 @@
  *        the dev-auth header fallback and the access_denied log.
  * Author review (Jian Bing): Ran `npm test` on 2026-10-01 (157 passed) and verified each test
  *        case in this file by hand.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
+ * Scope: Added requestId to the two access_denied expectations after the log line gained
+ *        that field; no other change. The field itself is tested in request-id.spec.ts.
+ * Author review (Cole Lin): Checked the change is only the added field.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -103,14 +107,14 @@ describe('the access_denied log', () => {
   it('records a 401 with the method and path but no caller', async () => {
     await outcome(request());
     expect(logged()).toEqual([
-      { event: 'access_denied', status: 401, method: 'GET', path: '/locations', userId: null, role: null },
+      { event: 'access_denied', requestId: expect.any(String), status: 401, method: 'GET', path: '/locations', userId: null, role: null },
     ]);
   });
 
   it('records a 403 with the caller', async () => {
     await outcome(request(bearer({ sub: 'u-9', role: 'USER' })), 'adminOnly');
     expect(logged()).toEqual([
-      { event: 'access_denied', status: 403, method: 'GET', path: '/locations', userId: 'u-9', role: 'USER' },
+      { event: 'access_denied', requestId: expect.any(String), status: 403, method: 'GET', path: '/locations', userId: 'u-9', role: 'USER' },
     ]);
   });
 
