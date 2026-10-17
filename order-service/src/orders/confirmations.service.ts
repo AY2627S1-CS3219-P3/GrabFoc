@@ -5,6 +5,9 @@
  *        (Phase C), from order-service/AGENTS.md and order-service-plan.md §2. 2026-10-16: removed
  *        the requester-only check so either participant can propose a timing change.
  * Author review: Reviewed (2026-10-15 version). 2026-10-16 change: Reviewed.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+ * Scope: Updated the settlement comment for settleCredits (Phase D).
+ * Author review: Reviewed
  */
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
@@ -144,7 +147,7 @@ export class ConfirmationsService {
       return;
     }
 
-    // CANCELLED: cleanUpCredits() releases the hold. COMPLETED: transfer waits for Phase D events.
+    // settleCredits() then releases the hold (CANCELLED) or transfers it to the courier (COMPLETED).
     const to = proposal.kind === 'COMPLETION' ? 'COMPLETED' : 'CANCELLED';
     await this.orders.setStatus(tx, order.id, order.status, to);
     await this.orders.addHistory(tx, {

@@ -12,11 +12,17 @@ Author review: Reviewed.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Documented the Phase C lifecycle, cancellation and confirmation endpoints.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+Scope: Documented Phase D step 1: credit settlement over credit.commands, ORDER_KAFKA_BROKERS, credit_settled_at.
+Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Recorded the manual-check results Zi Yi reported.
+Author review: Reviewed
 -->
 
 # Order Service
 
-Database foundation for #50 (under parent #64) plus Phases A–C of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit, accept, lifecycle, cancellation and confirmation endpoints (see [HTTP API](#http-api)). Kafka events, the expiry worker and suspension/deactivation handling (Phase D) are not implemented yet. The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_released_at` for the creation flow. Read [AGENTS.md](AGENTS.md) for requirements.
+Database foundation for #50 (under parent #64) plus Phases A–C of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit, accept, lifecycle, cancellation and confirmation endpoints (see [HTTP API](#http-api)). Phase D so far: credit settlement over Kafka (`credit.commands`); `order.events`, the expiry worker and suspension/deactivation handling are not implemented yet. The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_settled_at` for credit settlement. Read [AGENTS.md](AGENTS.md) for requirements.
 
 ## Confirmed decisions
 
@@ -59,7 +65,7 @@ Types match the documented external identifiers: User UUID and Supplier INTEGER.
 
 `status` on orders is restricted to PENDING, ACCEPTED, PICKED_UP, IN_PROGRESS, ARRIVED, COMPLETED and CANCELLED. Require end after start, positive version and distinct requester/courier. Courier is null before assignment; new orders start PENDING. Status/assignment constraints and database-generated UUID/creation defaults are approved as listed above. Version update/concurrency behaviour is approved as listed above.
 
-For Zi Yi's revised creation flow (2026-10-15, **[Proposed]**), `001_init.sql` also has the `AWAITING_CREDIT` state (no courier), the `CREDIT_RESERVED` history action and a nullable `orders.credit_released_at TIMESTAMPTZ`. The column default stays `PENDING`; the API inserts `AWAITING_CREDIT` explicitly. No new indexes.
+For Zi Yi's revised creation flow (2026-10-15, **[Proposed]**), `001_init.sql` also has the `AWAITING_CREDIT` state (no courier), the `CREDIT_RESERVED` history action and a nullable `orders.credit_settled_at TIMESTAMPTZ` (named `credit_released_at` until Phase D; `001_init.sql` was edited in place on 2026-10-17, so recreate the volume: `docker compose down -v`). The column default stays `PENDING`; the API inserts `AWAITING_CREDIT` explicitly. No new indexes.
 
 Confirmation kinds: TIMING_CHANGE, CANCELLATION, COMPLETION. Party responses: PENDING, ACCEPTED, REJECTED. Proposal states: PENDING, APPROVED, REJECTED, EXPIRED, SUPERSEDED. Only timing-change proposals carry proposed window fields. Keep resolved proposals for traceability. A history entry with null actor can represent a system action; creation can have null previous status, and edits need not change state.
 
@@ -93,7 +99,7 @@ _Origin: AI doc, restating unresolved chat and AGENTS.md items_
 - Creation rejects inactive pickup/delivery locations. Validation transport, later deactivation effects, location edits and account status effects remain open; requester active-order limit if any.
 - Chat service/database ownership remains open; no chat schema is selected.
 - Main schema review is complete: core fields/defaults, history, confirmation rules/row constraints and all listed indexes are approved. The database-only implementation plan was approved on 2026-10-13. Integration contracts and application-level edge cases above remain outside that initial scope.
-- Credit communication/recovery contract: root currently records synchronous reserve/transfer/release; meeting's asynchronous proposal is not yet approved.
+- Credit communication: root §3 records synchronous HTTP for reserve only, with transfer and release as `credit.commands` messages (Zi Yi, 2026-10-17); the meeting's asynchronous-reservation proposal is not yet approved.
 - Broker/event payload and reliable publication mechanism. No outbox pattern is selected here.
 
 Obtain approval for the application/integration plan before adding APIs or integration code.
@@ -205,14 +211,22 @@ is now; omitted end is start + 24 hours. Order Service:
 5. calls Credit `POST /internal/credits/reserve` (`X-Service-Key`, 5 s timeout, no transaction
    open). On success the order moves to `PENDING` with `CREDIT_RESERVED` history and `version` 2.
    If Credit refuses, fails or times out, the order moves to `CANCELLED`
-   (`changeDetails.reason = CREDIT_NOT_RESERVED`, no actor) and Order calls
-   `POST /internal/credits/release`, since a timed-out reserve may still have saved a hold.
+   (`changeDetails.reason = CREDIT_NOT_RESERVED`, no actor). For `INSUFFICIENT_CREDITS` Credit
+   kept nothing, so the order is marked settled at once. Otherwise Order sends `ReleaseCredits`,
+   since a timed-out reserve may still have saved a hold.
 
-A clean-up job runs every 10 s (`OrdersService.cleanUpCredits`, started in `main.ts`): it cancels
-`AWAITING_CREDIT` orders older than 30 s and calls release for every `CANCELLED` order without
-`credit_released_at`, setting it when Credit answers 200 or 404. It stops at the first failed
-release and logs a `CREDIT_CLEANUP_FAILED` line with the order ID. Flow revised by Zi Yi on
-2026-10-15 (`docs/order-service-plan.md` §4); **[Proposed]** until the team and Credit owner confirm.
+**Credit settlement job** (`OrdersService.settleCredits`, every 10 s from `main.ts`, each run
+after the previous one ends): it cancels `AWAITING_CREDIT` orders older than 30 s, then sends
+Credit's commands to `credit.commands`, keyed by `orderId`:
+
+- `{type: "TransferCredits", eventId, orderId, courierId}` for each `COMPLETED` order;
+- `{type: "ReleaseCredits", eventId, orderId}` for each `CANCELLED` one;
+
+for orders without `credit_settled_at`, setting it once Kafka has stored the command. The
+`orders` table is the outbox: a crash before the mark resends the command, which Credit ignores
+as a repeat. A failed send stops the run and logs `CREDIT_SETTLEMENT_FAILED` with the order ID.
+Credits therefore move up to about 10 s after the order completes or is cancelled. Design by
+Zi Yi (2026-10-15 creation flow, 2026-10-17 commands); **[Proposed]** until the team confirms.
 
 **Edit** body: `version` (required) plus at least one of `orderDescription`,
 `pickupLocationId`, `deliveryLocationId`, `windowStart`, `windowEnd`. `creditOffer` and every
@@ -259,11 +273,9 @@ it as `APPROVED`, increments the order's `version` and writes history with the a
 A `TIMING_CHANGE` answered once the current window (or its proposed one) has ended becomes
 `EXPIRED` and the respond call returns 409.
 
-**Credits for Phase C:** the clean-up job releases every `CANCELLED` order without
-`credit_released_at` over HTTP, so requester and mutual cancellations are released within about
-10 s. `COMPLETED` orders keep their hold until the Phase D `OrderCompleted` event triggers the
-transfer. The final design (Zi Yi, 2026-10-15) is reserve over HTTP, release and transfer as
-events; until Kafka exists, release stays on HTTP.
+**Credits:** the settlement job releases every `CANCELLED` order and pays the courier for every
+`COMPLETED` one (see [Create](#http-api) above), so requester and mutual cancellations and
+completions settle within about 10 s.
 
 | Status | Code | When |
 |---|---|---|
@@ -280,13 +292,15 @@ events; until Kafka exists, release stays on HTTP.
 | 409 | `CONFIRMATION_PENDING` | the order already has a pending proposal |
 | 503 | `SERVICE_UNAVAILABLE` | User Service keys, Supplier or Credit unreachable; create stalled over 30 s |
 
-**Known limitation:** Credit's release currently returns 404 for an order it has no hold for.
-If that release arrives while a slow reserve is still running inside Credit, the reserve can
-land afterwards and stay held. Closing this needs Credit to save a `RELEASED` marker on that
-404 (**[Proposed]**, Credit owner).
+**Known limitation (Credit owner to handle):** Credit dead-letters a `ReleaseCredits` for an
+order it has no hold for (`HOLD_NOT_FOUND`), which happens when a reserve timed out before Credit
+saved anything. And if that release arrives while a slow reserve is still running inside Credit,
+the reserve can land afterwards and stay held. Both close if Credit records a release for an
+unknown order (a `RELEASED` marker). Recorded in `credit-service/AGENTS.md` open items.
 
 Run locally (after `npm ci` in `order-service/`) with the five `ORDER_DB_*` settings,
-`ORDER_JWKS_URL`, `ORDER_SUPPLIER_URL`, `ORDER_CREDIT_URL` and `ORDER_CREDIT_SERVICE_KEY` set:
+`ORDER_JWKS_URL`, `ORDER_SUPPLIER_URL`, `ORDER_CREDIT_URL`, `ORDER_CREDIT_SERVICE_KEY` and
+`ORDER_KAFKA_BROKERS` (e.g. `localhost:9094`, the shared broker in `infra/kafka/`) set:
 
 ```powershell
 npm run build
@@ -294,12 +308,25 @@ npm start
 ```
 
 In Compose, `ORDER_CREDIT_SERVICE_KEY` comes from `CREDIT_SERVICE_KEY` in the root `.env`;
-the service refuses to start without it.
+the service refuses to start without it. Compose sets `ORDER_KAFKA_BROKERS=kafka:9092` and starts
+the service after `kafka-init` has created the topics.
 
 `npm test` runs the unit tests (no database needed). The Compose test command above runs
 the unit tests and all PostgreSQL integration tests, including the HTTP tests in
-`src/test/orders.api.test.ts` (which fake Supplier and Credit).
+`src/test/orders.api.test.ts` (which fake Supplier, Credit and the Kafka producer, so no broker
+is needed; check real delivery by hand, below).
 
 Verification on 2026-10-15: all 42 tests passed in `compose.test.yaml` (12 unit, 14 database,
 16 HTTP); the container refused to start without `ORDER_CREDIT_SERVICE_KEY` and started with it.
-After Phase C, all 53 passed (12 unit, 14 database, 27 HTTP).
+After Phase C, all 53 passed (12 unit, 14 database, 27 HTTP). After Phase D step 1 (2026-10-17),
+all 53 passed again, and the runtime image loaded the Kafka client.
+
+**Manual check with Credit (not automated):** run the root `docker compose up`, create an order,
+take it through to `COMPLETED`, and within about 10 s the courier's `GET /credits/:userId`
+`available` rises by the offer and the requester's `reserved` drops by it. Cancel another and the
+requester's `available` comes back. Kafka UI (http://localhost:8085) shows the commands on
+`credit.commands`, and `credit.commands.dlt` stays empty.
+
+Manual check run by Zi Yi on 2026-10-18 against the root Compose stack: completion (courier paid),
+cancellation (requester's credits returned), insufficient credits (no command sent) and a
+cancellation while Kafka was stopped (settled after it restarted) all passed.

@@ -11,6 +11,9 @@
  * Scope: Added row locking, guarded lifecycle transitions, window changes and the
  *        order_confirmations queries (Phase C).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+ * Scope: The settlement queries now cover COMPLETED orders too, using credit_settled_at (Phase D).
+ * Author review: Reviewed
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -35,6 +38,12 @@ export type OrderList = keyof typeof LISTS;
 
 type Row = Record<string, any>;
 type Db = Pool | PoolClient;
+
+export interface Unsettled {
+  id: string;
+  status: 'CANCELLED' | 'COMPLETED';
+  courierId: string | null;
+}
 
 /** Order fields a requester may change, and their columns. */
 const EDITABLE = {
@@ -266,16 +275,17 @@ export class OrdersRepository {
     return rows.map((row) => row.id);
   }
 
-  /** Cancelled orders whose credits Credit has not confirmed as released. */
-  async unreleasedCancelled(): Promise<string[]> {
+  /** Finished orders whose transfer or release command Kafka has not yet stored: the outbox. */
+  async unsettled(): Promise<Unsettled[]> {
     const { rows } = await this.pool.query(
-      `SELECT id FROM orders WHERE status = 'CANCELLED' AND credit_released_at IS NULL ORDER BY updated_at LIMIT 100`,
+      `SELECT id, status, courier_id FROM orders
+       WHERE status IN ('CANCELLED','COMPLETED') AND credit_settled_at IS NULL ORDER BY updated_at LIMIT 100`,
     );
-    return rows.map((row) => row.id);
+    return rows.map((row) => ({ id: row.id, status: row.status, courierId: row.courier_id }));
   }
 
-  async markCreditReleased(id: string): Promise<void> {
-    await this.pool.query('UPDATE orders SET credit_released_at = now() WHERE id = $1', [id]);
+  async markCreditSettled(id: string, db: Db = this.pool): Promise<void> {
+    await db.query('UPDATE orders SET credit_settled_at = now() WHERE id = $1', [id]);
   }
 
   /** Oldest first, like history. */

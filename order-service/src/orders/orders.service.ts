@@ -10,13 +10,19 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added the courier lifecycle steps and requester cancellation of PENDING orders (Phase C).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+ * Scope: Renamed the clean-up job to settleCredits: it sends Credit's TransferCredits /
+ *        ReleaseCredits commands for finished orders instead of HTTP release; insufficient
+ *        credits sends nothing (Phase D).
+ * Author review: Reviewed
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { Caller } from '../common/jwt-auth.guard';
 import { AppError, ErrorCode } from '../common/errors';
 import { CreditClient } from '../integrations/credit.client';
+import { CreditCommands } from '../integrations/credit.commands';
 import { Location, SupplierClient } from '../integrations/supplier.client';
-import { OrderEdit, OrderList, OrdersRepository } from './orders.repository';
+import { OrderEdit, OrderList, OrdersRepository, Unsettled } from './orders.repository';
 import type { CreateOrderBody, EditOrderBody, HistoryEntry, Order, OrderStatus, Page, PageQuery } from './orders.schemas';
 import { assertPickupOpen, assertValidWindow, defaultWindow } from './timing';
 
@@ -76,6 +82,7 @@ export class OrdersService {
     private readonly orders: OrdersRepository,
     private readonly supplier: SupplierClient,
     private readonly credit: CreditClient,
+    private readonly creditCommands: CreditCommands,
   ) {}
 
   list(list: OrderList, caller: Caller, page: PageQuery): Promise<Page<Order>> {
@@ -102,7 +109,7 @@ export class OrdersService {
 
   /**
    * Saves the order as AWAITING_CREDIT, reserves credits, then opens it as PENDING. If the
-   * reservation fails, the order is cancelled and any hold released; cleanUpCredits() retries.
+   * reservation fails, the order is cancelled and any hold released; settleCredits() retries.
    */
   async create(caller: Caller, authorization: string, body: CreateOrderBody): Promise<Order> {
     const window = defaultWindow(body.windowStart, body.windowEnd);
@@ -135,10 +142,12 @@ export class OrdersService {
     try {
       await this.credit.reserve(order.id, caller.id, order.creditOffer);
     } catch (error) {
-      // A timed-out reserve may still have saved a hold, so release either way.
-      await this.cancelAwaitingCredit(order.id)
-        .then(() => this.releaseCredits(order.id))
-        .catch(() => undefined); // cleanUpCredits() finishes whatever failed here
+      // Insufficient credits means Credit kept nothing. Anything else (e.g. a timeout) may still
+      // have saved a hold, so release it.
+      const noHold = error instanceof AppError && error.code === ErrorCode.INSUFFICIENT_CREDITS;
+      await this.cancelAwaitingCredit(order.id, noHold)
+        .then(() => (noHold ? undefined : this.settle({ id: order.id, status: 'CANCELLED', courierId: null })))
+        .catch(() => undefined); // settleCredits() finishes whatever failed here
       throw error;
     }
 
@@ -155,23 +164,28 @@ export class OrdersService {
       }
       return placed;
     });
-    // Only if cleanUpCredits() cancelled it first, which needs this request to stall for 30 s.
+    // Only if settleCredits() cancelled it first, which needs this request to stall for 30 s.
     if (!placed) throw new AppError(503, ErrorCode.SERVICE_UNAVAILABLE, 'Creating the order took too long. Try again.');
     return placed;
   }
 
   /**
-   * Background job (main.ts runs it every 10 s): cancels creates that never finished, then
-   * releases the credits of cancelled orders until Credit confirms. Stops at the first failed
-   * release, since Credit is then likely down.
+   * Background job (main.ts runs it every 10 s): cancels creates that never finished, then sends
+   * Credit a transfer for each unsettled COMPLETED order and a release for each unsettled CANCELLED
+   * one. The orders table is the outbox: an order is marked settled only once Kafka has stored its
+   * command, so a crash resends it (Credit ignores repeats). Stops at the first failure, since
+   * Kafka is then likely down.
    */
-  async cleanUpCredits(): Promise<void> {
+  async settleCredits(): Promise<void> {
     let orderId: string | undefined;
     try {
       for (orderId of await this.orders.staleAwaitingCredit()) await this.cancelAwaitingCredit(orderId);
-      for (orderId of await this.orders.unreleasedCancelled()) await this.releaseCredits(orderId);
+      for (const order of await this.orders.unsettled()) {
+        orderId = order.id;
+        await this.settle(order);
+      }
     } catch {
-      logger.warn(JSON.stringify({ event: 'CREDIT_CLEANUP_FAILED', orderId: orderId ?? null }));
+      logger.warn(JSON.stringify({ event: 'CREDIT_SETTLEMENT_FAILED', orderId: orderId ?? null }));
     }
   }
 
@@ -270,7 +284,7 @@ export class OrdersService {
 
   /**
    * Requester only, PENDING only, even after the window has ended. Accepted orders need a
-   * CANCELLATION proposal. cleanUpCredits() releases the hold, as for every CANCELLED order.
+   * CANCELLATION proposal. settleCredits() releases the hold, as for every CANCELLED order.
    */
   async cancel(caller: Caller, orderId: string, version: number): Promise<Order> {
     const order = await this.find(orderId);
@@ -295,9 +309,11 @@ export class OrdersService {
     });
   }
 
-  private cancelAwaitingCredit(orderId: string): Promise<void> {
+  /** `settled`: Credit is known to hold nothing, so no release is needed. */
+  private cancelAwaitingCredit(orderId: string, settled = false): Promise<void> {
     return this.orders.transaction(async (tx) => {
       if (!(await this.orders.setStatus(tx, orderId, 'AWAITING_CREDIT', 'CANCELLED'))) return;
+      if (settled) await this.orders.markCreditSettled(orderId, tx);
       await this.orders.addHistory(tx, {
         orderId,
         actorId: null, // system action
@@ -309,9 +325,10 @@ export class OrdersService {
     });
   }
 
-  private async releaseCredits(orderId: string): Promise<void> {
-    await this.credit.release(orderId);
-    await this.orders.markCreditReleased(orderId);
+  private async settle({ id, status, courierId }: Unsettled): Promise<void> {
+    if (status === 'COMPLETED') await this.creditCommands.transfer(id, courierId!);
+    else await this.creditCommands.release(id);
+    await this.orders.markCreditSettled(id);
   }
 
   private async find(orderId: string): Promise<Order> {

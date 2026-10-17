@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Scheduled the credit clean-up job (Phase B).
  * Author review: Reviewed in full.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+ * Scope: Renamed the job to settleCredits; each run is scheduled after the previous one ends (Phase D).
+ * Author review: Reviewed
  */
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
@@ -19,7 +22,9 @@ async function bootstrap() {
   const app = configureApp(await NestFactory.create(AppModule));
   await app.listen(port);
   const orders = app.get(OrdersService);
-  setInterval(() => orders.cleanUpCredits(), 10_000).unref(); // not in tests, which call it directly
+  // Not in tests, which call it directly. The next run waits for this one, so a slow broker can't stack runs.
+  const settle = () => void orders.settleCredits().finally(() => setTimeout(settle, 10_000).unref());
+  setTimeout(settle, 10_000).unref();
   new Logger('Order').log(`Order Service listening on port ${port}`);
 }
 

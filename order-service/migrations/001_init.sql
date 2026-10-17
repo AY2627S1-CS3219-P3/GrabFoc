@@ -6,6 +6,9 @@
 -- Scope: Added AWAITING_CREDIT, the CREDIT_RESERVED history action and
 --        orders.credit_released_at for the revised creation flow (Phase B).
 -- Author review: Reviewed
+-- Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+-- Scope: Renamed credit_released_at to credit_settled_at, which now also marks transfers (Phase D).
+-- Author review: Reviewed
 -- AI-generated; human review pending.
 
 CREATE TABLE orders (
@@ -29,8 +32,9 @@ CREATE TABLE orders (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
-    -- Set once Credit confirms the release; CANCELLED orders with NULL here are retried.
-    credit_released_at TIMESTAMPTZ,
+    -- Set once Kafka stores the order's TransferCredits / ReleaseCredits command (or straight
+    -- away when Credit kept nothing); COMPLETED and CANCELLED orders with NULL here are resent.
+    credit_settled_at TIMESTAMPTZ,
     CONSTRAINT order_window_ordered CHECK (window_end > window_start),
     CONSTRAINT order_distinct_parties CHECK (courier_id IS NULL OR courier_id <> requester_id),
     CONSTRAINT order_assignment_consistent CHECK (

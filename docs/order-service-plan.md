@@ -6,6 +6,9 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Recorded Zi Yi's credit settlement decision (§0, §4, §9) and the Phase C expired-window rule (§6).
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+Scope: Replaced the settlement events with Credit's commands (§0, §4, §5, §6 table, §8, §9) at Zi Yi's direction.
+Author review: Reviewed
 -->
 
 # GrabFoC Order Service — Implementation Plan
@@ -39,8 +42,8 @@ Author review: Reviewed
 | Administrative suspension | User Service emits `UserSuspended`; Order Service cancels all affected nonterminal orders, including ARRIVED |
 | Supplier deactivation | Supplier Service emits `SupplierDeactivated`; Order Service cancels all affected nonterminal orders, including ARRIVED |
 | Broker | **Kafka**; broker infrastructure/setup is owned by a teammate, not the Order Service implementer |
-| Credit | Synchronous HTTP **reserve** (Credit Service atomically checks sufficiency and reserves); Credit Service consumes `OrderCompleted` for **transfer** and `OrderCancelled` for **release**. Confirmed by Zi Yi on 2026-10-15; until Kafka exists, the clean-up job releases cancellations over HTTP and completions stay held (§4). Root `AGENTS.md` §3 still says HTTP for transfer and release; the team must update it |
-| Credit failures | Order cancels a create whose reservation failed and calls Credit `release`; a background job every 10 s retries releases Credit has not confirmed and cancels creates stuck in `AWAITING_CREDIT` for over 30 s. Credit must save a `RELEASED` marker when asked to release an unknown order (§4) |
+| Credit | Synchronous HTTP **reserve** (Credit Service atomically checks sufficiency and reserves); Order sends Credit's `TransferCredits` / `ReleaseCredits` **commands** on `credit.commands` for transfer and release (Zi Yi, 2026-10-17, replacing the 2026-10-15 events decision). Root `AGENTS.md` §3 records this |
+| Credit failures | Order cancels a create whose reservation failed and sends `ReleaseCredits` (none for insufficient credits); a background job every 10 s resends commands Kafka has not stored and cancels creates stuck in `AWAITING_CREDIT` for over 30 s. The Credit owner handles releases for unknown orders (§4) |
 | Notification | Notification Service consumes Order events; notify other party when a confirmation needs action (event to agree on) |
 | User status checks | No live User Service status lookup before each Order API call for now; rely on JWT and suspension event handling |
 | Creation retries | **Deferred**: no idempotency key store, Redis dependency, or duplicate-create handling for now |
@@ -55,7 +58,7 @@ Author review: Reviewed
 - **`order_confirmations`:** `TIMING_CHANGE`, `CANCELLATION`, `COMPLETION`; initiator, optional proposed window, each participant's response, proposal status and resolution timestamps.
 - **Indexes/constraints:** status and requester/courier lookups; `orders_one_active_courier_idx` for a courier's maximum one active order; `order_confirmations_one_pending_idx` for one pending proposal per order; status/assignment/window validation.
 
-Supported order statuses: `PENDING`, `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS`, `ARRIVED`, `COMPLETED`, `CANCELLED`, plus `AWAITING_CREDIT` for the creation flow. `001_init.sql` also has the `CREDIT_RESERVED` history action and `orders.credit_released_at` (set once Credit confirms a release).
+Supported order statuses: `PENDING`, `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS`, `ARRIVED`, `COMPLETED`, `CANCELLED`, plus `AWAITING_CREDIT` for the creation flow. `001_init.sql` also has the `CREDIT_RESERVED` history action and `orders.credit_settled_at` (set once Kafka stores the order's transfer or release command; `credit_released_at` before Phase D).
 
 The migration provides schema constraints but **does not automatically increment version, write history, run expirations or publish events**. Implement those in NestJS. A cancelled order may retain an assigned courier ID as historical information. `order_history.actor_id = NULL` for system actions; store the cause in `change_details`.
 
@@ -65,12 +68,12 @@ The migration provides schema constraints but **does not automatically increment
 |---|---|---|---|
 | — | Create / authenticated requester | AWAITING_CREDIT | Validate locations and pickup-hours overlap; save snapshots; CREATED history. Not visible to couriers |
 | AWAITING_CREDIT | Credit reserve succeeds | PENDING | CREDIT_RESERVED history; only now listed as available |
-| AWAITING_CREDIT | Reserve refused, failed or timed out; or stuck > 30 s (clean-up job) | CANCELLED | System cancellation, `reason: CREDIT_NOT_RESERVED`; Credit `release` until confirmed; no `OrderCancelled` event |
+| AWAITING_CREDIT | Reserve refused, failed or timed out; or stuck > 30 s (clean-up job) | CANCELLED | System cancellation, `reason: CREDIT_NOT_RESERVED`; `ReleaseCredits` command (none for insufficient credits); no `OrderCancelled` event |
 | PENDING | Accept / courier | ACCEPTED | Unexpired, no courier already assigned, different from requester, courier has no other active order; ACCEPTED history and event |
 | ACCEPTED | Mark picked up / assigned courier | PICKED_UP | Correct current state/version; history and `OrderPickedUp` |
 | PICKED_UP | Start delivery / assigned courier | IN_PROGRESS | Correct current state/version; history and `OrderInProgress` |
 | IN_PROGRESS | Arrive / assigned courier | ARRIVED | Correct current state/version; history and `OrderArrived` |
-| ARRIVED | Both approve COMPLETION proposal | COMPLETED | Atomically resolve proposal, change order and write history; `OrderCompleted` triggers credit transfer and notifications |
+| ARRIVED | Both approve COMPLETION proposal | COMPLETED | Atomically resolve proposal, change order and write history; the settlement job sends `TransferCredits`; `OrderCompleted` for notifications |
 | PENDING | Cancel / requester | CANCELLED | Direct cancellation; history and `OrderCancelled` |
 | ACCEPTED, PICKED_UP, IN_PROGRESS, ARRIVED | Both approve CANCELLATION proposal | CANCELLED | Atomically resolve proposal; history and `OrderCancelled` |
 | PENDING, ACCEPTED, PICKED_UP, IN_PROGRESS | Expiry worker, `now >= window_end` | CANCELLED | System cancellation; no acknowledgement needed; history and `OrderCancelled` |
@@ -158,14 +161,14 @@ All protected routes validate JWT. IDs for requester/courier are derived from `s
 - **Admin suspension:** User Service publishes `UserSuspended`; Order Service cancels affected nonterminal orders, including ARRIVED. Include requester and assigned courier matches.
 - No per-action live status lookup in Order Service for the first version. A still-valid JWT may permit a brief delay before suspension propagation; document as a scope trade-off.
 
-### Credit Service — reserve over HTTP, settle from Order events
+### Credit Service — reserve over HTTP, settle with Credit's commands
 
 | Trigger | Credit Service operation | Transport |
 |---|---|---|
 | Creating an order | **Check available credits and reserve** in a single atomic operation keyed by `orderId` | Synchronous HTTP, `POST /internal/credits/reserve` |
-| Creating an order failed | Release any hold for that `orderId` | Synchronous HTTP, `POST /internal/credits/release`, retried by the clean-up job |
-| `OrderCompleted` | Transfer existing reservation to courier | Kafka consumer |
-| `OrderCancelled` (including expiry/deactivation/suspension) | Release existing reservation back to requester | Kafka consumer |
+| Creating an order failed (not insufficient credits) | Release any hold for that `orderId` | `ReleaseCredits` on `credit.commands` |
+| Order `COMPLETED` | Transfer existing reservation to courier | `TransferCredits` on `credit.commands` |
+| Order `CANCELLED` (requester, mutual, expiry, deactivation, suspension) | Release existing reservation back to requester | `ReleaseCredits` on `credit.commands` |
 
 Credit Service guards against duplicate transfer/release. Order Service must only make a new order available once the reservation has succeeded.
 
@@ -174,11 +177,11 @@ Credit Service guards against duplicate transfer/release. Order Service must onl
 1. Save the order as `AWAITING_CREDIT` with `CREATED` history, in a short transaction.
 2. Call `reserve` (synchronous HTTP, 5 s timeout, no transaction open).
 3. Success → move `AWAITING_CREDIT → PENDING` (only if still `AWAITING_CREDIT`), with `CREDIT_RESERVED` history, and return 201.
-4. Refused, failed or timed out → move the order to `CANCELLED` (system action, `reason: CREDIT_NOT_RESERVED`), call `release` once, and return the error. A timed-out reserve may still have saved a hold, so Order releases either way.
-5. Every 10 s, a background job cancels `AWAITING_CREDIT` orders older than 30 s (their request died) and calls `release` for every `CANCELLED` order with no `credit_released_at`, setting it when Credit answers 200 or 404.
-6. **Credit change needed:** `release` for an unknown order must save a `RELEASED` marker instead of only returning 404, so a reserve still running inside Credit cannot hold credits afterwards. Until then, that timing gap remains.
+4. Refused, failed or timed out → move the order to `CANCELLED` (system action, `reason: CREDIT_NOT_RESERVED`), send `ReleaseCredits` once, and return the error. A timed-out reserve may still have saved a hold, so Order releases; only `INSUFFICIENT_CREDITS` (Credit kept nothing) is marked settled without a command.
+5. Every 10 s, a background job cancels `AWAITING_CREDIT` orders older than 30 s (their request died) and sends the command for every `COMPLETED`/`CANCELLED` order with no `credit_settled_at`, setting it once Kafka stores the command.
+6. **Credit owner to handle:** a `ReleaseCredits` for an unknown order is dead-lettered (`HOLD_NOT_FOUND`), and a reserve still running inside Credit can land after it and stay held. Credit recording a release for an unknown order (a `RELEASED` marker) closes both.
 
-**Settling later cancellations and completions (Zi Yi, 15 October 2026):** the final design is events, as in the table above. Until Phase D, the step-5 job already releases every `CANCELLED` order (requester and mutual cancellations too) over HTTP, and `COMPLETED` orders keep their hold. In Phase D the job can publish events for rows not yet marked, instead of calling HTTP, so a crash between commit and publish cannot lose a release.
+**Settling cancellations and completions (Zi Yi, 17 October 2026):** commands for settlement, events for notification. The step-5 job is the outbox: it sends Credit's command for every finished order not yet marked, so a crash between commit and send cannot lose a transfer or release, and Credit ignores the repeats. `order.events` (Notification) is separate and comes later in Phase D.
 
 This is a small saga with a compensating action (release), and the `orders` table acts as its outbox. It covers a lost or slow Credit reply, Credit being down, Order's own commit failing and Order crashing mid-create.
 
@@ -195,11 +198,12 @@ This is a small saga with a compensating action (release), and the `orders` tabl
 
 | Topic | Producer | Consumers | Kafka key |
 |---|---|---|---|
-| `order.events` | Order Service | Credit Service, Notification Service | `orderId` |
+| `order.events` | Order Service | Notification Service | `orderId` |
+| `credit.commands` (exists; Credit owns it) | Order Service | Credit Service | `orderId` |
 | `user.events` | User Service | Order Service | `userId` |
 | `supplier.events` | Supplier Service | Order Service | location ID as a string |
 
-Credit and Notification must use **different Kafka consumer groups** so both receive Order events. Use `orderId` as key for per-order ordering within a partition. Each handler should recheck persisted state so duplicate messages do not repeat an order transition or credit operation.
+Settlement does not use `order.events` (Zi Yi, 2026-10-17): Credit reads only its own `credit.commands`. Use `orderId` as key for per-order ordering within a partition. Each handler should recheck persisted state so duplicate messages do not repeat an order transition or credit operation.
 
 **Common payload:**
 
@@ -217,7 +221,7 @@ Credit and Notification must use **different Kafka consumer groups** so both rec
 }
 ```
 
-- For `OrderCompleted`: `data` includes `orderId`, `requesterId`, `courierId`; Credit uses the saved reservation amount rather than trusting a new amount.
+- For `OrderCompleted`: `data` includes `orderId`, `requesterId`, `courierId`; Notification reads it; Credit settles from `TransferCredits` and uses the saved reservation amount.
 - For `OrderAccepted`, `OrderPickedUp`, `OrderInProgress`, `OrderArrived`: same order/participant identifiers (courier non-null once accepted).
 - For `OrderCancelled`: `reason` may be `REQUESTER_CANCELLED`, `MUTUAL_CANCELLATION`, `EXPIRED`, `USER_SUSPENDED`, or `SUPPLIER_DEACTIVATED`; `courierId` can be null for a never-accepted order.
 - For `UserSuspended`: `{ "eventId": "uuid", "eventType": "UserSuspended", "occurredAt": "ISO-8601", "data": { "userId": "uuid" } }`.
@@ -248,11 +252,11 @@ Credit and Notification must use **different Kafka consumer groups** so both rec
 | Two different pending proposals on same order | DB enforced | Existing `order_confirmations_one_pending_idx` |
 | Expiry races with acceptance or timing approval | Handler needed | Conditional updates/transactional locks; `now >= stored window_end` wins when eligible |
 | Supplier/User deactivation event delivered twice | Handler needed | Cancel only nonterminal orders, do not repeat state/event for already cancelled orders |
-| OrderCompleted/OrderCancelled event delivered twice to Credit | Credit owner | Credit hold keyed by order and idempotent terminal state handling |
+| TransferCredits/ReleaseCredits delivered or sent twice | Credit owner | Credit hold keyed by order and idempotent terminal state handling |
 | Order DB commits but Kafka publish fails | Known limitation | Log/retry where feasible; no outbox in this iteration |
 | Same order creation POST is retried | **Out of scope** | No creation-idempotency implementation now |
 | Credit reserves but its reply is lost, or Order fails before opening the order | Handled | Order cancels and releases; clean-up job retries the release and cancels creates stuck in `AWAITING_CREDIT` |
-| Release reaches Credit before a slow reserve finishes | **Needs Credit change** | Credit saves a `RELEASED` marker for an unknown order, so the late reserve inserts nothing |
+| Release reaches Credit before a slow reserve finishes, or for an order with no hold | **Credit owner to handle** | Credit records a release for an unknown order (`RELEASED` marker) instead of dead-lettering `HOLD_NOT_FOUND` |
 | Suspended user's JWT remains valid before event handled | Known limitation | No live User-status check on every action in this iteration |
 
 ## 7. Suggested NestJS implementation structure
@@ -312,12 +316,13 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 
 ### Phase D — Kafka application integration and automatic cancellation
 
-- [ ] Obtain broker bootstrap address, topic names, and access/configuration details from the teammate responsible for Kafka setup; do not set up the broker as part of Order Service work.
-- [ ] Kafka producer for required Order events; Credit/Notification independent consumer-group contracts.
+- [x] Obtain broker bootstrap address, topic names, and access/configuration details from the teammate responsible for Kafka setup (`infra/kafka/`); do not set up the broker as part of Order Service work.
+- [x] Credit settlement: `TransferCredits` / `ReleaseCredits` on `credit.commands` from the settlement job (outbox on `credit_settled_at`).
+- [ ] Kafka producer for `order.events` (Notification); add the topic to `infra/kafka/topics.txt`.
 - [ ] `UserSuspended` and `SupplierDeactivated` consumers; cancel affected nonterminal orders and supersede pending confirmations.
 - [ ] 60-second expiry worker; publish `OrderCancelled` for successful expirations.
 - [ ] Internal active-order lookup for User Service deactivation guard.
-- [ ] Demonstrate Credit transfer/release on Order events and Notification consumption with other teams.
+- [ ] Demonstrate Credit transfer/release from the commands and Notification consumption with other teams.
 
 ### Phase E — Verification and D3 demo
 
@@ -331,7 +336,7 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 ## 9. Remaining coordination (not blockers for Phase A)
 
 1. **Kafka teammate / contracts:** teammate provisions and configures the shared Kafka broker. Obtain connection settings, access credentials (if used), topic-provisioning responsibility and readiness timeline. Separately approve final topic/event names, `locationId` spelling, consumer group IDs, and the optional `OrderConfirmationRequested` event with Supplier/User/Credit/Notification owners.
-2. **Credit contract:** confirm HTTP reservation request/response and outcome semantics; Credit team owns settlement error handling and retries. Also agree (a) the `RELEASED` marker for releasing an unknown order (§4, step 6), which needs `requester_id`/`amount` to be nullable or sent with `release`; and (b) the event shape Credit consumes for release and transfer (§4; decided by Zi Yi 2026-10-15: events, with HTTP release as the interim), including how a failed create's release avoids a Notification email.
+2. **Credit contract:** confirm HTTP reservation request/response and outcome semantics; Credit team owns settlement error handling and retries. Also agree (a) the `RELEASED` marker for releasing an unknown order (§4, step 6), which needs `requester_id`/`amount` to be nullable or sent with `release`; and (b) settled by Zi Yi 2026-10-17: Order sends Credit's own `TransferCredits` / `ReleaseCredits` commands, so a failed create's release never reaches Notification. The Credit owner handles (a) and the `HOLD_NOT_FOUND` dead letter for releases of unknown orders.
 3. **User Service:** ensure the voluntary-deactivation active-order check and administrative `UserSuspended` publication are implemented on their side.
 4. **Supplier Service:** ensure `SupplierDeactivated` is published with the correct integer **location ID**, and confirm HTTP location fields and opening-hours format.
 5. **User-facing scheduling:** decide only if needed whether couriers may accept future-window orders before `window_start`; do not invent an unapproved restriction. The current agreed rule is the pickup-hours overlap check.

@@ -12,6 +12,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
  * Scope: Replaced the courier timing-change 403 check with a courier proposal that succeeds.
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+ * Scope: A fake Credit command producer replaces the fake HTTP release; settlement tests for
+ *        transfers, releases, insufficient credits and Kafka being down (Phase D).
+ * Author review: Reviewed
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -24,6 +28,7 @@ import { Test } from '@nestjs/testing';
 import { Pool } from 'pg';
 import { AppModule, configureApp } from '../app.module';
 import { PG_POOL } from '../db/database.module';
+import { CreditCommand, CreditCommands } from '../integrations/credit.commands';
 import { runMigrations } from '../db/migrator';
 import { OrdersService } from '../orders/orders.service';
 import { startJwksStub, type JwksStub } from './jwks-stub';
@@ -43,7 +48,7 @@ let app: INestApplication;
 let baseUrl: string;
 const tokens: Record<string, string> = {};
 
-// Fake Supplier (GET /locations/:id) and Credit (POST /internal/credits/reserve|release) on one server.
+// Fake Supplier (GET /locations/:id) and Credit (POST /internal/credits/reserve) on one server.
 const location = (id: number, name: string, extra: Record<string, unknown> = {}) =>
   [id, { id, name, lat: 1.2949, lon: 103.7737, status: 'ACTIVE', open_time: null, close_time: null, ...extra }] as const;
 const locations = new Map<number, object>([
@@ -54,7 +59,6 @@ const locations = new Map<number, object>([
   location(5, 'Frontier', { lat: 1.2966, lon: 103.7805 }),
 ]);
 let creditStatus = 201;
-let releaseStatus = 200;
 let creditCalls: Record<string, unknown>[] = [];
 let supplierAuthorization: string | undefined;
 const downstream = createServer(async (req, res) => {
@@ -67,8 +71,20 @@ const downstream = createServer(async (req, res) => {
   for await (const chunk of req) body += chunk;
   const action = req.url?.split('/').pop();
   creditCalls.push({ action, serviceKey: req.headers['x-service-key'], ...JSON.parse(body) });
-  res.writeHead(action === 'release' ? releaseStatus : creditStatus, { 'content-type': 'application/json' }).end('{}');
+  res.writeHead(creditStatus, { 'content-type': 'application/json' }).end('{}');
 });
+
+// Records Credit commands instead of sending them to Kafka; `kafkaDown` makes every send fail.
+let commands: CreditCommand[] = [];
+let kafkaDown = false;
+class FakeCreditCommands extends CreditCommands {
+  async onModuleInit() {}
+  async onModuleDestroy() {}
+  protected async send(command: CreditCommand) {
+    if (kafkaDown) throw new Error('broker unreachable');
+    commands.push(command);
+  }
+}
 
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
@@ -80,11 +96,14 @@ before(async () => {
   process.env.ORDER_SUPPLIER_URL = downstreamUrl;
   process.env.ORDER_CREDIT_URL = downstreamUrl;
   process.env.ORDER_CREDIT_SERVICE_KEY = 'test-service-key';
+  process.env.ORDER_KAFKA_BROKERS = 'unused:9092'; // the producer is faked
   for (const id of [alice, bob, carol]) tokens[id] = await jwks.sign({ sub: id });
 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(PG_POOL)
     .useValue(pool)
+    .overrideProvider(CreditCommands)
+    .useClass(FakeCreditCommands)
     .compile();
   app = configureApp(moduleRef.createNestApplication({ logger: false }));
   await app.listen(0, '127.0.0.1');
@@ -100,8 +119,9 @@ after(async () => {
 beforeEach(async () => {
   await pool.query('TRUNCATE order_confirmations, order_history, orders');
   creditStatus = 201;
-  releaseStatus = 200;
   creditCalls = [];
+  commands = [];
+  kafkaDown = false;
 });
 
 async function insertOrder(overrides: Record<string, unknown> = {}): Promise<string> {
@@ -133,7 +153,8 @@ async function send(method: string, path: string, userId?: string, body?: unknow
 const get = (path: string, userId?: string) => send('GET', path, userId);
 const count = async (table: string) => Number((await pool.query(`SELECT count(*) AS n FROM ${table}`)).rows[0].n);
 const row = async (id: string) => (await pool.query('SELECT * FROM orders WHERE id = $1', [id])).rows[0];
-const cleanUpCredits = () => app.get(OrdersService).cleanUpCredits();
+const settleCredits = () => app.get(OrdersService).settleCredits();
+const sent = () => commands.map((c) => [c.type, c.orderId]);
 
 const ids = (body: { items: { id: string }[] }) => body.items.map((o) => o.id);
 
@@ -254,15 +275,17 @@ test('create checks pickup hours but never delivery hours', async () => {
   expectError(await send('POST', '/orders', alice, newOrder(night)), 400, 'PICKUP_CLOSED');
 });
 
-test('a failed reservation cancels the order and releases any hold', async () => {
+test('a failed reservation cancels the order and releases any hold, unless Credit kept nothing', async () => {
   creditStatus = 409;
   expectError(await send('POST', '/orders', alice, newOrder()), 409, 'INSUFFICIENT_CREDITS');
   creditStatus = 500;
   expectError(await send('POST', '/orders', alice, newOrder()), 503, 'SERVICE_UNAVAILABLE');
 
-  const { rows } = await pool.query('SELECT id, status, credit_released_at FROM orders');
-  assert.deepEqual(rows.map((r) => [r.status, r.credit_released_at !== null]), [['CANCELLED', true], ['CANCELLED', true]]);
-  assert.deepEqual(creditCalls.map((c) => c.action), ['reserve', 'release', 'reserve', 'release']);
+  const { rows } = await pool.query('SELECT id, status, credit_settled_at FROM orders ORDER BY created_at');
+  assert.deepEqual(rows.map((r) => [r.status, r.credit_settled_at !== null]), [['CANCELLED', true], ['CANCELLED', true]]);
+  assert.deepEqual(creditCalls.map((c) => c.action), ['reserve', 'reserve']);
+  // Insufficient credits: Credit kept nothing, so only the failed reserve is released.
+  assert.deepEqual(sent(), [['ReleaseCredits', rows[1].id]]);
   const history = (await get(`/orders/${rows[0].id}/history`, alice)).body.items;
   assert.deepEqual(history.map((h: any) => [h.action, h.actorId, h.newStatus]), [
     ['CREATED', alice, 'AWAITING_CREDIT'],
@@ -272,25 +295,27 @@ test('a failed reservation cancels the order and releases any hold', async () =>
   assert.equal((await get('/orders/available', bob)).body.total, 0);
 });
 
-test('the clean-up job retries failed releases and cancels creates that never finished', async () => {
+test('the settlement job resends commands Kafka did not store and cancels creates that never finished', async () => {
   creditStatus = 500;
-  releaseStatus = 503; // Credit fully down
+  kafkaDown = true;
   expectError(await send('POST', '/orders', alice, newOrder()), 503, 'SERVICE_UNAVAILABLE');
   const [failed] = (await pool.query('SELECT id FROM orders')).rows;
-  assert.equal((await row(failed.id)).credit_released_at, null);
+  assert.equal((await row(failed.id)).credit_settled_at, null);
 
   const stale = await insertOrder({ status: 'AWAITING_CREDIT', created_at: new Date(Date.now() - 60_000) });
   const inFlight = await insertOrder({ status: 'AWAITING_CREDIT' });
-  await cleanUpCredits(); // releases still failing: retried next run
+  await settleCredits(); // Kafka still down: resent next run
   assert.equal((await row(stale)).status, 'CANCELLED');
-  assert.equal((await row(failed.id)).credit_released_at, null);
+  assert.equal((await row(failed.id)).credit_settled_at, null);
 
-  releaseStatus = 404; // Credit back; it never saved a hold for these
-  creditCalls = [];
-  await cleanUpCredits();
-  assert.deepEqual(creditCalls.map((c) => c.orderId).sort(), [failed.id, stale].sort());
-  for (const id of [failed.id, stale]) assert.notEqual((await row(id)).credit_released_at, null);
+  kafkaDown = false;
+  await settleCredits();
+  assert.deepEqual(sent().sort(), [['ReleaseCredits', failed.id], ['ReleaseCredits', stale]].sort());
+  for (const id of [failed.id, stale]) assert.notEqual((await row(id)).credit_settled_at, null);
   assert.equal((await row(inFlight)).status, 'AWAITING_CREDIT');
+
+  await settleCredits(); // settled orders are not sent again
+  assert.equal(commands.length, 2);
 });
 
 test('create rejects bad locations and invalid bodies before reserving credits', async () => {
@@ -422,7 +447,7 @@ test('the same step sent twice at once succeeds exactly once', async () => {
   assert.equal(await count('order_history'), 1);
 });
 
-test('the requester cancels a PENDING order, even after its window, and the clean-up job releases it', async () => {
+test('the requester cancels a PENDING order, even after its window, and the settlement job releases it', async () => {
   const id = await insertOrder();
   expectError(await post(`/orders/${id}/cancel`, carol, { version: 1 }), 403, 'FORBIDDEN');
   const res = await post(`/orders/${id}/cancel`, alice, { version: 1 });
@@ -432,14 +457,14 @@ test('the requester cancels a PENDING order, even after its window, and the clea
 
   const expired = await insertOrder(expiredWindow);
   assert.equal((await post(`/orders/${expired}/cancel`, alice, { version: 1 })).status, 200);
-  await cleanUpCredits();
-  assert.deepEqual(creditCalls.map((c) => [c.action, c.orderId]).sort(), [['release', id], ['release', expired]].sort());
+  await settleCredits();
+  assert.deepEqual(sent().sort(), [['ReleaseCredits', id], ['ReleaseCredits', expired]].sort());
 
   const accepted = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
   expectError(await post(`/orders/${accepted}/cancel`, alice, { version: 1 }), 409, 'INVALID_STATE');
 });
 
-test('completion needs both participants: the second approval completes the order', async () => {
+test('completion needs both participants: the second approval completes the order and the job pays the courier', async () => {
   const id = await insertOrder({ status: 'ARRIVED', courier_id: bob });
   const proposed = await post(confirmations(id), bob, { kind: 'COMPLETION' });
   assert.equal(proposed.status, 201);
@@ -461,8 +486,9 @@ test('completion needs both participants: the second approval completes the orde
   ]);
 
   expectError(await respond(id, proposed, alice, 'ACCEPTED'), 409, 'INVALID_STATE'); // already APPROVED
-  await cleanUpCredits();
-  assert.deepEqual(creditCalls, []); // transfer waits for the Phase D events
+  await settleCredits();
+  assert.deepEqual(commands, [{ type: 'TransferCredits', eventId: commands[0]?.eventId, orderId: id, courierId: bob }]);
+  assert.match(commands[0].eventId, /^[0-9a-f-]{36}$/);
 });
 
 test('proposals check the order state, who proposes and the body', async () => {
@@ -496,8 +522,8 @@ test('mutual cancellation: a rejection changes nothing, an approval cancels even
   assert.deepEqual([entry.action, entry.actorId, entry.previousStatus, entry.changeDetails], [
     'CANCELLED', alice, 'PICKED_UP', { reason: 'MUTUAL_CANCELLATION', confirmationId: second.body.id },
   ]);
-  await cleanUpCredits();
-  assert.deepEqual(creditCalls.map((c) => [c.action, c.orderId]), [['release', id]]);
+  await settleCredits();
+  assert.deepEqual(sent(), [['ReleaseCredits', id]]);
 
   const list = await get(confirmations(id), bob);
   assert.deepEqual(list.body.items.map((c: any) => [c.id, c.status]), [[first.body.id, 'REJECTED'], [second.body.id, 'APPROVED']]);

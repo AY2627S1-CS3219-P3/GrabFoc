@@ -9,6 +9,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Registered the confirmations controller and service (Phase C).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+ * Scope: Registered the Credit command producer (Phase D).
+ * Author review: Reviewed
  */
 import { INestApplication, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
@@ -17,6 +20,7 @@ import { JwtAuthGuard } from './common/jwt-auth.guard';
 import { requestLogger } from './common/request-logger';
 import { DatabaseModule } from './db/database.module';
 import { CreditClient } from './integrations/credit.client';
+import { CreditCommands } from './integrations/credit.commands';
 import { SupplierClient } from './integrations/supplier.client';
 import { ConfirmationsController } from './orders/confirmations.controller';
 import { ConfirmationsService } from './orders/confirmations.service';
@@ -33,6 +37,7 @@ import { OrdersService } from './orders/orders.service';
     OrdersRepository,
     SupplierClient,
     CreditClient,
+    CreditCommands,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })

@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added Supplier and Credit Service settings (Phase B).
  * Author review: Reviewed in full.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+ * Scope: Added the Kafka broker list (Phase D).
+ * Author review: Reviewed
  */
 
 export interface AppConfig {
@@ -16,6 +19,8 @@ export interface AppConfig {
   creditUrl: string;
   /** Shared secret for Credit's /internal routes (Credit's CREDIT_SERVICE_KEY). */
   creditServiceKey: string;
+  /** Kafka bootstrap servers, for the credit.commands producer. */
+  kafkaBrokers: string[];
 }
 
 function httpUrl(env: NodeJS.ProcessEnv, name: string): URL {
@@ -33,6 +38,8 @@ export function appConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   const creditServiceKey = env.ORDER_CREDIT_SERVICE_KEY?.trim();
   if (!creditServiceKey) throw new Error('Missing ORDER_CREDIT_SERVICE_KEY');
+  const kafkaBrokers = (env.ORDER_KAFKA_BROKERS ?? '').split(',').map((b) => b.trim()).filter(Boolean);
+  if (kafkaBrokers.length === 0) throw new Error('Missing ORDER_KAFKA_BROKERS');
   // Base URLs without a trailing slash, so clients can append paths.
   const base = (name: string) => httpUrl(env, name).href.replace(/\/$/, '');
   return {
@@ -41,5 +48,6 @@ export function appConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     supplierUrl: base('ORDER_SUPPLIER_URL'),
     creditUrl: base('ORDER_CREDIT_URL'),
     creditServiceKey,
+    kafkaBrokers,
   };
 }

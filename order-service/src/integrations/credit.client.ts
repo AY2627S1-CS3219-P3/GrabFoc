@@ -4,6 +4,9 @@
  * Scope: Generated the Credit Service reserve and release client (Phase B), matching Credit's
  *        POST /internal/credits/reserve|release contract on feature/credit-service.
  * Author review: Reviewed.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+ * Scope: Removed release; it is now a credit.commands message (Phase D, credit.commands.ts).
+ * Author review: Reviewed
  */
 import { Injectable } from '@nestjs/common';
 import { AppError, ErrorCode } from '../common/errors';
@@ -24,16 +27,6 @@ export class CreditClient {
       throw new AppError(409, ErrorCode.INSUFFICIENT_CREDITS, 'You do not have enough credits for this offer.');
     }
     if (!res.ok) throw unavailable();
-  }
-
-  /**
-   * Returns the order's held credits; 200 also on a repeat, 404 when Credit has no hold.
-   * Known limitation: until Credit saves a RELEASED marker on that 404, a reserve still running
-   * inside Credit can land afterwards and stay held.
-   */
-  async release(orderId: string): Promise<void> {
-    const res = await this.post('release', { orderId });
-    if (!res.ok && res.status !== 404) throw unavailable();
   }
 
   private async post(action: string, body: object): Promise<Response> {

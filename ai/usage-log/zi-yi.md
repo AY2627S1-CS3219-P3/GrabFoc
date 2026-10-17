@@ -21,12 +21,91 @@ Author review (Zi Yi): Reviewed; ran `npm test` and the `compose.test.yaml` test
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Added the courier timing-change entry.
 Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+Scope: Added the Order Service Phase D step 1 (credit settlement over Kafka) entry.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Recorded the manual-check results Zi Yi reported, and the prompts that led to them.
+Author review (Zi Yi): Reviewed
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-17 — Order Service: Phase D step 1 (credit settlement over `credit.commands`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** new `order-service/src/integrations/credit.commands.ts`; changed `migrations/001_init.sql`,
+`src/config.ts`, `main.ts`, `app.module.ts`, `integrations/credit.client.ts`,
+`orders/orders.{service,repository}.ts`, `orders/confirmations.service.ts`,
+`test/orders.api.test.ts`, `package.json`, `package-lock.json`, `compose.yaml`, `README.md`,
+`AGENTS.md`; root `.env.example`; `docs/order-service-plan.md`; `credit-service/AGENTS.md`
+
+**Scenario:** after merging Jian Bing's Kafka and Credit work, decide where Phase D continues.
+The AI found that Credit consumes commands (`TransferCredits`, `ReleaseCredits` on
+`credit.commands`) rather than the `OrderCompleted` / `OrderCancelled` events I had decided on
+2026-10-15, and flagged the event-interface and schema choices under the AI policy.
+
+**Prompts:**
+> i have merged my teammate's kafka set up, we can continue implementing, where should we continue from
+
+> explain the difference between commands and events
+
+> i agree with having credit.commands for settlement and order.events for notification
+
+> yes, go with 1-3 as recommended, but for migrations, edit 001 instead of having 002. should cleanUpCredits() be renamed? use clean-up job to act as outbox.
+> Fake publisher in the automated tests, plus a manual check with Credit. The alternative is adding a Kafka broker to compose.test.yaml, which is slower but tests the real thing. explain more on this, why need another kafka broker?
+> doc the credit side issue, credit owner shall handle it
+
+> fake publisher vs kafka broker, whats the pros and cons of each, which are we using now
+
+> update this accordingly, HTTP is only for reserving credits right? release and transfer of credits is via commands
+
+> list steps for manual checks
+
+> give me the explicit commands to copy and test
+
+> jq command not found
+
+> all sections passed, update the verification lines
+
+**Key responses:** an event is a fact the publisher announces to anyone (the consumer decides what
+it means); a command asks one service to do one thing (the sender decides). Suggested Phase D
+order: credit commands, expiry worker, internal active-order lookup, `order.events`, then the
+suspension/deactivation consumers (blocked: User and Supplier publish nothing yet).
+
+**My decisions:** `credit.commands` for settlement, `order.events` for Notification. Rename the
+column to `credit_settled_at` by editing `001_init.sql` (teammates recreate the volume). The
+settlement job is the outbox. Fake producer in the automated tests, plus a manual check with
+Credit. The Credit owner handles releases for unknown orders.
+
+**What it produced:**
+- a Kafka producer (`@confluentinc/kafka-javascript`, as in Credit) sending `TransferCredits` /
+  `ReleaseCredits`, keyed by `orderId`;
+- `cleanUpCredits` renamed `settleCredits`: it also sends transfers for `COMPLETED` orders and
+  marks `credit_settled_at` once Kafka stores the command; each run waits for the previous one;
+- no release after `INSUFFICIENT_CREDITS`, since Credit kept nothing;
+- HTTP release removed (reserve stays on HTTP); `ORDER_KAFKA_BROKERS`; Compose waits for `kafka-init`;
+- tests rewritten around a fake producer (transfer on completion, releases, Kafka down, no resend);
+- doc updates, and the Credit open item.
+
+**Flagged:**
+- Root §3's [Decided] Communication bullet said HTTP for reserve, transfer and release. At my direction it
+  now says HTTP for reserve only, with transfer and release as `credit.commands`; the team still has to
+  confirm it, and the mentor to validate it.
+- The migrator does not detect edited files, so an old `order-db` volume keeps `credit_released_at`
+  and the service fails until it is recreated (`down -v`).
+- Credit dead-letters a `ReleaseCredits` for an unknown order (`HOLD_NOT_FOUND`); recorded for
+  the Credit owner with the `RELEASED` marker.
+
+**Verification:** `compose.test.yaml`: 53 tests passed. The runtime image loaded the Kafka client.
+Manual check with the real Kafka and Credit (2026-10-18, run by me): all five sections passed:
+completion pays the courier, cancellation returns the requester's credits, insufficient credits
+sends no command, and a cancellation while Kafka was stopped settled after it restarted.
+
+**What I changed or rejected:** Reviewed the changed files.
 
 ### 2026-10-16 — Order Service: courier can propose timing changes
 
