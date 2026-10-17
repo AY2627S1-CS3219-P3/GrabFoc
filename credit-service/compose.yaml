@@ -1,0 +1,73 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
+# Scope: Generated the Credit Service and its database, following supplier-service/compose.yaml.
+# Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+# Scope: Added CREDIT_JWKS_URL and the optional issuer/audience.
+# Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+# Scope: Connected the service to Kafka (infra/kafka) and waited for kafka-init; documented the
+#   two-file command for using this file on its own (PR #84 review).
+# Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+# Scope: Database password passed as PGPASSWORD, not inside the URL (PR #48 review).
+# Author review: pending — Jian Bing to record what he checked.
+
+name: foc
+
+services:
+  credit-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: foc
+      # Its own password, separate from the other databases'. Override it in .env.
+      POSTGRES_PASSWORD: ${CREDIT_POSTGRES_PASSWORD:-change-me-in-dotenv}
+      POSTGRES_DB: credit
+    ports:
+      # 5435 on the host: user-db has 5432 and supplier-db 5434.
+      - "5435:5432"
+    volumes:
+      # Named volume, so the data survives `docker compose down` (root AGENTS.md §8).
+      - credit-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foc -d credit"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  credit-service:
+    build:
+      context: .
+    depends_on:
+      credit-db:
+        condition: service_healthy
+      # Every topic must exist before Credit subscribes; no service creates topics. kafka-init lives
+      # in the shared infra/kafka/compose.yaml, so to use this file without the root one, pass both:
+      #   docker compose -f infra/kafka/compose.yaml -f credit-service/compose.yaml up credit-service
+      kafka-init:
+        condition: service_completed_successfully
+    # No env_file: only the variables below reach this container.
+    environment:
+      CREDIT_PORT: 3004
+      # The password goes in PGPASSWORD, which the PostgreSQL driver reads directly, not in the URL:
+      # a password containing / # ? or @ would break the URL (PR #48 review).
+      CREDIT_DATABASE_URL: postgres://foc@credit-db:5432/credit
+      PGPASSWORD: ${CREDIT_POSTGRES_PASSWORD:-change-me-in-dotenv}
+      # No working fallback: without a key of 32+ characters in .env, this container exits with a
+      # message saying so. (`:?` would instead stop every compose command for the whole stack.)
+      CREDIT_SERVICE_KEY: ${CREDIT_SERVICE_KEY:-}
+      # The balance route verifies user tokens against the User Service's public keys.
+      CREDIT_JWKS_URL: http://user-service:3001/.well-known/jwks.json
+      # Optional; checked only when set in .env.
+      CREDIT_JWT_ISSUER: ${CREDIT_JWT_ISSUER:-}
+      CREDIT_JWT_AUDIENCE: ${CREDIT_JWT_AUDIENCE:-}
+      CREDIT_KAFKA_BROKERS: kafka:9092
+      # One retry topic per entry must be listed in infra/kafka/topics.txt; Credit checks at startup.
+      CREDIT_RETRY_DELAYS: ${CREDIT_RETRY_DELAYS:-1s,5s,30s,2m,10m}
+    # Published for local testing with Postman. The gateway never routes here: these are
+    # internal routes for the Order Service only.
+    ports:
+      - "3004:3004"
+
+volumes:
+  credit-db-data:

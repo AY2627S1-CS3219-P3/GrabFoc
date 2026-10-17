@@ -1,0 +1,73 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+# Scope: Generated the shared Kafka broker, topic init container and Kafka UI (spec §9.2, K7, K9).
+# Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+# Scope: kafka-init no longer reads CREDIT_RETRY_DELAYS (K10 revised).
+# Author review: pending — Jian Bing to record what he checked.
+#
+# Shared by every service, so it lives in infra/ rather than in one service's folder.
+# One KRaft broker (no ZooKeeper), replication factor 1: local only, not for the cloud.
+
+name: foc
+
+services:
+  kafka:
+    image: apache/kafka:4.1.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      # PLAINTEXT for containers, EXTERNAL for tools and tests on the host, CONTROLLER for KRaft.
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # Topics come only from topics.txt, so a typo in a topic name fails loudly instead of
+      # silently creating a new topic.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    ports:
+      # Host tools and the Kafka tests; localhost only because there is no authentication.
+      - "127.0.0.1:9094:9094"
+    volumes:
+      # Named volume, so messages survive `docker compose down` (root AGENTS.md §8).
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  # Creates every topic once, then exits.
+  kafka-init:
+    image: apache/kafka:4.1.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./topics.txt:/topics.txt:ro
+      - ./create-topics.sh:/create-topics.sh:ro
+    entrypoint: ["/bin/sh", "/create-topics.sh"]
+    restart: "no"
+
+  # Web UI for topics and messages, used to demo the async workflow.
+  kafka-ui:
+    image: ghcr.io/kafbat/kafka-ui:v1.3.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: foc
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      # No login, so localhost only.
+      - "127.0.0.1:8085:8080"
+
+volumes:
+  kafka-data:
