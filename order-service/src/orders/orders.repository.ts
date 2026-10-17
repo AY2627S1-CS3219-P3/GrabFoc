@@ -14,6 +14,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
  * Scope: The settlement queries now cover COMPLETED orders too, using credit_settled_at (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Added the expiry worker's queries and let pending proposals resolve as EXPIRED (Phase D).
+ * Author review: Reviewed
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -35,6 +38,9 @@ const LISTS = {
   courier: `courier_id = $1`,
 } as const;
 export type OrderList = keyof typeof LISTS;
+
+/** States the expiry worker cancels once window_end has passed. */
+const EXPIRABLE = `'PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS'`;
 
 type Row = Record<string, any>;
 type Db = Pool | PoolClient;
@@ -275,6 +281,26 @@ export class OrdersRepository {
     return rows.map((row) => row.id);
   }
 
+  /** Orders whose window has ended in a state that times out; ARRIVED never does. Rest next run. */
+  async expired(): Promise<string[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id FROM orders WHERE status IN (${EXPIRABLE}) AND window_end <= now() ORDER BY window_end LIMIT 100`,
+    );
+    return rows.map((row) => row.id);
+  }
+
+  /**
+   * Locks the order only if it is still expired. A concurrent change is waited for and the
+   * condition rechecked against the new row, so an order that moved on is skipped.
+   */
+  async lockExpired(tx: PoolClient, id: string): Promise<Order | undefined> {
+    const { rows } = await tx.query(
+      `SELECT * FROM orders WHERE id = $1 AND status IN (${EXPIRABLE}) AND window_end <= now() FOR UPDATE`,
+      [id],
+    );
+    return rows[0] && toOrder(rows[0]);
+  }
+
   /** Finished orders whose transfer or release command Kafka has not yet stored: the outbox. */
   async unsettled(): Promise<Unsettled[]> {
     const { rows } = await this.pool.query(
@@ -335,12 +361,17 @@ export class OrdersRepository {
     return toConfirmation(rows[0]);
   }
 
-  /** Pending proposals of these kinds that an order change has made moot. */
-  async supersedePending(tx: PoolClient, orderId: string, kinds: ConfirmationKind[]): Promise<void> {
+  /** Pending proposals of these kinds that an order change has made moot (or, for timing, expired). */
+  async supersedePending(
+    tx: PoolClient,
+    orderId: string,
+    kinds: ConfirmationKind[],
+    status: 'SUPERSEDED' | 'EXPIRED' = 'SUPERSEDED',
+  ): Promise<void> {
     await tx.query(
-      `UPDATE order_confirmations SET status = 'SUPERSEDED', resolved_at = now()
+      `UPDATE order_confirmations SET status = $3, resolved_at = now()
        WHERE order_id = $1 AND status = 'PENDING' AND kind = ANY($2)`,
-      [orderId, kinds],
+      [orderId, kinds, status],
     );
   }
 

@@ -18,11 +18,14 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Recorded the manual-check results Zi Yi reported.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented the 60 s expiry worker (Phase D) and the manual-check results Zi Yi reported.
+Author review: Reviewed
 -->
 
 # Order Service
 
-Database foundation for #50 (under parent #64) plus Phases A–C of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit, accept, lifecycle, cancellation and confirmation endpoints (see [HTTP API](#http-api)). Phase D so far: credit settlement over Kafka (`credit.commands`); `order.events`, the expiry worker and suspension/deactivation handling are not implemented yet. The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_settled_at` for credit settlement. Read [AGENTS.md](AGENTS.md) for requirements.
+Database foundation for #50 (under parent #64) plus Phases A–C of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit, accept, lifecycle, cancellation and confirmation endpoints (see [HTTP API](#http-api)). Phase D so far: credit settlement over Kafka (`credit.commands`) and the 60 s expiry worker; `order.events` and suspension/deactivation handling are not implemented yet. The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_settled_at` for credit settlement. Read [AGENTS.md](AGENTS.md) for requirements.
 
 ## Confirmed decisions
 
@@ -228,6 +231,22 @@ as a repeat. A failed send stops the run and logs `CREDIT_SETTLEMENT_FAILED` wit
 Credits therefore move up to about 10 s after the order completes or is cancelled. Design by
 Zi Yi (2026-10-15 creation flow, 2026-10-17 commands); **[Proposed]** until the team confirms.
 
+**Expiry worker** (`OrdersService.expireOrders`, every 60 s from `main.ts`, each run after the
+previous one ends): cancels `PENDING`, `ACCEPTED`, `PICKED_UP` and `IN_PROGRESS` orders once
+`now() >= window_end` (database clock), up to 100 per run. `ARRIVED` never expires. Each order is
+locked and rechecked in its own transaction, so a step or approval that committed first wins if
+the order is no longer expirable. In that transaction it writes `CANCELLED` history (no actor,
+`changeDetails.reason = EXPIRED`), marks a pending `TIMING_CHANGE` `EXPIRED` and a pending
+`CANCELLATION` `SUPERSEDED`, and increments `version`. The settlement job then releases the
+hold. A failure stops the run and logs `ORDER_EXPIRY_FAILED` with the order ID. No
+`OrderCancelled` event yet (comes with `order.events`).
+
+Manual check run by Zi Yi on 2026-10-18 against the root Compose stack, with each order's window
+moved into the past in SQL: an expired `PENDING` order was cancelled (`reason: EXPIRED`) and its
+credits returned; an expired `ACCEPTED` order was cancelled and its pending timing change became
+`EXPIRED`; an expired `ARRIVED` order stayed `ARRIVED`; no `ORDER_EXPIRY_FAILED` was logged. All
+passed.
+
 **Edit** body: `version` (required) plus at least one of `orderDescription`,
 `pickupLocationId`, `deliveryLocationId`, `windowStart`, `windowEnd`. `creditOffer` and every
 other field are rejected. A changed location is re-fetched (must be `ACTIVE`) and its snapshot
@@ -242,8 +261,8 @@ one wins. The partial unique index stops a courier holding two active orders. Wr
 **Lifecycle steps** (`pick-up`, `start-delivery`, `arrive`) and **cancel** take `{ "version": n }`
 and return the order. Each is one conditional `UPDATE` on the expected status and version, so a
 repeated or concurrent request gets 409 and writes no second history entry. Lifecycle steps
-refuse an order whose window has ended (expiry wins, plan §6); the Phase D worker will cancel
-it. `arrive` also marks a pending `TIMING_CHANGE` `SUPERSEDED`, since `ARRIVED` allows no timing
+refuse an order whose window has ended (expiry wins, plan §6); the expiry worker cancels it
+within about 60 s. `arrive` also marks a pending `TIMING_CHANGE` `SUPERSEDED`, since `ARRIVED` allows no timing
 changes. History actions are `PICKED_UP`, `IN_PROGRESS` and `ARRIVED`.
 
 Cancel works on `PENDING` only, even after the window has ended. It writes `CANCELLED` history

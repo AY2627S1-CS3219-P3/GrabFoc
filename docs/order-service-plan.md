@@ -9,6 +9,9 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
 Scope: Replaced the settlement events with Credit's commands (§0, §4, §5, §6 table, §8, §9) at Zi Yi's direction.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Ticked the expiry worker in §8 Phase D.
+Author review: Reviewed
 -->
 
 # GrabFoC Order Service — Implementation Plan
@@ -320,7 +323,8 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 - [x] Credit settlement: `TransferCredits` / `ReleaseCredits` on `credit.commands` from the settlement job (outbox on `credit_settled_at`).
 - [ ] Kafka producer for `order.events` (Notification); add the topic to `infra/kafka/topics.txt`.
 - [ ] `UserSuspended` and `SupplierDeactivated` consumers; cancel affected nonterminal orders and supersede pending confirmations.
-- [ ] 60-second expiry worker; publish `OrderCancelled` for successful expirations.
+- [x] 60-second expiry worker (`expireOrders`).
+- [ ] Publish `OrderCancelled` for successful expirations (with the `order.events` producer).
 - [ ] Internal active-order lookup for User Service deactivation guard.
 - [ ] Demonstrate Credit transfer/release from the commands and Notification consumption with other teams.
 

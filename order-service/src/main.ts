@@ -9,6 +9,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
  * Scope: Renamed the job to settleCredits; each run is scheduled after the previous one ends (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Scheduled the 60 s expiry worker (Phase D).
+ * Author review: Reviewed
  */
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
@@ -22,9 +25,13 @@ async function bootstrap() {
   const app = configureApp(await NestFactory.create(AppModule));
   await app.listen(port);
   const orders = app.get(OrdersService);
-  // Not in tests, which call it directly. The next run waits for this one, so a slow broker can't stack runs.
-  const settle = () => void orders.settleCredits().finally(() => setTimeout(settle, 10_000).unref());
-  setTimeout(settle, 10_000).unref();
+  // Not in tests, which call the jobs directly. Each next run waits for the last, so slow runs can't stack.
+  const every = (ms: number, job: () => Promise<void>) => {
+    const run = () => void job().finally(() => setTimeout(run, ms).unref());
+    setTimeout(run, ms).unref();
+  };
+  every(10_000, () => orders.settleCredits());
+  every(60_000, () => orders.expireOrders());
   new Logger('Order').log(`Order Service listening on port ${port}`);
 }
 

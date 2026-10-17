@@ -16,6 +16,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
 Scope: Recorded Phase D step 1 (credit settlement over credit.commands) and Zi Yi's commands/events split;
 resolved the root §3 conflict once root was updated.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Recorded Phase D step 2 (expiry worker) status.
+Author review: Reviewed
 -->
 
 # AGENTS.md — Order Service
@@ -56,7 +59,8 @@ _Origin: Team / Restated from root AGENTS.md; AI doc (implementation status)_
 - Implemented Phase A: JWKS token verification, Zod validation, error envelope, request/denial logging, and the read endpoints `GET /orders/available|mine|assigned|:orderId|:orderId/history`.
 - Implemented Phase B: `POST /orders`, `PATCH /orders/:orderId`, `POST /orders/:orderId/accept`, with Supplier location checks over HTTP, Credit reserve/release and the credit clean-up job; `AWAITING_CREDIT`, `CREDIT_RESERVED` and `credit_released_at` (renamed `credit_settled_at` in Phase D) added to `001_init.sql`.
 - Implemented Phase C: `POST /orders/:orderId/pick-up|start-delivery|arrive|cancel` and `GET|POST /orders/:orderId/confirmations`, `POST /orders/:orderId/confirmations/:confirmationId/respond`. No events, expiry worker or suspension/deactivation handling yet (Phase D).
-- Implemented Phase D step 1: the 10 s settlement job (`settleCredits`) sends Credit's `TransferCredits` for `COMPLETED` and `ReleaseCredits` for `CANCELLED` orders to `credit.commands`, marking `credit_settled_at` once Kafka stores the command. HTTP release is gone; reserve stays on HTTP. Not yet: `order.events`, the expiry worker, suspension/deactivation, the internal active-order lookup.
+- Implemented Phase D step 1: the 10 s settlement job (`settleCredits`) sends Credit's `TransferCredits` for `COMPLETED` and `ReleaseCredits` for `CANCELLED` orders to `credit.commands`, marking `credit_settled_at` once Kafka stores the command. HTTP release is gone; reserve stays on HTTP. Not yet: `order.events`, suspension/deactivation, the internal active-order lookup.
+- Implemented Phase D step 2: the 60 s expiry worker (`expireOrders`) cancels `PENDING`/`ACCEPTED`/`PICKED_UP`/`IN_PROGRESS` orders once `now() >= window_end` (plan §0/§2), rechecking each under its row lock; history `reason: EXPIRED`, no actor; pending `TIMING_CHANGE` → `EXPIRED`, pending `CANCELLATION` → `SUPERSEDED` (plan §2 rule 6). No `OrderCancelled` yet (needs `order.events`).
 
 ## Creation and reading [Decided]
 

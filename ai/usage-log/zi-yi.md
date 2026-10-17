@@ -27,12 +27,79 @@ Author review (Zi Yi): Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Recorded the manual-check results Zi Yi reported, and the prompts that led to them.
 Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Added the Order Service Phase D expiry worker entry.
+Author review (Zi Yi): Reviewed
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-18 — Order Service: Phase D expiry worker
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, explain, debug
+**Files:** `order-service/src/main.ts`, `src/orders/orders.{service,repository}.ts`,
+`src/test/orders.api.test.ts`, `README.md`, `AGENTS.md`; `docs/order-service-plan.md`
+
+**Scenario:** implement the 60 s expiry worker from plan §8 Phase D, following the rules already
+in plan §0/§2/§6 (expire `PENDING`/`ACCEPTED`/`PICKED_UP`/`IN_PROGRESS` once `now >= window_end`,
+never `ARRIVED`; timing proposals `EXPIRED`, other pending proposals `SUPERSEDED`).
+
+**Prompts:**
+> implement the 60s expiry worker in phase D
+
+> explain this function
+
+> i am a little confused, try explaining again
+
+> how to test the expiry worker
+
+> use jq, relist the testing steps
+
+> login failed, echo "A=$A_ID B=$B_ID pickup=$P delivery=$D" got nothing
+
+> there is something wrong chenziyi@Chens-MacBook-Air-6 GrabFoc % docker compose up --build
+> unable to get image 'foc-user-service': request returned 500 Internal Server Error for API route and version http://%2FUsers%2Fchenziyi%2F.docker%2Frun%2Fdocker.sock/v1.49/images/foc-user-service/json, check if the server supports the requested API version
+
+> chenziyi@Chens-MacBook-Air-6 project % endnow $E1
+> no configuration file provided: not found
+
+> all checks passed, update the verification lines
+
+**Key responses:** explained `supersedePending` (closes an order's waiting proposals of the given
+kinds as `SUPERSEDED`, or `EXPIRED` for timing changes, in the same transaction as the order
+change), first in full and then with two worked examples. Gave manual-check commands that push an
+order's window into the past with SQL, since the API refuses already-ended windows. Debugging:
+the login returned nothing because the setup step started only the Order Service and its
+dependencies, not User, Supplier and Credit (fix: `docker compose up -d --build`); the 500 error
+was Docker Desktop's engine not responding (fix: restart Docker Desktop); `endnow` failed because
+it was run outside the repo folder, where `docker compose` finds no `compose.yaml`.
+
+**What it produced:**
+- `OrdersService.expireOrders`, run every 60 s from `main.ts` (each run after the previous one ends,
+  like the settlement job): finds up to 100 expired orders, then for each one locks and rechecks it
+  in its own transaction, cancels it, writes `CANCELLED` history (no actor, `reason: EXPIRED`) and
+  resolves pending proposals; the settlement job then releases the credits;
+- repository queries `expired()` and `lockExpired()`; `supersedePending` can now resolve as `EXPIRED`;
+- three integration tests: each expirable state is cancelled and released while `ARRIVED`, unexpired
+  and finished orders are untouched; pending proposals become `EXPIRED` / `SUPERSEDED`; an order a
+  concurrent transaction moves to `ARRIVED` is skipped.
+
+**Flagged:**
+- No `OrderCancelled` event yet: it needs the `order.events` producer (next Phase D items).
+- The history reason `EXPIRED` reuses the `OrderCancelled` reason name from plan §5.
+- `order-service/AGENTS.md` still lists the expiry boundary and scheduler behaviour as **[Open]**,
+  though plan §0/§6 already say `now >= window_end` every 60 s; left for me to settle.
+
+**Verification:** `compose.test.yaml`: 56 tests passed. Manual check with the real stack
+(2026-10-18, run by me): all four checks passed: an expired `PENDING` order was cancelled with
+`reason: EXPIRED` and its credits returned; an expired `ACCEPTED` order was cancelled and its
+pending timing change became `EXPIRED`; an `ARRIVED` order past its window stayed `ARRIVED`; no
+`ORDER_EXPIRY_FAILED` in the logs.
+
+**What I changed or rejected:** Reviewed the changed files.
 
 ### 2026-10-17 — Order Service: Phase D step 1 (credit settlement over `credit.commands`)
 

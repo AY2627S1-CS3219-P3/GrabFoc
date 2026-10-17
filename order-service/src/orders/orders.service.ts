@@ -15,6 +15,9 @@
  *        ReleaseCredits commands for finished orders instead of HTTP release; insufficient
  *        credits sends nothing (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Added the expiry worker (expireOrders) that cancels orders whose window has ended (Phase D).
+ * Author review: Reviewed
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { Caller } from '../common/jwt-auth.guard';
@@ -187,6 +190,42 @@ export class OrdersService {
     } catch {
       logger.warn(JSON.stringify({ event: 'CREDIT_SETTLEMENT_FAILED', orderId: orderId ?? null }));
     }
+  }
+
+  /**
+   * Background job (main.ts runs it every 60 s): cancels PENDING, ACCEPTED, PICKED_UP and
+   * IN_PROGRESS orders once now >= window_end; ARRIVED never expires. Each order is rechecked under
+   * its row lock, so a step or approval that committed first wins if it left the order unexpirable.
+   * A pending timing change becomes EXPIRED and a pending cancellation SUPERSEDED (plan §2).
+   * settleCredits() then releases the hold. Stops at the first failure, since the database is then
+   * likely down.
+   */
+  async expireOrders(): Promise<void> {
+    let orderId: string | undefined;
+    try {
+      for (orderId of await this.orders.expired()) await this.expire(orderId);
+    } catch {
+      logger.warn(JSON.stringify({ event: 'ORDER_EXPIRY_FAILED', orderId: orderId ?? null }));
+    }
+  }
+
+  // Known limitation: no OrderCancelled event yet; it comes with the order.events producer (Phase D).
+  private expire(orderId: string): Promise<void> {
+    return this.orders.transaction(async (tx) => {
+      const order = await this.orders.lockExpired(tx, orderId);
+      if (!order) return;
+      await this.orders.setStatus(tx, orderId, order.status, 'CANCELLED');
+      await this.orders.supersedePending(tx, orderId, ['TIMING_CHANGE'], 'EXPIRED');
+      await this.orders.supersedePending(tx, orderId, ['CANCELLATION']); // COMPLETION needs ARRIVED
+      await this.orders.addHistory(tx, {
+        orderId,
+        actorId: null, // system action
+        action: 'CANCELLED',
+        previousStatus: order.status,
+        newStatus: 'CANCELLED',
+        changeDetails: { reason: 'EXPIRED' },
+      });
+    });
   }
 
   /** Requester-only, PENDING-only. Pickup hours are rechecked whenever pickup or timing changes. */

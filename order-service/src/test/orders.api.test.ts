@@ -16,6 +16,9 @@
  * Scope: A fake Credit command producer replaces the fake HTTP release; settlement tests for
  *        transfers, releases, insufficient credits and Kafka being down (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Added expiry worker tests (Phase D).
+ * Author review: Reviewed
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -154,6 +157,7 @@ const get = (path: string, userId?: string) => send('GET', path, userId);
 const count = async (table: string) => Number((await pool.query(`SELECT count(*) AS n FROM ${table}`)).rows[0].n);
 const row = async (id: string) => (await pool.query('SELECT * FROM orders WHERE id = $1', [id])).rows[0];
 const settleCredits = () => app.get(OrdersService).settleCredits();
+const expireOrders = () => app.get(OrdersService).expireOrders();
 const sent = () => commands.map((c) => [c.type, c.orderId]);
 
 const ids = (body: { items: { id: string }[] }) => body.items.map((o) => o.id);
@@ -583,4 +587,67 @@ test('two approvals of the same proposal at once complete the order exactly once
   assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
   assert.equal(await count('order_history'), 1);
   assert.equal((await row(id)).version, 2);
+});
+
+// ---- Phase D: expiry worker ----
+
+test('the expiry worker cancels ended orders before ARRIVED, and the settlement job releases them', async () => {
+  const expirable = ['PENDING', 'ACCEPTED', 'PICKED_UP', 'IN_PROGRESS'];
+  const expired = await Promise.all(
+    // Separate couriers: each may hold only one active order.
+    expirable.map((status) => insertOrder({ status, courier_id: status === 'PENDING' ? null : randomUUID(), ...expiredWindow })),
+  );
+  const arrived = await insertOrder({ status: 'ARRIVED', courier_id: bob, ...expiredWindow });
+  const open = await insertOrder({ status: 'ACCEPTED', courier_id: carol });
+  const done = await insertOrder({ status: 'COMPLETED', courier_id: carol, ...expiredWindow });
+
+  await expireOrders();
+  for (const [i, id] of expired.entries()) {
+    assert.deepEqual([(await row(id)).status, (await row(id)).version], ['CANCELLED', 2]);
+    const [entry] = await history(id);
+    assert.deepEqual(
+      [entry.actorId, entry.action, entry.previousStatus, entry.newStatus, entry.changeDetails],
+      [null, 'CANCELLED', expirable[i], 'CANCELLED', { reason: 'EXPIRED' }],
+    );
+  }
+  for (const [id, status] of [[arrived, 'ARRIVED'], [open, 'ACCEPTED'], [done, 'COMPLETED']]) {
+    assert.deepEqual([(await row(id)).status, (await row(id)).version], [status, 1]);
+  }
+
+  await expireOrders(); // nothing left to expire
+  assert.equal(await count('order_history'), 4);
+  await settleCredits();
+  assert.deepEqual(sent().filter(([type]) => type === 'ReleaseCredits').map(([, id]) => id).sort(), [...expired].sort());
+});
+
+test('expiry marks a pending timing change EXPIRED and a pending cancellation SUPERSEDED', async () => {
+  const timed = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  const cancelling = await insertOrder({ status: 'PICKED_UP', courier_id: carol });
+  assert.equal((await post(confirmations(timed), alice, timingChange)).status, 201);
+  assert.equal((await post(confirmations(cancelling), carol, { kind: 'CANCELLATION' })).status, 201);
+  await pool.query('UPDATE orders SET window_start = $1, window_end = $2', [expiredWindow.window_start, expiredWindow.window_end]);
+
+  await expireOrders();
+  const [timing] = (await get(confirmations(timed), alice)).body.items;
+  const [cancellation] = (await get(confirmations(cancelling), alice)).body.items;
+  assert.deepEqual([timing.status, cancellation.status], ['EXPIRED', 'SUPERSEDED']);
+  assert.notEqual(timing.resolvedAt, null);
+  assert.equal((await row(cancelling)).status, 'CANCELLED');
+});
+
+test('expiry waits for a concurrent change and skips the order if it moved on to ARRIVED', async () => {
+  const id = await insertOrder({ status: 'IN_PROGRESS', courier_id: bob, ...expiredWindow });
+  const other = await pool.connect();
+  try {
+    await other.query('BEGIN');
+    await other.query(`UPDATE orders SET status = 'ARRIVED', version = 2 WHERE id = $1`, [id]);
+    const expiring = expireOrders(); // blocks on the row lock
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await other.query('COMMIT');
+    await expiring;
+  } finally {
+    other.release();
+  }
+  assert.equal((await row(id)).status, 'ARRIVED');
+  assert.equal(await count('order_history'), 0);
 });
