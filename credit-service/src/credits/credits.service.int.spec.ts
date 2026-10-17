@@ -7,6 +7,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added the createWallet tests (Kafka plan Task 3).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Added the transaction history tests (credit_transactions, decided by Jian Bing).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
@@ -250,5 +253,85 @@ describe('createWallet', () => {
     await pool.query('UPDATE credit_accounts SET available = 4 WHERE user_id = $1', [userId]);
     expect(await service.createWallet(userId)).toBe(false);
     expect(await balance(userId)).toEqual({ available: 4, reserved: 0 });
+  });
+});
+
+// credit_transactions (Jian Bing's decision): every balance change writes an append-only row in the
+// same transaction (root AGENTS.md §8), so each user's rows always add up to their balance.
+describe('transaction history', () => {
+  type Row = { type: string; order_id: string | null; available_change: number; reserved_change: number };
+
+  async function history(userId: string): Promise<Row[]> {
+    const { rows } = await pool.query<Row>(
+      'SELECT type, order_id, available_change, reserved_change FROM credit_transactions WHERE user_id = $1 ORDER BY id',
+      [userId],
+    );
+    return rows;
+  }
+
+  /** Users whose history doesn't add up to their balance; empty when every ledger is consistent. */
+  async function ledgerMismatches(): Promise<unknown[]> {
+    const { rows } = await pool.query(`
+      SELECT a.user_id, a.available, a.reserved, t.available AS t_available, t.reserved AS t_reserved
+        FROM credit_accounts a
+        LEFT JOIN (SELECT user_id, SUM(available_change)::int AS available, SUM(reserved_change)::int AS reserved
+                     FROM credit_transactions GROUP BY user_id) t ON t.user_id = a.user_id
+       WHERE t.available IS DISTINCT FROM a.available OR t.reserved IS DISTINCT FROM a.reserved`);
+    return rows;
+  }
+
+  it('records the starting grant once when a wallet is created', async () => {
+    const userId = randomUUID();
+    await service.createWallet(userId);
+    await service.createWallet(userId);
+    expect(await history(userId)).toEqual([{ type: 'GRANT', order_id: null, available_change: 10, reserved_change: 0 }]);
+  });
+
+  it('records a reserve, and nothing for a repeat', async () => {
+    const orderId = randomUUID();
+    await service.reserve({ orderId, requesterId: requester, amount: 3 });
+    await service.reserve({ orderId, requesterId: requester, amount: 3 });
+    expect(await history(requester)).toEqual([
+      { type: 'GRANT', order_id: null, available_change: 10, reserved_change: 0 },
+      { type: 'RESERVE', order_id: orderId, available_change: -3, reserved_change: 3 },
+    ]);
+  });
+
+  it('records nothing for a reserve rolled back for insufficient credits', async () => {
+    await service.createWallet(requester);
+    await expect(service.reserve({ orderId: randomUUID(), requesterId: requester, amount: 99 })).rejects.toThrow();
+    expect(await history(requester)).toHaveLength(1);
+  });
+
+  it('records a transfer for both sides, once', async () => {
+    const orderId = randomUUID();
+    await service.reserve({ orderId, requesterId: requester, amount: 3 });
+    await service.transfer({ orderId, courierId: courier });
+    await service.transfer({ orderId, courierId: courier });
+    expect((await history(requester)).at(-1)).toEqual({ type: 'TRANSFER_OUT', order_id: orderId, available_change: 0, reserved_change: -3 });
+    expect(await history(courier)).toEqual([
+      { type: 'GRANT', order_id: null, available_change: 10, reserved_change: 0 },
+      { type: 'TRANSFER_IN', order_id: orderId, available_change: 3, reserved_change: 0 },
+    ]);
+  });
+
+  it('records a release, once', async () => {
+    const orderId = randomUUID();
+    await service.reserve({ orderId, requesterId: requester, amount: 3 });
+    await service.release({ orderId });
+    await service.release({ orderId });
+    expect((await history(requester)).slice(1)).toEqual([
+      { type: 'RESERVE', order_id: orderId, available_change: -3, reserved_change: 3 },
+      { type: 'RELEASE', order_id: orderId, available_change: 3, reserved_change: -3 },
+    ]);
+  });
+
+  it('adds up to every balance, even after concurrent requests', async () => {
+    const orders = Array.from({ length: 5 }, () => randomUUID());
+    await Promise.allSettled(orders.map((orderId) => service.reserve({ orderId, requesterId: requester, amount: 3 })));
+    const same = randomUUID();
+    await Promise.allSettled(Array.from({ length: 10 }, () => service.reserve({ orderId: same, requesterId: courier, amount: 2 })));
+    await Promise.allSettled([service.transfer({ orderId: orders[0], courierId: courier }), service.release({ orderId: orders[0] })]);
+    expect(await ledgerMismatches()).toEqual([]);
   });
 });

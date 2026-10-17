@@ -12,6 +12,9 @@
  *        (PR #85 review, approved by Jian Bing; payload hash from a security review); payload
  *        stored as BYTEA and replay_claimed_at (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Added credit_transactions (design decided by Jian Bing).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 
 /** Every new account starts with this many available credits (Backlog C1.1.1). */
@@ -67,4 +70,24 @@ CREATE TABLE IF NOT EXISTS credit_dead_letters (
 -- keeps its rows, so a position alone can later belong to a different message (security review).
 CREATE UNIQUE INDEX IF NOT EXISTS credit_dead_letters_source_message
     ON credit_dead_letters (source_topic, source_partition, source_offset, md5(payload));
+
+-- Every balance change, append-only, written in the same transaction as the change (root AGENTS.md
+-- §8; decided by Jian Bing: the frontend's transaction history, and new kinds of movement later).
+-- A user's rows add up to their balance.
+CREATE TABLE IF NOT EXISTS credit_transactions (
+    id                BIGSERIAL PRIMARY KEY,
+    user_id           UUID NOT NULL REFERENCES credit_accounts(user_id),
+    order_id          UUID,                    -- null for the starting grant
+    type              TEXT NOT NULL
+                      CHECK (type IN ('GRANT', 'RESERVE', 'TRANSFER_OUT', 'TRANSFER_IN', 'RELEASE')),
+    available_change  INTEGER NOT NULL,
+    reserved_change   INTEGER NOT NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- An order's step is recorded once per user; a repeated request changes nothing and adds no row.
+    UNIQUE (order_id, user_id, type)
+);
+-- order_id is null for a grant, so the key above can't catch a second one: this does.
+CREATE UNIQUE INDEX IF NOT EXISTS credit_transactions_one_grant
+    ON credit_transactions (user_id) WHERE type = 'GRANT';
+CREATE INDEX IF NOT EXISTS credit_transactions_by_user ON credit_transactions (user_id, id);
 `;

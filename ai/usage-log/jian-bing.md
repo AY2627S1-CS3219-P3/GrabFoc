@@ -21,12 +21,52 @@ Author review: Jian Bing supplied the quoted prompts and the wording of the entr
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Restored five prompts under "Prompts (exact)" to the wording Jian Bing typed (commit 1a19851 had corrected their typos and removed one; PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 credit_transactions entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-17/18 — Credit transaction history (`credit_transactions`) and merging the stack
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `credit-service/src/db/schema.ts`, `credit-service/src/credits/credits.service{,.int.spec}.ts`,
+`credit-service/src/test/database.ts`, `credit-service/AGENTS.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** After merging PRs #48, #73, #84 and #85, I picked how Credit meets root AGENTS.md §8
+(an audit/history record in the same transaction as each change), raised by Codex on #48.
+
+**Prompts (exact):**
+> notificaiton service ahsnt been implemented yet, what d o umean? and why is notificaiton writting reocrd, isnt i jsut a cosnumer of all the loggign events from other services? i dont know what is  root AGENTS.md §8,
+
+> so i didnt want to block my members, so i merged all the prs we had, is that bad?
+
+> hiii, is it this one you gonna make the change later on?[Image #1] what is my teammate asking me *(screenshot of the Codex thread on #48 about recording each balance change)*
+
+> what r the trade offs betwene option 1 and 2
+
+> ok option 2
+
+> its okay, and im doing option 2 since the frontend wanrs it plus its good for new kinds of movement later
+
+**Key responses:** Claude explained that §8 is the one-transaction audit rule, that the Notification
+Service is email-only and that Centralized Logging (my N2H) can't satisfy a same-transaction rule;
+checked that the merged stack landed on `main` with CI green, and flagged that the "Author review"
+lines still need filling in and the [Proposed] items need the team, mentor and Zi Yi; compared using
+`credit_holds` as the record with a new append-only table. I chose the table (reason: the frontend
+wants a transaction history, and it fits new kinds of movement later) and confirmed the design.
+
+**What it produced:** `credit_transactions` (GRANT / RESERVE / TRANSFER_OUT / TRANSFER_IN / RELEASE,
+available and reserved changes), written in the same transaction as every balance change; repeats
+add no rows. No read route yet.
+
+**Verification:** Test-first: 6 new integration tests (each movement's rows, nothing for repeats or a
+rolled-back reserve, and every user's rows adding up to their balance after concurrent requests);
+unit 128/128, integration 66/66, Kafka 12/12.
 
 ### 2026-10-14/15 — Credit Service on Kafka: broker choice, design walkthrough and Phase 2
 
