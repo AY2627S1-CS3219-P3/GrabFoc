@@ -5,6 +5,9 @@
 #        2026-09-29 (model: Claude Opus 5.5): included supplier-service/compose.yaml.
 # Tool: Codex (model: GPT-6), date: 2026-09-29
 # Scope: Included the API Gateway and frontend service Compose files.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+# Scope: user-service/ is now the refactored User Service (the old one is archived in
+#        old-user-service/, which nothing includes). The include path is unchanged.
 # Author review: Pending Jie Yang's review of the four-service stack.
 # Author review: Read in full; verified the full stack builds and runs, and that the database survives a down/up cycle.
 # Author review (Jian Bing, the supplier include): see supplier-service/compose.yaml.

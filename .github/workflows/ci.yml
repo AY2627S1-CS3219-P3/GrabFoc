@@ -4,6 +4,8 @@
 #   request and on pushes to main (issue #57).
 # Author review (Jian Bing): Reviewed this workflow, ran the CI checks on PR #74, and went through
 #   the job output to confirm each step makes sense and works as intended.
+# 2026-10-16 (Claude Code, model: Claude Opus 5.5): the user-service entry runs on Node 24, to
+#   match the refactored service's Dockerfile and lock file. Author review: Reviewed by Deanson.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 # Scope: Added the credit-service unit-test/build job and its integration tests against a
 #   PostgreSQL service container.
@@ -32,7 +34,7 @@ jobs:
         include:
           # Node versions follow each service's Dockerfile.
           - service: user-service
-            node: 22
+            node: 24
           - service: supplier-service
             node: 22
           - service: api-gateway
