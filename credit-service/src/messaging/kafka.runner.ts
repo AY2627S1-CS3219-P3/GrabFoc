@@ -12,7 +12,11 @@
  * Scope: Dead-letter the original bytes (PR #84 review) and the source position (PR #85 review);
  *        check the topics at startup (K10 revised).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: NotDueYet carries NOT_DUE_YET, so the Kafka logger can drop it (quieter logs).
+ * Author review: pending — Jian Bing to record what he checked.
  */
+import { NOT_DUE_YET } from './kafka.logger';
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { config } from '../config';
@@ -27,7 +31,11 @@ import { findTopicMismatch, Topics, TOPICS } from './topics';
 const ERROR_PAUSE_MS = 5000;
 
 /** Thrown to leave a retry message unread until it is due; the client then seeks back to it. */
-class NotDueYet extends Error {}
+class NotDueYet extends Error {
+  constructor() {
+    super(NOT_DUE_YET);
+  }
+}
 
 @Injectable()
 export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {

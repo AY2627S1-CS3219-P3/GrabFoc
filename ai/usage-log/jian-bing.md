@@ -21,12 +21,39 @@ Author review: Jian Bing supplied the quoted prompts and the wording of the entr
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Restored five prompts under "Prompts (exact)" to the wording Jian Bing typed (commit 1a19851 had corrected their typos and removed one; PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 quieter Kafka logs entry from Jian Bing's prompt.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-18 — Quieter Kafka logs in tests and the service
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `infra/kafka/{compose.yaml,README.md}`, `.env.example`, `credit-service/src/messaging/kafka.logger{,.spec}.ts`,
+`credit-service/src/messaging/{kafka.connection,kafka.runner}.ts`, `credit-service/src/{config,test/kafka}.ts`,
+`credit-service/{README,AGENTS}.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** `npm run test:kafka` passed but printed many console errors. Claude explained the three
+sources; I asked for the two fixes it proposed.
+
+**Prompts (exact):**
+> lets make the small fixes for the tests that u mentioned
+
+**Key responses:** Most of the noise came from `localhost` resolving to IPv6 `::1` first on macOS,
+where the broker's port isn't published; the rest was the library logging Credit's internal
+"not due yet" error on every retry wait, plus an intentional database-outage test.
+
+**What it produced:** the broker advertises `127.0.0.1:9094` (and that's the host default
+everywhere); a Kafka client logger that writes through Nest's logger and drops only the
+not-due-yet error; `NotDueYet` carries a fixed message for the filter to match.
+
+**Verification:** Logger tests written first (red, then green). Unit 132/132, integration 60/60,
+Kafka 12/12; the Kafka run now prints no console errors.
 
 ### 2026-10-14/15 — Credit Service on Kafka: broker choice, design walkthrough and Phase 2
 

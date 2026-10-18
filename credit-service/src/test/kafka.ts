@@ -14,7 +14,7 @@ import { setting } from './database';
 
 /** The broker the Kafka tests use: CREDIT_TEST_KAFKA_BROKERS, else the Compose broker's host port. */
 export function testKafkaBrokers(): string {
-  return setting('CREDIT_TEST_KAFKA_BROKERS') || 'localhost:9094';
+  return setting('CREDIT_TEST_KAFKA_BROKERS') || '127.0.0.1:9094';
 }
 
 /** Polls `check` every 100 ms until it returns something truthy, or fails after `timeoutMs`. */

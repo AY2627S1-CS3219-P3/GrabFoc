@@ -17,7 +17,7 @@ Started by the root `docker compose up`; only Kafka: `docker compose up -d kafka
 | What | Where |
 |---|---|
 | Broker, from containers | `kafka:9092` |
-| Broker, from the host | `localhost:9094` |
+| Broker, from the host | `127.0.0.1:9094` |
 | Kafka UI | http://localhost:8085 |
 
 **Topics** are never auto-created. `topics.txt` is the one list of every topic, Credit's retry topics

@@ -62,7 +62,7 @@ export const config = {
   // User Service puts iss/aud in its tokens; it doesn't yet, so setting either rejects every token.
   jwtIssuer: process.env.CREDIT_JWT_ISSUER || undefined,
   jwtAudience: process.env.CREDIT_JWT_AUDIENCE || undefined,
-  // Kafka bootstrap servers, comma-separated: kafka:9092 inside Compose, localhost:9094 from the host.
+  // Kafka bootstrap servers, comma-separated: kafka:9092 inside Compose, 127.0.0.1:9094 from the host.
   kafkaBrokers: required('CREDIT_KAFKA_BROKERS')
     .split(',')
     .map((broker) => broker.trim())
