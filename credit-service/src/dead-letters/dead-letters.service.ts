@@ -10,6 +10,10 @@
  *        clamped to at least 1; redelivered unreadable dead letters found by source position and
  *        payload hash; a unique clash is skipped, not retried forever (security review); payload kept
  *        as bytes; a replay interrupted by a crash becomes reclaimable (PR #85 review)
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Generic envelope: message_key (the Kafka key) and message_type replace order_id and
+ *        command_type (decided by Jian Bing).
+ * Author review: pending — Jian Bing to record what he checked.
  *        (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
  */
@@ -25,9 +29,11 @@ export type DeadLetterStatus = 'open' | 'replayed' | 'all';
 
 export interface DeadLetter {
   eventId: string | null;
-  orderId: string | null;
+  /** The message's Kafka key: the orderId for credit commands, the userId for user events. */
+  messageKey: string | null;
   sourceTopic: string;
-  commandType: string | null;
+  /** The message's `type`, e.g. TransferCredits or UserRegistered. */
+  messageType: string | null;
   payload: string;
   error: string;
   errorCode: string | null;
@@ -38,9 +44,9 @@ export interface DeadLetter {
 
 interface DeadLetterRow {
   event_id: string | null;
-  order_id: string | null;
+  message_key: string | null;
   source_topic: string;
-  command_type: string | null;
+  message_type: string | null;
   payload: Buffer;
   error: string;
   error_code: string | null;
@@ -59,7 +65,7 @@ const CLAIM_EXPIRY = '6 minutes';
 const UNIQUE_VIOLATION = '23505';
 
 const COLUMNS =
-  'event_id, order_id, source_topic, command_type, payload, error, error_code, attempts, dead_lettered_at, replayed_at';
+  'event_id, message_key, source_topic, message_type, payload, error, error_code, attempts, dead_lettered_at, replayed_at';
 
 const WHERE: Record<DeadLetterStatus, string> = {
   open: 'WHERE replayed_at IS NULL',
@@ -70,9 +76,9 @@ const WHERE: Record<DeadLetterStatus, string> = {
 function toDeadLetter(row: DeadLetterRow): DeadLetter {
   return {
     eventId: row.event_id,
-    orderId: row.order_id,
+    messageKey: row.message_key,
     sourceTopic: row.source_topic,
-    commandType: row.command_type,
+    messageType: row.message_type,
     // Shown as text for people; replay sends the stored bytes unchanged.
     payload: row.payload.toString('utf8'),
     error: row.error,
@@ -106,7 +112,7 @@ export class DeadLettersService {
     // replay). Without one, the original message's position and payload recognise a redelivery.
     const onConflict = ids.eventId
       ? `ON CONFLICT (source_topic, event_id) DO UPDATE SET
-              order_id = EXCLUDED.order_id, command_type = EXCLUDED.command_type,
+              message_key = EXCLUDED.message_key, message_type = EXCLUDED.message_type,
               payload = EXCLUDED.payload, error = EXCLUDED.error, error_code = EXCLUDED.error_code,
               attempts = EXCLUDED.attempts, source_partition = EXCLUDED.source_partition,
               source_offset = EXCLUDED.source_offset, dead_lettered_at = EXCLUDED.dead_lettered_at,
@@ -136,13 +142,13 @@ export class DeadLettersService {
   ): Promise<void> {
     await this.pool.query(
       `INSERT INTO credit_dead_letters
-              (event_id, order_id, source_topic, source_partition, source_offset, command_type, payload,
+              (event_id, message_key, source_topic, source_partition, source_offset, message_type, payload,
                error, error_code, attempts, dead_lettered_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ${onConflict}`,
       [
         ids.eventId,
-        ids.orderId,
+        message.key,
         message.headers[HEADER.sourceTopic] ?? message.topic,
         Number.isNaN(partition) ? null : partition,
         offset && /^\d+$/.test(offset) ? offset : null,
@@ -189,7 +195,7 @@ export class DeadLettersService {
     const ours = [this.topics.commands, eventId, row.claimed_at];
 
     try {
-      await this.publisher.send({ topic: this.topics.commands, key: row.order_id, value: row.payload, headers: {} });
+      await this.publisher.send({ topic: this.topics.commands, key: row.message_key, value: row.payload, headers: {} });
     } catch (err) {
       await this.pool.query(
         `UPDATE credit_dead_letters SET replay_claimed_at = NULL

@@ -12,6 +12,10 @@
  *        (PR #85 review, approved by Jian Bing; payload hash from a security review); payload
  *        stored as BYTEA and replay_claimed_at (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: credit_dead_letters: message_key / message_type replace order_id / command_type (decided by
+ *        Jian Bing).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 
 /** Every new account starts with this many available credits (Backlog C1.1.1). */
@@ -45,11 +49,11 @@ CREATE TABLE IF NOT EXISTS credit_holds (
 CREATE TABLE IF NOT EXISTS credit_dead_letters (
     id                BIGSERIAL PRIMARY KEY,
     event_id          UUID,                   -- null when the message was too malformed to read
-    order_id          UUID,
+    message_key       TEXT,                   -- the Kafka key: orderId for commands, userId for events
     source_topic      TEXT NOT NULL,          -- where it came from: credit.commands or user.events
     source_partition  INTEGER,                -- where the original message sat in source_topic,
     source_offset     BIGINT,                 -- which never changes, so a redelivery is one row
-    command_type      TEXT,                   -- the message's type field
+    message_type      TEXT,                   -- the message's type field (event or command)
     payload           BYTEA NOT NULL,         -- the exact bytes, which TEXT can't always hold (e.g. NUL)
     error             TEXT NOT NULL,
     error_code        TEXT,

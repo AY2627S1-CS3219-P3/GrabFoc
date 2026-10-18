@@ -21,12 +21,55 @@ Author review: Jian Bing supplied the quoted prompts and the wording of the entr
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Restored five prompts under "Prompts (exact)" to the wording Jian Bing typed (commit 1a19851 had corrected their typos and removed one; PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 dead-letter envelope entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-18 — Manual testing help, the schemas explained, and a generic dead-letter envelope
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `credit-service/src/db/schema.ts`, `credit-service/src/dead-letters/dead-letters.service{,.int.spec}.ts`,
+`credit-service/src/messaging/commands.kafka.spec.ts`, `credit-service/AGENTS.md`,
+`docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** While running the manual test guide I asked about terminal errors, the schemas and the
+dead-letter design, then chose to make the dead-letter table a generic envelope.
+
+**Prompts (exact):**
+> [Image #2] help *(screenshot: zsh `parse error near '<'` and a stuck `function>` prompt after pasting the guide's helpers)*
+
+> [Image #3] *(screenshot: TRUNCATE failing because credit_transactions references credit_accounts)*
+
+> can you show em the new schemas, and explain every field to me
+
+> why is there so muc hconsoel error *(with the pasted output of npm test, test:int and test:kafka)*
+
+> wait so credit_dead_eltters cover for BOTH credit accounts and credit hold,s or its it moreccurate to say it covers for the the transactions started upon UserRegisetred event or TrasnferCredit command
+
+> what is the point in a dead latter table, isnt a dead letter topic sufficient, also doesnt it seem abit antipattern if the schema of this dead letter tbael needs t oacocmodate for  differnet kidn of event/command with idfferent data and fiels? is there a more graceful wa yfo handling this
+
+> actually im confused as to the replay, firstly, cant we use the offset to determien if a message has been repalyed, and honreslty i dont really undersnta dthre replay endpoint, what is its prupose? c
+
+> lets rename to the generic envelope, also just to clarify, so an admin has to call replay manaully? or is there an auto run dead letter feature, also when repalying a dead eltter, the same commadn is sent again to the topic, so kafka will ahev hte same event two times?
+
+**Key responses:** Claude fixed the terminal problems (zsh doesn't treat pasted `#` as comments; a
+sourceable helper file instead; the reset needs credit_transactions too; Node 24 instead of 26, whose
+source build also breaks on the space in the folder path); explained every column of the four tables;
+explained the console noise (IPv6 `localhost` retries, an intentional outage test, retry waits logged
+by the library); explained that dead letters are failed Kafka messages, why a table is kept beside the
+DLT (7-day retention, per-message status, lookup by id), what replay is for and why an offset can't
+say "replayed"; and that replay is manual and a replayed command is a second copy that idempotency absorbs.
+
+**What it produced:** `credit_dead_letters.order_id` → `message_key` (the actual Kafka key) and
+`command_type` → `message_type`, with API fields `messageKey` / `messageType`.
+
+**Verification:** Tests updated first (red), then green: unit 128/128, integration 60/60, Kafka 12/12.
 
 ### 2026-10-14/15 — Credit Service on Kafka: broker choice, design walkthrough and Phase 2
 

@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added the bad x-attempt and replay-without-holding-the-database tests (PR #85 review).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Generic envelope fields messageKey / messageType (decided by Jian Bing).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
@@ -75,9 +78,9 @@ it('records a dead letter with its ids, source, error and attempts', async () =>
   expect(await service.list('open')).toEqual([
     {
       eventId,
-      orderId,
+      messageKey: orderId,
       sourceTopic: 'credit.commands',
-      commandType: 'ReleaseCredits',
+      messageType: 'ReleaseCredits',
       payload: JSON.stringify({ type: 'ReleaseCredits', eventId, orderId }),
       error: 'No hold.',
       errorCode: 'HOLD_NOT_FOUND',
@@ -125,7 +128,7 @@ it('refuses to replay a user-event dead letter: it must be fixed at its source',
   });
   expect(await codeOf(service.replay(eventId))).toBe('NOT_REPLAYABLE');
   expect(publisher.sent).toEqual([]);
-  expect((await service.list('open'))[0]).toMatchObject({ sourceTopic: 'user.events', commandType: 'UserRegistered' });
+  expect((await service.list('open'))[0]).toMatchObject({ sourceTopic: 'user.events', messageKey: 'u1', messageType: 'UserRegistered' });
 });
 
 it('keeps the row open when Kafka refuses the replay, so it can be tried again', async () => {

@@ -21,6 +21,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: A repeated reserve returns the hold's current state (PR #48 review); only the /internal
 routes need the service key (PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Dead letters use a generic envelope: message_key / message_type (decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -88,11 +91,11 @@ credit_holds (
 credit_dead_letters (                           -- copied from Credit's dead-letter topics
     id                BIGSERIAL PRIMARY KEY,
     event_id          UUID,                     -- null when the message was unreadable
-    order_id          UUID,
+    message_key       TEXT,                     -- the Kafka key: orderId for commands, userId for events
     source_topic      TEXT NOT NULL,            -- credit.commands or user.events
     source_partition  INTEGER,                  -- where the original message sat in source_topic
     source_offset     BIGINT,
-    command_type      TEXT,                     -- the message's type field
+    message_type      TEXT,                     -- the message's type (event or command)
     payload           BYTEA NOT NULL,           -- exact bytes (TEXT can't hold e.g. NUL)
     error             TEXT NOT NULL,
     error_code        TEXT,
@@ -185,7 +188,9 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
     `x-error`, `x-error-code`, `x-source-topic`, `x-dead-lettered-at`, logged at `error` as
     `credit_command_dead_lettered` (ids only).
 - **Dead letters:** Credit copies both DLTs into `credit_dead_letters`; admins list and replay them
-  through the admin routes (API above). Only credit commands can be replayed. A replay claims its row
+  through the admin routes (API above). Only credit commands can be replayed. The table is a generic envelope: `message_key` (the Kafka
+  key), `message_type`, where the message came from, why it failed, and the raw `payload`, so a new
+  kind of event or command needs no schema change. A replay claims its row
   (`replay_claimed_at`), sends, then sets `replayed_at`; a claim left by a crash can be retaken after
   6 minutes. The replay route takes no request body (any body is a 400).
 - The database pool has connection (5 s) and query (10 s) timeouts, so an unreachable database
