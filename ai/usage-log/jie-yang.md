@@ -24,6 +24,27 @@ Author review: Pending Jie Yang's review.
 Jie Yang's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-18 — Envoy-specific gateway CI workflow (PR #69)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/workflows/api-gateway.yml`, `.github/workflows/ci.yml`
+
+**Scenario:** The `Test (api-gateway)` CI check failed on PR #69 because `ci.yml`'s Node matrix still ran `npm ci` in `api-gateway/`, whose `package-lock.json` was removed with the Node gateway.
+
+**Prompt (exact):**
+
+~~~text
+can u check why the api gateway CI failed
+~~~
+
+~~~text
+yes write a envoy specific CI
+~~~
+
+**What it produced:** A separate workflow with the same check name that runs `envoy_routes_test.py`, builds `foc-envoy:local` from `api-gateway/compose.yaml` (no root `.env` needed), and runs `envoy.integration.mjs`; removed `api-gateway` from the Node matrix in `ci.yml`.
+**What I changed or rejected:** Pending Jie Yang's review.
+**Verification:** Both workflow files parse as YAML; the build command produced `foc-envoy:local` locally; both test files passed locally (4/4 and 19/19); CI result on PR #69 to be checked.
+
 ### 2026-10-18 — Merge main into feat/envoy-gateway (PR #69 conflicts)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor

@@ -1,0 +1,42 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+# Scope: Generated the Envoy gateway CI workflow (route config tests, image build, integration
+#   tests), replacing the api-gateway entry in ci.yml's Node matrix after the Node gateway was removed.
+# Author review: Pending Jie Yang's review.
+name: API Gateway CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Same check name as the old Node matrix entry, so branch protection still matches it.
+    name: Test (api-gateway)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      # Standard library only; checks the rendered Envoy config and route files.
+      - name: Route config tests
+        run: python3 api-gateway/test/envoy_routes_test.py
+      # The gateway's own Compose file, so CI needs no root .env.
+      - name: Build Envoy image (foc-envoy:local)
+        run: docker compose -f api-gateway/compose.yaml build api-gateway
+      # Starts foc-envoy:local against mock User and Supplier services; Node built-ins only.
+      - name: Integration tests
+        run: node --test --test-concurrency=1 api-gateway/test/envoy.integration.mjs

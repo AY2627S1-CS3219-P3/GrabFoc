@@ -10,6 +10,10 @@
 # Scope: Added the credit-service unit-test/build job and its integration tests against a
 #   PostgreSQL service container.
 # Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+# Scope: Removed api-gateway from the Node matrix; the Envoy gateway has its own workflow
+#   (api-gateway.yml).
+# Author review: Pending Jie Yang's review.
 name: CI
 
 on:
@@ -37,8 +41,6 @@ jobs:
             node: 24
           - service: supplier-service
             node: 22
-          - service: api-gateway
-            node: 20
           - service: credit-service
             node: 22
     defaults:
