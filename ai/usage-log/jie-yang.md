@@ -5,10 +5,221 @@ Scope: Moved Jie Yang's section out of ai/usage-log.md into this file (issue #65
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
 -->
 
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-10-13
+Scope: Append the approved custom Envoy migration record and duplicate Postman health removal; preserve existing log entries.
+Author review: Implementation approved; code review pending.
+-->
+
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: While merging main into feat/envoy-gateway, moved the branch's 2026-10-12/13 entries here from ai/usage-log.md (newest first, headings set to ###); entry text unchanged except one invalid dash byte.
+Author review: Pending Jie Yang's review.
+-->
+
 # AI Usage Log — Jie Yang
 
 Jie Yang's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-18 — Fix gateway integration tests hanging on Linux CI (PR #69)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug
+**Files:** `api-gateway/test/envoy.integration.mjs`, `.github/workflows/api-gateway.yml`
+
+**Scenario:** The new `Test (api-gateway)` job passed the route tests and image build but its integration tests hung on GitHub's Linux runners while passing on Windows (Node 20 and 24).
+
+**Prompt (exact):**
+
+~~~text
+yes write a envoy specific CI
+~~~
+
+**What it produced:** Added CI diagnostics, which showed Envoy running and the runner reachable from containers but the tests stuck before the first one. Added a 1-second timeout to each `/health` readiness attempt in `startEnvoy()`, so a stalled early connection is retried. Added a 5-minute step timeout, a 15-minute job timeout and a failure-only diagnostics step. A first attempt at a per-test timeout was removed because Node 20 applied it to the whole file.
+**What I changed or rejected:** Pending Jie Yang's review.
+**Verification:** Integration tests pass locally (19/19) and on CI run 39136494850 (19/19); all PR #69 checks pass except the pending `review`.
+
+### 2026-10-18 — Envoy-specific gateway CI workflow (PR #69)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/workflows/api-gateway.yml`, `.github/workflows/ci.yml`
+
+**Scenario:** The `Test (api-gateway)` CI check failed on PR #69 because `ci.yml`'s Node matrix still ran `npm ci` in `api-gateway/`, whose `package-lock.json` was removed with the Node gateway.
+
+**Prompt (exact):**
+
+~~~text
+can u check why the api gateway CI failed
+~~~
+
+~~~text
+yes write a envoy specific CI
+~~~
+
+**What it produced:** A separate workflow with the same check name that runs `envoy_routes_test.py`, builds `foc-envoy:local` from `api-gateway/compose.yaml` (no root `.env` needed), and runs `envoy.integration.mjs`; removed `api-gateway` from the Node matrix in `ci.yml`.
+**What I changed or rejected:** Pending Jie Yang's review.
+**Verification:** Both workflow files parse as YAML; the build command produced `foc-envoy:local` locally; both test files passed locally (4/4 and 19/19); CI result on PR #69 to be checked.
+
+### 2026-10-18 — Merge main into feat/envoy-gateway (PR #69 conflicts)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `compose.yaml`, `ai/usage-log.md`, `ai/usage-log/jie-yang.md`
+
+**Scenario:** PR #69 conflicted with main in two files after main split the shared usage log into per-member files and added Kafka and Credit includes to the root Compose file.
+
+**Prompt (exact):**
+
+~~~text
+can you find the PR for the feat/envoy-gateway, explain the merge conflicts and help me resolve them
+~~~
+
+**What it produced:** Took main's `ai/usage-log.md` index and moved this branch's 2026-10-12/13 entries into this file, newest first. In `compose.yaml`, kept main's Kafka and Credit includes and this branch's short-form gateway include (so `api-gateway/.env` still loads), and combined both disclosure headers.
+**What I changed or rejected:** Pending Jie Yang's review.
+**Verification:** `docker compose config --quiet` passed; no conflict markers left; `jie-yang.md` diff against main is additions only.
+
+### 2026-10-13 16:53 SGT - Remove duplicate gateway Postman health request
+
+- Tool: Codex (model: GPT-6), mode: refactor.
+- Exact prompt: "just remove the duplicate health request from the gateway postman collection".
+- Scenario: User authorized removing the User Service health request that actually calls the gateway liveness endpoint.
+- Key response: Removed User Service / Public / Health from the gateway collection, retained the Gateway smoke health check, and updated the collection disclosure.
+- Verification: Collection parses as JSON; exactly one request targets {{baseUrl}}/health; all other collection items are unchanged.
+- Author review: Removal explicitly requested; final diff review pending.
+
+### 2026-10-13 - Remove unused Envoy candidate deployment files
+
+- Tool: Codex (model: GPT-6), mode: refactor / explain.
+- Exact prompt: "theres extra compose files and docker files now".
+- Scenario: Clarify the active root/service Compose layout and clean up migration-era deployment files.
+- Key response: Removed the unused `api-gateway/compose.envoy-candidate.yaml`, renamed the gateway's only Dockerfile from `Dockerfile.envoy` to standard `Dockerfile`, and updated Compose and documentation references. Kept root Compose and each active service's own Compose/Dockerfile.
+- Verification: Standalone and root Compose service listings resolve the gateway; the gateway image builds from the renamed Dockerfile; no active references to the retired filenames remain.
+- Author review: Pending human review.
+
+### 2026-10-13 - Expose existing Envoy infrastructure settings in the gateway environment
+
+- Tool: Codex (model: GPT-6), mode: refactor / explain.
+- Exact prompts: "ok but infrastructure behaviour should be configurable in the .env file too, like load balancing , rate limiting, token caching etc, instead of hard coded into the render.py"; "nvm just put the current infra settings into env, anything that needs extra deployment can wait".
+- Scenario: Make existing gateway settings configurable without introducing a distributed rate-limit service or verified-token cache.
+- Key response: Added environment inputs for upstream load-balancing policy, connection timeout, route and idle timeouts, JWKS fetch/cache durations and Envoy worker count. Kept current values as defaults; validated settings at startup; passed them through both Compose files; updated the example and local ignored .env without changing existing values; documented that distributed rate limiting and verified-token caching are deferred.
+- Verification: Four Python route configuration tests, Compose interpolation, all 19 Docker-backed integration tests, and pinned Envoy validation of LEAST_REQUEST plus duration overrides passed. Envoy validation first caught millisecond formatting; the renderer now normalizes durations to protobuf seconds.
+- Author review: Pending human review.
+
+### 2026-10-13 - Distinguish JWKS availability failures
+
+- Tool: Codex (model: GPT-6), mode: generate / debug / explain.
+- Exact prompt: "change it to 503" after discussion of JWKS fetch/parse failures and empty key sets. Follow-up: "can you explain how the ENVOY is being used? like in terms of the code base how does it work".
+- Key response: Enabled JWT failure metadata and mapped confirmed JWKS parse/missing/bad/empty/fetch status codes to 503 in the existing Lua response filter. Invalid-token, unknown-key and service 401 responses remain unchanged. Updated behavior documentation and added same-token recovery and browser session tests; frontend production code was unchanged. Explained Compose packaging, startup rendering, route discovery and Envoy request filters/proxying.
+- Verification: Gateway Docker image built; all 19 integration tests and both Python loader tests passed. Browser checks cover existing and rotated cookie preservation during 503 and recovery, plus invalid-session 401 behavior. Non-JSON profile errors currently appear as 500 initially and 502 after rotation; this existing presentation behavior was not changed.
+- Author review: User approved the JWKS 503 response exception; code review pending.
+
+### 2026-10-13 - Remove legacy gateway and prepare migration PR
+
+- Tool: Codex (model: GPT-6), mode: refactor / debug / explain.
+- Exact prompts: "The envoy gateway works right? Remove the Old gateway code"; "create a PR".
+- Scenario: User explicitly requested retiring the Node gateway after verification and opening the migration branch for review.
+- Key responses: Verified all 16 previous migration tests, then removed legacy TypeScript source, old Node Dockerfile, rollback Compose, npm manifests, tsconfig, legacy unit tests and generated Node dependencies/build output. Converted integration checks to test Envoy directly using only Node built-ins and added explicit coverage of protected User/Supplier routes and configurable prefixes. Updated gateway docs and agent notes; retained historical behavior differences and original plan history.
+- Verification: Envoy image built successfully. Standalone integration suite passed all 18 tests and Python route loader passed both tests without legacy source or npm dependencies. Local port 3003 smoke checks could not connect because the Compose stack was stopped; no local services were restarted.
+- PR: Prepare feat/envoy-gateway against main with stock image, per-service routes, environment-driven Compose, Postman collection, accepted behavior differences and legacy removal.
+- Author review: Pending human review in the requested PR.
+
+### 2026-10-13 - Configure gateway Compose from environment
+
+- Tool: Codex (model: GPT-6), mode: generate / explain.
+- Exact prompt: "how do i know if load-balancing is enabled ,, also the docker compose shldn supply the container urls directly right? it shld read from env"
+- Key response: Explained ROUND_ROBIN with STRICT_DNS discovery and that one endpoint offers no traffic distribution. Changed gateway/candidate Compose to interpolate service URLs, prefixes and existing JWT/test options; blank JWKS derives from the User origin. Root includes optional gateway .env defaults, subject to root/shell overrides. Updated example to container addresses and explained localhost for host execution. Kept listener/host ports unchanged.
+- Verification: Isolated Compose fixtures verified defaults, per-service .env loading through the root include, standalone/candidate loading, all forwarded settings and shell precedence. No actual credentials printed; live gateway was not recreated. Docker Compose include/interpolation behavior checked against official Docker documentation.
+- Author review: Pending human review.
+
+### 2026-10-13 - Remove unused renderer header list
+
+- Tool: Codex (model: GPT-6), mode: refactor.
+- Exact prompt: "clean it up" (referring to the unused REMOVED list in envoy/render.py).
+- Key response: Removed the unused Python header constant; actual request/response filtering in compatibility.lua is unchanged.
+- Verification: Both existing route-loader tests passed.
+- Author review: Pending human review.
+
+### 2026-10-13 - Extract Envoy service route files
+
+- Tool: Codex (model: GPT-6), mode: refactor / explain.
+- Exact prompts: "yes refactor this"; "what does compatibility lua do?"
+- Scenario: User approved moving existing gateway routes into per-service JSON files with automatic renderer loading, retaining current behavior.
+- Key responses: Extracted User and Supplier routes into envoy/routes/10-user.routes.json and 20-supplier.routes.json. Renderer discovers files in filename order, generates upstream clusters using declared URL variables, validates definitions, keeps JWT protected by default, and preserves configurable prefixes, health, final 404 and Supplier test replicas. Dockerfile packages the route directory. Added loader tests and updated gateway documentation/agent notes. Explained that compatibility.lua strips selected headers on requests/responses, rejects malformed targets, and records paths without queries; JWT verification belongs to Envoy. Lua was unchanged.
+- Verification: Three complete generated configurations exactly match pre-refactor baselines (defaults, custom prefixes/issuer/audience, HTTPS/replicas). Two route-loader tests passed, including new-service discovery and malformed authentication definitions. Lightweight image built successfully; all 16 isolated Envoy integration tests passed. Final validation changes and disclosure updates do not alter generated configuration.
+- Author review: Pending human review.
+
+- Follow-up exact prompt: "why isit 10-user.route
+20-supplier route". Response: Numeric filename prefixes define deterministic load/route precedence; gaps permit insertion between existing services, and are unrelated to ports or IDs.
+
+### 2026-10-13 - Gateway Postman collection
+
+- Tool: Codex (model: GPT-6), mode: generate / explain.
+- Exact prompt: "can you create a similar json for the gateway?"
+- Scenario: Create a Postman collection for existing gateway routes, reusing the User and Supplier collections without changing APIs or authentication design.
+- Key response: Created api-gateway/postman/gateway.postman_collection.json with 92 requests, default baseUrl http://localhost:3003, shared login token variables, empty initial tokens, no development identity headers, and six safe gateway smoke checks. Updated missing-token logout checks for stock Envoy text responses. Added import/login instructions and documented existing workflows that mutate account/location data.
+- Verification: Official Postman v2.1 schema validation passed; 113 embedded scripts parsed successfully; six safe requests against the running gateway returned expected 200/401/404 responses. Full account/location workflows were not run.
+- Author review: Pending human review.
+
+### 2026-10-13 - Switch to official Envoy defaults
+
+- Tool and mode: Codex (GPT-6), generate, refactor and debug.
+- Exact user prompt: "just change it to the ENVOY defaults but note down all the differences in behaviour".
+- Key response: Replaced the custom native image with official Envoy v1.38.6 pinned by digest; removed native patches/build scripts/release workflow and registry overrides. Retained route allowlist, bearer forwarding, expiry requirement and header stripping. Documented JWT timing, key selection/cache, algorithm/claim parsing, errors, request-ID, logging and proxy differences.
+- Verification: Official image built in about 30 seconds; 16 stock integration tests passed. Compose gateway started; GET /health returned 200 and missing-token GET /locations returned 401. Docker recovered from engine errors with a restart; obsolete compilation is stopped. No secrets or database state were changed.
+- Files: gateway runtime Dockerfile/Compose, envoy renderer and behaviour-differences.md, integration tests, gateway documentation, environment templates; removed native release assets.
+- Human review: User explicitly accepted stock behaviours after the policy warning and explanations; generated code/documentation review pending.
+
+### 2026-10-13 - Separate native Envoy releases from app builds
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompts: "wait idw it to take so long everytime its first built..."; "yes do that,".
+- Key response: Moved native compilation/tests to Dockerfile.envoy-release and an explicitly dispatched release workflow; normal Dockerfile.envoy copies config onto a versioned custom base. Prepared optional GHCR publishing only after native and HTTP acceptance tests pass. No package was published and no workflow dispatched.
+- Files: gateway Dockerfiles, Compose build arguments, environment examples, gateway documentation, HTTP test host mapping, .github/workflows/envoy-release.yml.
+- Human review: User approved separating releases and normal builds; generated changes review pending.
+
+### 2026-10-12 - Make Envoy image builds self-contained
+
+- Tool and mode: Codex (GPT-6), debug and generate.
+- Exact user prompt: failed to solve: failed to compute cache key: failed to calculate checksum of ref ndmuapygnsk40eu7nky41bva3::v49y3fv9g7r74rlvkcmhbuvz4: "/.build/bin/envoy": not found
+- Key response: The standalone native build had not produced the executable. Replaced the host-binary COPY with a pinned Docker native build/test stage and locked BuildKit cache, followed by a runtime stage. Compose no longer requires a separately generated executable.
+- Files: api-gateway/Dockerfile.envoy, compose.yaml, AGENTS.md, README.md, envoy/README.md, ai/usage-log.md.
+- Human review: Debug fix within the approved custom-build scope; review pending.
+
+### 2026-10-12 - Select Envoy in the current Compose stack
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompt: "edit the current compose, i want to test the envoy migration and possibly remove the old implementation".
+- Key response: Changed api-gateway/compose.yaml to select Dockerfile.envoy and foc-envoy:local, retaining the Node reference and an explicit rollback override. Native compilation and runtime acceptance remain pending.
+- Files: api-gateway/compose.yaml, compose.node-reference.yaml, AGENTS.md, envoy/README.md, ai/usage-log.md.
+- Human review: User explicitly approved the current Compose switch for testing; removal is deferred until test results and an explicit removal request.
+
+### 2026-10-12 - Custom Envoy migration, stage 3
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompt: "implement this, commit incrementally, and update me on the progress".
+- Key response: Added the configuration renderer, header compatibility filter, candidate image/Compose file and HTTP comparison suite. Main stack remains unchanged until runtime checks pass.
+- Verification: Configuration validated against pinned Envoy v1.38.6; Python syntax and JavaScript syntax checked. Native release build and runtime acceptance pending.
+- Files: api-gateway/envoy/render.py and compatibility.lua, Dockerfile.envoy, compose.envoy-candidate.yaml, .dockerignore, .env.example, test/envoy.integration.mjs, ai/usage-log.md.
+- Human review: Implementation approved; generated code review pending.
+
+### 2026-10-12 - Custom Envoy migration, stage 2
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompt: "implement this, commit incrementally, and update me on the progress".
+- Key response: Added a pinned native JWT compatibility patch, request-ID compatibility, six native regressions, and a Linux/Bazel build script. No helper is used.
+- Verification: Existing Node gateway baseline passes 22 tests. Custom compilation is in progress; runtime acceptance remains pending.
+- Files: .gitignore, api-gateway/envoy build scripts, extension selection, foc-jwt.patch and refresh_patch.py, ai/usage-log.md.
+- Human review: Implementation approved; generated code review pending.
+
+### 2026-10-12 - Custom Envoy migration, stage 1
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompts: "create a new branch and implement the migration to envoy"; "preserve exisitng behaviour"; "can we use a custom envoy extension and build"; "implement this, commit incrementally, and update me on the progress".
+- Key response: Implement the approved custom native Envoy build on feat/envoy-gateway; preserve HTTP/JWT behaviour without an authentication helper; test balancing with isolated replicas.
+- Usage scenario: Replace gateway proxy runtime after compatibility verification, retaining the existing gateway as reference.
+- Files: .gitignore, api-gateway/envoy/README.md, ai/usage-log.md.
+- Human review: User approved implementation and incremental commits; review of generated changes pending.
 
 ### 2026-09-29 23:41 SGT — Fix frontend origin check in Docker
 
