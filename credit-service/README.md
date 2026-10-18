@@ -16,6 +16,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Listed CREDIT_JWKS_URL in the run-outside-Docker steps (PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented the required Kafka key for a hand-sent command, and the renumbered Postman folders (PR #94 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service
@@ -46,6 +49,10 @@ It also consumes `credit.commands`: `{"type":"TransferCredits","eventId","orderI
 and `{"type":"ReleaseCredits","eventId","orderId"}`. A command that can't be applied yet is
 retried through `credit.commands.retry.*`; one that keeps failing, or never can succeed, lands on
 `credit.commands.dlt`.
+
+To send one by hand: Kafka UI → Topics → `credit.commands` → **Produce Message**. Set the **key to
+the command's `orderId`** (a command keyed by anything else is dead-lettered at once) and the value
+to e.g. `{"type":"TransferCredits","eventId":"<new uuid>","orderId":"<the order's uuid>","courierId":"<courier's uuid>"}`.
 
 ### Dead letters (admins)
 
@@ -97,8 +104,8 @@ token against the User Service's public keys, so User Service must be running.
 
 Import `postman/credit.postman_collection.json`, set its `serviceKey` variable to your
 `CREDIT_SERVICE_KEY`, and run each folder top to bottom. Every folder starts with fresh ids, so
-you can re-run it as often as you like. For the **4. Balance** folder, also set `userToken` (an
-access token from `/auth/login`) and `userId` (that user's id). For **5. Dead letters**, also set
+you can re-run it as often as you like. For the **3. Balance** folder, also set `userToken` (an
+access token from `/auth/login`) and `userId` (that user's id). For **4. Dead letters**, also set
 `adminToken` (an ADMIN's access token).
 
 ## Test it

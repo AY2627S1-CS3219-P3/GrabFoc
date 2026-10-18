@@ -24,6 +24,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Removed the HTTP transfer/release routes from the API table (team consensus).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Brought the Design section and the reserve-only API wording in line with Kafka-only transfer and release (PR #94 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -49,7 +52,9 @@ _Origin: Restated from the Backlog (CSFR1–4, NFR1.3, NFR1.4, NFR2.1)_
 
 _Origin: Team (Jian Bing, 2026-10-11)_
 
-- The **Order Service is the only caller** of reserve, transfer and release, over synchronous HTTP.
+- The **Order Service is the only caller** of reserve, transfer and release: reserve over
+  synchronous HTTP, transfer and release as Kafka commands on `credit.commands` (team consensus,
+  2026-10-18; see Messaging).
 - **One hold per order**, unique on the order id. Its state moves `RESERVED → TRANSFERRED` or
   `RESERVED → RELEASED`; both are final.
 - **Idempotency key = order id + action.** The amount is stored data, not part of the key. A repeat
@@ -142,7 +147,7 @@ Transfer and release are **not** HTTP routes: they are the Kafka commands `Trans
 `ReleaseCredits` on `credit.commands` (team consensus, 2026-10-18; see Messaging). The Order Service
 only calls reserve over HTTP.
 
-The three internal routes return the hold: `{orderId, requesterId, courierId, amount, state}`.
+The reserve route returns the hold: `{orderId, requesterId, courierId, amount, state}`.
 
 Errors carry a machine-readable `code` (`INSUFFICIENT_CREDITS`, `WALLET_NOT_FOUND`, `HOLD_MISMATCH`,
 `ALREADY_TRANSFERRED`, `ALREADY_RELEASED`, `COURIER_IS_REQUESTER`, `HOLD_NOT_FOUND`,
@@ -178,7 +183,8 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
   keyed by `orderId` (a command keyed by anything else is dead-lettered, since order holds only per
   key); Credit owns their shape and checks it strictly:
   `{type: "TransferCredits", eventId, orderId, courierId}`, `{type: "ReleaseCredits", eventId, orderId}`.
-  They run the same `transfer` / `release` code as the HTTP routes, so a repeat is a no-op.
+  Both are idempotent (`CreditsService.transfer` / `release`), so a repeat is a no-op. To send one
+  by hand, publish it in Kafka UI with the **key set to its `orderId`**.
   - **Retryable** failures (`WALLET_NOT_FOUND`, or an unexpected error such as the database being
     down) step aside to `credit.commands.retry.<n>`, one topic per entry in `CREDIT_RETRY_DELAYS`
     (default `1s,5s,30s,2m,10m`), with headers `x-attempt` and `x-due-at`. The retry topics are

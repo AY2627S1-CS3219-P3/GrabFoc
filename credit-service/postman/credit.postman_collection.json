@@ -2,7 +2,7 @@
   "info": {
     "name": "FoC Credit Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: Jian Bing, 2026-10-18 — manually tested on this branch: unit, integration and Kafka suites pass (incl. transfer/release no longer offered over HTTP); reserve over HTTP, 409 when credits are short, a TransferCredits command over Kafka pays the courier, and repeating it changes nothing. 2026-10-14 (Claude Code, Claude Opus 5.5): added the Balance folder. 2026-10-15 (Claude Code, Claude Opus 5.5): added the Dead letters folder. 2026-10-18 (Claude Code, Claude Opus 5.5): removed the HTTP transfer/release requests; they are Kafka commands now.\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service with `docker compose up -d credit-service`.\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
+    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: Jian Bing, 2026-10-18 — manually tested on this branch: unit, integration and Kafka suites pass (incl. transfer/release no longer offered over HTTP); reserve over HTTP, 409 when credits are short, a TransferCredits command over Kafka pays the courier, and repeating it changes nothing. 2026-10-14 (Claude Code, Claude Opus 5.5): added the Balance folder. 2026-10-15 (Claude Code, Claude Opus 5.5): added the Dead letters folder. 2026-10-18 (Claude Code, Claude Opus 5.5): removed the HTTP transfer/release requests; they are Kafka commands now. 2026-10-18 (Claude Code, Claude Opus 5.5): folder 1 says how to send them with the orderId as the Kafka key (PR #94 review).\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service with `docker compose up -d credit-service`.\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
   },
   "variable": [
     {
@@ -249,7 +249,7 @@
           }
         }
       ],
-      "description": "Reserve, repeat it (no change), and a conflicting repeat. Transfer and release are Kafka commands on credit.commands (team consensus, 2026-10-18): publish them from Kafka UI (http://localhost:8085) — see credit-service/README.md."
+      "description": "Reserve, repeat it (no change), and a conflicting repeat. Transfer and release are Kafka commands on credit.commands (team consensus, 2026-10-18), not HTTP routes. To send one after the reserve: Kafka UI (http://localhost:8085) → Topics → credit.commands → Produce Message, with the KEY set to this folder's orderId (any other key is dead-lettered at once) and the VALUE {\"type\":\"TransferCredits\",\"eventId\":\"<new uuid>\",\"orderId\":\"<orderId>\",\"courierId\":\"<another user's id>\"} or {\"type\":\"ReleaseCredits\",\"eventId\":\"<new uuid>\",\"orderId\":\"<orderId>\"}. The current orderId is in the collection variables."
     },
     {
       "name": "2. Errors",
@@ -585,7 +585,7 @@
     },
     {
       "name": "4. Dead letters",
-      "description": "Admin-only routes for Credit's dead letters (redesign spec §9.2). Set adminToken to an ADMIN's access token from POST /auth/login, and userToken as in folder 4.",
+      "description": "Admin-only routes for Credit's dead letters (redesign spec §9.2). Set adminToken to an ADMIN's access token from POST /auth/login, and userToken as in folder 3.",
       "item": [
         {
           "name": "List open dead letters (ADMIN) → 200",
