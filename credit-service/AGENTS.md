@@ -24,6 +24,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Dead letters use a generic envelope: message_key / message_type (decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented the replay key (PR #95 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -192,7 +195,8 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
   key), `message_type`, where the message came from, why it failed, and the raw `payload`, so a new
   kind of event or command needs no schema change. A replay claims its row
   (`replay_claimed_at`), sends, then sets `replayed_at`; a claim left by a crash can be retaken after
-  6 minutes. The replay route takes no request body (any body is a 400).
+  6 minutes. The replay route takes no request body (any body is a 400). A replay is keyed by the command's `orderId`, so a command
+  dead-lettered for a wrong key can still be recovered; `messageKey` keeps the key it arrived with.
 - The database pool has connection (5 s) and query (10 s) timeouts, so an unreachable database
   becomes an error the consumer retries instead of a hang.
 
