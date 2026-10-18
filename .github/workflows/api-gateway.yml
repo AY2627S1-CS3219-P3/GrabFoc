@@ -22,6 +22,8 @@ jobs:
     # Same check name as the old Node matrix entry, so branch protection still matches it.
     name: Test (api-gateway)
     runs-on: ubuntu-latest
+    # The integration tests take about a minute; stop a hung run instead of waiting 6 hours.
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -39,4 +41,4 @@ jobs:
         run: docker compose -f api-gateway/compose.yaml build api-gateway
       # Starts foc-envoy:local against mock User and Supplier services; Node built-ins only.
       - name: Integration tests
-        run: node --test --test-concurrency=1 api-gateway/test/envoy.integration.mjs
+        run: node --test --test-concurrency=1 --test-timeout=60000 api-gateway/test/envoy.integration.mjs
