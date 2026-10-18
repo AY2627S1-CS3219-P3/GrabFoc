@@ -8,7 +8,7 @@ Scope: Updated for migration 002 (applied versions; AWAITING_CREDIT has no couri
 Author review: Reviewed in full.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Expect the ninth index, order_history_unpublished_idx (order.events outbox, Phase D).
-Author review: Pending review by Zi Yi.
+Author review: Reviewed
 */
 // AI-generated; human review pending.
 import assert from 'node:assert/strict';

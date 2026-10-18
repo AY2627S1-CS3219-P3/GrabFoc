@@ -20,7 +20,7 @@
  * Author review: Reviewed
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Replaced the "no OrderCancelled event yet" note now that history feeds order.events.
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { Caller } from '../common/jwt-auth.guard';

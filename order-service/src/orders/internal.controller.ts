@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Generated GET /internal/orders/users/:userId/active for the User Service's deactivation
  *        check (plan §4, Phase D); response shape and service-key auth decided by Zi Yi, 2026-10-18.
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import { Controller, Get, Param } from '@nestjs/common';
 import { Internal } from '../common/service-key.guard';

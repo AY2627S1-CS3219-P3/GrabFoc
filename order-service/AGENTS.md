@@ -22,7 +22,7 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Recorded Phase D step 3 status, Zi Yi's order.events and active-order lookup decisions,
 and the order.events contract.
-Author review: Pending review by Zi Yi.
+Author review: Reviewed
 -->
 
 # AGENTS.md — Order Service

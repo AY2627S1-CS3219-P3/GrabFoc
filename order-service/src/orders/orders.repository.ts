@@ -19,7 +19,7 @@
  * Author review: Reviewed
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added the order.events outbox queries and the active-order lookup (Phase D).
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';

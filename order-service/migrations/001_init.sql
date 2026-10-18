@@ -11,7 +11,7 @@
 -- Author review: Reviewed
 -- Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 -- Scope: Added order_history.published_at and its partial index: history is the order.events outbox (Phase D).
--- Author review: Pending review by Zi Yi.
+-- Author review: Reviewed
 -- AI-generated; human review pending.
 
 CREATE TABLE orders (

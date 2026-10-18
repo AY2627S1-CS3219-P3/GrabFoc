@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Generated the order.events publisher (Phase D): plan §5 envelope plus data.status, with
  *        order_history as the outbox, as Zi Yi decided on 2026-10-18.
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { OrdersRepository, Unpublished } from '../orders/orders.repository';

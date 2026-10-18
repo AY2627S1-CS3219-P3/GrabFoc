@@ -32,7 +32,10 @@ Scope: Added the Order Service Phase D expiry worker entry.
 Author review (Zi Yi): Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Added the Order Service Phase D order.events and active-order lookup entry.
-Author review: Pending review by Zi Yi.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Recorded the manual-check results Zi Yi reported, and the prompts that led to them.
+Author review (Zi Yi): Reviewed
 -->
 
 # AI Usage Log — Zi Yi
@@ -42,7 +45,7 @@ Zi Yi's entries for the FoC AI usage log. The template and rules are in
 
 ### 2026-10-18 — Order Service: Phase D `order.events` and internal active-order lookup
 
-**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, explain, debug
 **Files:** new `order-service/src/integrations/{kafka.producer,order.events}.ts`,
 `src/common/service-key.guard.ts`, `src/orders/internal.controller.ts`; changed
 `migrations/001_init.sql`, `src/{config,main,app.module}.ts`, `src/common/{errors,jwt-auth.guard}.ts`,
@@ -58,6 +61,26 @@ AI policy and asked me to choose.
 
 **Prompts:**
 > implement remaining of phase D that can be implemented right now
+
+> why is checking whether use has active users important again?
+
+> what is the purpose of order_history_unpublished_idx
+
+> list files changed and what they do, and the testing steps
+
+> commit first
+
+(a terminal screenshot of the first lookup check, no text)
+
+(a second terminal screenshot of the same check, no text)
+
+> relist the remaining testing steps with jq
+
+> for check 2 i get null
+
+(a terminal screenshot of check 2's output, no text)
+
+> all checks passed, update the verification lines
 
 **My decisions** (chosen from the options the AI laid out):
 - Active-order lookup: `X-Service-Key` (new `ORDER_SERVICE_KEY`), returns `{ userId, hasActiveOrders }`;
@@ -86,9 +109,25 @@ AI policy and asked me to choose.
   both contracts need their owners' confirmation.
 - The suspension/deactivation consumers stay blocked on User and Supplier events.
 
-**Verification:** `compose.test.yaml`: 61 tests passed.
+**Key responses:** explained why the lookup matters (the User Service must not deactivate or
+suspend someone mid-order) and that the partial index keeps the 1 s publisher query cheap as
+history grows. Debugging the manual check: the first lookup calls printed nothing because the repo
+was on another branch with no Order Service running, and `curl -s` hid the connection error; the
+AI's own `active` helper was wrong under zsh (it passed `-H "X-Service-Key: …"` as one word, so
+the request was malformed) and was rewritten; the `null` in check 2 was most likely an access
+token past its 15-minute lifetime, fixed by logging in again. Its check 2 instructions also wrongly
+expected the completion response to say `COMPLETED` (it returns the confirmation's `APPROVED`).
+A leftover `PENDING` order from the first attempt explained the lookup's extra `true`.
 
-**What I changed or rejected:** Pending review.
+**Verification:** `compose.test.yaml`: 61 tests passed. Manual check with the real stack
+(2026-10-19, run by me): all five checks passed: the lookup rejected a missing key, a wrong key and
+a user token, rejected a non-UUID, and answered `true`/`false` correctly for requester and courier;
+a full lifecycle published its five events in order with `eventId`s matching the history; a
+requester cancellation and an expiry each published one `OrderCancelled` with the right reason;
+with Kafka stopped the event waited unpublished and was sent after Kafka restarted, with
+`ORDER_EVENT_PUBLISH_FAILED` logged only during that outage.
+
+**What I changed or rejected:** Reviewed the changed files.
 
 ### 2026-10-18 — Order Service: Phase D expiry worker
 

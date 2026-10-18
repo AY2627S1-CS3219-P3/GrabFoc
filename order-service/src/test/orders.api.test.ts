@@ -22,7 +22,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: A fake KafkaProducer replaces the fake CreditCommands; order.events and internal
  *        active-order lookup tests (Phase D).
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';

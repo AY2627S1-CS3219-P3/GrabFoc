@@ -12,7 +12,7 @@
  * Author review: Reviewed
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added SERVICE_KEY_INVALID for the /internal routes (Phase D).
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';

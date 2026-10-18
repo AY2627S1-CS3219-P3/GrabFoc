@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Generated the X-Service-Key guard for Order's /internal routes (Phase D), following
  *        credit-service/src/common/service-key.guard.ts, as Zi Yi decided on 2026-10-18.
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import { applyDecorators, CanActivate, ExecutionContext, Injectable, SetMetadata, UseGuards } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'node:crypto';

@@ -14,7 +14,7 @@
  * Author review: Reviewed
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Registered the shared Kafka producer, the order.events publisher and the internal controller (Phase D).
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import { INestApplication, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';

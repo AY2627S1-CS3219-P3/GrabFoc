@@ -23,7 +23,10 @@ Scope: Documented the 60 s expiry worker (Phase D) and the manual-check results 
 Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented order.events, the internal active-order lookup and ORDER_SERVICE_KEY (Phase D).
-Author review: Pending review by Zi Yi.
+Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Recorded the order.events and active-order lookup manual-check results Zi Yi reported.
+Author review: Reviewed
 -->
 
 # Order Service
@@ -332,6 +335,17 @@ first and sets `order_history.published_at` once Kafka stores each one; a failur
 and logs `ORDER_EVENT_PUBLISH_FAILED`, and the next run resends. `eventId` is the history
 entry's ID, so a resend carries the same ID. Full contract: [AGENTS.md](AGENTS.md) "History
 and events". Design by Zi Yi (2026-10-18), pending the team and the Notification owner.
+
+Manual check run by Zi Yi on 2026-10-19 against the root Compose stack, reading the topic with
+`kafka-console-consumer.sh`: the lookup returned `SERVICE_KEY_INVALID` with no key, a wrong key or
+only a user token, `VALIDATION_ERROR` for a non-UUID, `true` for the requester and the courier
+while an order was open and `false` once none was. A full lifecycle published `OrderAccepted`,
+`OrderPickedUp`, `OrderInProgress`, `OrderArrived` and `OrderCompleted` in order, keyed by the
+order ID, with `eventId`s matching the history entries and no event for the create. A requester
+cancellation and an expiry each published one `OrderCancelled` (`REQUESTER_CANCELLED`, courier
+`null`; `EXPIRED`). With Kafka stopped, a cancellation still succeeded, `ORDER_EVENT_PUBLISH_FAILED`
+was logged and `published_at` stayed empty; after Kafka restarted the event was published and
+`published_at` set, and no other publish failures were logged. All passed.
 
 **Known limitation (Credit owner to handle):** Credit dead-letters a `ReleaseCredits` for an
 order it has no hold for (`HOLD_NOT_FOUND`), which happens when a reserve timed out before Credit

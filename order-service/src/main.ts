@@ -14,7 +14,7 @@
  * Author review: Reviewed
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Scheduled the 1 s order.events publisher (Phase D).
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';

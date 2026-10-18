@@ -15,7 +15,7 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Recorded Zi Yi's order.events (history as outbox, data.status) and active-order lookup
 decisions (§3, §5, §8, §9).
-Author review: Pending review by Zi Yi.
+Author review: Reviewed
 -->
 
 # GrabFoC Order Service — Implementation Plan

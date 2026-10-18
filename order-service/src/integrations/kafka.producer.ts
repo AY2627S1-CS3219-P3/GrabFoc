@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Moved the Kafka producer out of credit.commands.ts so credit.commands and order.events
  *        share one connection (Phase D).
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';

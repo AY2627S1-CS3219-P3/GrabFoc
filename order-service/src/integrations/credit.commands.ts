@@ -6,7 +6,7 @@
  * Author review: Reviewed
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Sends through the shared KafkaProducer instead of its own connection.
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';

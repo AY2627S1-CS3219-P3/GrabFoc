@@ -6,7 +6,7 @@
  * Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.test.yaml` integration tests (27 passed).
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Skips controllers marked @Internal(), which use the service key instead (Phase D).
- * Author review: Pending review by Zi Yi.
+ * Author review: Reviewed
  */
 import { CanActivate, ExecutionContext, Injectable, createParamDecorator } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
