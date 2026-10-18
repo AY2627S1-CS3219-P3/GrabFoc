@@ -21,6 +21,13 @@ Author review: Jian Bing supplied the quoted prompts and the wording of the entr
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Restored five prompts under "Prompts (exact)" to the wording Jian Bing typed (commit 1a19851 had corrected their typos and removed one; PR #73 review).
 Author review: Jian Bing, 2026-10-18 — read in full; the prompts are mine and the summaries are accurate.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Codex review entry from Jian Bing's prompts; added the usage modes and
+"changed or rejected" lines to the two 2026-10-18 author-review entries (PR #97 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -28,9 +35,41 @@ Author review: Jian Bing, 2026-10-18 — read in full; the prompts are mine and 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-18 — Resolving the Codex review comments on PRs #93–#98
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** #93: `credit-service/AGENTS.md`, `src/db/schema.ts`, `src/credits/credits.service{,.int.spec}.ts`;
+#94: `credit-service/AGENTS.md`, `README.md`, `postman/credit.postman_collection.json`; #95:
+`src/db/schema{,.int.spec}.ts`, `src/dead-letters/dead-letters.service{,.int.spec}.ts`, `AGENTS.md`;
+#96: `src/messaging/kafka.{logger,logger.spec,connection,runner}.ts`; #97: this log and a 2026-10-18
+attribution in each file whose review line Claude wrote; #98: inline markers.
+
+**Scenario:** Codex left 16 review comments on the six Credit PRs from today; I asked Claude to go
+through each and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+
+My answers to Claude's questions: old wallets with no history "No migration, purge data"; the
+missing gateway route for history "Reply: tracked in #60 (Recommended)".
+
+**Key responses:** Claude flagged two comments as decisions for me (backfilling old wallets is a
+schema decision; the gateway route is another owner's service) and fixed the rest: dead-letter
+columns renamed on start in existing databases and replay keyed by `orderId` (#95); Kafka-only wording
+and the required Kafka key for hand-sent commands (#94); inline AI markers (#93, #96, #98); the usage
+modes, "changed or rejected" lines and per-file attributions (#97). Comments asking for Zi Yi's
+approval or my completed reviews were answered, not resolved: those are merge gates for us.
+
+**Changed or rejected:** I chose to purge local data instead of backfilling old wallets, and to leave
+the gateway route to #60.
+
+**Verification:** Test-first for the two #95 bugs (the migration test and the replay-key test, both
+seen failing first); suites green on each branch: #93 integration 66/66; #95 unit 128/128,
+integration 62/62, Kafka 12/12; #96 unit 132/132.
+
 ### 2026-10-18 — Author review lines for the files I read, and a second manual test round
 
-**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug, explain
 **Files:** the `Author review:` lines in `AGENTS.md`, the spec, the two plans' headers, this log,
 `.env.example`, `compose.yaml`, `.dockerignore`, `.github/workflows/ci.yml`, `supplier-service/tsconfig.json`
 
@@ -46,9 +85,12 @@ locally for #95 without restarting Credit (restarted; recreated). `npm run test:
 `credit-service/`; the 401s were expired tokens. Only the plans' own headers were filled in; the
 header copies inside the plan text stay as written.
 
+**Changed or rejected:** Nothing rejected. I named which files I had read, and only those got review
+lines; I didn't edit Claude's wording.
+
 ### 2026-10-18 — Recording my manual testing in the Author review lines
 
-**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug, explain
 **Files:** the `Author review:` lines in `credit-service/**` and `infra/kafka/**`, `ai/usage-log/jian-bing.md`
 
 **Scenario:** After manually testing Credit and Kafka (terminal output and Kafka UI screenshots), I
@@ -61,6 +103,9 @@ asked Claude to write that into the review lines and to explain a 404 on my own 
 my 16 Oct UserRegistered had already been handled; every event I produced since was for `$NEW`.
 Re-sending UserRegistered for `$ME` restores it. The review lines state only what my output showed
 I checked; docs, plans, CI and other services' files stay pending.
+
+**Changed or rejected:** Nothing rejected. The lines state only what my pasted output showed; I
+didn't edit Claude's wording.
 
 **Verification:** Unit suite and type check still pass; the Postman collection is still valid JSON.
 

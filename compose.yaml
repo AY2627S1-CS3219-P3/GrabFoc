@@ -17,6 +17,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 # Scope: Included infra/kafka/compose.yaml.
 # Author review: Jian Bing, 2026-10-18 — read and checked; it is what I want.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+# Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+# Author review: Jian Bing supplied what it states; the wording is Claude's.
 #
 # One command for the whole project (M7). Each service keeps its own compose.yaml in its own
 # folder, with its OWN database container — services must not share a database (root
