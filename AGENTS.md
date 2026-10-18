@@ -9,6 +9,9 @@ Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Rule 4: topics.txt is the single list, retry topics included; startup check (K10 revised by Jian Bing).
 Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 -->
 
 # AGENTS.md — FoC (CS3219 AY26/27 S1, Project Group 3)
