@@ -27,6 +27,9 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 Scope: Recorded the order.events and active-order lookup manual-check results Zi Yi reported.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Updated the test count after the Phase E tests, and added the Postman section.
+Author review: Reviewed
 -->
 
 # Order Service
@@ -377,7 +380,8 @@ Verification on 2026-10-15: all 42 tests passed in `compose.test.yaml` (12 unit,
 16 HTTP); the container refused to start without `ORDER_CREDIT_SERVICE_KEY` and started with it.
 After Phase C, all 53 passed (12 unit, 14 database, 27 HTTP). After Phase D step 1 (2026-10-17),
 all 53 passed again, and the runtime image loaded the Kafka client. After the expiry worker,
-56 passed; after `order.events` and the active-order lookup, 61 passed.
+56 passed; after `order.events` and the active-order lookup, 61 passed. After the Phase E tests
+(2026-10-19), 64 passed.
 
 **Manual check with Credit (not automated):** run the root `docker compose up`, create an order,
 take it through to `COMPLETED`, and within about 10 s the courier's `GET /credits/:userId`
@@ -388,3 +392,17 @@ requester's `available` comes back. Kafka UI (http://localhost:8085) shows the c
 Manual check run by Zi Yi on 2026-10-18 against the root Compose stack: completion (courier paid),
 cancellation (requester's credits returned), insufficient credits (no command sent) and a
 cancellation while Kafka was stopped (settled after it restarted) all passed.
+
+## Test with Postman
+
+Import `postman/order-service.postman_collection.json` and start the whole stack
+(`docker compose up -d --build`; the gateway does not route `/orders` yet, so the requests go
+straight to each service). Set `emailA` / `emailB` / `password` to two verified test accounts
+(A requests, B delivers; B must have no active order) and, for folder 5, `serviceKey` to your
+`ORDER_SERVICE_KEY`. Run **0. Setup** first, then any folder top to bottom: each creates its own
+order and carries `orderId` and `version` from request to request. Access tokens last 15 minutes,
+so run 0 again on a 401. A full run needs A to have at least 5 available credits (a
+cancelled order's credit returns about 10 s later); a `409 INSUFFICIENT_CREDITS` on a create
+means A has run low, so swap the two accounts. Folders: 1 full order (with the courier's balance before and 11 s after
+completion), 2 requester and mutual cancellation, 3 edit, 4 errors, 5 internal lookup. Background
+jobs (expiry, `order.events`) have no endpoint; check those as described above.

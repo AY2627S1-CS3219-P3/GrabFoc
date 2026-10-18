@@ -16,6 +16,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Recorded Zi Yi's order.events (history as outbox, data.status) and active-order lookup
 decisions (§3, §5, §8, §9).
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Ticked the Phase E test items in §8 and updated the §6 edge-case statuses they cover.
+Author review: Reviewed
 -->
 
 # GrabFoC Order Service — Implementation Plan
@@ -253,16 +256,16 @@ Settlement does not use `order.events` (Zi Yi, 2026-10-17): Credit reads only it
 
 | Case | Status | Method of handling |
 |---|---|---|
-| Two couriers attempt same PENDING order | DB support exists; handler needed | Conditional status/version update; only one assignment succeeds |
+| Two couriers attempt same PENDING order | Handled; tested | Conditional status/version update; only one assignment succeeds |
 | Same courier attempts two active orders | DB enforced | Existing `orders_one_active_courier_idx`, translate DB conflict to 409 |
 | Courier accepts own order | DB enforced, plus API guard | Existing distinct-parties check; reject earlier in service |
-| Duplicate PICKED_UP / other transition | Handler needed | State + version guard; second call returns 409; no duplicate history/event |
-| Simultaneous responses to same confirmation | DB supports; handler needed | Lock order/confirmation in one transaction, recheck pending status, finalize once |
+| Duplicate PICKED_UP / other transition | Handled; tested | State + version guard; second call returns 409; no duplicate history/event |
+| Simultaneous responses to same confirmation | Handled; tested | Lock order/confirmation in one transaction, recheck pending status, finalize once |
 | Two different pending proposals on same order | DB enforced | Existing `order_confirmations_one_pending_idx` |
-| Expiry races with acceptance or timing approval | Handler needed | Conditional updates/transactional locks; `now >= stored window_end` wins when eligible |
+| Expiry races with acceptance or timing approval | Handled; tested | Conditional updates/transactional locks; `now >= stored window_end` wins when eligible |
 | Supplier/User deactivation event delivered twice | Handler needed | Cancel only nonterminal orders, do not repeat state/event for already cancelled orders |
 | TransferCredits/ReleaseCredits delivered or sent twice | Credit owner | Credit hold keyed by order and idempotent terminal state handling |
-| Order DB commits but Kafka publish fails | Known limitation | Log/retry where feasible; no outbox in this iteration |
+| Order DB commits but Kafka publish fails | Handled; tested | `order_history` is the outbox: unpublished entries are resent (Zi Yi, 18 October 2026) |
 | Same order creation POST is retried | **Out of scope** | No creation-idempotency implementation now |
 | Credit reserves but its reply is lost, or Order fails before opening the order | Handled | Order cancels and releases; clean-up job retries the release and cancels creates stuck in `AWAITING_CREDIT` |
 | Release reaches Credit before a slow reserve finishes, or for an order with no hold | **Credit owner to handle** | Credit records a release for an unknown order (`RELEASED` marker) instead of dead-lettering `HOLD_NOT_FOUND` |
@@ -336,12 +339,12 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 
 ### Phase E — Verification and D3 demo
 
-- [ ] Tests: creation/location validation/credit insufficiency, access restrictions, available/mine/assigned lists.
-- [ ] Tests: valid/invalid lifecycle transitions, credit offer immutability, stale versions, histories and confirmation rules.
-- [ ] Concurrency tests: two couriers accepting, same courier accepting two orders, duplicate progress, duplicate approval, expiry races.
-- [ ] Kafka tests: suspension/deactivation cancellation, duplicate events, Credit/Notification both consume each relevant event.
-- [ ] Tests: expiry excludes ARRIVED; no event emitted for a failed transition.
-- [ ] Containerize Order Service and demonstrate a full flow with User, Supplier, Credit and Notification services using the **teammate-provisioned Kafka broker**; broker setup belongs to that teammate.
+- [x] Tests: creation/location validation/credit insufficiency, access restrictions, available/mine/assigned lists.
+- [x] Tests: valid/invalid lifecycle transitions, credit offer immutability, stale versions, histories and confirmation rules.
+- [x] Concurrency tests: two couriers accepting, same courier accepting two orders, duplicate progress, duplicate approval, expiry races.
+- [ ] Kafka tests: suspension/deactivation cancellation, duplicate events, Credit/Notification both consume each relevant event. (Blocked: the consumers wait on User/Supplier events. Order's side of Credit's commands and `order.events` is tested with a fake producer.)
+- [x] Tests: expiry excludes ARRIVED; no event emitted for a failed transition.
+- [ ] Containerize Order Service and demonstrate a full flow with User, Supplier, Credit and Notification services using the **teammate-provisioned Kafka broker**; broker setup belongs to that teammate. (Order is containerized and was run with User, Supplier, Credit and Kafka on 18–19 October 2026; Notification does not exist yet.)
 
 ## 9. Remaining coordination (not blockers for Phase A)
 

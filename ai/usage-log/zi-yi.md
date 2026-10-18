@@ -36,12 +36,99 @@ Author review (Zi Yi): Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 Scope: Recorded the manual-check results Zi Yi reported, and the prompts that led to them.
 Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Added the Order Service Phase E tests entry.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Added the Order Service Postman collection entry.
+Author review (Zi Yi): Reviewed
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-19 — Order Service: Postman collection
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** new `order-service/postman/order-service.postman_collection.json`; `order-service/README.md`
+
+**Scenario:** I asked whether a Postman collection would help. The AI said yes: User, Supplier and
+Credit each have one, the frontend has no order pages for the D3 demo, and a collection can carry
+the two tokens, `orderId` and `version` between requests, which is where my manual curl checks went
+wrong. It noted Postman cannot show the background jobs.
+
+**Prompts:**
+> will postman collection be useful
+
+> yes build the postman collection
+
+> whats wrong (with a screenshot of the collection's variables)
+
+> i have some errors (with two screenshots of the Runner results)
+
+(two more screenshots, no text: the variables and a Runner result with a 401 on login)
+
+**What it produced:** a collection of 47 requests in six folders, in the style of Credit's: setup
+(log in as requester and courier, pick two `ACTIVE` locations), a full order through completion with
+the courier's balance before and after settlement, requester and mutual cancellation, edit, error
+cases, and the internal lookup. Every request has test scripts. Emails, password and service key are
+empty variables, so nothing secret is committed. A README section on using it.
+
+**Verification:** ran the whole collection with Newman against the local Compose stack: 47 requests,
+89 assertions, no failures; the courier's balance rose by the 1-credit offer after settlement. The
+first run failed every request because the URLs were written as Postman objects with only `raw`;
+changed to plain strings.
+
+**Debugging my own run:** first, every login failed because my variables named accounts that do not
+exist locally (`INVALID_CREDENTIALS`); the AI pointed me to the existing test accounts and warned that
+the password and service key were set to sync to my Postman cloud workspace. Then a create in folder 3
+returned `409`: the requester had 2 credits left (earlier checks had paid couriers, and Credit's
+database outlived Order's resets), and cancelled orders' credits only return about 10 s later. The
+collection description and README now say a full run needs 5 available credits, and to swap the
+accounts when the requester runs low.
+Last, login itself returned 401: every Compose volume had been recreated at 18:57 UTC, so the
+test accounts were gone. The AI registered them again (codes read from Mailpit), made the login
+script skip saving when login fails instead of throwing a `TypeError`, and reran the collection:
+47 requests, 88 assertions, no failures (the payment check is skipped while the courier has no
+wallet yet).
+
+Then I ran the collection in the Postman Runner myself: all passed.
+
+**What I changed or rejected:** Reviewed the changed files.
+
+### 2026-10-19 — Order Service: Phase E tests
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `order-service/src/test/orders.api.test.ts`, `README.md`, `AGENTS.md`;
+`docs/order-service-plan.md`
+
+**Scenario:** Phase E of the plan (§8) is verification and the D3 demo. The AI compared each
+Phase E test item with the existing 61 tests and added only what was missing.
+
+**Prompts:**
+> implement phase E
+
+**What it produced:**
+- three integration tests: one courier accepting two orders at once (one 200, one `COURIER_BUSY`,
+  one history entry); expiry racing a timing approval both ways (an approval that commits first
+  keeps the order; an expiry that commits first makes the later approval a 409); failed
+  transitions (403, stale version, skipped/repeated step, cancel outside `PENDING`, answering a
+  resolved proposal) add no history and publish no event;
+- plan §8 Phase E ticks and §6 edge-case statuses updated to what the tests now cover; README test
+  count; `AGENTS.md` status.
+
+**Flagged:**
+- Suspension/deactivation consumer tests stay blocked with the consumers.
+- The full D3 demo needs a Notification Service, which does not exist yet; Order has been run with
+  User, Supplier, Credit and Kafka.
+- §6's Kafka-publish row was still "no outbox"; it now records the 2026-10-18 outbox decision.
+
+**Verification:** `compose.test.yaml`: 64 tests passed. Removing the window recheck from
+`lockExpired` made 1 test fail (the change was reverted).
+
+**What I changed or rejected:** Reviewed the changed files.
 
 ### 2026-10-18 — Order Service: Phase D `order.events` and internal active-order lookup
 

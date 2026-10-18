@@ -23,6 +23,10 @@
  * Scope: A fake KafkaProducer replaces the fake CreditCommands; order.events and internal
  *        active-order lookup tests (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: Added Phase E tests: one courier accepting two orders at once, expiry racing a timing
+ *        approval, and no history or event for failed transitions.
+ * Author review: Reviewed
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -416,6 +420,15 @@ test('two couriers accepting at once: exactly one wins', async () => {
   assert.equal(await count('order_history'), 1);
 });
 
+test('one courier accepting two orders at once gets exactly one', async () => {
+  const first = await insertOrder();
+  const second = await insertOrder();
+  const results = await Promise.all([first, second].map((id) => send('POST', `/orders/${id}/accept`, bob, { version: 1 })));
+  assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(results.find((r) => r.status === 409)!.body.error.code, 'COURIER_BUSY');
+  assert.equal(await count('order_history'), 1);
+});
+
 // ---- Phase C: lifecycle, cancellation, confirmations ----
 
 const post = (path: string, userId: string, body: unknown) => send('POST', path, userId, body);
@@ -665,6 +678,32 @@ test('expiry waits for a concurrent change and skips the order if it moved on to
   assert.equal(await count('order_history'), 0);
 });
 
+test('expiry racing a timing approval: whichever commits first wins', async () => {
+  // The approval commits first and moves the window forward, so expiry skips the order.
+  const approved = await insertOrder({ status: 'ACCEPTED', courier_id: bob, ...expiredWindow });
+  const other = await pool.connect();
+  try {
+    await other.query('BEGIN');
+    await other.query(`UPDATE orders SET window_end = now() + interval '1 hour', version = 2 WHERE id = $1`, [approved]);
+    const expiring = expireOrders(); // blocks on the row lock
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await other.query('COMMIT');
+    await expiring;
+  } finally {
+    other.release();
+  }
+  assert.equal((await row(approved)).status, 'ACCEPTED');
+
+  // Expiry commits first, so the later approval is refused and changes nothing.
+  const expired = await insertOrder({ status: 'ACCEPTED', courier_id: carol });
+  const proposed = await post(confirmations(expired), alice, timingChange);
+  await pool.query('UPDATE orders SET window_start = $2, window_end = $3 WHERE id = $1', [expired, expiredWindow.window_start, expiredWindow.window_end]);
+  await expireOrders();
+  expectError(await respond(expired, proposed, carol, 'ACCEPTED'), 409, 'INVALID_STATE');
+  assert.equal((await row(expired)).status, 'CANCELLED');
+  assert.deepEqual((await history(expired)).map((h: any) => h.action), ['CANCELLED']);
+});
+
 // ---- Phase D: order.events ----
 
 const eventTypes = () => events.map((e) => e.value.eventType);
@@ -714,6 +753,23 @@ test('events Kafka did not store are resent later with the same event ID', async
   kafkaDown = false;
   await publishEvents();
   assert.deepEqual([eventTypes(), events[0].value.eventId], [['OrderAccepted'], (await history(id))[0].id]);
+});
+
+test('failed transitions add no history and publish no event', async () => {
+  const id = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  expectError(await post(`/orders/${id}/pick-up`, carol, { version: 1 }), 403, 'FORBIDDEN');
+  expectError(await post(`/orders/${id}/pick-up`, bob, { version: 2 }), 409, 'VERSION_CONFLICT');
+  expectError(await post(`/orders/${id}/arrive`, bob, { version: 1 }), 409, 'INVALID_STATE');
+  expectError(await post(`/orders/${id}/cancel`, alice, { version: 1 }), 409, 'INVALID_STATE'); // not PENDING
+  assert.equal((await post(`/orders/${id}/pick-up`, bob, { version: 1 })).status, 200);
+  expectError(await post(`/orders/${id}/pick-up`, bob, { version: 2 }), 409, 'INVALID_STATE'); // repeated
+  const proposed = await post(confirmations(id), bob, { kind: 'CANCELLATION' });
+  assert.equal((await respond(id, proposed, alice, 'REJECTED')).status, 200);
+  expectError(await respond(id, proposed, alice, 'ACCEPTED'), 409, 'INVALID_STATE'); // already resolved
+
+  await publishEvents();
+  assert.deepEqual(eventTypes(), ['OrderPickedUp']);
+  assert.deepEqual((await history(id)).map((h: any) => h.action), ['PICKED_UP']);
 });
 
 // ---- Phase D: internal active-order lookup ----

@@ -23,6 +23,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Recorded Phase D step 3 status, Zi Yi's order.events and active-order lookup decisions,
 and the order.events contract.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Recorded Phase E test status.
+Author review: Reviewed
 -->
 
 # AGENTS.md — Order Service
@@ -66,6 +69,7 @@ _Origin: Team / Restated from root AGENTS.md; AI doc (implementation status)_
 - Implemented Phase D step 1: the 10 s settlement job (`settleCredits`) sends Credit's `TransferCredits` for `COMPLETED` and `ReleaseCredits` for `CANCELLED` orders to `credit.commands`, marking `credit_settled_at` once Kafka stores the command. HTTP release is gone; reserve stays on HTTP. Not yet: `order.events`, suspension/deactivation, the internal active-order lookup.
 - Implemented Phase D step 2: the 60 s expiry worker (`expireOrders`) cancels `PENDING`/`ACCEPTED`/`PICKED_UP`/`IN_PROGRESS` orders once `now() >= window_end` (plan §0/§2), rechecking each under its row lock; history `reason: EXPIRED`, no actor; pending `TIMING_CHANGE` → `EXPIRED`, pending `CANCELLATION` → `SUPERSEDED` (plan §2 rule 6). No `OrderCancelled` yet (needs `order.events`).
 - Implemented Phase D step 3: `order.events` (contract below), published every second from `order_history` as the outbox, so expiry, requester and mutual cancellations now publish `OrderCancelled`; and `GET /internal/orders/users/:userId/active` behind `ORDER_SERVICE_KEY`. Not yet, blocked on other services: `UserSuspended` / `SupplierDeactivated` consumers (User and Supplier publish nothing yet); the User Service calling the lookup before deactivation.
+- Phase E tests (2026-10-19): added one courier accepting two orders at once, expiry racing a timing approval, and no history or event for failed transitions; the other plan §8 Phase E test items were already covered. Not yet: suspension/deactivation consumer tests (consumers blocked, above) and the full demo with Notification (no Notification Service yet).
 
 ## Creation and reading [Decided]
 
