@@ -5,9 +5,18 @@
 #        2026-09-29 (model: Claude Opus 5.5): included supplier-service/compose.yaml.
 # Tool: Codex (model: GPT-6), date: 2026-09-29
 # Scope: Included the API Gateway and frontend service Compose files; on 2026-10-13 enabled the gateway's optional local .env for interpolation.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+# Scope: user-service/ is now the refactored User Service (the old one is archived in
+#        old-user-service/, which nothing includes). The include path is unchanged.
 # Author review: Pending Jie Yang's review of the four-service stack.
 # Author review: Read in full; verified the full stack builds and runs, and that the database survives a down/up cycle.
 # Author review (Jian Bing, the supplier include): see supplier-service/compose.yaml.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
+# Scope: Included credit-service/compose.yaml.
+# Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+# Scope: Included infra/kafka/compose.yaml.
+# Author review: pending — Jian Bing to record what he checked.
 #
 # One command for the whole project (M7). Each service keeps its own compose.yaml in its own
 # folder, with its OWN database container — services must not share a database (root
@@ -25,6 +34,10 @@ include:
     # here, so the root .env must exist: `cp .env.example .env` first.
     env_file: .env
   - path: supplier-service/compose.yaml
+    env_file: .env
+  - path: infra/kafka/compose.yaml
+    env_file: .env
+  - path: credit-service/compose.yaml
     env_file: .env
   # Load optional api-gateway/.env defaults; root/shell variables can override them.
   - api-gateway/compose.yaml

@@ -1,0 +1,128 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+# Scope: Generated the CI workflow that runs each service's unit tests and build on every pull
+#   request and on pushes to main (issue #57).
+# Author review (Jian Bing): Reviewed this workflow, ran the CI checks on PR #74, and went through
+#   the job output to confirm each step makes sense and works as intended.
+# 2026-10-16 (Claude Code, model: Claude Opus 5.5): the user-service entry runs on Node 24, to
+#   match the refactored service's Dockerfile and lock file. Author review: Reviewed by Deanson.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+# Scope: Added the credit-service unit-test/build job and its integration tests against a
+#   PostgreSQL service container.
+# Author review: pending — Jian Bing to record what he checked.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Node versions follow each service's Dockerfile.
+          - service: user-service
+            node: 24
+          - service: supplier-service
+            node: 22
+          - service: api-gateway
+            node: 20
+          - service: credit-service
+            node: 22
+    defaults:
+      run:
+        working-directory: ${{ matrix.service }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: ${{ matrix.service }}/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+
+  # The Credit Service's important guarantees (no overdraw, idempotent repeats, concurrent
+  # requests) are checked by its integration tests, so they run here against a real PostgreSQL.
+  credit-integration:
+    name: Integration tests (credit-service)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: foc
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U foc"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: credit-service
+    env:
+      # The tests create this database themselves; its name must end in _test.
+      CREDIT_TEST_DATABASE_URL: postgres://foc:ci-only-password@localhost:5432/credit_test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: credit-service/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Integration tests
+        run: npm run test:int
+
+  frontend:
+    name: Lint and build (frontend)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
