@@ -10,6 +10,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added CONFIRMATION_PENDING (Phase C).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Added SERVICE_KEY_INVALID for the /internal routes (Phase D).
+ * Author review: Pending review by Zi Yi.
  */
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -21,6 +24,7 @@ export const ErrorCode = {
   PICKUP_CLOSED: 'PICKUP_CLOSED',
   // 401 / 403 / 404
   TOKEN_INVALID: 'TOKEN_INVALID',
+  SERVICE_KEY_INVALID: 'SERVICE_KEY_INVALID',
   FORBIDDEN: 'FORBIDDEN',
   NOT_FOUND: 'NOT_FOUND',
   // 409

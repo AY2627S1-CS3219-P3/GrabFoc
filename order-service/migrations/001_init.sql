@@ -9,6 +9,9 @@
 -- Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
 -- Scope: Renamed credit_released_at to credit_settled_at, which now also marks transfers (Phase D).
 -- Author review: Reviewed
+-- Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+-- Scope: Added order_history.published_at and its partial index: history is the order.events outbox (Phase D).
+-- Author review: Pending review by Zi Yi.
 -- AI-generated; human review pending.
 
 CREATE TABLE orders (
@@ -52,7 +55,10 @@ CREATE TABLE order_history (
     previous_status TEXT CHECK (previous_status IN ('AWAITING_CREDIT','PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')),
     new_status TEXT CHECK (new_status IN ('AWAITING_CREDIT','PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')),
     change_details JSONB,
-    occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- When Kafka stored this entry's order.events message; only state changes Notification
+    -- sees are published (see order_history_unpublished_idx). History is the outbox.
+    published_at TIMESTAMPTZ
 );
 
 CREATE TABLE order_confirmations (
@@ -94,6 +100,12 @@ CREATE UNIQUE INDEX orders_one_active_courier_idx ON orders(courier_id)
 CREATE INDEX orders_expiry_idx ON orders(window_end)
     WHERE status IN ('PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS');
 CREATE INDEX order_history_order_time_idx ON order_history(order_id, occurred_at);
+-- Entries waiting for order.events. Must match the WHERE clause in OrdersRepository.unpublished().
+-- A cancelled create (from AWAITING_CREDIT) is never published: the requester never saw that order.
+CREATE INDEX order_history_unpublished_idx ON order_history(occurred_at)
+    WHERE published_at IS NULL
+      AND action IN ('ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')
+      AND previous_status <> 'AWAITING_CREDIT';
 CREATE INDEX order_confirmations_order_status_idx ON order_confirmations(order_id, status);
 CREATE UNIQUE INDEX order_confirmations_one_pending_idx ON order_confirmations(order_id)
     WHERE status = 'PENDING';

@@ -12,6 +12,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
  * Scope: Registered the Credit command producer (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Registered the shared Kafka producer, the order.events publisher and the internal controller (Phase D).
+ * Author review: Pending review by Zi Yi.
  */
 import { INestApplication, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
@@ -21,23 +24,28 @@ import { requestLogger } from './common/request-logger';
 import { DatabaseModule } from './db/database.module';
 import { CreditClient } from './integrations/credit.client';
 import { CreditCommands } from './integrations/credit.commands';
+import { KafkaProducer } from './integrations/kafka.producer';
+import { OrderEvents } from './integrations/order.events';
 import { SupplierClient } from './integrations/supplier.client';
 import { ConfirmationsController } from './orders/confirmations.controller';
 import { ConfirmationsService } from './orders/confirmations.service';
+import { InternalController } from './orders/internal.controller';
 import { OrdersController } from './orders/orders.controller';
 import { OrdersRepository } from './orders/orders.repository';
 import { OrdersService } from './orders/orders.service';
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [OrdersController, ConfirmationsController],
+  controllers: [OrdersController, ConfirmationsController, InternalController],
   providers: [
     OrdersService,
     ConfirmationsService,
     OrdersRepository,
     SupplierClient,
     CreditClient,
+    KafkaProducer,
     CreditCommands,
+    OrderEvents,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })

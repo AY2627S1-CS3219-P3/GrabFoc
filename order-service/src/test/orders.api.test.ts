@@ -19,6 +19,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added expiry worker tests (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: A fake KafkaProducer replaces the fake CreditCommands; order.events and internal
+ *        active-order lookup tests (Phase D).
+ * Author review: Pending review by Zi Yi.
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -31,7 +35,9 @@ import { Test } from '@nestjs/testing';
 import { Pool } from 'pg';
 import { AppModule, configureApp } from '../app.module';
 import { PG_POOL } from '../db/database.module';
-import { CreditCommand, CreditCommands } from '../integrations/credit.commands';
+import { CREDIT_COMMANDS_TOPIC, CreditCommand } from '../integrations/credit.commands';
+import { KafkaProducer } from '../integrations/kafka.producer';
+import { ORDER_EVENTS_TOPIC, OrderEvent, OrderEvents } from '../integrations/order.events';
 import { runMigrations } from '../db/migrator';
 import { OrdersService } from '../orders/orders.service';
 import { startJwksStub, type JwksStub } from './jwks-stub';
@@ -77,17 +83,21 @@ const downstream = createServer(async (req, res) => {
   res.writeHead(creditStatus, { 'content-type': 'application/json' }).end('{}');
 });
 
-// Records Credit commands instead of sending them to Kafka; `kafkaDown` makes every send fail.
+// Records messages instead of sending them to Kafka; `kafkaDown` makes every send fail.
 let commands: CreditCommand[] = [];
+let events: { key: string; value: OrderEvent }[] = [];
 let kafkaDown = false;
-class FakeCreditCommands extends CreditCommands {
+class FakeKafkaProducer extends KafkaProducer {
   async onModuleInit() {}
   async onModuleDestroy() {}
-  protected async send(command: CreditCommand) {
+  async send(topic: string, key: string, value: object) {
     if (kafkaDown) throw new Error('broker unreachable');
-    commands.push(command);
+    if (topic === CREDIT_COMMANDS_TOPIC) commands.push(value as CreditCommand);
+    else if (topic === ORDER_EVENTS_TOPIC) events.push({ key, value: value as OrderEvent });
+    else throw new Error(`unexpected topic ${topic}`);
   }
 }
+const SERVICE_KEY = 'test-order-service-key-at-least-32-chars';
 
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
@@ -100,13 +110,14 @@ before(async () => {
   process.env.ORDER_CREDIT_URL = downstreamUrl;
   process.env.ORDER_CREDIT_SERVICE_KEY = 'test-service-key';
   process.env.ORDER_KAFKA_BROKERS = 'unused:9092'; // the producer is faked
+  process.env.ORDER_SERVICE_KEY = SERVICE_KEY;
   for (const id of [alice, bob, carol]) tokens[id] = await jwks.sign({ sub: id });
 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(PG_POOL)
     .useValue(pool)
-    .overrideProvider(CreditCommands)
-    .useClass(FakeCreditCommands)
+    .overrideProvider(KafkaProducer)
+    .useClass(FakeKafkaProducer)
     .compile();
   app = configureApp(moduleRef.createNestApplication({ logger: false }));
   await app.listen(0, '127.0.0.1');
@@ -124,6 +135,7 @@ beforeEach(async () => {
   creditStatus = 201;
   creditCalls = [];
   commands = [];
+  events = [];
   kafkaDown = false;
 });
 
@@ -158,6 +170,7 @@ const count = async (table: string) => Number((await pool.query(`SELECT count(*)
 const row = async (id: string) => (await pool.query('SELECT * FROM orders WHERE id = $1', [id])).rows[0];
 const settleCredits = () => app.get(OrdersService).settleCredits();
 const expireOrders = () => app.get(OrdersService).expireOrders();
+const publishEvents = () => app.get(OrderEvents).publishPending();
 const sent = () => commands.map((c) => [c.type, c.orderId]);
 
 const ids = (body: { items: { id: string }[] }) => body.items.map((o) => o.id);
@@ -650,4 +663,83 @@ test('expiry waits for a concurrent change and skips the order if it moved on to
   }
   assert.equal((await row(id)).status, 'ARRIVED');
   assert.equal(await count('order_history'), 0);
+});
+
+// ---- Phase D: order.events ----
+
+const eventTypes = () => events.map((e) => e.value.eventType);
+
+test('each state change is published once to order.events, in order, keyed by order, with its history ID', async () => {
+  const id = await insertOrder();
+  assert.equal((await post(`/orders/${id}/accept`, bob, { version: 1 })).status, 200);
+  for (const [i, step] of ['pick-up', 'start-delivery', 'arrive'].entries()) {
+    assert.equal((await post(`/orders/${id}/${step}`, bob, { version: i + 2 })).status, 200);
+  }
+  const proposed = await post(confirmations(id), bob, { kind: 'COMPLETION' });
+  assert.equal((await respond(id, proposed, alice, 'ACCEPTED')).status, 200);
+
+  await publishEvents();
+  assert.deepEqual(eventTypes(), ['OrderAccepted', 'OrderPickedUp', 'OrderInProgress', 'OrderArrived', 'OrderCompleted']);
+  assert.ok(events.every((e) => e.key === id));
+  assert.deepEqual(events.map((e) => e.value.eventId), (await history(id)).map((h: { id: string }) => h.id));
+  const completed = events.at(-1)!.value;
+  assert.deepEqual(completed.data, { orderId: id, requesterId: alice, courierId: bob, status: 'COMPLETED' });
+  assert.ok(!Number.isNaN(Date.parse(completed.occurredAt)));
+
+  await publishEvents(); // already published
+  assert.equal(events.length, 5);
+});
+
+test('OrderCancelled carries the reason; a create Credit refused publishes nothing', async () => {
+  const pending = await insertOrder();
+  assert.equal((await post(`/orders/${pending}/cancel`, alice, { version: 1 })).status, 200);
+  const expired = await insertOrder({ status: 'ACCEPTED', courier_id: bob, ...expiredWindow });
+  await expireOrders();
+  creditStatus = 409; // insufficient credits
+  expectError(await post('/orders', alice, newOrder()), 409, 'INSUFFICIENT_CREDITS');
+
+  await publishEvents();
+  assert.deepEqual(events.map((e) => [e.value.eventType, e.value.data.orderId, e.value.data.courierId, e.value.data.reason]), [
+    ['OrderCancelled', pending, null, 'REQUESTER_CANCELLED'],
+    ['OrderCancelled', expired, bob, 'EXPIRED'],
+  ]);
+});
+
+test('events Kafka did not store are resent later with the same event ID', async () => {
+  const id = await insertOrder();
+  assert.equal((await post(`/orders/${id}/accept`, bob, { version: 1 })).status, 200);
+  kafkaDown = true;
+  await publishEvents();
+  assert.equal(events.length, 0);
+  kafkaDown = false;
+  await publishEvents();
+  assert.deepEqual([eventTypes(), events[0].value.eventId], [['OrderAccepted'], (await history(id))[0].id]);
+});
+
+// ---- Phase D: internal active-order lookup ----
+
+const lookup = (userId: string, key?: string) =>
+  fetch(`${baseUrl}/internal/orders/users/${userId}/active`, { headers: key ? { 'x-service-key': key } : {} })
+    .then(async (res) => ({ status: res.status, body: await res.json() }));
+
+test('the active-order lookup needs the service key, not a user token', async () => {
+  expectError(await lookup(alice), 401, 'SERVICE_KEY_INVALID');
+  expectError(await lookup(alice, 'wrong-key'), 401, 'SERVICE_KEY_INVALID');
+  expectError(await get(`/internal/orders/users/${alice}/active`, alice), 401, 'SERVICE_KEY_INVALID');
+  expectError(await lookup('not-a-uuid', SERVICE_KEY), 400, 'VALIDATION_ERROR');
+});
+
+test('the active-order lookup counts unfinished orders as requester or courier', async () => {
+  const active = async (userId: string) => (await lookup(userId, SERVICE_KEY)).body;
+  assert.deepEqual(await active(alice), { userId: alice, hasActiveOrders: false });
+
+  await insertOrder({ status: 'COMPLETED', courier_id: bob });
+  await insertOrder({ status: 'CANCELLED' });
+  assert.equal((await active(alice)).hasActiveOrders, false);
+  assert.equal((await active(bob)).hasActiveOrders, false);
+
+  await insertOrder({ status: 'ARRIVED', courier_id: bob, ...expiredWindow }); // ARRIVED never expires
+  assert.equal((await active(alice)).hasActiveOrders, true);
+  assert.equal((await active(bob)).hasActiveOrders, true);
+  assert.equal((await active(carol)).hasActiveOrders, false);
 });

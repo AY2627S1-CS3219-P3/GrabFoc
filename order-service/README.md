@@ -21,11 +21,14 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented the 60 s expiry worker (Phase D) and the manual-check results Zi Yi reported.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented order.events, the internal active-order lookup and ORDER_SERVICE_KEY (Phase D).
+Author review: Pending review by Zi Yi.
 -->
 
 # Order Service
 
-Database foundation for #50 (under parent #64) plus Phases A–C of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit, accept, lifecycle, cancellation and confirmation endpoints (see [HTTP API](#http-api)). Phase D so far: credit settlement over Kafka (`credit.commands`) and the 60 s expiry worker; `order.events` and suspension/deactivation handling are not implemented yet. The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_settled_at` for credit settlement. Read [AGENTS.md](AGENTS.md) for requirements.
+Database foundation for #50 (under parent #64) plus Phases A–C of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit, accept, lifecycle, cancellation and confirmation endpoints (see [HTTP API](#http-api)). Phase D so far: credit settlement over Kafka (`credit.commands`), the 60 s expiry worker, `order.events` for Notification and the internal active-order lookup; the suspension/deactivation consumers wait for User and Supplier to publish events. The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_settled_at` for credit settlement. Read [AGENTS.md](AGENTS.md) for requirements.
 
 ## Confirmed decisions
 
@@ -154,7 +157,7 @@ its own random schema and does not truncate application tables. For a separately
 provided test PostgreSQL instance, set `ORDER_TEST_DATABASE_URL` and run
 `npm run test:int` inside `order-service/`.
 
-Tests cover schema/defaults, reference and confirmation constraints, all eight indexes,
+Tests cover schema/defaults, reference and confirmation constraints, all nine indexes,
 migration reruns/concurrent runners and failed-migration rollback, transactional history,
 version-conditional edits, concurrent acceptance and concurrent proposal insertion.
 Concurrency tests exercise the approved SQL mechanisms directly. The database alone
@@ -175,7 +178,7 @@ rerun reported up to date.
 
 _Origin: AI doc; endpoints from `docs/order-service-plan.md` §3; response shapes, error codes and paging follow Supplier/User conventions and are **[Proposed]** pending team confirmation_
 
-Every route needs `Authorization: Bearer <access token>` from the User Service, verified locally
+Every route except `/internal/**` (below) needs `Authorization: Bearer <access token>` from the User Service, verified locally
 against `ORDER_JWKS_URL` (RS256). The caller's ID is the token's `sub`, never a body field.
 Errors use the User Service envelope `{ "error": { "code", "message", "details" } }`.
 
@@ -238,8 +241,8 @@ locked and rechecked in its own transaction, so a step or approval that committe
 the order is no longer expirable. In that transaction it writes `CANCELLED` history (no actor,
 `changeDetails.reason = EXPIRED`), marks a pending `TIMING_CHANGE` `EXPIRED` and a pending
 `CANCELLATION` `SUPERSEDED`, and increments `version`. The settlement job then releases the
-hold. A failure stops the run and logs `ORDER_EXPIRY_FAILED` with the order ID. No
-`OrderCancelled` event yet (comes with `order.events`).
+hold. A failure stops the run and logs `ORDER_EXPIRY_FAILED` with the order ID. The
+`CANCELLED` history entry becomes an `OrderCancelled` event (below).
 
 Manual check run by Zi Yi on 2026-10-18 against the root Compose stack, with each order's window
 moved into the past in SQL: an expired `PENDING` order was cancelled (`reason: EXPIRED`) and its
@@ -301,6 +304,7 @@ completions settle within about 10 s.
 | 400 | `VALIDATION_ERROR` | bad body/query/ID, unknown field, invalid or ended window |
 | 400 | `PICKUP_CLOSED` | window misses the pickup location's opening hours |
 | 401 | `TOKEN_INVALID` | missing, invalid or expired token |
+| 401 | `SERVICE_KEY_INVALID` | `/internal/**` without the right `X-Service-Key` |
 | 403 | `FORBIDDEN` | not a participant; not the requester or assigned courier the action needs; accepting your own |
 | 404 | `NOT_FOUND` | unknown order or location |
 | 409 | `VERSION_CONFLICT` | `version` is stale; reload the order |
@@ -311,6 +315,24 @@ completions settle within about 10 s.
 | 409 | `CONFIRMATION_PENDING` | the order already has a pending proposal |
 | 503 | `SERVICE_UNAVAILABLE` | User Service keys, Supplier or Credit unreachable; create stalled over 30 s |
 
+**Internal active-order lookup** (for the User Service's deactivation check):
+`GET /internal/orders/users/:userId/active` with header `X-Service-Key: <ORDER_SERVICE_KEY>`
+(no user token; the gateway never routes `/internal/**`) returns
+`{ "userId": "…", "hasActiveOrders": true }`: true while the user is requester or courier on
+any order not `COMPLETED` or `CANCELLED`. 401 `SERVICE_KEY_INVALID` for a missing or wrong key.
+Design by Zi Yi (2026-10-18); the User Service does not call it yet.
+
+**`order.events`** (Notification): each state change's history entry is published, keyed by
+`orderId`, as `{ eventId, eventType, occurredAt, data: { orderId, requesterId, courierId, status,
+reason? } }`. Types: `OrderAccepted`, `OrderPickedUp`, `OrderInProgress`, `OrderArrived`,
+`OrderCompleted`, `OrderCancelled` (with `reason` `REQUESTER_CANCELLED`, `MUTUAL_CANCELLATION` or
+`EXPIRED`). Nothing for create, edits or a create cancelled for credit. The publisher
+(`OrderEvents.publishPending`, every second from `main.ts`) sends unpublished entries oldest
+first and sets `order_history.published_at` once Kafka stores each one; a failure stops the run
+and logs `ORDER_EVENT_PUBLISH_FAILED`, and the next run resends. `eventId` is the history
+entry's ID, so a resend carries the same ID. Full contract: [AGENTS.md](AGENTS.md) "History
+and events". Design by Zi Yi (2026-10-18), pending the team and the Notification owner.
+
 **Known limitation (Credit owner to handle):** Credit dead-letters a `ReleaseCredits` for an
 order it has no hold for (`HOLD_NOT_FOUND`), which happens when a reserve timed out before Credit
 saved anything. And if that release arrives while a slow reserve is still running inside Credit,
@@ -318,8 +340,9 @@ the reserve can land afterwards and stay held. Both close if Credit records a re
 unknown order (a `RELEASED` marker). Recorded in `credit-service/AGENTS.md` open items.
 
 Run locally (after `npm ci` in `order-service/`) with the five `ORDER_DB_*` settings,
-`ORDER_JWKS_URL`, `ORDER_SUPPLIER_URL`, `ORDER_CREDIT_URL`, `ORDER_CREDIT_SERVICE_KEY` and
-`ORDER_KAFKA_BROKERS` (e.g. `localhost:9094`, the shared broker in `infra/kafka/`) set:
+`ORDER_JWKS_URL`, `ORDER_SUPPLIER_URL`, `ORDER_CREDIT_URL`, `ORDER_CREDIT_SERVICE_KEY`,
+`ORDER_KAFKA_BROKERS` (e.g. `localhost:9094`, the shared broker in `infra/kafka/`) and
+`ORDER_SERVICE_KEY` (≥ 32 characters) set:
 
 ```powershell
 npm run build
@@ -327,7 +350,8 @@ npm start
 ```
 
 In Compose, `ORDER_CREDIT_SERVICE_KEY` comes from `CREDIT_SERVICE_KEY` in the root `.env`;
-the service refuses to start without it. Compose sets `ORDER_KAFKA_BROKERS=kafka:9092` and starts
+the service refuses to start without it, or without `ORDER_SERVICE_KEY` (also from the root
+`.env`; e.g. `openssl rand -hex 32`). Compose sets `ORDER_KAFKA_BROKERS=kafka:9092` and starts
 the service after `kafka-init` has created the topics.
 
 `npm test` runs the unit tests (no database needed). The Compose test command above runs
@@ -338,7 +362,8 @@ is needed; check real delivery by hand, below).
 Verification on 2026-10-15: all 42 tests passed in `compose.test.yaml` (12 unit, 14 database,
 16 HTTP); the container refused to start without `ORDER_CREDIT_SERVICE_KEY` and started with it.
 After Phase C, all 53 passed (12 unit, 14 database, 27 HTTP). After Phase D step 1 (2026-10-17),
-all 53 passed again, and the runtime image loaded the Kafka client.
+all 53 passed again, and the runtime image loaded the Kafka client. After the expiry worker,
+56 passed; after `order.events` and the active-order lookup, 61 passed.
 
 **Manual check with Credit (not automated):** run the root `docker compose up`, create an order,
 take it through to `COMPLETED`, and within about 10 s the courier's `GET /credits/:userId`

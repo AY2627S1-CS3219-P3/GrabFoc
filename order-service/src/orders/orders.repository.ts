@@ -17,6 +17,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added the expiry worker's queries and let pending proposals resolve as EXPIRED (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Added the order.events outbox queries and the active-order lookup (Phase D).
+ * Author review: Pending review by Zi Yi.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -44,6 +47,18 @@ const EXPIRABLE = `'PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS'`;
 
 type Row = Record<string, any>;
 type Db = Pool | PoolClient;
+
+/** A history entry waiting for order.events, with the order's participants. */
+export interface Unpublished {
+  id: string;
+  orderId: string;
+  requesterId: string;
+  courierId: string | null;
+  action: 'ACCEPTED' | 'PICKED_UP' | 'IN_PROGRESS' | 'ARRIVED' | 'COMPLETED' | 'CANCELLED';
+  newStatus: OrderStatus;
+  changeDetails: { reason?: string } | null;
+  occurredAt: Date;
+}
 
 export interface Unsettled {
   id: string;
@@ -312,6 +327,45 @@ export class OrdersRepository {
 
   async markCreditSettled(id: string, db: Db = this.pool): Promise<void> {
     await db.query('UPDATE orders SET credit_settled_at = now() WHERE id = $1', [id]);
+  }
+
+  /**
+   * History entries not yet on order.events, oldest first so each order's events go out in order.
+   * The WHERE clause matches order_history_unpublished_idx.
+   */
+  async unpublished(): Promise<Unpublished[]> {
+    const { rows } = await this.pool.query(
+      `SELECT h.id, h.order_id, o.requester_id, o.courier_id, h.action, h.new_status, h.change_details, h.occurred_at
+       FROM order_history h JOIN orders o ON o.id = h.order_id
+       WHERE h.published_at IS NULL
+         AND h.action IN ('ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')
+         AND h.previous_status <> 'AWAITING_CREDIT'
+       ORDER BY h.occurred_at, h.id LIMIT 100`,
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      orderId: row.order_id,
+      requesterId: row.requester_id,
+      courierId: row.courier_id,
+      action: row.action,
+      newStatus: row.new_status,
+      changeDetails: row.change_details,
+      occurredAt: row.occurred_at,
+    }));
+  }
+
+  async markPublished(historyId: string): Promise<void> {
+    await this.pool.query('UPDATE order_history SET published_at = now() WHERE id = $1', [historyId]);
+  }
+
+  /** True if the user is requester or courier on any order that has not finished. */
+  async hasActiveOrders(userId: string): Promise<boolean> {
+    const { rows } = await this.pool.query(
+      `SELECT EXISTS (SELECT 1 FROM orders WHERE (requester_id = $1 OR courier_id = $1)
+         AND status NOT IN ('COMPLETED','CANCELLED')) AS active`,
+      [userId],
+    );
+    return rows[0].active;
   }
 
   /** Oldest first, like history. */

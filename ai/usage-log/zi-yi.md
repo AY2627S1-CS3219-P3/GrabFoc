@@ -30,12 +30,65 @@ Author review (Zi Yi): Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Added the Order Service Phase D expiry worker entry.
 Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Added the Order Service Phase D order.events and active-order lookup entry.
+Author review: Pending review by Zi Yi.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-18 — Order Service: Phase D `order.events` and internal active-order lookup
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** new `order-service/src/integrations/{kafka.producer,order.events}.ts`,
+`src/common/service-key.guard.ts`, `src/orders/internal.controller.ts`; changed
+`migrations/001_init.sql`, `src/{config,main,app.module}.ts`, `src/common/{errors,jwt-auth.guard}.ts`,
+`src/integrations/credit.commands.ts`, `src/orders/orders.{service,repository}.ts`,
+`src/test/{orders.api,database}.test.ts`, `compose.yaml`, `README.md`, `AGENTS.md`; root
+`.env.example`; `infra/kafka/topics.txt`; `docs/order-service-plan.md`
+
+**Scenario:** build what is left of Phase D that does not wait on other services. The AI checked
+`origin/main`: the User Service publishes nothing on `user.events` and there is no
+`supplier.events`, so the suspension/deactivation consumers stay blocked. It flagged the lookup
+endpoint, the event payload and the outbox schema change as interface/schema decisions under the
+AI policy and asked me to choose.
+
+**Prompts:**
+> implement remaining of phase D that can be implemented right now
+
+**My decisions** (chosen from the options the AI laid out):
+- Active-order lookup: `X-Service-Key` (new `ORDER_SERVICE_KEY`), returns `{ userId, hasActiveOrders }`;
+  active = any status but `COMPLETED`/`CANCELLED`, as requester or courier.
+- `order.events` delivery: `order_history` as the outbox (`published_at` column in `001_init.sql`),
+  `eventId` = history entry ID. This changes plan §9's "no transactional outbox for events".
+- Payload: plan §5 envelope plus `data.status`; six event types; nothing for create, edits or a
+  create cancelled for credit; topic `order.events` (3 partitions) added to `topics.txt`.
+
+**What it produced:**
+- `KafkaProducer`, one connection shared by `CreditCommands` and the new `OrderEvents` publisher;
+- `OrderEvents.publishPending`, every second from `main.ts` (for NFR3.4's 10 s): oldest first,
+  keyed by `orderId`, marks `published_at` once Kafka stores the event, stops at the first failure;
+- a partial index `order_history_unpublished_idx` for the publisher's query (checked with `EXPLAIN`);
+- `ServiceKeyGuard` / `@Internal()` (constant-time key check; the JWT guard skips these routes),
+  `SERVICE_KEY_INVALID`, and `GET /internal/orders/users/:userId/active`;
+- five integration tests (lifecycle events in order with history IDs and no repeats; cancellation
+  reasons and no event for a refused create; resend after Kafka was down; lookup auth; lookup
+  results) and the index-count test updated to nine; doc updates.
+
+**Flagged:**
+- The partial index is an extra schema detail beyond the column I approved.
+- Every teammate's root `.env` needs `ORDER_SERVICE_KEY` (≥ 32 characters) or Order won't start, and
+  existing `order-db` volumes must be recreated (`001_init.sql` changed again).
+- The User Service doesn't call the lookup yet, and no Notification Service reads `order.events`;
+  both contracts need their owners' confirmation.
+- The suspension/deactivation consumers stay blocked on User and Supplier events.
+
+**Verification:** `compose.test.yaml`: 61 tests passed.
+
+**What I changed or rejected:** Pending review.
 
 ### 2026-10-18 — Order Service: Phase D expiry worker
 

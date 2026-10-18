@@ -18,6 +18,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added the expiry worker (expireOrders) that cancels orders whose window has ended (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Replaced the "no OrderCancelled event yet" note now that history feeds order.events.
+ * Author review: Pending review by Zi Yi.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { Caller } from '../common/jwt-auth.guard';
@@ -209,7 +212,7 @@ export class OrdersService {
     }
   }
 
-  // Known limitation: no OrderCancelled event yet; it comes with the order.events producer (Phase D).
+  /** Its CANCELLED history entry is the OrderCancelled event (OrderEvents publishes it). */
   private expire(orderId: string): Promise<void> {
     return this.orders.transaction(async (tx) => {
       const order = await this.orders.lockExpired(tx, orderId);

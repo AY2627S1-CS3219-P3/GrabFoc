@@ -4,13 +4,18 @@
  * Scope: Generated JWKS-based RS256 token verification, the global guard and @CurrentUser,
  *        following user-service/src/auth (token claims `sub` and `role`).
  * Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.test.yaml` integration tests (27 passed).
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Skips controllers marked @Internal(), which use the service key instead (Phase D).
+ * Author review: Pending review by Zi Yi.
  */
 import { CanActivate, ExecutionContext, Injectable, createParamDecorator } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { createRemoteJWKSet, errors, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { z } from 'zod';
 import { AppError, ErrorCode } from './errors';
 import { appConfig } from '../config';
+import { INTERNAL } from './service-key.guard';
 
 export type Role = 'USER' | 'ADMIN';
 /** The caller, taken only from a verified token, never from the request body. */
@@ -58,13 +63,16 @@ export const CurrentUser = createParamDecorator((_data: unknown, context: Execut
   return caller;
 });
 
-/** Registered globally: every route needs a valid token. */
+/** Registered globally: every route needs a valid token, except @Internal() ones (service key). */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   // jose caches the keys and refetches on an unknown `kid`, so User Service key rotation just works.
   private readonly jwks = createRemoteJWKSet(appConfig().jwksUrl);
 
+  constructor(private readonly reflector: Reflector) {}
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (this.reflector.get<boolean>(INTERNAL, context.getClass())) return true;
     const req = context.switchToHttp().getRequest<AuthedRequest>();
     req.caller = await verifyBearer(req.header('authorization'), this.jwks);
     return true;

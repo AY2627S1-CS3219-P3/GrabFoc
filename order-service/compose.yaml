@@ -11,6 +11,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
 # Scope: Phase D: Kafka broker for the credit.commands producer; waits for kafka-init.
 # Author review: Reviewed
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+# Scope: Phase D: ORDER_SERVICE_KEY for the /internal routes; order.events also needs kafka-init.
+# Author review: Pending review by Zi Yi.
 # AI-generated; human review pending.
 name: foc
 services:
@@ -45,7 +48,7 @@ services:
     depends_on:
       order-migrate:
         condition: service_completed_successfully
-      # credit.commands must exist before Order sends to it; no service creates topics. kafka-init
+      # credit.commands and order.events must exist before Order sends to them; no service creates topics. kafka-init
       # lives in infra/kafka/compose.yaml, so without the root compose file pass both:
       #   docker compose -f infra/kafka/compose.yaml -f order-service/compose.yaml up order-service
       kafka-init:
@@ -63,6 +66,8 @@ services:
       # Must equal the Credit Service's CREDIT_SERVICE_KEY; set it in the root .env.
       ORDER_CREDIT_SERVICE_KEY: ${CREDIT_SERVICE_KEY:-}
       ORDER_KAFKA_BROKERS: kafka:9092
+      # Other services send this to Order's /internal routes; set it in the root .env.
+      ORDER_SERVICE_KEY: ${ORDER_SERVICE_KEY:-}
     ports:
       - "3005:3005"
 volumes:

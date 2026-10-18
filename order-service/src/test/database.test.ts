@@ -6,6 +6,9 @@ Author review: Test scope approved; implementation review pending.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Updated for migration 002 (applied versions; AWAITING_CREDIT has no courier).
 Author review: Reviewed in full.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Expect the ninth index, order_history_unpublished_idx (order.events outbox, Phase D).
+Author review: Pending review by Zi Yi.
 */
 // AI-generated; human review pending.
 import assert from 'node:assert/strict';
@@ -71,13 +74,13 @@ const sqlState = (code: string) => (error: unknown) => {
   return true;
 };
 
-test('migrations serialize, run once and create exactly the eight approved indexes', async () => {
+test('migrations serialize, run once and create exactly the nine approved indexes', async () => {
   assert.deepEqual(await runMigrations(pool), []);
   const versions = await pool.query('SELECT version FROM schema_migrations');
   assert.deepEqual(versions.rows, [{ version: '001_init.sql' }]);
   const indexes = await pool.query(`SELECT indexname FROM pg_indexes
     WHERE schemaname = $1 AND indexname NOT LIKE '%_pkey'`, [schema]);
-  assert.equal(indexes.rowCount, 8);
+  assert.equal(indexes.rowCount, 9);
 });
 
 test('creation generates UUID/timestamps, a 24-hour window and exact snapshot precision', async () => {

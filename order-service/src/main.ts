@@ -12,12 +12,16 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Scheduled the 60 s expiry worker (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Scheduled the 1 s order.events publisher (Phase D).
+ * Author review: Pending review by Zi Yi.
  */
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule, configureApp } from './app.module';
 import { appConfig } from './config';
+import { OrderEvents } from './integrations/order.events';
 import { OrdersService } from './orders/orders.service';
 
 async function bootstrap() {
@@ -32,6 +36,9 @@ async function bootstrap() {
   };
   every(10_000, () => orders.settleCredits());
   every(60_000, () => orders.expireOrders());
+  // Every second, so Notification can email within NFR3.4's 10 s.
+  const events = app.get(OrderEvents);
+  every(1_000, () => events.publishPending());
   new Logger('Order').log(`Order Service listening on port ${port}`);
 }
 

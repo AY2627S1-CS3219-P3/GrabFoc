@@ -12,6 +12,10 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Ticked the expiry worker in §8 Phase D.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Recorded Zi Yi's order.events (history as outbox, data.status) and active-order lookup
+decisions (§3, §5, §8, §9).
+Author review: Pending review by Zi Yi.
 -->
 
 # GrabFoC Order Service — Implementation Plan
@@ -128,7 +132,7 @@ All protected routes validate JWT. IDs for requester/courier are derived from `s
 | `POST /orders/:orderId/cancel` | Requester only; immediate cancellation while PENDING; `version` required |
 | `POST /orders/:orderId/confirmations` | Participant initiates valid TIMING_CHANGE / CANCELLATION / COMPLETION proposal |
 | `POST /orders/:orderId/confirmations/:confirmationId/respond` | Other participant accepts/rejects; lock/recheck and resolve transactionally |
-| `GET /internal/orders/users/:userId/active` | Internal User Service caller; `{ "hasActiveOrders": true/false }` for voluntary deactivation guard |
+| `GET /internal/orders/users/:userId/active` | Internal User Service caller with `X-Service-Key` (`ORDER_SERVICE_KEY`); `{ "userId", "hasActiveOrders": true/false }` for voluntary deactivation guard (Zi Yi, 18 October 2026) |
 
 **Illustrative request body:**
 
@@ -230,6 +234,8 @@ Settlement does not use `order.events` (Zi Yi, 2026-10-17): Credit reads only it
 - For `UserSuspended`: `{ "eventId": "uuid", "eventType": "UserSuspended", "occurredAt": "ISO-8601", "data": { "userId": "uuid" } }`.
 - For `SupplierDeactivated`: same envelope, `data: { "locationId": 12 }` (use Supplier's actual location ID, **not** a separate supplier-account ID).
 
+**`order.events` (Zi Yi, 18 October 2026):** `data` also carries `status`, the new state (root §10). `order_history` is the outbox: the history entry is saved in the same transaction as the state change, and a job publishes unpublished entries every second and sets `published_at` once Kafka stores each, so a Kafka outage delays events instead of losing them; `eventId` is the history entry's ID, so a resend keeps it. This replaces "no transactional outbox now" below for `order.events`. Contract: `order-service/AGENTS.md` "History and events".
+
 **Reliability for initial scope:** Use consumer groups, log failures, process messages with state guards and commit Kafka offsets only after successful handling. Basic retry/error reporting should be agreed with owners. No transactional outbox now: an Order DB commit followed by publication failure can leave an unpublished event; document and demonstrate this limitation rather than claiming exactly-once or cross-service atomicity.
 
 ## 6. Concurrency, integrity and audit rules
@@ -321,11 +327,11 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 
 - [x] Obtain broker bootstrap address, topic names, and access/configuration details from the teammate responsible for Kafka setup (`infra/kafka/`); do not set up the broker as part of Order Service work.
 - [x] Credit settlement: `TransferCredits` / `ReleaseCredits` on `credit.commands` from the settlement job (outbox on `credit_settled_at`).
-- [ ] Kafka producer for `order.events` (Notification); add the topic to `infra/kafka/topics.txt`.
+- [x] Kafka producer for `order.events` (Notification); add the topic to `infra/kafka/topics.txt`.
 - [ ] `UserSuspended` and `SupplierDeactivated` consumers; cancel affected nonterminal orders and supersede pending confirmations.
 - [x] 60-second expiry worker (`expireOrders`).
-- [ ] Publish `OrderCancelled` for successful expirations (with the `order.events` producer).
-- [ ] Internal active-order lookup for User Service deactivation guard.
+- [x] Publish `OrderCancelled` for successful expirations (with the `order.events` producer).
+- [x] Internal active-order lookup for User Service deactivation guard (the User Service does not call it yet).
 - [ ] Demonstrate Credit transfer/release from the commands and Notification consumption with other teams.
 
 ### Phase E — Verification and D3 demo
@@ -347,7 +353,7 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 
 ## 10. Scope boundaries and known limitations
 
-**Deliberately deferred:** creation idempotency/retry suppression; Redis for Order Service; transactional outbox for Kafka events; cross-service atomic transactions (the creation flow in §4 is the only saga); per-action User Service status checks; admin order listing; new DB tables; maximum window duration; automated routing/travel-time checks.
+**Deliberately deferred:** creation idempotency/retry suppression; Redis for Order Service; ~~transactional outbox for Kafka events~~ (now built on `order_history`, Zi Yi, 18 October 2026); cross-service atomic transactions (the creation flow in §4 is the only saga); per-action User Service status checks; admin order listing; new DB tables; maximum window duration; automated routing/travel-time checks.
 
 **Important:** Credit reservation via HTTP and order creation are operations in separate services. Credit team handling of its own failures does not itself make the Order/Credit boundary atomic. Likewise, Kafka delivery does not guarantee exactly-once database effects. Capture those as D3 trade-offs and verify the basic happy path and concurrency protection.
 

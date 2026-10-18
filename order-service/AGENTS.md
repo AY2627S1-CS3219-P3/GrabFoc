@@ -19,6 +19,10 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Recorded Phase D step 2 (expiry worker) status.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Recorded Phase D step 3 status, Zi Yi's order.events and active-order lookup decisions,
+and the order.events contract.
+Author review: Pending review by Zi Yi.
 -->
 
 # AGENTS.md — Order Service
@@ -61,6 +65,7 @@ _Origin: Team / Restated from root AGENTS.md; AI doc (implementation status)_
 - Implemented Phase C: `POST /orders/:orderId/pick-up|start-delivery|arrive|cancel` and `GET|POST /orders/:orderId/confirmations`, `POST /orders/:orderId/confirmations/:confirmationId/respond`. No events, expiry worker or suspension/deactivation handling yet (Phase D).
 - Implemented Phase D step 1: the 10 s settlement job (`settleCredits`) sends Credit's `TransferCredits` for `COMPLETED` and `ReleaseCredits` for `CANCELLED` orders to `credit.commands`, marking `credit_settled_at` once Kafka stores the command. HTTP release is gone; reserve stays on HTTP. Not yet: `order.events`, suspension/deactivation, the internal active-order lookup.
 - Implemented Phase D step 2: the 60 s expiry worker (`expireOrders`) cancels `PENDING`/`ACCEPTED`/`PICKED_UP`/`IN_PROGRESS` orders once `now() >= window_end` (plan §0/§2), rechecking each under its row lock; history `reason: EXPIRED`, no actor; pending `TIMING_CHANGE` → `EXPIRED`, pending `CANCELLATION` → `SUPERSEDED` (plan §2 rule 6). No `OrderCancelled` yet (needs `order.events`).
+- Implemented Phase D step 3: `order.events` (contract below), published every second from `order_history` as the outbox, so expiry, requester and mutual cancellations now publish `OrderCancelled`; and `GET /internal/orders/users/:userId/active` behind `ORDER_SERVICE_KEY`. Not yet, blocked on other services: `UserSuspended` / `SupplierDeactivated` consumers (User and Supplier publish nothing yet); the User Service calling the lookup before deactivation.
 
 ## Creation and reading [Decided]
 
@@ -131,10 +136,28 @@ _Origin: Team (OSFR4–OSFR6); Restated from root communication decisions_
 - **[Decided]** List requester/courier past histories and track lifecycle timestamps for all seven states (OSFR4.1–2).
 - **[Decided]** Write local changes and audit/history records in one transaction (root §8). History storage approved on 2026-10-13: order_history with UUID id/order FK, nullable actor UUID for system actions, action, nullable previous/new states, optional JSONB change_details and occurred_at. Approved actions: CREATED, CREDIT_RESERVED (added 2026-10-15 with `AWAITING_CREDIT`), EDITED, ACCEPTED, PICKED_UP, IN_PROGRESS, ARRIVED, COMPLETED, CANCELLED. Edits record old/new changed fields (including snapshots, description and timing); cancellation details distinguish requester, mutual and timeout. History supplies lifecycle timestamps.
 - **[Decided]** Publish `OrderAccepted`, `OrderPickedUp`, `OrderInProgress`, `OrderArrived`, `OrderCompleted` and `OrderCancelled` after successful corresponding state changes (OSFR6.2–7).
-- Supplied O6.1.1 requires event identifier, type, order identifier, requester identifier, courier identifier and event timestamp in a standardized schema. Field names, types and handling of unassigned courier are **[Open]**.
-- Root §10 flags explicit new state as an **[Open]** payload addition. The supplied backlog already includes event identifier; reconcile that stale root reminder with the team rather than silently editing the contract.
+- Supplied O6.1.1 requires event identifier, type, order identifier, requester identifier, courier identifier and event timestamp in a standardized schema. Field names, types and handling of unassigned courier are **[Open]**. → Decided by Zi Yi on 2026-10-18 (contract below; unassigned courier is null).
+- Root §10 flags explicit new state as an **[Open]** payload addition. The supplied backlog already includes event identifier; reconcile that stale root reminder with the team rather than silently editing the contract. → Zi Yi added `data.status` on 2026-10-18 (contract below); the backlog wording is still the team's to change.
 - **[Decided]** Publish status events to a broker; Notification is the only consumer under current root decisions. Order does not wait for Notification.
-- **[Open]** Broker, publication/recovery mechanism and ordering contract. `OrderCreated` and additional consumers remain for discussion, not approved behaviour (root §10).
+- **[Open]** Broker, publication/recovery mechanism and ordering contract. `OrderCreated` and additional consumers remain for discussion, not approved behaviour (root §10). → Broker, recovery and ordering decided by Zi Yi on 2026-10-18 (below); `OrderCreated` still for discussion.
+- **[Decided by Zi Yi, 2026-10-18; confirm with team and the Notification owner]** `order.events` contract (Order owns the topic, root §3 Messaging rule 3): the plan §5 envelope plus `data.status`, keyed by `orderId`. `order_history` is the outbox: `published_at` (in `001_init.sql`) is set once Kafka stores the entry's event, so a state change and its event are saved in one transaction and a crash resends with the same `eventId` (the history entry's ID). Published every second, oldest first, stopping at the first failure so one order's events stay in order. Changes plan §9's "no transactional outbox for Kafka events" deferral.
+
+  ```json
+  { "eventId": "<history id>", "eventType": "OrderCancelled", "occurredAt": "2026-10-18T04:00:00.000Z",
+    "data": { "orderId": "<uuid>", "requesterId": "<uuid>", "courierId": "<uuid> | null",
+              "status": "CANCELLED", "reason": "EXPIRED" } }
+  ```
+
+  | History action | `eventType` |
+  |---|---|
+  | `ACCEPTED` | `OrderAccepted` |
+  | `PICKED_UP` | `OrderPickedUp` |
+  | `IN_PROGRESS` | `OrderInProgress` |
+  | `ARRIVED` | `OrderArrived` |
+  | `COMPLETED` | `OrderCompleted` |
+  | `CANCELLED` (not from `AWAITING_CREDIT`) | `OrderCancelled`, `reason` `REQUESTER_CANCELLED`, `MUTUAL_CANCELLATION` or `EXPIRED` |
+
+  `reason` appears only on `OrderCancelled`. `courierId` is null for an order cancelled before acceptance. Nothing is published for `CREATED`, `CREDIT_RESERVED`, `EDITED` or a create cancelled for credit. Consumers dedupe on `eventId` (root §7). Delivery is at least once.
 
 ## Integration and cross-cutting rules
 
@@ -142,6 +165,7 @@ _Origin: Team / Restated from root §3, §6 and §8; AI doc (conflict reminders)
 
 - **[Decided]** Gateway authenticates frontend traffic; Order authorizes its actions. Identity must come from verified authentication.
 - **[Open]** Order identity propagation/re-verification contract. Do not copy Supplier's service-specific auth decisions into Order without approval.
+- **[Decided by Zi Yi, 2026-10-18; confirm with the User Service owners]** `GET /internal/orders/users/:userId/active` (plan §4) needs `X-Service-Key` equal to `ORDER_SERVICE_KEY` (≥ 32 characters, as for Credit) instead of a user token; the gateway never routes `/internal/**`. Returns 200 `{ "userId": "<uuid>", "hasActiveOrders": true | false }`: true if the user is requester or courier on any order not `COMPLETED`/`CANCELLED` (including `AWAITING_CREDIT` and `ARRIVED`). 401 `SERVICE_KEY_INVALID` for a missing or wrong key; 400 for a non-UUID. The User Service refuses deactivation while true; it owns that rule.
 - **[Decided]** Order → Credit reserve uses synchronous HTTP under root §3; transfer on completion and release on cancellation are `credit.commands` messages (root §3, changed by Zi Yi on 2026-10-17). [#53](https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/53) and the meeting propose asynchronous reservation; that still conflicts with the recorded decision and needs explicit team confirmation.
 - **[Conflict]** `docs/order-service-plan.md` (team-consolidated 2026-10-14) uses direct HTTP `GET /locations/:id` for location checks, which Phase B implements; the line below and root §3 still record query events. Reconcile with the team.
 - **[Decided]** Order publishes Supplier queries, Supplier alone consumes them; queries carry timestamps, stale queries may be rejected, and Order waits with loading/timeout behaviour. **[Open]** Response route, payload, correlation and timeout duration; read `supplier-service/AGENTS.md` before integration.

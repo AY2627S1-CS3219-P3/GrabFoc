@@ -4,11 +4,13 @@
  * Scope: Generated the Kafka producer for Credit's TransferCredits / ReleaseCredits commands
  *        (Phase D), matching the contract in credit-service/AGENTS.md "Messaging".
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Sends through the shared KafkaProducer instead of its own connection.
+ * Author review: Pending review by Zi Yi.
  */
 import { randomUUID } from 'node:crypto';
-import { KafkaJS } from '@confluentinc/kafka-javascript';
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { appConfig } from '../config';
+import { Injectable } from '@nestjs/common';
+import { KafkaProducer } from './kafka.producer';
 
 /** Credit owns this topic and the command shapes; it rejects unknown fields. */
 export const CREDIT_COMMANDS_TOPIC = 'credit.commands';
@@ -22,21 +24,8 @@ export type CreditCommand =
  * handles a repeat as a no-op, so resending after a crash is safe.
  */
 @Injectable()
-export class CreditCommands implements OnModuleInit, OnModuleDestroy {
-  private producer?: KafkaJS.Producer;
-
-  async onModuleInit(): Promise<void> {
-    const kafka = new KafkaJS.Kafka({
-      kafkaJS: { clientId: 'order-service', brokers: appConfig().kafkaBrokers, logLevel: KafkaJS.logLevel.WARN },
-    });
-    // acks = all in-sync replicas is the default; idempotent stops a retried send writing twice.
-    this.producer = kafka.producer({ kafkaJS: { idempotent: true } });
-    await this.producer.connect();
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    await this.producer?.disconnect();
-  }
+export class CreditCommands {
+  constructor(private readonly kafka: KafkaProducer) {}
 
   transfer(orderId: string, courierId: string): Promise<void> {
     return this.send({ type: 'TransferCredits', eventId: randomUUID(), orderId, courierId });
@@ -46,11 +35,8 @@ export class CreditCommands implements OnModuleInit, OnModuleDestroy {
     return this.send({ type: 'ReleaseCredits', eventId: randomUUID(), orderId });
   }
 
-  /** Keyed by orderId: Credit refuses any other key, and Kafka keeps order only per key. */
-  protected async send(command: CreditCommand): Promise<void> {
-    await this.producer!.send({
-      topic: CREDIT_COMMANDS_TOPIC,
-      messages: [{ key: command.orderId, value: JSON.stringify(command) }],
-    });
+  /** Keyed by orderId: Credit refuses any other key. */
+  private send(command: CreditCommand): Promise<void> {
+    return this.kafka.send(CREDIT_COMMANDS_TOPIC, command.orderId, command);
   }
 }

@@ -9,6 +9,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
  * Scope: Added the Kafka broker list (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Added ORDER_SERVICE_KEY for Order's own /internal routes (Phase D).
+ * Author review: Pending review by Zi Yi.
  */
 
 export interface AppConfig {
@@ -19,9 +22,14 @@ export interface AppConfig {
   creditUrl: string;
   /** Shared secret for Credit's /internal routes (Credit's CREDIT_SERVICE_KEY). */
   creditServiceKey: string;
-  /** Kafka bootstrap servers, for the credit.commands producer. */
+  /** Kafka bootstrap servers, for credit.commands and order.events. */
   kafkaBrokers: string[];
+  /** Shared secret other services send to Order's /internal routes. */
+  serviceKey: string;
 }
+
+/** As for Credit's key: long enough that guessing it is hopeless. */
+const MIN_SERVICE_KEY_LENGTH = 32;
 
 function httpUrl(env: NodeJS.ProcessEnv, name: string): URL {
   const raw = env[name]?.trim();
@@ -40,6 +48,10 @@ export function appConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (!creditServiceKey) throw new Error('Missing ORDER_CREDIT_SERVICE_KEY');
   const kafkaBrokers = (env.ORDER_KAFKA_BROKERS ?? '').split(',').map((b) => b.trim()).filter(Boolean);
   if (kafkaBrokers.length === 0) throw new Error('Missing ORDER_KAFKA_BROKERS');
+  const serviceKey = env.ORDER_SERVICE_KEY?.trim() ?? '';
+  if (serviceKey.length < MIN_SERVICE_KEY_LENGTH) {
+    throw new Error(`ORDER_SERVICE_KEY must be at least ${MIN_SERVICE_KEY_LENGTH} characters`);
+  }
   // Base URLs without a trailing slash, so clients can append paths.
   const base = (name: string) => httpUrl(env, name).href.replace(/\/$/, '');
   return {
@@ -49,5 +61,6 @@ export function appConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     creditUrl: base('ORDER_CREDIT_URL'),
     creditServiceKey,
     kafkaBrokers,
+    serviceKey,
   };
 }
