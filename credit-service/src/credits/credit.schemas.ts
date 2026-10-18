@@ -10,6 +10,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
  * Scope: Ids lower-cased (PR #48 review).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Added the query schema for GET /credits/:userId/transactions (route, paging and limits
+ *        decided by Jian Bing).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -50,6 +54,22 @@ export const userIdParamSchema = z
   .uuid()
   .transform((id) => id.toLowerCase());
 
+// A query value is a string; a repeated parameter (?limit=1&limit=2) arrives as an array and fails.
+const wholeNumber = z
+  .string()
+  .regex(/^[0-9]+$/, 'must be a whole number')
+  .transform(Number)
+  .pipe(z.number().int().positive().max(Number.MAX_SAFE_INTEGER));
+
+// GET /credits/:userId/transactions: newest first, `before` is the id of the last row already seen.
+export const transactionsQuerySchema = z
+  .object({
+    limit: wholeNumber.pipe(z.number().max(100)).default('20'),
+    before: wholeNumber.optional(),
+  })
+  .strict();
+
+export type TransactionsQuery = z.infer<typeof transactionsQuerySchema>;
 export type ReserveRequest = z.infer<typeof reserveSchema>;
 export type TransferRequest = z.infer<typeof transferSchema>;
 export type ReleaseRequest = z.infer<typeof releaseSchema>;

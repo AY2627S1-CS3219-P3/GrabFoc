@@ -24,6 +24,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented credit_transactions (PR #48 review; design decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented GET /credits/:userId/transactions (route decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -153,6 +156,7 @@ Details (`application/problem+json`), as in the Supplier Service.
 | `POST /internal/credits/release` | `{orderId}` | **200**, also for a repeat | 404 unknown order; 409 already transferred |
 | any, wrong or missing key | | | 401, logged as `access_denied` without the key |
 | `GET /credits/:userId` (user JWT; through the gateway once PR #69's Envoy route is added) | — | **200** `{userId, available, reserved}` | 400 path id not a UUID; 401 no/invalid token; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
+| `GET /credits/:userId/transactions?limit=&before=` (user JWT) | — | **200** `{items: [{id, orderId, type, availableChange, reservedChange, createdAt}], nextBefore}`, newest first; `limit` 1–100 (default 20); `before` is the `nextBefore` from the previous page; `nextBefore` is `null` on the last page | 400 path id not a UUID, a bad `limit`/`before`, or an unknown parameter; 401; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
 | `GET /admin/credits/dead-letters?status=open\|replayed\|all` (ADMIN JWT; default `open`) | — | **200** `{items: [...]}`, newest first, at most 100 | 400 unknown status; 401; 403 a USER (logged, checked before validation) |
 | `POST /admin/credits/dead-letters/:eventId/replay` (ADMIN JWT) | — | **200** the dead letter, `replayedAt` set; the command is republished to `credit.commands` with a fresh attempt count | 400 id not a UUID; 401; 403 a USER (logged); 404 `DEAD_LETTER_NOT_FOUND`; 409 `ALREADY_REPLAYED`; 409 `NOT_REPLAYABLE` (a user-event dead letter: fix and re-publish it from the User Service) |
 
