@@ -14,7 +14,7 @@
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: NotDueYet carries NOT_DUE_YET, so the Kafka logger can drop it (quieter logs).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — ran npm run test:kafka on this branch: 12/12 pass with no console errors (the IPv6 connection failures and retry-wait errors seen on main are gone).
  */
 import { NOT_DUE_YET } from './kafka.logger';
 import { KafkaJS } from '@confluentinc/kafka-javascript';
