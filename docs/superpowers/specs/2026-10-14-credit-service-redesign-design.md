@@ -3,12 +3,12 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote this spec from Jian Bing's design decisions (made in a learning-mode brainstorming
        session) and the additions Claude Code proposed and he confirmed as proposals.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Added §9 (Kafka design for Phases 2–3) from Jian Bing's decisions in a learning-mode
        session, with Claude Code's proposals labelled. 2026-10-15: updated §3, §8 and §9 with his
        walkthrough decisions (K5–K13). 2026-10-16: K10 revised (retry topics listed in topics.txt).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.
 -->
 
 # Credit Service redesign: wallets from events, async transfer/release, balance read

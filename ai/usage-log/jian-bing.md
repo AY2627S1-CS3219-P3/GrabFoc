@@ -11,22 +11,40 @@ Scope: Wrote the Credit Service design and implementation entry under the Jian B
 Author review: Jian Bing supplied the prompts quoted in that entry; pending his review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote the 2026-10-14 Credit Service redesign entry from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; the prompts are mine and the summaries are accurate.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Wrote the 2026-10-14/15 Kafka (redesign Phases 2–3) entry from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; the prompts are mine and the summaries are accurate.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote the 2026-10-14 CI workflow entry (issue #57, PR #74) from Jian Bing's prompts.
 Author review: Jian Bing supplied the quoted prompts and the wording of the entry's Verification line.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Restored five prompts under "Prompts (exact)" to the wording Jian Bing typed (commit 1a19851 had corrected their typos and removed one; PR #73 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; the prompts are mine and the summaries are accurate.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-18 — Author review lines for the files I read, and a second manual test round
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain
+**Files:** the `Author review:` lines in `AGENTS.md`, the spec, the two plans' headers, this log,
+`.env.example`, `compose.yaml`, `.dockerignore`, `.github/workflows/ci.yml`, `supplier-service/tsconfig.json`
+
+**Scenario:** I read those files and confirmed them, then pasted a manual test of reserve and a Kafka
+transfer, with an empty credit_transactions and a missing credit_dead_letters table.
+
+**Prompts (exact):**
+> okay, i jsut read through AGENTS.md in the root and for the spec, they are fine and are what i want, same with the ai usage log, the .env, compsoe.yaml, dockerignore, the ci workflow, the supplier tsconfig. and the 2 superpower plans, [Image #11] *(with pasted terminal output)*
+
+**Key responses:** The running container is built from #94, which doesn't write credit_transactions,
+so that table being empty is expected; credit_dead_letters was missing because Claude had dropped it
+locally for #95 without restarting Credit (restarted; recreated). `npm run test:kafka` must run inside
+`credit-service/`; the 401s were expired tokens. Only the plans' own headers were filled in; the
+header copies inside the plan text stay as written.
 
 ### 2026-10-18 — Recording my manual testing in the Author review lines
 

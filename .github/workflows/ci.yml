@@ -9,7 +9,7 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 # Scope: Added the credit-service unit-test/build job and its integration tests against a
 #   PostgreSQL service container.
-# Author review: pending — Jian Bing to record what he checked.
+# Author review: Jian Bing, 2026-10-18 — read and checked; it is what I want.
 name: CI
 
 on:
