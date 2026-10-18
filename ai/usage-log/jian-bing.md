@@ -82,11 +82,14 @@ PRs and resolve it.
 **Prompts (exact):**
 > all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
 
-**Key responses:** Claude added a start-up migration that renames the old dead-letter columns (migrated rows get no key, since the old column held the payload's orderId), and made replay key a command by its payload's `orderId`, so one dead-lettered for a wrong key can be recovered.
+**Key responses:** Claude added a start-up migration that renames the old dead-letter columns (migrated rows get no key, since the old column held the payload's orderId), and made replay key a command by its payload's `orderId`, so one dead-lettered for a wrong key can be recovered. On Codex's next pass, Claude made a NUL in a stored Kafka key show as U+FFFD (it
+failed the insert and stalled the dead-letter topic) instead of changing the column to BYTEA, and
+fixed the order of the disclosure header's entries.
 
 **Changed or rejected:** Nothing rejected.
 
-**Verification:** Test-first: the migration test and the replay-key test, each seen failing first; unit 128/128, integration 62/62, Kafka 12/12.
+**Verification:** Test-first: the migration, replay-key and NUL-key tests, each seen failing first; unit 128/128,
+integration 63/63, Kafka 12/12.
 
 ### 2026-10-18 — Codex review fixes: quieter Kafka logs (PR #96)
 
