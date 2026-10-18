@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Longer topic create/delete timeouts and readable creation errors (flaky setup fix).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Host broker address localhost:9094 → 127.0.0.1:9094, so clients don't try IPv6 first (PR #96).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { randomUUID } from 'crypto';

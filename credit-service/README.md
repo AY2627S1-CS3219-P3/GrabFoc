@@ -16,6 +16,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Listed CREDIT_JWKS_URL in the run-outside-Docker steps (PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Host broker address localhost:9094 → 127.0.0.1:9094, so clients don't try IPv6 first (PR #96).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service
