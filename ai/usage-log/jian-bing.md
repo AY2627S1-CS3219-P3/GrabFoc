@@ -25,8 +25,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
 Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
-Scope: Wrote the 2026-10-18 Codex review entry from Jian Bing's prompts; added the usage modes and
-"changed or rejected" lines to the two 2026-10-18 author-review entries (PR #97 review).
+Scope: Wrote the 2026-10-18 Codex review entries (one per PR) from Jian Bing's prompts; added the usage modes and
+"changed or rejected" lines to the two 2026-10-18 author-review entries, and Verification to the
+second (PR #97 review).
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -35,37 +36,109 @@ Author review: pending — Jian Bing to record what he checked.
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
-### 2026-10-18 — Resolving the Codex review comments on PRs #93–#98
+### 2026-10-18 — Codex review fixes: transaction ledger (PR #93)
 
-**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
-**Files:** #93: `credit-service/AGENTS.md`, `src/db/schema.ts`, `src/credits/credits.service{,.int.spec}.ts`;
-#94: `credit-service/AGENTS.md`, `README.md`, `postman/credit.postman_collection.json`; #95:
-`src/db/schema{,.int.spec}.ts`, `src/dead-letters/dead-letters.service{,.int.spec}.ts`, `AGENTS.md`;
-#96: `src/messaging/kafka.{logger,logger.spec,connection,runner}.ts`; #97: this log and a 2026-10-18
-attribution in each file whose review line Claude wrote; #98: inline markers.
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/AGENTS.md`, `credit-service/src/db/schema.ts`, `credit-service/src/credits/credits.service{,.int.spec}.ts`
 
-**Scenario:** Codex left 16 review comments on the six Credit PRs from today; I asked Claude to go
-through each and resolve it.
+**Scenario:** Codex reviewed PR #93; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+My answer to Claude's question: old wallets with no history "No migration, purge data".
+
+**Key responses:** Claude flagged backfilling old wallets as a schema decision for me, and added inline AI markers to the ledger code. It answered the owner-approval and pending-review comments (merge gates) instead of resolving them.
+
+**Changed or rejected:** I chose not to backfill: nothing is deployed, so local Credit data is purged when #93 lands.
+
+**Verification:** Integration suite 66/66 on the branch.
+
+### 2026-10-18 — Codex review fixes: Kafka-only transfer and release (PR #94)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/AGENTS.md`, `credit-service/README.md`, `credit-service/postman/credit.postman_collection.json`
+
+**Scenario:** Codex reviewed PR #94; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
 
 **Prompts (exact):**
 > all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
 
-My answers to Claude's questions: old wallets with no history "No migration, purge data"; the
-missing gateway route for history "Reply: tracked in #60 (Recommended)".
+**Key responses:** Claude updated the remaining statements that still described HTTP transfer/release, and documented that a hand-sent command must be keyed by its `orderId`, with a usable payload. The owner-approval and pending-review comments were answered (merge gates).
 
-**Key responses:** Claude flagged two comments as decisions for me (backfilling old wallets is a
-schema decision; the gateway route is another owner's service) and fixed the rest: dead-letter
-columns renamed on start in existing databases and replay keyed by `orderId` (#95); Kafka-only wording
-and the required Kafka key for hand-sent commands (#94); inline AI markers (#93, #96, #98); the usage
-modes, "changed or rejected" lines and per-file attributions (#97). Comments asking for Zi Yi's
-approval or my completed reviews were answered, not resolved: those are merge gates for us.
+**Changed or rejected:** Nothing rejected.
 
-**Changed or rejected:** I chose to purge local data instead of backfilling old wallets, and to leave
-the gateway route to #60.
+**Verification:** Docs only; the Postman collection is still valid JSON.
 
-**Verification:** Test-first for the two #95 bugs (the migration test and the replay-key test, both
-seen failing first); suites green on each branch: #93 integration 66/66; #95 unit 128/128,
-integration 62/62, Kafka 12/12; #96 unit 132/132.
+### 2026-10-18 — Codex review fixes: dead-letter envelope (PR #95)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** `credit-service/src/db/schema{,.int.spec}.ts`, `credit-service/src/dead-letters/dead-letters.service{,.int.spec}.ts`, `credit-service/AGENTS.md`
+
+**Scenario:** Codex reviewed PR #95; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+
+**Key responses:** Claude added a start-up migration that renames the old dead-letter columns (migrated rows get no key, since the old column held the payload's orderId), and made replay key a command by its payload's `orderId`, so one dead-lettered for a wrong key can be recovered.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** Test-first: the migration test and the replay-key test, each seen failing first; unit 128/128, integration 62/62, Kafka 12/12.
+
+### 2026-10-18 — Codex review fixes: quieter Kafka logs (PR #96)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/src/messaging/kafka.{logger,logger.spec,connection,runner}.ts`, `.env.example`, `credit-service/README.md`, `credit-service/src/config.ts`, `credit-service/src/test/kafka.ts`, `infra/kafka/README.md`
+
+**Scenario:** Codex reviewed PR #96; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+
+**Key responses:** Claude added inline AI markers to the logger code, and a 2026-10-18 disclosure to each file changed for the broker address.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** Unit suite 132/132 on the branch.
+
+### 2026-10-18 — Codex review fixes: author-review attributions (PR #97)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `ai/usage-log/jian-bing.md` and a 2026-10-18 attribution in each of the 64 files whose review line Claude wrote
+
+**Scenario:** Codex reviewed PR #97; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+
+**Key responses:** Claude added `generate` to the two author-review entries' modes, a "Changed or rejected" line to each, a Verification line to the second, its own Tool / Scope entry in every file whose review line it wrote, and split this round's log into one entry per PR.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** Every one of the 64 files has the new attribution (checked with a script); the Postman collection is still valid JSON; unit 128/128.
+
+### 2026-10-18 — Codex review fixes: transaction history route (PR #98)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/src/credits/{balance.controller,credits.service,credit.schemas}.ts`, their specs, `credit-service/AGENTS.md`
+
+**Scenario:** Codex reviewed PR #98; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+My answer to Claude's question: the missing gateway route "Reply: tracked in #60 (Recommended)".
+
+**Key responses:** Codex asked for a gateway route for the history; Claude asked me, since the gateway is another owner's service. Claude added inline AI markers and updated the open item.
+
+**Changed or rejected:** I left the gateway route to #60 and its owner.
+
+**Verification:** Unit 140/140, integration 81/81 on the branch.
 
 ### 2026-10-18 — Author review lines for the files I read, and a second manual test round
 
@@ -87,6 +160,9 @@ header copies inside the plan text stay as written.
 
 **Changed or rejected:** Nothing rejected. I named which files I had read, and only those got review
 lines; I didn't edit Claude's wording.
+
+**Verification:** After Claude restarted Credit, `credit_dead_letters` existed again. My
+credit_transactions check is still to be rerun on a container built from #93's branch.
 
 ### 2026-10-18 — Recording my manual testing in the Author review lines
 
