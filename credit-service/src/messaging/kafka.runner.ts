@@ -3,15 +3,15 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Generated the Kafka consumer for wallets from UserRegistered, with unreadable events sent
  *        to credit.user-events.dlt (spec §9.2, K11–K12).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Phase 3: credit commands, retries and dead letters (spec §9.2, K2–K3); retry headers
  *        honoured only on retry topics (security review).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Dead-letter the original bytes (PR #84 review) and the source position (PR #85 review);
  *        check the topics at startup (K10 revised).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';

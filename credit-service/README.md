@@ -2,20 +2,20 @@
 AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
 Scope: Wrote the run and test instructions for the Credit Service.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Added reading a balance and the Postman Balance folder.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added Kafka (wallets from UserRegistered), Node 24, the Kafka tests and the two-file
 Compose command (PR #84 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added credit commands, dead letters and the Postman Dead letters folder.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Listed CREDIT_JWKS_URL in the run-outside-Docker steps (PR #73 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 -->
 
 # Credit Service

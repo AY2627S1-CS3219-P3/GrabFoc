@@ -28,6 +28,24 @@ Author review: pending — Jian Bing to record what he checked.
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-18 — Recording my manual testing in the Author review lines
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain
+**Files:** the `Author review:` lines in `credit-service/**` and `infra/kafka/**`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** After manually testing Credit and Kafka (terminal output and Kafka UI screenshots), I
+asked Claude to write that into the review lines and to explain a 404 on my own wallet.
+
+**Prompts (exact):**
+> [Image #6] [Image #7] [Image #8]help me add this to shwo that i have manually test the kafka and credit services to all the authro comments, and also help me see why this is not returnign 200 eve nthough its my own wallet and i have already sent the userregistered event
+
+**Key responses:** My wallet was missing because the guide's clean-start TRUNCATE deleted it after
+my 16 Oct UserRegistered had already been handled; every event I produced since was for `$NEW`.
+Re-sending UserRegistered for `$ME` restores it. The review lines state only what my output showed
+I checked; docs, plans, CI and other services' files stay pending.
+
+**Verification:** Unit suite and type check still pass; the Postman collection is still valid JSON.
+
 ### 2026-10-14/15 — Credit Service on Kafka: broker choice, design walkthrough and Phase 2
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate

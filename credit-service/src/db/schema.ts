@@ -3,15 +3,15 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
  * Scope: Wrote the SQL for the schema in credit-service/AGENTS.md (one hold per order, available
  *        and reserved balances with CHECK >= 0), run with IF NOT EXISTS on every start.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added credit_dead_letters (redesign spec §9.2; columns confirmed by Jian Bing).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
  * Scope: Added source_partition / source_offset and a unique key on them plus the payload's hash
  *        (PR #85 review, approved by Jian Bing; payload hash from a security review); payload
  *        stored as BYTEA and replay_claimed_at (PR #85 review).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  */
 
 /** Every new account starts with this many available credits (Backlog C1.1.1). */

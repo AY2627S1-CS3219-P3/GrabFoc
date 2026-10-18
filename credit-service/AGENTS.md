@@ -3,24 +3,24 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
 Scope: Wrote this file from Jian Bing's Credit Service design (learning-mode session) and the
        details Claude Code proposed and he approved in the implementation plan.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Documented the balance route, JWT verification and error codes (redesign Phase 1).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added the Messaging section for redesign Phase 2 (wallets from UserRegistered over Kafka).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Documented Phase 3: credit commands, retries, the dead-letter table and the admin routes.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Documented the dead letters' source position and payload hash (PR #85 and security reviews);
 key check, byte payloads, replay claims and retiring retry delays (second PR #85 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: A repeated reserve returns the hold's current state (PR #48 review); only the /internal
 routes need the service key (PR #73 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 -->
 
 # AGENTS.md — Credit Service

@@ -3,10 +3,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: JWT guard for the balance route, following supplier-service/src/common/auth.ts without
  *        its dev-auth header fallback or role decorator.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
  * Scope: Log the path without its query string (PR #48/#73 review).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  */
 import { CanActivate, ExecutionContext, Injectable, Logger } from '@nestjs/common';
 import type { Request } from 'express';

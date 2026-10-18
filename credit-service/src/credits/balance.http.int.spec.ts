@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: Generated HTTP-level tests for the balance route: access rule, 404, validation, and the
  *        separation between user tokens and the service key.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  */
 import { INestApplication, Logger, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';

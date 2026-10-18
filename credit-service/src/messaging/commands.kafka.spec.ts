@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Generated end-to-end tests against a real Kafka broker and PostgreSQL for credit commands:
  *        duplicates, retries, dead letters and replay (spec §7, §9).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Logger } from '@nestjs/common';

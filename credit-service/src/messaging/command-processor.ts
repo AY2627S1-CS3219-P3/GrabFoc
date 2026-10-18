@@ -3,12 +3,12 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Generated the routing of failed credit commands to retry topics and the dead-letter
  *        topic, from Jian Bing's decisions K2–K3 and K11 and the details in spec §9.2.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Trust x-attempt and x-due-at only on Credit's own retry topics (security review);
  *        forward the original bytes and the source position; measure the retry delay from the
  *        failure; refuse a command keyed by anything but its orderId (PR #85 review).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  */
 import { Logger } from '@nestjs/common';
 import { ErrorCode } from '../common/error-codes';
