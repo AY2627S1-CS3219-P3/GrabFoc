@@ -24,12 +24,53 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 credit_transactions entry from Jian Bing's prompts.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 lazy wallet creation removal entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-18 — Remove lazy wallet creation (#79)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/src/credits/credits.service.ts`,
+`credit-service/src/credits/{credits.service.int,credits.http.int}.spec.ts`,
+`credit-service/src/messaging/commands.kafka.spec.ts`,
+`credit-service/postman/credit.postman_collection.json`, `credit-service/AGENTS.md`,
+`docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Spec D6 says a wallet comes only from `UserRegistered`, but reserve and transfer still
+created one when it was missing. Built now, merged only after the User Service publishes
+`UserRegistered` (#54).
+
+**Prompts (exact):**
+> lets remove the lazt credit creation, and a route for read transation history, then
+
+> ys i approve
+
+My answers to Claude's design questions: timing "Build now, merge after #54 (Recommended)"; a
+transfer to a courier with no wallet "Retry, then dead-letter (Recommended)".
+
+**Key responses:** Claude pointed out that the spec and #79 already set reserve's answer (409
+`WALLET_NOT_FOUND`, nothing stored) and that Credit already retries `WALLET_NOT_FOUND`; planned this
+as its own PR so it can wait for #54. While testing, Claude found that a transfer that could never
+apply (already paid to someone else) to a courier with no wallet reported `WALLET_NOT_FOUND`, which
+is retried, so it now checks the wallet only when the transfer could otherwise apply.
+
+**What it produced:** reserve and transfer check the wallet instead of creating it; only
+`createWallet` (from `UserRegistered`) creates one. Tests create their wallets first. Postman folders
+1–3 publish `UserRegistered` for their new users through Kafka UI and wait for the wallets.
+
+**Verification:** Test-first: 3 service tests (reserve with no wallet stores nothing; transfer with no
+wallet changes nothing; a transfer that can never apply keeps its own code), 1 HTTP test (409), and 2
+real-Kafka tests (a transfer retried until `UserRegistered` creates the wallet; one dead-lettered,
+then applied when replayed after the wallet exists), each seen failing first; unit 128/128,
+integration 70/70, Kafka 14/14; Newman 30 requests, 0 failures against a container built from this
+branch.
 
 ### 2026-10-17/18 — Credit transaction history (`credit_transactions`) and merging the stack
 

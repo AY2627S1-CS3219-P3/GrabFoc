@@ -4,6 +4,10 @@
  * Scope: Generated HTTP-level integration tests: status codes, Problem Details bodies, the
  *        service-key check and strict request validation, through a real NestJS app.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Tests create their wallets first, and reserve with no wallet answers 409 (#79; decided
+ *        by Jian Bing).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { INestApplication, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -40,6 +44,13 @@ afterAll(async () => {
 });
 beforeEach(() => emptyTables(pool));
 
+/** A new user with a wallet; wallets come only from UserRegistered (#79). */
+async function userWithWallet(): Promise<string> {
+  const userId = randomUUID();
+  await app.get(CreditsService).createWallet(userId);
+  return userId;
+}
+
 function post(path: string, body: unknown, key: string | null = KEY) {
   return fetch(`${baseUrl}/internal/credits/${path}`, {
     method: 'POST',
@@ -49,7 +60,7 @@ function post(path: string, body: unknown, key: string | null = KEY) {
 }
 
 it('answers 201 for a new reserve and 200 with the same body for a repeat', async () => {
-  const body = { orderId: randomUUID(), requesterId: randomUUID(), amount: 3 };
+  const body = { orderId: randomUUID(), requesterId: await userWithWallet(), amount: 3 };
   const first = await post('reserve', body);
   const again = await post('reserve', body);
 
@@ -59,7 +70,7 @@ it('answers 201 for a new reserve and 200 with the same body for a repeat', asyn
 });
 
 it('answers 409 Problem Details for insufficient credits', async () => {
-  const res = await post('reserve', { orderId: randomUUID(), requesterId: randomUUID(), amount: 11 });
+  const res = await post('reserve', { orderId: randomUUID(), requesterId: await userWithWallet(), amount: 11 });
 
   expect(res.status).toBe(409);
   expect(res.headers.get('content-type')).toContain('application/problem+json');
@@ -67,13 +78,13 @@ it('answers 409 Problem Details for insufficient credits', async () => {
 });
 
 it('answers 200 for transfer and release, and 404 for an unknown order', async () => {
-  const requesterId = randomUUID();
+  const requesterId = await userWithWallet();
   const paid = randomUUID();
   const cancelled = randomUUID();
   await post('reserve', { orderId: paid, requesterId, amount: 3 });
   await post('reserve', { orderId: cancelled, requesterId, amount: 2 });
 
-  const transfer = await post('transfer', { orderId: paid, courierId: randomUUID() });
+  const transfer = await post('transfer', { orderId: paid, courierId: await userWithWallet() });
   expect(transfer.status).toBe(200);
   expect(await transfer.json()).toMatchObject({ state: 'TRANSFERRED' });
 
@@ -82,6 +93,14 @@ it('answers 200 for transfer and release, and 404 for an unknown order', async (
   expect(await release.json()).toMatchObject({ state: 'RELEASED' });
 
   expect((await post('release', { orderId: randomUUID() })).status).toBe(404);
+});
+
+it('answers 409 WALLET_NOT_FOUND for a reserve with no wallet, storing nothing', async () => {
+  const res = await post('reserve', { orderId: randomUUID(), requesterId: randomUUID(), amount: 3 });
+
+  expect(res.status).toBe(409);
+  expect(await res.json()).toMatchObject({ code: 'WALLET_NOT_FOUND' });
+  expect((await pool.query('SELECT 1 FROM credit_holds')).rowCount).toBe(0);
 });
 
 it('rejects a missing or wrong service key with 401 before touching the database', async () => {

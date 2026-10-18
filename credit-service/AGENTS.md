@@ -24,6 +24,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented credit_transactions (PR #48 review; design decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: No lazy wallet creation: reserve and transfer fail with WALLET_NOT_FOUND (#79; decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -148,8 +151,8 @@ Details (`application/problem+json`), as in the Supplier Service.
 
 | Route | Body | Success | Errors |
 |---|---|---|---|
-| `POST /internal/credits/reserve` | `{orderId, requesterId, amount}` | **201** new hold; **200** for a repeat, with the hold as it is now (its `state` may have moved on to `TRANSFERRED` or `RELEASED`) | 409 insufficient credits (nothing kept); 409 same order with a different requester or amount |
-| `POST /internal/credits/transfer` | `{orderId, courierId}` | **200**, also for a repeat to the same courier | 404 unknown order; 409 already released, already paid to a different courier, or courier is the requester |
+| `POST /internal/credits/reserve` | `{orderId, requesterId, amount}` | **201** new hold; **200** for a repeat, with the hold as it is now (its `state` may have moved on to `TRANSFERRED` or `RELEASED`) | 409 `WALLET_NOT_FOUND` the requester has no wallet (nothing kept); 409 insufficient credits (nothing kept); 409 same order with a different requester or amount |
+| `POST /internal/credits/transfer` | `{orderId, courierId}` | **200**, also for a repeat to the same courier | 404 unknown order; 409 already released, already paid to a different courier, or courier is the requester; 409 `WALLET_NOT_FOUND` the courier has no wallet (only when the transfer could otherwise apply) |
 | `POST /internal/credits/release` | `{orderId}` | **200**, also for a repeat | 404 unknown order; 409 already transferred |
 | any, wrong or missing key | | | 401, logged as `access_denied` without the key |
 | `GET /credits/:userId` (user JWT; through the gateway once PR #69's Envoy route is added) | — | **200** `{userId, available, reserved}` | 400 path id not a UUID; 401 no/invalid token; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
@@ -184,7 +187,11 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
     `x-dead-lettered-at`, and is logged as `user_event_dead_lettered`. It can't be replayed from
     Credit: the User Service fixes and re-publishes it.
   - An unexpected error (e.g. the database is down) pauses the partition for 5 s and retries.
-- Lazy wallet creation (`ensureAccount`) stays until the User Service publishes (#79).
+- **Wallets come only from `UserRegistered`** (spec D6, #79). Reserve and transfer never create
+  one: a reserve with no wallet answers 409 `WALLET_NOT_FOUND` and stores nothing; a transfer
+  command to a courier with no wallet is retried, then dead-lettered, and can be replayed once the
+  wallet exists. A transfer that could never apply (no hold, already released or paid) reports its
+  own code instead, so it is not retried.
 - **Local setup:** Node 24 (`.nvmrc`; the Kafka client has prebuilt binaries for Node 18–24),
   `npm run test:kafka` against the Compose broker. The client's install script is approved in
   `package.json` (`allowScripts`), because npm 11 skips dependency install scripts by default.
@@ -226,8 +233,8 @@ _Origin: AI doc_
 - Confirm this design with Zi Yi (owner).
 - Gateway route for `GET /credits/:userId`: waiting for PR #69 (Envoy); add
   `api-gateway/envoy/routes/30-credit.routes.json` and `CREDIT_SERVICE_URL` then.
-- #79: remove lazy wallet creation and the HTTP transfer/release routes once the User Service
-  publishes `UserRegistered` (#54) and the Order Service sends the commands (#53, #56).
+- #79: lazy wallet creation is removed; merge that only after the User Service publishes
+  `UserRegistered` (#54), and purge local Credit data then (`docker compose down -v`).
 - Gateway routes for `GET /credits/:userId` and `/admin/credits/**` (#60).
   Spec: `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md` §9.
 - Confirm Kafka and root `AGENTS.md` §3 "Messaging (Kafka)" with the whole team.

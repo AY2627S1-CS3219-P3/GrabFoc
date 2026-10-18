@@ -9,6 +9,9 @@ Scope: Added §9 (Kafka design for Phases 2–3) from Jian Bing's decisions in a
        session, with Claude Code's proposals labelled. 2026-10-15: updated §3, §8 and §9 with his
        walkthrough decisions (K5–K13). 2026-10-16: K10 revised (retry topics listed in topics.txt).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Recorded that lazy wallet creation is removed (#79), waiting on #54.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service redesign: wallets from events, async transfer/release, balance read
@@ -258,8 +261,8 @@ wallet, so the order matters.
 
 ### 9.3 Not in this step
 
-- Removing lazy wallet creation and adding reserve's 409 `WALLET_NOT_FOUND` (§4.1, §4.2): waits
-  for the User Service to publish `UserRegistered`. Until then a transfer never hits a missing
-  wallet, so the retry path is exercised by tests rather than by real traffic.
+- Removing lazy wallet creation and adding reserve's 409 `WALLET_NOT_FOUND` (§4.1, §4.2): built
+  2026-10-18 (#79), merged only once the User Service publishes `UserRegistered` (#54). A transfer
+  reports `WALLET_NOT_FOUND` (retried) only when it could otherwise apply.
 - Removing the HTTP transfer/release routes (§4.3): waits for the Order Service to send commands.
 - Gateway routes for `/admin/credits/**`: added with the balance route once PR #69 merges.
