@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Verify Envoy routing and JWT behavior, including approved JWKS 503 mapping and recovery.
 Author review: Pending human review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Added a per-attempt timeout to the Envoy readiness check, which hung on Linux CI runners.
+Author review: Pending Jie Yang's review.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
 import assert from 'node:assert/strict';
@@ -84,7 +87,8 @@ async function startEnvoy(overrides = {}) {
   const mapping = docker('port', id, '3003/tcp');
   const url = `http://${mapping.split('\n')[0]}`;
   for (let attempt = 0; attempt < 100; attempt++) {
-    try { if ((await fetch(url + '/health')).status === 200) return url; } catch {}
+    // A connection accepted before Envoy listens can stall on Linux, so abandon each attempt after 1 s.
+    try { if ((await fetch(url + '/health', { signal: AbortSignal.timeout(1000) })).status === 200) return url; } catch {}
     if (docker('inspect', id, '--format', '{{.State.Running}}') !== 'true') {
       throw new Error(`Envoy exited: ${docker('logs', id)}`);
     }

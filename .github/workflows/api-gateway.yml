@@ -50,6 +50,9 @@ jobs:
           docker ps -a --filter label=foc.task=envoy-integration
           for id in $(docker ps -aq --filter label=foc.task=envoy-integration); do
             echo "== $id"; docker port "$id"; docker logs --tail 50 "$id" 2>&1
+            port=$(docker port "$id" 3003/tcp | head -1)
+            curl -s -m 5 -w " -> %{http_code}
+" "http://$port/health" || echo "no /health response from $port"
           done
           python3 -m http.server 18080 --bind 0.0.0.0 >/dev/null 2>&1 &
           sleep 1
