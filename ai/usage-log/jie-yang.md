@@ -24,6 +24,23 @@ Author review: Pending Jie Yang's review.
 Jie Yang's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-18 — Fix gateway integration tests hanging on Linux CI (PR #69)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug
+**Files:** `api-gateway/test/envoy.integration.mjs`, `.github/workflows/api-gateway.yml`
+
+**Scenario:** The new `Test (api-gateway)` job passed the route tests and image build but its integration tests hung on GitHub's Linux runners while passing on Windows (Node 20 and 24).
+
+**Prompt (exact):**
+
+~~~text
+yes write a envoy specific CI
+~~~
+
+**What it produced:** Added CI diagnostics, which showed Envoy running and the runner reachable from containers but the tests stuck before the first one. Added a 1-second timeout to each `/health` readiness attempt in `startEnvoy()`, so a stalled early connection is retried. Added a 5-minute step timeout, a 15-minute job timeout and a failure-only diagnostics step. A first attempt at a per-test timeout was removed because Node 20 applied it to the whole file.
+**What I changed or rejected:** Pending Jie Yang's review.
+**Verification:** Integration tests pass locally (19/19) and on CI run 39136494850 (19/19); all PR #69 checks pass except the pending `review`.
+
 ### 2026-10-18 — Envoy-specific gateway CI workflow (PR #69)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
