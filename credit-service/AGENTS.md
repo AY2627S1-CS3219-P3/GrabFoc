@@ -27,6 +27,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: No lazy wallet creation: reserve and transfer fail with WALLET_NOT_FOUND (#79; decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented that old wallets are purged, not backfilled (PR #93 review; decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -133,6 +136,9 @@ UNIQUE INDEX credit_dead_letters_source_message
   created, `RESERVE` (−n available, +n reserved), `TRANSFER_OUT` (−n reserved, requester) and
   `TRANSFER_IN` (+n available, courier), `RELEASE` (+n available, −n reserved). Rows are never
   updated or deleted, a repeated request adds none, and each user's rows add up to their balance.
+- **No backfill** (decided by Jian Bing, PR #93 review): a wallet created before this table existed
+  has no rows, so its rows would not add up to its balance. Nothing is deployed yet, so purge local
+  Credit data when this lands (`docker compose down -v`) instead of migrating it.
 - A dead letter is unique per `(source_topic, event_id)`, so a message from one topic can never
   overwrite another topic's row. One without a readable event id is recognised by where its
   original message sat (`source_partition`, `source_offset`, carried in the `x-source-partition` /
