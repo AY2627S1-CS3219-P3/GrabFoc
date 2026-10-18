@@ -41,4 +41,16 @@ jobs:
         run: docker compose -f api-gateway/compose.yaml build api-gateway
       # Starts foc-envoy:local against mock User and Supplier services; Node built-ins only.
       - name: Integration tests
-        run: node --test --test-concurrency=1 --test-timeout=60000 api-gateway/test/envoy.integration.mjs
+        timeout-minutes: 5
+        run: node --test --test-concurrency=1 api-gateway/test/envoy.integration.mjs
+      # Shows why the Envoy test containers did not respond, if the tests fail or time out.
+      - name: Gateway test container diagnostics
+        if: failure()
+        run: |
+          docker ps -a --filter label=foc.task=envoy-integration
+          for id in $(docker ps -aq --filter label=foc.task=envoy-integration); do
+            echo "== $id"; docker port "$id"; docker logs --tail 50 "$id" 2>&1
+          done
+          python3 -m http.server 18080 --bind 0.0.0.0 >/dev/null 2>&1 &
+          sleep 1
+          docker run --rm --add-host host.docker.internal:host-gateway --entrypoint /bin/sh foc-envoy:local             -c 'python3 -c "import urllib.request as u; print(u.urlopen(\"http://host.docker.internal:18080\", timeout=5).status)"'             || echo "container cannot reach the runner via host.docker.internal"
