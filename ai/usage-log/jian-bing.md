@@ -21,12 +21,49 @@ Author review: Jian Bing supplied the quoted prompts and the wording of the entr
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Restored five prompts under "Prompts (exact)" to the wording Jian Bing typed (commit 1a19851 had corrected their typos and removed one; PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 entry on removing the HTTP transfer/release routes from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-18 — Transfer and release are Kafka commands only (HTTP routes removed)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `credit-service/src/credits/{credits.controller,credit.schemas,credit.schemas.spec,credits.http.int.spec,balance.http.int.spec}.ts`,
+`credit-service/postman/credit.postman_collection.json`, `credit-service/AGENTS.md`, `AGENTS.md` (§3),
+`docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`; issue #53 rewritten.
+
+**Scenario:** I got team consensus for asynchronous Order → Credit transfer and release, and decided to
+remove the HTTP routes now, since the Order Service doesn't exist yet and nothing calls them.
+
+**Prompts (exact):**
+> what the items marked proposed
+
+> actually, lets change credit service ownership to me, zi yi said it was fine, so technically i have read through everything and made the decision for the whole of th eproject
+
+> sorry undo the last prompt
+
+> alright, then elts get to work on the  Transfer and release become Kafka commands instead of synchronous HTTP; reserve stays HTTP. This changes a [Decided] team decision, so it needs the mentor as well as the team.
+>      - Order → Supplier location reads become plain HTTP instead of query events. Your proposal; it needs Jie Yang (Order) and Cole Lin (Supplier). what has been done ,and wha tneeds to be done
+
+> i think lets jsut get rid of the http transfer and reelase route, since roder ahsnt even been made, os there wont be compatibiltiy issue, als o ireceived a team consesnsus on using asych communicaiton between roder to credit to release or trasnfer, and to change the issue, but also what is wrong with the deicded tiem "Order publishes query events… Supplier is the only consumer"
+
+**Key responses:** Claude listed the [Proposed] items and who confirms each; undid an ownership change
+before any file was edited; explained that Order → Supplier query events aren't wrong, only costly
+(Order waits, so it needs request/reply that Kafka lacks, and the coupling stays).
+
+**What it produced:** `POST /internal/credits/transfer` and `/release` removed (with their schemas);
+root `AGENTS.md` §3 now records reserve over HTTP and transfer/release as Kafka commands (team
+consensus); Postman reshaped to reserve-only HTTP; issue #53 rewritten to match.
+
+**Verification:** Test-first: "no longer offers transfer or release over HTTP" (404, the hold stays
+RESERVED) failed, then passed; unit 126/126, integration 60/60, Kafka 12/12; Newman 15 requests,
+19 assertions, 0 failures on the rebuilt service.
 
 ### 2026-10-14/15 — Credit Service on Kafka: broker choice, design walkthrough and Phase 2
 

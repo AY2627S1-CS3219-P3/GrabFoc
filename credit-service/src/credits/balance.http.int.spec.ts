@@ -4,6 +4,9 @@
  * Scope: Generated HTTP-level tests for the balance route: access rule, 404, validation, and the
  *        separation between user tokens and the service key.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: The token/key separation test uses reserve, since release is no longer an HTTP route.
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { INestApplication, Logger, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -108,10 +111,10 @@ it('keeps user tokens and the service key apart', async () => {
   const withServiceKey = await get(`/credits/${alice}`, { 'x-service-key': config.serviceKey });
   expect(withServiceKey.status).toBe(401);
 
-  const withToken = await fetch(`${baseUrl}/internal/credits/release`, {
+  const withToken = await fetch(`${baseUrl}/internal/credits/reserve`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token(alice, 'ADMIN')}` },
-    body: JSON.stringify({ orderId: randomUUID() }),
+    body: JSON.stringify({ orderId: randomUUID(), requesterId: alice, amount: 1 }),
   });
   expect(withToken.status).toBe(401);
 });

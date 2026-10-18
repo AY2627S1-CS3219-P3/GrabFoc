@@ -4,6 +4,9 @@
  * Scope: Generated HTTP-level integration tests: status codes, Problem Details bodies, the
  *        service-key check and strict request validation, through a real NestJS app.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Transfer and release are no longer HTTP routes (team consensus).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { INestApplication, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -66,22 +69,16 @@ it('answers 409 Problem Details for insufficient credits', async () => {
   expect(await res.json()).toMatchObject({ status: 409, detail: 'Insufficient credits to reserve this amount.' });
 });
 
-it('answers 200 for transfer and release, and 404 for an unknown order', async () => {
-  const requesterId = randomUUID();
-  const paid = randomUUID();
-  const cancelled = randomUUID();
-  await post('reserve', { orderId: paid, requesterId, amount: 3 });
-  await post('reserve', { orderId: cancelled, requesterId, amount: 2 });
+// Team consensus (2026-10-18): transfer and release are Kafka commands on credit.commands only; the
+// Order Service doesn't exist yet, so no caller depends on the old HTTP routes. Reserve stays HTTP.
+it('no longer offers transfer or release over HTTP', async () => {
+  const orderId = randomUUID();
+  await post('reserve', { orderId, requesterId: randomUUID(), amount: 3 });
 
-  const transfer = await post('transfer', { orderId: paid, courierId: randomUUID() });
-  expect(transfer.status).toBe(200);
-  expect(await transfer.json()).toMatchObject({ state: 'TRANSFERRED' });
-
-  const release = await post('release', { orderId: cancelled });
-  expect(release.status).toBe(200);
-  expect(await release.json()).toMatchObject({ state: 'RELEASED' });
-
-  expect((await post('release', { orderId: randomUUID() })).status).toBe(404);
+  expect((await post('transfer', { orderId, courierId: randomUUID() })).status).toBe(404);
+  expect((await post('release', { orderId })).status).toBe(404);
+  const { rows } = await pool.query('SELECT state FROM credit_holds WHERE order_id = $1', [orderId]);
+  expect(rows[0].state).toBe('RESERVED');
 });
 
 it('rejects a missing or wrong service key with 401 before touching the database', async () => {

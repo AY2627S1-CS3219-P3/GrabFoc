@@ -21,6 +21,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: A repeated reserve returns the hold's current state (PR #48 review); only the /internal
 routes need the service key (PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Removed the HTTP transfer/release routes from the API table (team consensus).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -123,19 +126,21 @@ UNIQUE INDEX credit_dead_letters_source_message
 ## API [Proposed]
 
 _Origin: AI doc (paths and status codes proposed by Claude Code, approved by Jian Bing)._
-The three `/internal/credits/*` routes need `X-Service-Key`; the balance and admin dead-letter routes
+`POST /internal/credits/reserve` needs `X-Service-Key`; the balance and admin dead-letter routes
 need a user JWT (neither credential opens the other's routes); bodies are strict (unknown fields → 400). Errors use Problem
 Details (`application/problem+json`), as in the Supplier Service.
 
 | Route | Body | Success | Errors |
 |---|---|---|---|
 | `POST /internal/credits/reserve` | `{orderId, requesterId, amount}` | **201** new hold; **200** for a repeat, with the hold as it is now (its `state` may have moved on to `TRANSFERRED` or `RELEASED`) | 409 insufficient credits (nothing kept); 409 same order with a different requester or amount |
-| `POST /internal/credits/transfer` | `{orderId, courierId}` | **200**, also for a repeat to the same courier | 404 unknown order; 409 already released, already paid to a different courier, or courier is the requester |
-| `POST /internal/credits/release` | `{orderId}` | **200**, also for a repeat | 404 unknown order; 409 already transferred |
 | any, wrong or missing key | | | 401, logged as `access_denied` without the key |
 | `GET /credits/:userId` (user JWT; through the gateway once PR #69's Envoy route is added) | — | **200** `{userId, available, reserved}` | 400 path id not a UUID; 401 no/invalid token; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
 | `GET /admin/credits/dead-letters?status=open\|replayed\|all` (ADMIN JWT; default `open`) | — | **200** `{items: [...]}`, newest first, at most 100 | 400 unknown status; 401; 403 a USER (logged, checked before validation) |
 | `POST /admin/credits/dead-letters/:eventId/replay` (ADMIN JWT) | — | **200** the dead letter, `replayedAt` set; the command is republished to `credit.commands` with a fresh attempt count | 400 id not a UUID; 401; 403 a USER (logged); 404 `DEAD_LETTER_NOT_FOUND`; 409 `ALREADY_REPLAYED`; 409 `NOT_REPLAYABLE` (a user-event dead letter: fix and re-publish it from the User Service) |
+
+Transfer and release are **not** HTTP routes: they are the Kafka commands `TransferCredits` and
+`ReleaseCredits` on `credit.commands` (team consensus, 2026-10-18; see Messaging). The Order Service
+only calls reserve over HTTP.
 
 The three internal routes return the hold: `{orderId, requesterId, courierId, amount, state}`.
 
@@ -207,8 +212,8 @@ _Origin: AI doc_
 - Confirm this design with Zi Yi (owner).
 - Gateway route for `GET /credits/:userId`: waiting for PR #69 (Envoy); add
   `api-gateway/envoy/routes/30-credit.routes.json` and `CREDIT_SERVICE_URL` then.
-- #79: remove lazy wallet creation and the HTTP transfer/release routes once the User Service
-  publishes `UserRegistered` (#54) and the Order Service sends the commands (#53, #56).
+- #79: remove lazy wallet creation once the User Service publishes `UserRegistered` (#54). (The
+  HTTP transfer/release routes are already gone.) The Order Service sends the commands (#53, #56).
 - Gateway routes for `GET /credits/:userId` and `/admin/credits/**` (#60).
   Spec: `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md` §9.
 - Confirm Kafka and root `AGENTS.md` §3 "Messaging (Kafka)" with the whole team.

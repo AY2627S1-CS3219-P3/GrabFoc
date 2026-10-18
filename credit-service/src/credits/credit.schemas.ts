@@ -10,6 +10,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
  * Scope: Ids lower-cased (PR #48 review).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Removed the transfer/release HTTP schemas (they are Kafka commands only, team consensus).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -31,19 +34,6 @@ export const reserveSchema = z
   })
   .strict();
 
-export const transferSchema = z
-  .object({
-    orderId: id,
-    courierId: id,
-  })
-  .strict();
-
-export const releaseSchema = z
-  .object({
-    orderId: id,
-  })
-  .strict();
-
 // The path id for GET /credits/:userId. Lower-cased so it compares equal to the token's `sub`.
 export const userIdParamSchema = z
   .string()
@@ -51,8 +41,14 @@ export const userIdParamSchema = z
   .transform((id) => id.toLowerCase());
 
 export type ReserveRequest = z.infer<typeof reserveSchema>;
-export type TransferRequest = z.infer<typeof transferSchema>;
-export type ReleaseRequest = z.infer<typeof releaseSchema>;
+// Transfer and release arrive only as Kafka commands, validated in messaging/messages.ts.
+export interface TransferRequest {
+  orderId: string;
+  courierId: string;
+}
+export interface ReleaseRequest {
+  orderId: string;
+}
 
 export function parseOr400<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, data: unknown, what: string): T {
   const result = schema.safeParse(data ?? {});

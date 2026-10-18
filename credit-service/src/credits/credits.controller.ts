@@ -4,13 +4,18 @@
  * Scope: Generated the /internal/credits routes in credit-service/AGENTS.md: 201 for a new
  *        reserve, 200 for a repeated one, 200 for transfer and release.
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Removed the transfer and release routes: they are Kafka commands only (team consensus).
+ * Author review: pending — Jian Bing to record what he checked.
  */
-import { Body, Controller, HttpCode, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { ServiceKeyGuard } from '../common/service-key.guard';
-import { parseOr400, releaseSchema, reserveSchema, transferSchema } from './credit.schemas';
+import { parseOr400, reserveSchema } from './credit.schemas';
 import { CreditsService, Hold } from './credits.service';
 
+// Order's synchronous call. Transfer and release are Kafka commands on credit.commands (team
+// consensus, 2026-10-18), handled by messaging/kafka.runner.ts.
 @Controller('internal/credits')
 @UseGuards(ServiceKeyGuard)
 export class CreditsController {
@@ -22,17 +27,5 @@ export class CreditsController {
     // A retry gets the same body as the original, with 200 instead of 201.
     res.status(created ? 201 : 200);
     return hold;
-  }
-
-  @Post('transfer')
-  @HttpCode(200)
-  async transfer(@Body() body: unknown): Promise<Hold> {
-    return (await this.credits.transfer(parseOr400(transferSchema, body, 'transfer request'))).hold;
-  }
-
-  @Post('release')
-  @HttpCode(200)
-  async release(@Body() body: unknown): Promise<Hold> {
-    return (await this.credits.release(parseOr400(releaseSchema, body, 'release request'))).hold;
   }
 }

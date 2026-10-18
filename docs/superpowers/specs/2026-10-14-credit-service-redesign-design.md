@@ -9,6 +9,9 @@ Scope: Added §9 (Kafka design for Phases 2–3) from Jian Bing's decisions in a
        session, with Claude Code's proposals labelled. 2026-10-15: updated §3, §8 and §9 with his
        walkthrough decisions (K5–K13). 2026-10-16: K10 revised (retry topics listed in topics.txt).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Recorded the team consensus on transfer/release as commands and the removal of their HTTP routes.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service redesign: wallets from events, async transfer/release, balance read
@@ -161,8 +164,9 @@ wallet, so the order matters.
 
 - Broker choice: **Kafka**, chosen by Jian Bing and Jie Yang (§9). Confirm with the rest of the team,
   then record it in root `AGENTS.md` §3.
-- Confirm with the mentor that moving transfer/release to the broker changes the [Decided]
-  "synchronous HTTP between Order → Credit" in root `AGENTS.md` §3, and update that section.
+- Transfer/release via the broker: **agreed by the team on 2026-10-18** and recorded in root `AGENTS.md` §3.
+  Still worth telling the mentor, since it changed a [Decided] item. (Originally: confirm with the mentor that moving transfer/release to the broker changes the [Decided]
+  "synchronous HTTP between Order → Credit" in root `AGENTS.md` §3, and update that section.)
 - Backfill wallets for existing users before any cloud deployment (D10 covers local data only).
   `user.events` keeps 7 days (K8), so this needs a one-off script or the User Service re-publishing,
   not a replay.
@@ -261,5 +265,6 @@ wallet, so the order matters.
 - Removing lazy wallet creation and adding reserve's 409 `WALLET_NOT_FOUND` (§4.1, §4.2): waits
   for the User Service to publish `UserRegistered`. Until then a transfer never hits a missing
   wallet, so the retry path is exercised by tests rather than by real traffic.
-- Removing the HTTP transfer/release routes (§4.3): waits for the Order Service to send commands.
+- ~~Removing the HTTP transfer/release routes (§4.3)~~: done 2026-10-18, by team consensus, since the
+  Order Service doesn't exist yet and nothing called them.
 - Gateway routes for `/admin/credits/**`: added with the balance route once PR #69 merges.
