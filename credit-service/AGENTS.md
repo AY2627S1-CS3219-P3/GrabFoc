@@ -237,6 +237,6 @@ _Origin: AI doc_
 - Gateway routes for `GET /credits/:userId` and `/admin/credits/**` (#60).
   Spec: `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md` §9.
 - Confirm Kafka and root `AGENTS.md` §3 "Messaging (Kafka)" with the whole team.
-- Transaction history: recorded in `credit_transactions`; a route to read it (for the profile page) is not built yet.
+- Transaction history: readable at `GET /credits/:userId/transactions`; needs the gateway route (#60).
 - Order id format: assumed UUID, matching user ids. Confirm when the Order Service is designed.
 - Record root `AGENTS.md` §8's exception for authenticated service callers, if the team agrees.
