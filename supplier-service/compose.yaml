@@ -9,6 +9,9 @@
 #        the Supplier variables reach the container. Ran it myself on 2026-09-29 (docker compose up
 #        --build in supplier-service/): the image built, 21 locations were seeded, the service
 #        listened on 3002 and supplier-db on 5434, and GET /locations without a token returned 401.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+# Scope: Pointed the service at the shared Kafka broker for SupplierDeactivated (issue #120).
+# Author review: pending — Jie Yang to record what he checked.
 #
 # The Supplier Service and the database only it uses. Its database is its own — no other
 # service connects to supplier-db (root AGENTS.md §3). The root compose.yaml includes this file.
@@ -64,6 +67,10 @@ services:
       # Optional; checked only when set in .env.
       SUPPLIER_JWT_ISSUER: ${SUPPLIER_JWT_ISSUER:-}
       SUPPLIER_JWT_AUDIENCE: ${SUPPLIER_JWT_AUDIENCE:-}
+      # The shared broker (infra/kafka). No depends_on: Supplier only publishes, and events wait in
+      # supplier_outbox while Kafka is down, so this file still runs on its own.
+      SUPPLIER_KAFKA_BROKERS: kafka:9092
+      SUPPLIER_OUTBOX_POLL_MS: ${SUPPLIER_OUTBOX_POLL_MS:-}
     ports:
       - "3002:3002"
 
