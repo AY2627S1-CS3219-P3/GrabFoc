@@ -14,7 +14,7 @@
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added credit_transactions (design decided by Jian Bing).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 
 /** Every new account starts with this many available credits (Backlog C1.1.1). */
