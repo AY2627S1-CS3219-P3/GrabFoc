@@ -13,7 +13,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added the query schema for GET /credits/:userId/transactions (route, paging and limits
  *        decided by Jian Bing).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';

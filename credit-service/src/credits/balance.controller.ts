@@ -7,7 +7,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added GET /credits/:userId/transactions with the same access rule (route, paging and
  *        limits decided by Jian Bing).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { Controller, Get, Param, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthedRequest, denied, JwtAuthGuard } from '../common/jwt-auth.guard';
