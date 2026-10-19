@@ -12,6 +12,9 @@ Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
 Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Added the transaction history route to §3 and §4.4 (route, paging and limits decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service redesign: wallets from events, async transfer/release, balance read
@@ -67,6 +70,7 @@ User Service existence check (a second way wallets appear, or a Credit → User 
 | `ReleaseCredits` | Order → Credit | broker command on `credit.commands` | `{type, eventId, orderId}` | ✓ |
 | `UserRegistered` | User → Credit (and anyone else) | broker event on `user.events` | Defined by the User Service (K6); suggested `{type, eventId, userId, occurredAt}` | ✓ |
 | Balance read | Frontend → gateway → Credit | HTTP `GET /credits/:userId` | — | ✓ |
+| Transaction history | Frontend → gateway → Credit | HTTP `GET /credits/:userId/transactions` | — | |
 
 **Broker layout:** one Kafka broker shared by all services (K1). **Events go to the publisher's
 topic; commands go to the receiver's topic** (K5): `user.events` and later `order.events` are
@@ -117,6 +121,10 @@ store nothing.
   logged as `access_denied`. ADMIN → any id.
 - 200 `{userId, available, reserved}`; 404 `WALLET_NOT_FOUND` when no wallet exists. Never creates a wallet.
 - `/internal/**` stays unreachable through the gateway.
+- **Transaction history** (decided by Jian Bing, 2026-10-18): `GET /credits/:userId/transactions`,
+  with the same access rule. Rows from `credit_transactions`, newest first; `limit` 1–100 (default
+  20) and a `before=<id>` cursor. 200 `{items: [{id, orderId, type, availableChange,
+  reservedChange, createdAt}], nextBefore}` (`null` on the last page); 404 `WALLET_NOT_FOUND`.
 
 ### 4.5 Error codes (Proposed, AI)
 

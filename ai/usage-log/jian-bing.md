@@ -29,6 +29,12 @@ Scope: Wrote the 2026-10-18 Codex review entries (one per PR) from Jian Bing's p
 "changed or rejected" lines to the two 2026-10-18 author-review entries, and Verification to the
 second (PR #97 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 credit_transactions entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 transaction history route entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -187,6 +193,78 @@ I checked; docs, plans, CI and other services' files stay pending.
 didn't edit Claude's wording.
 
 **Verification:** Unit suite and type check still pass; the Postman collection is still valid JSON.
+
+### 2026-10-18 — Credit transaction history route (`GET /credits/:userId/transactions`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/src/credits/{balance.controller,credits.service,credit.schemas}.ts`,
+`credit-service/src/credits/{balance.http.int,credit.schemas}.spec.ts`, `credit-service/AGENTS.md`,
+`credit-service/postman/credit.postman_collection.json`,
+`docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** The frontend needs to show a user's credit history, so `credit_transactions` (PR #93)
+needs a read route. In the same request I asked to remove lazy wallet creation; that is a separate
+PR, held until the User Service publishes `UserRegistered` (#54).
+
+**Prompts (exact):**
+> lets remove the lazt credit creation, and a route for read transation history, then
+
+> ys i approve
+
+My answers to Claude's design questions (I picked each option): timing "Build now, merge after #54
+(Recommended)"; a transfer to a courier with no wallet "Retry, then dead-letter (Recommended)"; route
+"GET /credits/:userId/transactions (Recommended)"; paging "Newest first, cursor (Recommended)".
+
+**Key responses:** Claude flagged the route, its query parameters and response shape as interface
+decisions under the AI policy and asked me to choose; proposed a plan of two PRs (this route now, the
+lazy-creation removal after #54), and suggested 404 `WALLET_NOT_FOUND` for a user with no wallet, as
+the balance route answers. I approved the plan, including the 404.
+
+**What it produced:** `GET /credits/:userId/transactions?limit=&before=`: the same access rule as the
+balance route (own id or ADMIN), newest first, `limit` 1–100 (default 20), `before` = the id of the
+last row seen; strict query validation; `{items: [{id, orderId, type, availableChange,
+reservedChange, createdAt}], nextBefore}`, with `nextBefore` null on the last page.
+
+**Verification:** Test-first: 10 new schema unit tests and 15 new HTTP integration tests (own
+history, paging across 3 pages, only the asked user's rows, 403, admin, 404, bad and unknown query
+parameters, bad path id, 401), each seen failing first; unit 140/140, integration 81/81.
+
+### 2026-10-17/18 — Credit transaction history (`credit_transactions`) and merging the stack
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `credit-service/src/db/schema.ts`, `credit-service/src/credits/credits.service{,.int.spec}.ts`,
+`credit-service/src/test/database.ts`, `credit-service/AGENTS.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** After merging PRs #48, #73, #84 and #85, I picked how Credit meets root AGENTS.md §8
+(an audit/history record in the same transaction as each change), raised by Codex on #48.
+
+**Prompts (exact):**
+> notificaiton service ahsnt been implemented yet, what d o umean? and why is notificaiton writting reocrd, isnt i jsut a cosnumer of all the loggign events from other services? i dont know what is  root AGENTS.md §8,
+
+> so i didnt want to block my members, so i merged all the prs we had, is that bad?
+
+> hiii, is it this one you gonna make the change later on?[Image #1] what is my teammate asking me *(screenshot of the Codex thread on #48 about recording each balance change)*
+
+> what r the trade offs betwene option 1 and 2
+
+> ok option 2
+
+> its okay, and im doing option 2 since the frontend wanrs it plus its good for new kinds of movement later
+
+**Key responses:** Claude explained that §8 is the one-transaction audit rule, that the Notification
+Service is email-only and that Centralized Logging (my N2H) can't satisfy a same-transaction rule;
+checked that the merged stack landed on `main` with CI green, and flagged that the "Author review"
+lines still need filling in and the [Proposed] items need the team, mentor and Zi Yi; compared using
+`credit_holds` as the record with a new append-only table. I chose the table (reason: the frontend
+wants a transaction history, and it fits new kinds of movement later) and confirmed the design.
+
+**What it produced:** `credit_transactions` (GRANT / RESERVE / TRANSFER_OUT / TRANSFER_IN / RELEASE,
+available and reserved changes), written in the same transaction as every balance change; repeats
+add no rows. No read route yet.
+
+**Verification:** Test-first: 6 new integration tests (each movement's rows, nothing for repeats or a
+rolled-back reserve, and every user's rows adding up to their balance after concurrent requests);
+unit 128/128, integration 66/66, Kafka 12/12.
 
 ### 2026-10-14/15 — Credit Service on Kafka: broker choice, design walkthrough and Phase 2
 
