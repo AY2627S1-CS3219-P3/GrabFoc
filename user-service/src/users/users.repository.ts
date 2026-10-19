@@ -5,6 +5,9 @@
  *   Claude Opus 5 and Claude Sonnet 5, 2026-09-26/27): same SQL, now through DatabaseService with
  *   an optional `tx`. UserStatus moved to common/enums.
  * Author review: Successfully reviewed by Deanson, 2026-10-16.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: Added suspend() and the user_events outbox queries (#72).
+ * Author review: Reviewed by Zi Yi, 2026-10-20.
  */
 // AI-generated (reviewed by Deanson)
 import { Injectable } from '@nestjs/common';
@@ -57,6 +60,14 @@ export interface UserFilter {
   status?: UserStatus;
 }
 
+/** A `user_events` outbox row. */
+export interface OutboxEvent {
+  id: string;
+  type: string;
+  userId: string;
+  occurredAt: Date;
+}
+
 const COLUMNS = `id, display_name, email_encrypted, country_code, mobile_encrypted,
                  password_hash, role, status, created_at, updated_at, deactivated_at`;
 
@@ -91,7 +102,7 @@ function toRecord(row: UserRow): UserRecord {
 }
 
 /**
- * All SQL against `users`: parameterised queries, no ORM. Not exported from UsersModule.
+ * All SQL against `users` and its `user_events` outbox: parameterised queries, no ORM. Not exported from UsersModule.
  * Every UPDATE sets `updated_at` itself, because no trigger maintains it.
  */
 @Injectable()
@@ -280,5 +291,36 @@ export class UsersRepository {
       tx,
     );
     return (rowCount ?? 0) > 0;
+  }
+
+  /** No deactivated_at: that column belongs to self-deactivation. */
+  async suspend(userId: string, tx: PoolClient): Promise<boolean> {
+    const { rowCount } = await this.db.query(
+      "UPDATE users SET status = 'SUSPENDED', updated_at = now() WHERE id = $1",
+      [userId],
+      tx,
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
+  // ---------------------------------------------------------------- user_events outbox
+
+  /** Call inside the transaction that makes the change the event reports. */
+  async insertEvent(type: string, userId: string, tx: PoolClient): Promise<void> {
+    await this.db.query('INSERT INTO user_events (type, user_id) VALUES ($1, $2)', [type, userId], tx);
+  }
+
+  /** Oldest first; `id` breaks ties so the order is stable across runs. */
+  async unpublishedEvents(limit = 100): Promise<OutboxEvent[]> {
+    const { rows } = await this.db.query<{ id: string; type: string; user_id: string; occurred_at: Date }>(
+      `SELECT id, type, user_id, occurred_at FROM user_events
+       WHERE published_at IS NULL ORDER BY occurred_at, id LIMIT $1`,
+      [limit],
+    );
+    return rows.map((row) => ({ id: row.id, type: row.type, userId: row.user_id, occurredAt: row.occurred_at }));
+  }
+
+  async markEventPublished(id: string): Promise<void> {
+    await this.db.query('UPDATE user_events SET published_at = now() WHERE id = $1', [id]);
   }
 }

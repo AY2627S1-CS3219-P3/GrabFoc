@@ -68,7 +68,7 @@ test('implemented protected User routes require a token and forward the verified
     ['POST', '/users/me/email/verify'], ['PATCH', '/users/me/mobile'],
     ['POST', '/users/me/password'], ['POST', '/users/me/deactivate'],
     ['GET', '/admin/users'], ['PATCH', '/admin/users/123/role'],
-    ['POST', '/admin/users/123/reactivate'],
+    ['POST', '/admin/users/123/reactivate'], ['POST', '/admin/users/123/suspend'],
   ];
   for (const [method, path] of routes) {
     assert.equal((await fetch(`${gatewayUrl}${path}`, { method })).status, 401, `${method} ${path}`);

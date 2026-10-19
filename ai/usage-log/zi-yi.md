@@ -10,6 +10,72 @@ Author review: Jian Bing checked the logs locally against the AI usage-log guide
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-19 — User Service: active-order deactivation guard (#71) and `UserSuspended` (#72)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** new `user-service/src/infra/kafka/kafka.producer.ts`,
+`src/users/{order.client,user-events.publisher,order-support.spec}.ts`; changed
+`db/migrations/001_init.sql`, `src/config/env.validation.ts`, `src/common/errors/error-codes.ts`,
+`src/users/{users.service,users.repository,users-admin.controller,users.module}.ts`, `API.md`,
+`compose.yaml`, `package.json`, `package-lock.json`; root `.env.example`;
+`api-gateway/src/routing/user.routes.ts`, `api-gateway/test/gateway.test.js`
+
+**Scenario:** the User Service side of the Order Service work on `feat/order-service`, on a new
+branch from `main`. The AI found Order's `GET /internal/orders/users/:userId/active` (my
+2026-10-18 decision), that nothing in the User Service could set `SUSPENDED`, and that Credit and
+Order's plan disagree on the `user.events` shape. It flagged the suspend endpoint, the event shape,
+the outbox table and the Order-down behaviour as interface/schema/trade-off decisions under the AI
+policy and asked me to choose before writing code.
+
+**Prompts:**
+> branch from main, we are trying to support order service (branch feat/order-service). So we
+> shall resolve two issues https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/71 and
+> https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/72
+
+Answers to the AI's questions: event shape "whats the difference and which is better?";
+suspension scope "Suspend only"; Order down "Fail closed, 503 (Recommended)"; delivery "outbox
+table but use migration 001 is okay". Then:
+> continue
+
+**My decisions** (chosen from the options the AI laid out):
+- `user.events` shape: flat `{ type, eventId, occurredAt, userId }`, keyed by `userId`. The AI
+  explained the flat shape is what Credit's reader already accepts; the envelope from the Order
+  plan (`eventType`, `data.userId`) would need Credit changed. I said continue with its
+  recommendation. Order's (unbuilt) consumer must read this shape.
+- `POST /admin/users/:userId/suspend` only; no endpoint to lift a suspension.
+- Deactivation fails closed: 503 `SERVICE_UNAVAILABLE` when Order cannot answer.
+- Outbox table `user_events` added to `001_init.sql`, not a new migration.
+
+**What it produced:**
+- `OrderClient.hasActiveOrders` (3 s timeout, `X-Service-Key`); the check runs in
+  `requestOtp(DEACTIVATION)` and in `deactivateSelf` before the code is spent; 409
+  `HAS_ACTIVE_ORDERS`;
+- `UsersService.suspend`: under the last-admin lock, caller re-checked as an active admin, not
+  yourself, target must be `ACTIVE`; status, session revoke and the outbox row in one transaction;
+- `UserEventsPublisher`: every second, oldest first, marks `published_at` once Kafka stores it,
+  stops at the first failure; `KafkaProducer` copied from Order's;
+- env `USER_KAFKA_BROKERS`, `USER_ORDER_URL`, `USER_ORDER_SERVICE_KEY` (compose passes
+  `ORDER_SERVICE_KEY`); gateway route; `API.md` events section; 14 unit tests.
+
+**Flagged:**
+- The partial index `idx_user_events_unpublished` is a schema detail beyond the table I approved.
+- Existing `user-db` volumes must be recreated (`001_init.sql` changed; the runner tracks file names).
+- Every root `.env` needs `ORDER_SERVICE_KEY` (≥ 32 characters) or the User Service won't start;
+  until `order-service` runs in compose, deactivation answers 503.
+- Known race: an order created between the active-order check and the deactivation commit is not
+  caught. A suspended or deactivated user's access token stays valid for up to 15 minutes.
+- `ORDER_SERVICE_KEY` is also added to `.env.example` on `feat/order-service`; keep one on merge.
+- Owners to confirm: the gateway route (Jie Yang), the endpoint and event (Deanson), the shape
+  (Order owners).
+
+**Verification:** `npm test` 14 passed, `npm run lint` and `nest build` clean; gateway `npm test`
+22 passed. End to end on a scratch database with a fake Order endpoint and the local Kafka:
+deactivation 409 with active orders, 503 with Order down, 204 with none; suspend 403 for a USER,
+200 for an admin, 409 again and for yourself; suspended login 403 `ACCOUNT_SUSPENDED`; the
+`UserSuspended` message read back from `user.events` with key = `userId`; Credit ignored it.
+
+**What I changed or rejected:** Reviewed every file on 2026-10-20.
+
 ### 2026-09-24 to 2026-09-25 — User Service Phase 0 foundation (PRs #9, #10, #12, #13)
 
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** generate, debug, explain

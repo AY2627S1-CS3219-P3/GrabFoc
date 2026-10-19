@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Moved implemented User Service route definitions out of the gateway request handler; added the documented self-service and reactivation routes on 2026-09-29.
 Author review: Jie Yang reviewed the earlier route list; the new allowlist entries await his review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Added POST /admin/users/:userId/suspend (#72).
+Author review: Reviewed by Zi Yi, 2026-10-20; pending review by Jie Yang.
 */
 import type { GatewayRoute } from './types.js';
 
@@ -33,5 +36,6 @@ export function userRoutes(authPrefix: string): GatewayRoute[] {
     { method: 'GET', pattern: exact('/admin/users'), service: 'user', auth: 'authenticated' },
     { method: 'PATCH', pattern: /^\/admin\/users\/[^/]+\/role$/, service: 'user', auth: 'authenticated' },
     { method: 'POST', pattern: /^\/admin\/users\/[^/]+\/reactivate$/, service: 'user', auth: 'authenticated' },
+    { method: 'POST', pattern: /^\/admin\/users\/[^/]+\/suspend$/, service: 'user', auth: 'authenticated' },
   ];
 }
