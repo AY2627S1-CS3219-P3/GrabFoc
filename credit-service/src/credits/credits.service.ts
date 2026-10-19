@@ -15,7 +15,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Record every balance change in credit_transactions, in the same transaction (design
  *        decided by Jian Bing; PR #48 review).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Removed lazy wallet creation from reserve and transfer: a missing wallet fails with
  *        WALLET_NOT_FOUND (#79, spec D6/D7; decided by Jian Bing).
