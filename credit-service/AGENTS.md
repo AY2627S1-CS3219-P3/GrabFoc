@@ -22,6 +22,15 @@ Scope: A repeated reserve returns the hold's current state (PR #48 review); only
 routes need the service key (PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented credit_transactions (PR #48 review; design decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented that old wallets are purged, not backfilled (PR #93 review; decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented GET /credits/:userId/transactions (route decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Host broker address is 127.0.0.1:9094 (quieter logs).
 Author review: pending — Jian Bing to record what he checked.
 -->
@@ -88,6 +97,16 @@ credit_holds (
     state         TEXT NOT NULL  -- RESERVED | TRANSFERRED | RELEASED
     created_at, updated_at TIMESTAMPTZ
 )
+credit_transactions (                           -- every balance change, append-only
+    id                BIGSERIAL PRIMARY KEY,
+    user_id           UUID NOT NULL REFERENCES credit_accounts,
+    order_id          UUID,                     -- null for the starting grant
+    type              TEXT NOT NULL  -- GRANT | RESERVE | TRANSFER_OUT | TRANSFER_IN | RELEASE
+    available_change  INTEGER NOT NULL,
+    reserved_change   INTEGER NOT NULL,
+    created_at        TIMESTAMPTZ,
+    UNIQUE (order_id, user_id, type)            -- plus: at most one GRANT per user
+)
 credit_dead_letters (                           -- copied from Credit's dead-letter topics
     id                BIGSERIAL PRIMARY KEY,
     event_id          UUID,                     -- null when the message was unreadable
@@ -114,6 +133,15 @@ UNIQUE INDEX credit_dead_letters_source_message
 - `courier_id` was added so a repeated transfer can be told apart from one to a different courier.
 - The `CHECK` constraints are a backstop: code that slipped past the conditional update would fail
   instead of storing a negative balance.
+- **`credit_transactions` is the history record** (root `AGENTS.md` §8; decided by Jian Bing because
+  the frontend wants a transaction history and it fits new kinds of movement later). Every balance
+  change appends rows in the **same transaction** as the change: `GRANT` (+10) when a wallet is
+  created, `RESERVE` (−n available, +n reserved), `TRANSFER_OUT` (−n reserved, requester) and
+  `TRANSFER_IN` (+n available, courier), `RELEASE` (+n available, −n reserved). Rows are never
+  updated or deleted, a repeated request adds none, and each user's rows add up to their balance.
+- **No backfill** (decided by Jian Bing, PR #93 review): a wallet created before this table existed
+  has no rows, so its rows would not add up to its balance. Nothing is deployed yet, so purge local
+  Credit data when this lands (`docker compose down -v`) instead of migrating it.
 - A dead letter is unique per `(source_topic, event_id)`, so a message from one topic can never
   overwrite another topic's row. One without a readable event id is recognised by where its
   original message sat (`source_partition`, `source_offset`, carried in the `x-source-partition` /
@@ -137,6 +165,7 @@ Details (`application/problem+json`), as in the Supplier Service.
 | `POST /internal/credits/release` | `{orderId}` | **200**, also for a repeat | 404 unknown order; 409 already transferred |
 | any, wrong or missing key | | | 401, logged as `access_denied` without the key |
 | `GET /credits/:userId` (user JWT; through the gateway once PR #69's Envoy route is added) | — | **200** `{userId, available, reserved}` | 400 path id not a UUID; 401 no/invalid token; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
+| `GET /credits/:userId/transactions?limit=&before=` (user JWT) | — | **200** `{items: [{id, orderId, type, availableChange, reservedChange, createdAt}], nextBefore}`, newest first; `limit` 1–100 (default 20); `before` is the `nextBefore` from the previous page; `nextBefore` is `null` on the last page | 400 path id not a UUID, a bad `limit`/`before`, or an unknown parameter; 401; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
 | `GET /admin/credits/dead-letters?status=open\|replayed\|all` (ADMIN JWT; default `open`) | — | **200** `{items: [...]}`, newest first, at most 100 | 400 unknown status; 401; 403 a USER (logged, checked before validation) |
 | `POST /admin/credits/dead-letters/:eventId/replay` (ADMIN JWT) | — | **200** the dead letter, `replayedAt` set; the command is republished to `credit.commands` with a fresh attempt count | 400 id not a UUID; 401; 403 a USER (logged); 404 `DEAD_LETTER_NOT_FOUND`; 409 `ALREADY_REPLAYED`; 409 `NOT_REPLAYABLE` (a user-event dead letter: fix and re-publish it from the User Service) |
 
@@ -215,6 +244,6 @@ _Origin: AI doc_
 - Gateway routes for `GET /credits/:userId` and `/admin/credits/**` (#60).
   Spec: `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md` §9.
 - Confirm Kafka and root `AGENTS.md` §3 "Messaging (Kafka)" with the whole team.
-- Transaction history (the profile page links to one): not built.
+- Transaction history: readable at `GET /credits/:userId/transactions`; needs the gateway route (#60).
 - Order id format: assumed UUID, matching user ids. Confirm when the Order Service is designed.
 - Record root `AGENTS.md` §8's exception for authenticated service callers, if the team agrees.
