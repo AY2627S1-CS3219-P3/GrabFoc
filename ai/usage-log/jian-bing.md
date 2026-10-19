@@ -28,6 +28,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 transaction history route entry from Jian Bing's prompts.
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 quieter Kafka logs entry from Jian Bing's prompt.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 dead-letter envelope entry from Jian Bing's prompts.
 Author review: pending — Jian Bing to record what he checked.
 -->
@@ -76,6 +79,30 @@ say "replayed"; and that replay is manual and a replayed command is a second cop
 `command_type` → `message_type`, with API fields `messageKey` / `messageType`.
 
 **Verification:** Tests updated first (red), then green: unit 128/128, integration 60/60, Kafka 12/12.
+
+### 2026-10-18 — Quieter Kafka logs in tests and the service
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `infra/kafka/{compose.yaml,README.md}`, `.env.example`, `credit-service/src/messaging/kafka.logger{,.spec}.ts`,
+`credit-service/src/messaging/{kafka.connection,kafka.runner}.ts`, `credit-service/src/{config,test/kafka}.ts`,
+`credit-service/{README,AGENTS}.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** `npm run test:kafka` passed but printed many console errors. Claude explained the three
+sources; I asked for the two fixes it proposed.
+
+**Prompts (exact):**
+> lets make the small fixes for the tests that u mentioned
+
+**Key responses:** Most of the noise came from `localhost` resolving to IPv6 `::1` first on macOS,
+where the broker's port isn't published; the rest was the library logging Credit's internal
+"not due yet" error on every retry wait, plus an intentional database-outage test.
+
+**What it produced:** the broker advertises `127.0.0.1:9094` (and that's the host default
+everywhere); a Kafka client logger that writes through Nest's logger and drops only the
+not-due-yet error; `NotDueYet` carries a fixed message for the filter to match.
+
+**Verification:** Logger tests written first (red, then green). Unit 132/132, integration 60/60,
+Kafka 12/12; the Kafka run now prints no console errors.
 
 ### 2026-10-18 — Credit transaction history route (`GET /credits/:userId/transactions`)
 

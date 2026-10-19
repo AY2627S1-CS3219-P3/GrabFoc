@@ -31,6 +31,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented GET /credits/:userId/transactions (route decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Host broker address is 127.0.0.1:9094 (quieter logs).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Dead letters use a generic envelope: message_key / message_type (decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
@@ -186,7 +189,7 @@ and neither credential opens the other's routes. The balance route never creates
 _Origin: Team (Jian Bing's decisions K1–K13 in the redesign spec §9); AI doc (details proposed by
 Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3 "Messaging (Kafka)"._
 
-- **Broker:** the shared Kafka in `infra/kafka/` (`kafka:9092` in Compose, `localhost:9094` from
+- **Broker:** the shared Kafka in `infra/kafka/` (`kafka:9092` in Compose, `127.0.0.1:9094` from
   the host). `kafka-init` creates every topic; Credit creates none.
 - **Consumer group** `credit-service`, starting from the oldest message the first time. An offset
   is stored only after its message's work is saved; a crash re-reads it, which is safe because every

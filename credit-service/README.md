@@ -16,6 +16,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Listed CREDIT_JWKS_URL in the run-outside-Docker steps (PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Host broker address localhost:9094 → 127.0.0.1:9094, so clients don't try IPv6 first (PR #96).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service
@@ -68,7 +71,7 @@ not route to it: only the Order Service calls it.
 To run it outside Docker, start its dependencies from the repo root (`docker compose up -d
 credit-db kafka-init user-service`; the User Service publishes the signing keys), set
 `CREDIT_DATABASE_URL`, `CREDIT_SERVICE_KEY`, `CREDIT_JWKS_URL=http://localhost:3001/.well-known/jwks.json`
-and `CREDIT_KAFKA_BROKERS=localhost:9094` (see `.env.example`), then `npm install && npm run start:dev`
+and `CREDIT_KAFKA_BROKERS=127.0.0.1:9094` (see `.env.example`), then `npm install && npm run start:dev`
 in this folder (Node 24, see `.nvmrc`).
 
 ## Try it
@@ -109,7 +112,7 @@ npm test             # unit tests: request schemas, service-key guard, message p
 docker compose up -d credit-db        # from the repo root
 npm run test:int     # integration tests against the credit_test database
 docker compose up -d kafka            # from the repo root
-npm run test:kafka   # end-to-end tests against the Compose broker (localhost:9094)
+npm run test:kafka   # end-to-end tests against the Compose broker (127.0.0.1:9094)
 ```
 
 The Kafka tests create their own uniquely named topics and consumer group, so they never touch a
