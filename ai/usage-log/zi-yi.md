@@ -3,12 +3,50 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Zi Yi's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+Scope: Added the User Service Postman suspension entry.
+Author review: Reviewed by Zi Yi, 2026-10-20.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-20 — User Service: Postman collection for suspension (#72) and the Order dependency (#71)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate, debug
+**Files:** `user-service/postman/user-service.postman_collection.json`
+
+**Scenario:** testing the #71/#72 branch. The AI explained that the existing collection now
+breaks without an Order Service (deactivation asks Order first, so it answers 503) and
+suggested adding the suspension cases instead of testing them by hand.
+
+**Prompts:**
+> list testing steps
+
+> give me next steps, i just ran docker compose up --build
+
+> why order svc not running?
+
+> should we update postman collection instead?
+
+> commit first, then make those changes
+
+**What it produced:** seven requests at the end of the Admin folder (403 suspend as a USER,
+409 suspend yourself, suspend, 403 `ACCOUNT_SUSPENDED` login, 401 refresh after suspension,
+409 `USER_NOT_ACTIVE` again, 404 unknown id), `400 malformed userId on suspend` in Validation,
+an `adminUserId` variable, and a note in the collection description that deactivation needs an
+Order Service answering "no active orders". The `HAS_ACTIVE_ORDERS` and Order-down cases stay
+manual. While testing, it also found my old `user-db` volume had no `user_events` table
+(`001_init.sql` changed after it was applied), and started a stand-in Order container for the run.
+
+**Verification:** newman against the compose stack on a fresh `user-db`, with the stand-in
+Order answering "no active orders": 144 requests, 366 assertions, 0 failures. The
+`UserSuspended` message was read back from `user.events`, keyed by the user id, and its outbox
+row was marked published.
+
+**What I changed or rejected:** Tested the collection myself in Postman on 2026-10-20.
 
 ### 2026-10-19 — User Service: active-order deactivation guard (#71) and `UserSuspended` (#72)
 
