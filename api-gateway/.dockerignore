@@ -1,6 +1,6 @@
 # AI Assistance Disclosure:
-# Tool: Codex (model: GPT-6), date: 2026-09-29
-# Scope: Excluded local dependencies, build output, and environment secrets from the gateway image context.
+# Tool: Codex (model: GPT-6), date: 2026-10-13
+# Scope: Exclude secrets, dependencies and obsolete native build artifacts from stock Envoy packaging.
 # Author review: Pending Jie Yang's review.
 
 node_modules
@@ -9,3 +9,5 @@ dist
 .env.*
 !.env.example
 *.log
+.build
+envoy/__pycache__

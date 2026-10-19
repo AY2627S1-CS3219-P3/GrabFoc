@@ -3,6 +3,11 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Added password recovery forms; mapped service errors to reusable toast and field feedback on 2026-09-29.
 Author review: Jie Yang reviewed this file.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: Showed the reset-code notice on the reset step after a forgot-password request (issue #63); removed the unused message state.
+Author review: pending review by Zi Yi.
 */
 "use client";
 
@@ -21,7 +26,6 @@ function emptyEmail() { return ""; }
 export function RecoveryScreen({ step }: { step: "forgot" | "reset" }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
   const [done, setDone] = useState(false);
   const rememberedEmail = useSyncExternalStore(noSubscription, pendingEmail, emptyEmail);
   const [email, setEmail] = useState<string | undefined>();
@@ -34,7 +38,6 @@ export function RecoveryScreen({ step }: { step: "forgot" | "reset" }) {
     const newPassword = String(data.get("newPassword") ?? "");
     if (step === "reset" && newPassword !== data.get("confirmPassword")) { feedback.setFields({ confirmPassword: ["Passwords do not match."] }); return; }
     setBusy(true);
-    setMessage("");
     feedback.clear();
     try {
       const response = await fetch(step === "forgot" ? "/api/gateway/auth/password/forgot" : "/api/gateway/auth/password/reset", {
@@ -60,6 +63,7 @@ export function RecoveryScreen({ step }: { step: "forgot" | "reset" }) {
 
   return <main className="auth-page"><section className="auth-card" aria-labelledby="recovery-title">
     <h1 id="recovery-title">{step === "forgot" ? "Forgot your password?" : "Reset your password"}</h1>
+    {step === "reset" && rememberedEmail && !done && <p className="auth-message" role="status">If an account exists for that email, we&apos;ve sent a 6-digit code. It expires in 5 minutes. Didn&apos;t get it? Check spam, or make sure you&apos;ve registered with this address.</p>}
     {done ? <p>Your password was reset. <Link href="/signin">Sign in</Link></p> : <form className="auth-form" onSubmit={submit} onChange={(event) => {
       const target: EventTarget = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) feedback.clearField(target.name);
@@ -72,7 +76,6 @@ export function RecoveryScreen({ step }: { step: "forgot" | "reset" }) {
       </>}
       <button className="auth-submit" disabled={busy}>{busy ? "Please wait…" : step === "forgot" ? "Send reset code" : "Reset password"}</button>
     </form>}
-    {message && <p className="auth-message" role="status">{message}</p>}
     <p className="auth-footer"><Link href="/signin">Back to Sign In</Link></p>
   </section><ErrorToast message={feedback.toast} onDismiss={() => feedback.setToast('')} /></main>;
 }

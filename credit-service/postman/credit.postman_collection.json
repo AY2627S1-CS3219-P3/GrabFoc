@@ -2,7 +2,7 @@
   "info": {
     "name": "FoC Credit Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: Jian Bing, 2026-10-18 — manually tested on this branch: unit, integration and Kafka suites pass (incl. transfer/release no longer offered over HTTP); reserve over HTTP, 409 when credits are short, a TransferCredits command over Kafka pays the courier, and repeating it changes nothing. 2026-10-14 (Claude Code, Claude Opus 5.5): added the Balance folder. 2026-10-15 (Claude Code, Claude Opus 5.5): added the Dead letters folder. 2026-10-18 (Claude Code, Claude Opus 5.5): removed the HTTP transfer/release requests; they are Kafka commands now. 2026-10-18 (Claude Code, Claude Opus 5.5): folder 1 says how to send them with the orderId as the Kafka key (PR #94 review).\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service with `docker compose up -d credit-service`.\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
+    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: Jian Bing, 2026-10-18 — manually tested on this branch: unit, integration and Kafka suites pass (incl. transfer/release no longer offered over HTTP); reserve over HTTP, 409 when credits are short, a TransferCredits command over Kafka pays the courier, and repeating it changes nothing. 2026-10-14 (Claude Code, Claude Opus 5.5): added the Balance folder. 2026-10-15 (Claude Code, Claude Opus 5.5): added the Dead letters folder. 2026-10-18 (Claude Code, Claude Opus 5.5): removed the HTTP transfer/release requests; they are Kafka commands now. 2026-10-18 (Claude Code, Claude Opus 5.5): folder 1 says how to send them with the orderId as the Kafka key (PR #94 review). 2026-10-18 (Claude Code, Claude Opus 5.5): added the transaction history requests to the Balance folder (route decided by Jian Bing).\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service with `docker compose up -d credit-service`.\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
   },
   "variable": [
     {
@@ -577,6 +577,125 @@
               "path": [
                 "credits",
                 "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Own transaction history → 200, or 404 WALLET_NOT_FOUND with no wallet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status [200, 404]', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
+                  "if (pm.response.code === 200) pm.test('a page of at most 5', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.items.length).to.be.at.most(5);",
+                  "  pm.expect(body).to.have.property('nextBefore');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{balanceUrl}}/credits/{{userId}}/transactions?limit=5",
+              "host": [
+                "{{balanceUrl}}"
+              ],
+              "path": [
+                "credits",
+                "{{userId}}",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Another user's transaction history → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status [403]', () => pm.expect(pm.response.code).to.be.oneOf([403]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{balanceUrl}}/credits/{{$guid}}/transactions",
+              "host": [
+                "{{balanceUrl}}"
+              ],
+              "path": [
+                "credits",
+                "{{$guid}}",
+                "transactions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Transaction history with limit 101 → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status [400]', () => pm.expect(pm.response.code).to.be.oneOf([400]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{balanceUrl}}/credits/{{userId}}/transactions?limit=101",
+              "host": [
+                "{{balanceUrl}}"
+              ],
+              "path": [
+                "credits",
+                "{{userId}}",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "101"
+                }
               ]
             }
           }
