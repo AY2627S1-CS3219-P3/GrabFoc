@@ -25,6 +25,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 credit_transactions entry from Jian Bing's prompts.
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 transaction history route entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 lazy wallet creation removal entry from Jian Bing's prompts.
 Author review: pending — Jian Bing to record what he checked.
 -->
@@ -71,6 +74,41 @@ real-Kafka tests (a transfer retried until `UserRegistered` creates the wallet; 
 then applied when replayed after the wallet exists), each seen failing first; unit 128/128,
 integration 70/70, Kafka 14/14; Newman 30 requests, 0 failures against a container built from this
 branch.
+
+### 2026-10-18 — Credit transaction history route (`GET /credits/:userId/transactions`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/src/credits/{balance.controller,credits.service,credit.schemas}.ts`,
+`credit-service/src/credits/{balance.http.int,credit.schemas}.spec.ts`, `credit-service/AGENTS.md`,
+`credit-service/postman/credit.postman_collection.json`,
+`docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** The frontend needs to show a user's credit history, so `credit_transactions` (PR #93)
+needs a read route. In the same request I asked to remove lazy wallet creation; that is a separate
+PR, held until the User Service publishes `UserRegistered` (#54).
+
+**Prompts (exact):**
+> lets remove the lazt credit creation, and a route for read transation history, then
+
+> ys i approve
+
+My answers to Claude's design questions (I picked each option): timing "Build now, merge after #54
+(Recommended)"; a transfer to a courier with no wallet "Retry, then dead-letter (Recommended)"; route
+"GET /credits/:userId/transactions (Recommended)"; paging "Newest first, cursor (Recommended)".
+
+**Key responses:** Claude flagged the route, its query parameters and response shape as interface
+decisions under the AI policy and asked me to choose; proposed a plan of two PRs (this route now, the
+lazy-creation removal after #54), and suggested 404 `WALLET_NOT_FOUND` for a user with no wallet, as
+the balance route answers. I approved the plan, including the 404.
+
+**What it produced:** `GET /credits/:userId/transactions?limit=&before=`: the same access rule as the
+balance route (own id or ADMIN), newest first, `limit` 1–100 (default 20), `before` = the id of the
+last row seen; strict query validation; `{items: [{id, orderId, type, availableChange,
+reservedChange, createdAt}], nextBefore}`, with `nextBefore` null on the last page.
+
+**Verification:** Test-first: 10 new schema unit tests and 15 new HTTP integration tests (own
+history, paging across 3 pages, only the asked user's rows, 403, admin, 404, bad and unknown query
+parameters, bad path id, 401), each seen failing first; unit 140/140, integration 81/81.
 
 ### 2026-10-17/18 — Credit transaction history (`credit_transactions`) and merging the stack
 
