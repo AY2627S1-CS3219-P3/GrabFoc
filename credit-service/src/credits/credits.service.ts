@@ -19,7 +19,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Removed lazy wallet creation from reserve and transfer: a missing wallet fails with
  *        WALLET_NOT_FOUND (#79, spec D6/D7; decided by Jian Bing).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';

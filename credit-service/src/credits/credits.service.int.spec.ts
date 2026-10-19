@@ -13,7 +13,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Tests for removing lazy wallet creation (#79; decided by Jian Bing); tests create
  *        their wallets first.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';

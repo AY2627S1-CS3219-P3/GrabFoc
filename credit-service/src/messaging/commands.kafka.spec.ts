@@ -7,7 +7,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Tests for a transfer to a courier with no wallet, now that wallets are never created
  *        lazily (#79; decided by Jian Bing).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Logger } from '@nestjs/common';
