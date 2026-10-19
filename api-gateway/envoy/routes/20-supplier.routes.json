@@ -1,0 +1,41 @@
+{
+  "_disclosure": "AI Assistance Disclosure:\nTool: Codex (model: GPT-6), date: 2026-10-13\nScope: AI-generated extraction of existing Envoy routes; no API or authentication changes.\nAuthor review: Pending human review.",
+  "service": "supplier",
+  "urlEnv": "SUPPLIER_SERVICE_URL",
+  "prefixes": {
+    "locations": {
+      "env": "GATEWAY_LOCATIONS_PREFIX",
+      "default": "/locations"
+    }
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/location-types"
+    },
+    {
+      "method": "GET",
+      "path": "{locations}"
+    },
+    {
+      "method": "POST",
+      "path": "{locations}"
+    },
+    {
+      "method": "GET",
+      "regex": "{locations}/[^/]+"
+    },
+    {
+      "method": "PATCH",
+      "regex": "{locations}/[^/]+"
+    },
+    {
+      "method": "POST",
+      "regex": "{locations}/[^/]+/deactivate"
+    },
+    {
+      "method": "POST",
+      "regex": "{locations}/[^/]+/restore"
+    }
+  ]
+}
