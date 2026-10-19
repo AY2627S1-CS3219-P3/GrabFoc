@@ -4,6 +4,9 @@
  * Scope: Generated end-to-end tests against a real Kafka broker and PostgreSQL for credit commands:
  *        duplicates, retries, dead letters and replay (spec §7, §9).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Generic envelope columns message_key / message_type.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Logger } from '@nestjs/common';
@@ -169,5 +172,5 @@ it('records an unreadable user event in the table, where it cannot be replayed',
   const eventId = randomUUID();
   await send(topics.userEvents, 'bad', { type: 'UserRegistered', eventId, userId: 'nope' });
   const row = await waitFor(() => deadLetterFor(eventId));
-  expect(row).toMatchObject({ source_topic: topics.userEvents, command_type: 'UserRegistered' });
+  expect(row).toMatchObject({ source_topic: topics.userEvents, message_key: 'bad', message_type: 'UserRegistered' });
 });

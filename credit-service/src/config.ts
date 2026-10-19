@@ -12,6 +12,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
  * Scope: Noted that issuer/audience must stay unset until User tokens carry them (PR #73 review).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Host broker address localhost:9094 → 127.0.0.1:9094, so clients don't try IPv6 first (PR #96).
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { existsSync } from 'fs';
 import * as path from 'path';
@@ -62,7 +65,7 @@ export const config = {
   // User Service puts iss/aud in its tokens; it doesn't yet, so setting either rejects every token.
   jwtIssuer: process.env.CREDIT_JWT_ISSUER || undefined,
   jwtAudience: process.env.CREDIT_JWT_AUDIENCE || undefined,
-  // Kafka bootstrap servers, comma-separated: kafka:9092 inside Compose, localhost:9094 from the host.
+  // Kafka bootstrap servers, comma-separated: kafka:9092 inside Compose, 127.0.0.1:9094 from the host.
   kafkaBrokers: required('CREDIT_KAFKA_BROKERS')
     .split(',')
     .map((broker) => broker.trim())

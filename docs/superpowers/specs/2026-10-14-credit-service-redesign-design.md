@@ -13,6 +13,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Added the transaction history route to §3 and §4.4 (route, paging and limits decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Dead-letter table columns renamed to a generic envelope (message_key, message_type).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Recorded the team consensus on transfer/release as commands and the removal of their HTTP routes.
 Author review: pending — Jian Bing to record what he checked.
 -->
@@ -248,7 +251,7 @@ wallet, so the order matters.
   `source_partition`, `source_offset` (where the original message sat; a dead letter without an event
   id is recognised on redelivery by them plus a hash of its payload, since Kafka offsets restart if
   its volume is reset — PR #85 and security reviews, 2026-10-16),
-  `order_id`, `source_topic`, `command_type` (the message `type`), `payload`, `error`, `error_code`,
+  `message_key` (the Kafka key; `order_id` before 2026-10-18), `source_topic`, `message_type` (the message `type`; `command_type` before 2026-10-18), `payload`, `error`, `error_code`,
   `attempts`, `dead_lettered_at`, `replay_claimed_at`, `replayed_at`. Second PR #85 review (2026-10-16):
   `payload` is `BYTEA` (exact bytes; TEXT can't hold NUL); a replay claims the row, sends, then sets
   `replayed_at`, and a claim left by a crash is retaken after 6 minutes; a command keyed by anything

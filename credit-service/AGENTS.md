@@ -31,6 +31,15 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented GET /credits/:userId/transactions (route decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Host broker address is 127.0.0.1:9094 (quieter logs).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Dead letters use a generic envelope: message_key / message_type (decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented the replay key (PR #95 review).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Removed the HTTP transfer/release routes from the API table (team consensus).
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
@@ -115,11 +124,11 @@ credit_transactions (                           -- every balance change, append-
 credit_dead_letters (                           -- copied from Credit's dead-letter topics
     id                BIGSERIAL PRIMARY KEY,
     event_id          UUID,                     -- null when the message was unreadable
-    order_id          UUID,
+    message_key       TEXT,                     -- the Kafka key: orderId for commands, userId for events
     source_topic      TEXT NOT NULL,            -- credit.commands or user.events
     source_partition  INTEGER,                  -- where the original message sat in source_topic
     source_offset     BIGINT,
-    command_type      TEXT,                     -- the message's type field
+    message_type      TEXT,                     -- the message's type (event or command)
     payload           BYTEA NOT NULL,           -- exact bytes (TEXT can't hold e.g. NUL)
     error             TEXT NOT NULL,
     error_code        TEXT,
@@ -190,7 +199,7 @@ and neither credential opens the other's routes. The balance route never creates
 _Origin: Team (Jian Bing's decisions K1–K13 in the redesign spec §9); AI doc (details proposed by
 Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3 "Messaging (Kafka)"._
 
-- **Broker:** the shared Kafka in `infra/kafka/` (`kafka:9092` in Compose, `localhost:9094` from
+- **Broker:** the shared Kafka in `infra/kafka/` (`kafka:9092` in Compose, `127.0.0.1:9094` from
   the host). `kafka-init` creates every topic; Credit creates none.
 - **Consumer group** `credit-service`, starting from the oldest message the first time. An offset
   is stored only after its message's work is saved; a crash re-reads it, which is safe because every
@@ -225,9 +234,12 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
     `x-error`, `x-error-code`, `x-source-topic`, `x-dead-lettered-at`, logged at `error` as
     `credit_command_dead_lettered` (ids only).
 - **Dead letters:** Credit copies both DLTs into `credit_dead_letters`; admins list and replay them
-  through the admin routes (API above). Only credit commands can be replayed. A replay claims its row
+  through the admin routes (API above). Only credit commands can be replayed. The table is a generic envelope: `message_key` (the Kafka
+  key), `message_type`, where the message came from, why it failed, and the raw `payload`, so a new
+  kind of event or command needs no schema change. A replay claims its row
   (`replay_claimed_at`), sends, then sets `replayed_at`; a claim left by a crash can be retaken after
-  6 minutes. The replay route takes no request body (any body is a 400).
+  6 minutes. The replay route takes no request body (any body is a 400). A replay is keyed by the command's `orderId`, so a command
+  dead-lettered for a wrong key can still be recovered; `messageKey` keeps the key it arrived with.
 - The database pool has connection (5 s) and query (10 s) timeouts, so an unreachable database
   becomes an error the consumer retries instead of a hang.
 
