@@ -15,10 +15,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: credit_dead_letters: message_key / message_type replace order_id / command_type (decided by
  *        Jian Bing).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Renames the old dead-letter columns in an existing table (PR #95 review).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 
 /** Every new account starts with this many available credits (Backlog C1.1.1). */

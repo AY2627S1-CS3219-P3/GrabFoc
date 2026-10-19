@@ -6,7 +6,7 @@
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Generic envelope columns message_key / message_type.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Logger } from '@nestjs/common';

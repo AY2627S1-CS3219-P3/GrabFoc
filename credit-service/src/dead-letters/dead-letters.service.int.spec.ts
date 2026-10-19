@@ -8,10 +8,10 @@
  * Author review: pending — Jian Bing to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Generic envelope fields messageKey / messageType (decided by Jian Bing).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added the replay-key test (PR #95 review).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';

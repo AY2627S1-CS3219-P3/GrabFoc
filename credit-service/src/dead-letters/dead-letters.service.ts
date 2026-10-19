@@ -15,14 +15,14 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Generic envelope: message_key (the Kafka key) and message_type replace order_id and
  *        command_type (decided by Jian Bing).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Replay keys the command by its orderId, not the key it arrived with (PR #95 review).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: A NUL in a Kafka key is stored as U+FFFD, so it can't block the dead-letter topic (PR #95
  *        review).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Pool } from 'pg';

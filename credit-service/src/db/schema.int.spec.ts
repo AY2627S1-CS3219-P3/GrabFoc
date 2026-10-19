@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Generated the test that the schema renames credit_dead_letters' old columns (PR #95 review;
  *        the rename was decided by Jian Bing).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { Pool, PoolClient } from 'pg';
 import { openTestDatabase } from '../test/database';
