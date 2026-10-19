@@ -8,6 +8,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
 # Author review: Jian Bing supplied what it states; the wording is Claude's.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+# Scope: EXTERNAL listener advertises 127.0.0.1 instead of localhost (quieter logs).
+# Author review: Jian Bing, 2026-10-18 — ran npm run test:kafka on this branch: 12/12 pass with no console errors (the IPv6 connection failures and retry-wait errors seen on main are gone).
 #
 # Shared by every service, so it lives in infra/ rather than in one service's folder.
 # One KRaft broker (no ZooKeeper), replication factor 1: local only, not for the cloud.
@@ -21,8 +24,10 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       # PLAINTEXT for containers, EXTERNAL for tools and tests on the host, CONTROLLER for KRaft.
+      # EXTERNAL advertises 127.0.0.1, not localhost: on macOS localhost tries IPv6 (::1) first, where
+      # the port isn't published, so every client logged a failed connection before falling back.
       KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://127.0.0.1:9094
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093

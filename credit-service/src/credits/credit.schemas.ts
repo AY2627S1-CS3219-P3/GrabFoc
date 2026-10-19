@@ -17,6 +17,9 @@
  * Scope: Added the query schema for GET /credits/:userId/transactions (route, paging and limits
  *        decided by Jian Bing).
  * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Removed the transfer/release HTTP schemas (they are Kafka commands only, team consensus).
+ * Author review: Jian Bing, 2026-10-18 — manually tested on this branch: unit, integration and Kafka suites pass (incl. transfer/release no longer offered over HTTP); reserve over HTTP, 409 when credits are short, a TransferCredits command over Kafka pays the courier, and repeating it changes nothing.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -35,19 +38,6 @@ export const reserveSchema = z
     requesterId: id,
     // Credits are whole numbers (root AGENTS.md §1); capped at PostgreSQL's INTEGER maximum.
     amount: z.number().int().positive().max(2147483647),
-  })
-  .strict();
-
-export const transferSchema = z
-  .object({
-    orderId: id,
-    courierId: id,
-  })
-  .strict();
-
-export const releaseSchema = z
-  .object({
-    orderId: id,
   })
   .strict();
 
@@ -75,8 +65,14 @@ export const transactionsQuerySchema = z
 
 export type TransactionsQuery = z.infer<typeof transactionsQuerySchema>;
 export type ReserveRequest = z.infer<typeof reserveSchema>;
-export type TransferRequest = z.infer<typeof transferSchema>;
-export type ReleaseRequest = z.infer<typeof releaseSchema>;
+// Transfer and release arrive only as Kafka commands, validated in messaging/messages.ts.
+export interface TransferRequest {
+  orderId: string;
+  courierId: string;
+}
+export interface ReleaseRequest {
+  orderId: string;
+}
 
 export function parseOr400<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, data: unknown, what: string): T {
   const result = schema.safeParse(data ?? {});

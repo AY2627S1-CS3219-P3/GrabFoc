@@ -35,6 +35,15 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 transaction history route entry from Jian Bing's prompts.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 quieter Kafka logs entry from Jian Bing's prompt.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 dead-letter envelope entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 entry on removing the HTTP transfer/release routes from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -193,6 +202,104 @@ I checked; docs, plans, CI and other services' files stay pending.
 didn't edit Claude's wording.
 
 **Verification:** Unit suite and type check still pass; the Postman collection is still valid JSON.
+
+### 2026-10-18 — Transfer and release are Kafka commands only (HTTP routes removed)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `credit-service/src/credits/{credits.controller,credit.schemas,credit.schemas.spec,credits.http.int.spec,balance.http.int.spec}.ts`,
+`credit-service/postman/credit.postman_collection.json`, `credit-service/AGENTS.md`, `AGENTS.md` (§3),
+`docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`; issue #53 rewritten.
+
+**Scenario:** I got team consensus for asynchronous Order → Credit transfer and release, and decided to
+remove the HTTP routes now, since the Order Service doesn't exist yet and nothing calls them.
+
+**Prompts (exact):**
+> what the items marked proposed
+
+> actually, lets change credit service ownership to me, zi yi said it was fine, so technically i have read through everything and made the decision for the whole of th eproject
+
+> sorry undo the last prompt
+
+> alright, then elts get to work on the  Transfer and release become Kafka commands instead of synchronous HTTP; reserve stays HTTP. This changes a [Decided] team decision, so it needs the mentor as well as the team.
+>      - Order → Supplier location reads become plain HTTP instead of query events. Your proposal; it needs Jie Yang (Order) and Cole Lin (Supplier). what has been done ,and wha tneeds to be done
+
+> i think lets jsut get rid of the http transfer and reelase route, since roder ahsnt even been made, os there wont be compatibiltiy issue, als o ireceived a team consesnsus on using asych communicaiton between roder to credit to release or trasnfer, and to change the issue, but also what is wrong with the deicded tiem "Order publishes query events… Supplier is the only consumer"
+
+**Key responses:** Claude listed the [Proposed] items and who confirms each; undid an ownership change
+before any file was edited; explained that Order → Supplier query events aren't wrong, only costly
+(Order waits, so it needs request/reply that Kafka lacks, and the coupling stays).
+
+**What it produced:** `POST /internal/credits/transfer` and `/release` removed (with their schemas);
+root `AGENTS.md` §3 now records reserve over HTTP and transfer/release as Kafka commands (team
+consensus); Postman reshaped to reserve-only HTTP; issue #53 rewritten to match.
+
+**Verification:** Test-first: "no longer offers transfer or release over HTTP" (404, the hold stays
+RESERVED) failed, then passed; unit 126/126, integration 60/60, Kafka 12/12; Newman 15 requests,
+19 assertions, 0 failures on the rebuilt service.
+
+### 2026-10-18 — Manual testing help, the schemas explained, and a generic dead-letter envelope
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `credit-service/src/db/schema.ts`, `credit-service/src/dead-letters/dead-letters.service{,.int.spec}.ts`,
+`credit-service/src/messaging/commands.kafka.spec.ts`, `credit-service/AGENTS.md`,
+`docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** While running the manual test guide I asked about terminal errors, the schemas and the
+dead-letter design, then chose to make the dead-letter table a generic envelope.
+
+**Prompts (exact):**
+> [Image #2] help *(screenshot: zsh `parse error near '<'` and a stuck `function>` prompt after pasting the guide's helpers)*
+
+> [Image #3] *(screenshot: TRUNCATE failing because credit_transactions references credit_accounts)*
+
+> can you show em the new schemas, and explain every field to me
+
+> why is there so muc hconsoel error *(with the pasted output of npm test, test:int and test:kafka)*
+
+> wait so credit_dead_eltters cover for BOTH credit accounts and credit hold,s or its it moreccurate to say it covers for the the transactions started upon UserRegisetred event or TrasnferCredit command
+
+> what is the point in a dead latter table, isnt a dead letter topic sufficient, also doesnt it seem abit antipattern if the schema of this dead letter tbael needs t oacocmodate for  differnet kidn of event/command with idfferent data and fiels? is there a more graceful wa yfo handling this
+
+> actually im confused as to the replay, firstly, cant we use the offset to determien if a message has been repalyed, and honreslty i dont really undersnta dthre replay endpoint, what is its prupose? c
+
+> lets rename to the generic envelope, also just to clarify, so an admin has to call replay manaully? or is there an auto run dead letter feature, also when repalying a dead eltter, the same commadn is sent again to the topic, so kafka will ahev hte same event two times?
+
+**Key responses:** Claude fixed the terminal problems (zsh doesn't treat pasted `#` as comments; a
+sourceable helper file instead; the reset needs credit_transactions too; Node 24 instead of 26, whose
+source build also breaks on the space in the folder path); explained every column of the four tables;
+explained the console noise (IPv6 `localhost` retries, an intentional outage test, retry waits logged
+by the library); explained that dead letters are failed Kafka messages, why a table is kept beside the
+DLT (7-day retention, per-message status, lookup by id), what replay is for and why an offset can't
+say "replayed"; and that replay is manual and a replayed command is a second copy that idempotency absorbs.
+
+**What it produced:** `credit_dead_letters.order_id` → `message_key` (the actual Kafka key) and
+`command_type` → `message_type`, with API fields `messageKey` / `messageType`.
+
+**Verification:** Tests updated first (red), then green: unit 128/128, integration 60/60, Kafka 12/12.
+
+### 2026-10-18 — Quieter Kafka logs in tests and the service
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `infra/kafka/{compose.yaml,README.md}`, `.env.example`, `credit-service/src/messaging/kafka.logger{,.spec}.ts`,
+`credit-service/src/messaging/{kafka.connection,kafka.runner}.ts`, `credit-service/src/{config,test/kafka}.ts`,
+`credit-service/{README,AGENTS}.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** `npm run test:kafka` passed but printed many console errors. Claude explained the three
+sources; I asked for the two fixes it proposed.
+
+**Prompts (exact):**
+> lets make the small fixes for the tests that u mentioned
+
+**Key responses:** Most of the noise came from `localhost` resolving to IPv6 `::1` first on macOS,
+where the broker's port isn't published; the rest was the library logging Credit's internal
+"not due yet" error on every retry wait, plus an intentional database-outage test.
+
+**What it produced:** the broker advertises `127.0.0.1:9094` (and that's the host default
+everywhere); a Kafka client logger that writes through Nest's logger and drops only the
+not-due-yet error; `NotDueYet` carries a fixed message for the filter to match.
+
+**Verification:** Logger tests written first (red, then green). Unit 132/132, integration 60/60,
+Kafka 12/12; the Kafka run now prints no console errors.
 
 ### 2026-10-18 — Credit transaction history route (`GET /credits/:userId/transactions`)
 

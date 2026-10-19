@@ -10,6 +10,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added tests for GET /credits/:userId/transactions (route decided by Jian Bing).
  * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: The token/key separation test uses reserve, since release is no longer an HTTP route.
+ * Author review: Jian Bing, 2026-10-18 — manually tested on this branch: unit, integration and Kafka suites pass (incl. transfer/release no longer offered over HTTP); reserve over HTTP, 409 when credits are short, a TransferCredits command over Kafka pays the courier, and repeating it changes nothing.
  */
 import { INestApplication, Logger, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -114,10 +117,10 @@ it('keeps user tokens and the service key apart', async () => {
   const withServiceKey = await get(`/credits/${alice}`, { 'x-service-key': config.serviceKey });
   expect(withServiceKey.status).toBe(401);
 
-  const withToken = await fetch(`${baseUrl}/internal/credits/release`, {
+  const withToken = await fetch(`${baseUrl}/internal/credits/reserve`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token(alice, 'ADMIN')}` },
-    body: JSON.stringify({ orderId: randomUUID() }),
+    body: JSON.stringify({ orderId: randomUUID(), requesterId: alice, amount: 1 }),
   });
   expect(withToken.status).toBe(401);
 });
