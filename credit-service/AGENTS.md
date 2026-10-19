@@ -25,7 +25,11 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented credit_transactions (PR #48 review; design decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
-Scope: Documented GET /credits/:userId/transactions, documented that old wallets are purged, not backfilled (PR #93 review; decided by Jian Bing).
+Scope: Documented that old wallets are purged, not backfilled (PR #93 review; decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented GET /credits/:userId/transactions (route decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
