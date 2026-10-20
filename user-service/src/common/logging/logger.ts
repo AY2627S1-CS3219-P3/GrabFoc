@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
  * Scope: Copied from user-service/src/common/logger.ts (original disclosure: Claude Code, Claude Opus 5, 2026-09-25). Unchanged apart from removing the test-only LOG_METHODS list.
  * Author review: Successfully reviewed by Deanson, 2026-10-16.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: Added the OUTBOX_RELAY_FAILED and OUTBOX_BACKLOG_STALE events.
+ * Author review: pending — Deanson to record what he checked.
  */
 // AI-generated (reviewed by Deanson)
 import { ConsoleLogger, LogLevel } from '@nestjs/common';
@@ -96,6 +99,8 @@ export const AuditEvent = {
   UNAUTHORISED_ACCESS: 'UNAUTHORISED_ACCESS',
   ADMIN_ACTION: 'ADMIN_ACTION',
   ADMIN_BOOTSTRAPPED: 'ADMIN_BOOTSTRAPPED',
+  OUTBOX_RELAY_FAILED: 'OUTBOX_RELAY_FAILED',
+  OUTBOX_BACKLOG_STALE: 'OUTBOX_BACKLOG_STALE',
 } as const;
 
 export type AuditEvent = (typeof AuditEvent)[keyof typeof AuditEvent];

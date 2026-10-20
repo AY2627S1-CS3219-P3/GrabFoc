@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FoC User Service",
-    "description": "Every route of the User Service, ordered so the whole collection runs top to bottom in the Collection Runner with no manual step: the OTPs are read out of Mailpit's HTTP API by a pre-request script.\n\nNeeds the compose stack up (`docker compose up`) - the service on baseUrl and Mailpit on mailpitUrl.\n\nEach address gets three OTP requests per ten minutes, shared across register, resend and forgot - so every folder here owns its own address and spends that budget deliberately. Every address is generated fresh per run, so the runner is safe to press repeatedly.\n\nThe Admin folder claims the bootstrap admin: set adminEmail to USER_BOOTSTRAP_ADMIN_EMAIL, and start the service on an empty database so the bootstrap has run. It resets that admin's password every run (the new one is left in adminPassword), which spends the admin address's OTP budget, so the full collection runs at most three times per ten minutes.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated the requests, the assertions and the Mailpit OTP lookup. Author review: the full collection run green against the compose stack.\n\n2026-09-28 (model: Claude Opus 5.5): automated the Profile and Admin folders - Mailpit OTP lookups, assertions, a fresh account per folder, and claiming the bootstrap admin. Author review: the full collection run green under newman against the compose stack (70 requests, 101 assertions).\n\nAI Assistance Disclosure (the Profile and Admin requests): Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. 2026-09-28 (model: Claude Sonnet 5): added List users (admin) and Change role (admin) (Step 10 - these routes were marked Postman-verified in admin.controller.ts/admin.service.ts, but the requests used for that were never saved into this collection), the six Step 12 requests (Request OTP through Deactivate account), and Reactivate user (admin) (Step 13). Author review: the six Step 12 requests were exercised via Postman against the compose stack on 2026-09-28 (all endpoints, including the retry-with-the-same-code behaviour on Change email - request and Change password) - see /ai/usage-log.md. Reactivate user (admin) was exercised the same way on 2026-09-28 (deactivate then reactivate, 404 for an unknown id, 409 NOT_DEACTIVATED for an already-ACTIVE target). List users (admin) and Change role (admin) (Step 10) are still unverified through this file specifically, even though the routes themselves were separately confirmed working via ad hoc Postman requests when Step 10 was built.\n\n2026-10-16 (Claude Code, model: Claude Opus 5.5): copied into the refactored service's postman/ folder (now user-service/postman after the rename) and added the Validation folder (per-endpoint 400 cases for the new DTOs). The existing requests and assertions are unchanged: each was checked against the new fields.ts rules and still holds. Author review: successfully reviewed by Deanson, 2026-10-16.",
+    "description": "Every route of the User Service, ordered so the whole collection runs top to bottom in the Collection Runner with no manual step: the OTPs are read out of Mailpit's HTTP API by a pre-request script.\n\nNeeds the compose stack up (`docker compose up`) - the service on baseUrl and Mailpit on mailpitUrl.\n\nEach address gets three OTP requests per ten minutes, shared across register, resend and forgot - so every folder here owns its own address and spends that budget deliberately. Every address is generated fresh per run, so the runner is safe to press repeatedly.\n\nThe Admin folder claims the bootstrap admin: set adminEmail to USER_BOOTSTRAP_ADMIN_EMAIL, and start the service on an empty database so the bootstrap has run. It resets that admin's password every run (the new one is left in adminPassword), which spends the admin address's OTP budget, so the full collection runs at most three times per ten minutes.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated the requests, the assertions and the Mailpit OTP lookup. Author review: the full collection run green against the compose stack.\n\n2026-09-28 (model: Claude Opus 5.5): automated the Profile and Admin folders - Mailpit OTP lookups, assertions, a fresh account per folder, and claiming the bootstrap admin. Author review: the full collection run green under newman against the compose stack (70 requests, 101 assertions).\n\nAI Assistance Disclosure (the Profile and Admin requests): Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. 2026-09-28 (model: Claude Sonnet 5): added List users (admin) and Change role (admin) (Step 10 - these routes were marked Postman-verified in admin.controller.ts/admin.service.ts, but the requests used for that were never saved into this collection), the six Step 12 requests (Request OTP through Deactivate account), and Reactivate user (admin) (Step 13). Author review: the six Step 12 requests were exercised via Postman against the compose stack on 2026-09-28 (all endpoints, including the retry-with-the-same-code behaviour on Change email - request and Change password) - see /ai/usage-log.md. Reactivate user (admin) was exercised the same way on 2026-09-28 (deactivate then reactivate, 404 for an unknown id, 409 NOT_DEACTIVATED for an already-ACTIVE target). List users (admin) and Change role (admin) (Step 10) are still unverified through this file specifically, even though the routes themselves were separately confirmed working via ad hoc Postman requests when Step 10 was built.\n\n2026-10-16 (Claude Code, model: Claude Opus 5.5): copied into the refactored service's postman/ folder (now user-service/postman after the rename) and added the Validation folder (per-endpoint 400 cases for the new DTOs). The existing requests and assertions are unchanged: each was checked against the new fields.ts rules and still holds. Author review: successfully reviewed by Deanson, 2026-10-16.\n\n2026-10-19 (Claude Code, model: Claude Opus 5.5): added \"Credits after registration\" (Sign-up) and \"Credits of the bootstrap admin\" (Admin), which check that the UserRegistered outbox event reached the Credit Service. They call Credit directly on creditUrl (:3004), so the collection now needs the full stack (Kafka and the Credit Service), not only the User Service. The admin check needs an admin bootstrapped after the outbox existed (fresh user-db volume); there is no backfill. Author review: pending - Deanson to record what he checked.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -12,6 +12,10 @@
     {
       "key": "mailpitUrl",
       "value": "http://localhost:8025"
+    },
+    {
+      "key": "creditUrl",
+      "value": "http://localhost:3004"
     },
     {
       "key": "password",
@@ -71,6 +75,10 @@
     },
     {
       "key": "adminAccessToken",
+      "value": ""
+    },
+    {
+      "key": "adminUserId",
       "value": ""
     },
     {
@@ -287,6 +295,48 @@
                   "  const body = pm.response.json();",
                   "  pm.collectionVariables.set('accessToken', body.accessToken);",
                   "  pm.collectionVariables.set('refreshToken', body.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Credits after registration",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": "{{creditUrl}}/credits/{{userId}}",
+            "description": "Calls the Credit Service directly (creditUrl): the gateway has no credit route yet. Verify wrote a UserRegistered outbox row in the account's transaction; the relay sends it to user.events and Credit creates the wallet. Credit answers 404 WALLET_NOT_FOUND when no wallet exists, so a 200 with 10 credits proves the event arrived. Needs the full stack (Kafka and the Credit Service)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The outbox relay publishes asynchronously (it polls every second), so a 404",
+                  "// WALLET_NOT_FOUND may only mean the event hasn't reached Credit yet. Retry this",
+                  "// request up to 10 times, about 1 s apart, before judging it.",
+                  "const tries = Number(pm.collectionVariables.get('creditTries') || 0);",
+                  "if (pm.response.code === 404 && tries < 10) {",
+                  "  pm.collectionVariables.set('creditTries', tries + 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  setTimeout(() => {}, 1000);",
+                  "} else {",
+                  "  pm.collectionVariables.unset('creditTries');",
+                  "  pm.test('200 OK: the wallet exists', () => pm.response.to.have.status(200));",
+                  "  pm.test('starts with 10 credits, none reserved', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.userId).to.eql(pm.collectionVariables.get('userId'));",
+                  "    pm.expect(body.available).to.eql(10);",
+                  "    pm.expect(body.reserved).to.eql(0);",
+                  "  });",
                   "}"
                 ]
               }
@@ -2227,6 +2277,61 @@
                   "// Its own variable, so the target's session in accessToken survives.",
                   "if (pm.response.code === 200) {",
                   "  pm.collectionVariables.set('adminAccessToken', pm.response.json().accessToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Credits of the bootstrap admin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{creditUrl}}/credits/{{adminUserId}}",
+            "description": "The bootstrap admin's UserRegistered is written in the same transaction as the admin row, so the first admin gets a wallet too. Passes only if the admin was bootstrapped after the outbox existed (a fresh user-db volume): there is no backfill, so an older admin has no wallet and gets 404."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The admin's id is the access token's `sub`; decode the payload (base64url).",
+                  "const part = pm.collectionVariables.get('adminAccessToken').split('.')[1]",
+                  "  .replace(/-/g, '+').replace(/_/g, '/');",
+                  "const padded = part + '='.repeat((4 - (part.length % 4)) % 4);",
+                  "pm.collectionVariables.set('adminUserId', JSON.parse(atob(padded)).sub);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// The outbox relay publishes asynchronously (it polls every second), so a 404",
+                  "// WALLET_NOT_FOUND may only mean the event hasn't reached Credit yet. Retry this",
+                  "// request up to 10 times, about 1 s apart, before judging it.",
+                  "const tries = Number(pm.collectionVariables.get('creditTries') || 0);",
+                  "if (pm.response.code === 404 && tries < 10) {",
+                  "  pm.collectionVariables.set('creditTries', tries + 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  setTimeout(() => {}, 1000);",
+                  "} else {",
+                  "  pm.collectionVariables.unset('creditTries');",
+                  "  pm.test('200 OK: the bootstrap admin has a wallet', () => pm.response.to.have.status(200));",
+                  "  pm.test('a whole, non-negative balance', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.userId).to.eql(pm.collectionVariables.get('adminUserId'));",
+                  "    pm.expect(Number.isInteger(body.available) && body.available >= 0).to.eql(true);",
+                  "    pm.expect(Number.isInteger(body.reserved) && body.reserved >= 0).to.eql(true);",
+                  "  });",
                   "}"
                 ]
               }
