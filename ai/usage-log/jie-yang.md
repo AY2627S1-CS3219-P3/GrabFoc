@@ -5,10 +5,221 @@ Scope: Moved Jie Yang's section out of ai/usage-log.md into this file (issue #65
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
 -->
 
+<!--
+AI Assistance Disclosure:
+Tool: Codex (model: GPT-6), date: 2026-10-13
+Scope: Append the approved custom Envoy migration record and duplicate Postman health removal; preserve existing log entries.
+Author review: Implementation approved; code review pending.
+-->
+
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: While merging main into feat/envoy-gateway, moved the branch's 2026-10-12/13 entries here from ai/usage-log.md (newest first, headings set to ###); entry text unchanged except one invalid dash byte.
+Author review: Pending Jie Yang's review.
+-->
+
 # AI Usage Log — Jie Yang
 
 Jie Yang's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-18 — Fix gateway integration tests hanging on Linux CI (PR #69)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug
+**Files:** `api-gateway/test/envoy.integration.mjs`, `.github/workflows/api-gateway.yml`
+
+**Scenario:** The new `Test (api-gateway)` job passed the route tests and image build but its integration tests hung on GitHub's Linux runners while passing on Windows (Node 20 and 24).
+
+**Prompt (exact):**
+
+~~~text
+yes write a envoy specific CI
+~~~
+
+**What it produced:** Added CI diagnostics, which showed Envoy running and the runner reachable from containers but the tests stuck before the first one. Added a 1-second timeout to each `/health` readiness attempt in `startEnvoy()`, so a stalled early connection is retried. Added a 5-minute step timeout, a 15-minute job timeout and a failure-only diagnostics step. A first attempt at a per-test timeout was removed because Node 20 applied it to the whole file.
+**What I changed or rejected:** Pending Jie Yang's review.
+**Verification:** Integration tests pass locally (19/19) and on CI run 39136494850 (19/19); all PR #69 checks pass except the pending `review`.
+
+### 2026-10-18 — Envoy-specific gateway CI workflow (PR #69)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/workflows/api-gateway.yml`, `.github/workflows/ci.yml`
+
+**Scenario:** The `Test (api-gateway)` CI check failed on PR #69 because `ci.yml`'s Node matrix still ran `npm ci` in `api-gateway/`, whose `package-lock.json` was removed with the Node gateway.
+
+**Prompt (exact):**
+
+~~~text
+can u check why the api gateway CI failed
+~~~
+
+~~~text
+yes write a envoy specific CI
+~~~
+
+**What it produced:** A separate workflow with the same check name that runs `envoy_routes_test.py`, builds `foc-envoy:local` from `api-gateway/compose.yaml` (no root `.env` needed), and runs `envoy.integration.mjs`; removed `api-gateway` from the Node matrix in `ci.yml`.
+**What I changed or rejected:** Pending Jie Yang's review.
+**Verification:** Both workflow files parse as YAML; the build command produced `foc-envoy:local` locally; both test files passed locally (4/4 and 19/19); CI result on PR #69 to be checked.
+
+### 2026-10-18 — Merge main into feat/envoy-gateway (PR #69 conflicts)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `compose.yaml`, `ai/usage-log.md`, `ai/usage-log/jie-yang.md`
+
+**Scenario:** PR #69 conflicted with main in two files after main split the shared usage log into per-member files and added Kafka and Credit includes to the root Compose file.
+
+**Prompt (exact):**
+
+~~~text
+can you find the PR for the feat/envoy-gateway, explain the merge conflicts and help me resolve them
+~~~
+
+**What it produced:** Took main's `ai/usage-log.md` index and moved this branch's 2026-10-12/13 entries into this file, newest first. In `compose.yaml`, kept main's Kafka and Credit includes and this branch's short-form gateway include (so `api-gateway/.env` still loads), and combined both disclosure headers.
+**What I changed or rejected:** Pending Jie Yang's review.
+**Verification:** `docker compose config --quiet` passed; no conflict markers left; `jie-yang.md` diff against main is additions only.
+
+### 2026-10-13 16:53 SGT - Remove duplicate gateway Postman health request
+
+- Tool: Codex (model: GPT-6), mode: refactor.
+- Exact prompt: "just remove the duplicate health request from the gateway postman collection".
+- Scenario: User authorized removing the User Service health request that actually calls the gateway liveness endpoint.
+- Key response: Removed User Service / Public / Health from the gateway collection, retained the Gateway smoke health check, and updated the collection disclosure.
+- Verification: Collection parses as JSON; exactly one request targets {{baseUrl}}/health; all other collection items are unchanged.
+- Author review: Removal explicitly requested; final diff review pending.
+
+### 2026-10-13 - Remove unused Envoy candidate deployment files
+
+- Tool: Codex (model: GPT-6), mode: refactor / explain.
+- Exact prompt: "theres extra compose files and docker files now".
+- Scenario: Clarify the active root/service Compose layout and clean up migration-era deployment files.
+- Key response: Removed the unused `api-gateway/compose.envoy-candidate.yaml`, renamed the gateway's only Dockerfile from `Dockerfile.envoy` to standard `Dockerfile`, and updated Compose and documentation references. Kept root Compose and each active service's own Compose/Dockerfile.
+- Verification: Standalone and root Compose service listings resolve the gateway; the gateway image builds from the renamed Dockerfile; no active references to the retired filenames remain.
+- Author review: Pending human review.
+
+### 2026-10-13 - Expose existing Envoy infrastructure settings in the gateway environment
+
+- Tool: Codex (model: GPT-6), mode: refactor / explain.
+- Exact prompts: "ok but infrastructure behaviour should be configurable in the .env file too, like load balancing , rate limiting, token caching etc, instead of hard coded into the render.py"; "nvm just put the current infra settings into env, anything that needs extra deployment can wait".
+- Scenario: Make existing gateway settings configurable without introducing a distributed rate-limit service or verified-token cache.
+- Key response: Added environment inputs for upstream load-balancing policy, connection timeout, route and idle timeouts, JWKS fetch/cache durations and Envoy worker count. Kept current values as defaults; validated settings at startup; passed them through both Compose files; updated the example and local ignored .env without changing existing values; documented that distributed rate limiting and verified-token caching are deferred.
+- Verification: Four Python route configuration tests, Compose interpolation, all 19 Docker-backed integration tests, and pinned Envoy validation of LEAST_REQUEST plus duration overrides passed. Envoy validation first caught millisecond formatting; the renderer now normalizes durations to protobuf seconds.
+- Author review: Pending human review.
+
+### 2026-10-13 - Distinguish JWKS availability failures
+
+- Tool: Codex (model: GPT-6), mode: generate / debug / explain.
+- Exact prompt: "change it to 503" after discussion of JWKS fetch/parse failures and empty key sets. Follow-up: "can you explain how the ENVOY is being used? like in terms of the code base how does it work".
+- Key response: Enabled JWT failure metadata and mapped confirmed JWKS parse/missing/bad/empty/fetch status codes to 503 in the existing Lua response filter. Invalid-token, unknown-key and service 401 responses remain unchanged. Updated behavior documentation and added same-token recovery and browser session tests; frontend production code was unchanged. Explained Compose packaging, startup rendering, route discovery and Envoy request filters/proxying.
+- Verification: Gateway Docker image built; all 19 integration tests and both Python loader tests passed. Browser checks cover existing and rotated cookie preservation during 503 and recovery, plus invalid-session 401 behavior. Non-JSON profile errors currently appear as 500 initially and 502 after rotation; this existing presentation behavior was not changed.
+- Author review: User approved the JWKS 503 response exception; code review pending.
+
+### 2026-10-13 - Remove legacy gateway and prepare migration PR
+
+- Tool: Codex (model: GPT-6), mode: refactor / debug / explain.
+- Exact prompts: "The envoy gateway works right? Remove the Old gateway code"; "create a PR".
+- Scenario: User explicitly requested retiring the Node gateway after verification and opening the migration branch for review.
+- Key responses: Verified all 16 previous migration tests, then removed legacy TypeScript source, old Node Dockerfile, rollback Compose, npm manifests, tsconfig, legacy unit tests and generated Node dependencies/build output. Converted integration checks to test Envoy directly using only Node built-ins and added explicit coverage of protected User/Supplier routes and configurable prefixes. Updated gateway docs and agent notes; retained historical behavior differences and original plan history.
+- Verification: Envoy image built successfully. Standalone integration suite passed all 18 tests and Python route loader passed both tests without legacy source or npm dependencies. Local port 3003 smoke checks could not connect because the Compose stack was stopped; no local services were restarted.
+- PR: Prepare feat/envoy-gateway against main with stock image, per-service routes, environment-driven Compose, Postman collection, accepted behavior differences and legacy removal.
+- Author review: Pending human review in the requested PR.
+
+### 2026-10-13 - Configure gateway Compose from environment
+
+- Tool: Codex (model: GPT-6), mode: generate / explain.
+- Exact prompt: "how do i know if load-balancing is enabled ,, also the docker compose shldn supply the container urls directly right? it shld read from env"
+- Key response: Explained ROUND_ROBIN with STRICT_DNS discovery and that one endpoint offers no traffic distribution. Changed gateway/candidate Compose to interpolate service URLs, prefixes and existing JWT/test options; blank JWKS derives from the User origin. Root includes optional gateway .env defaults, subject to root/shell overrides. Updated example to container addresses and explained localhost for host execution. Kept listener/host ports unchanged.
+- Verification: Isolated Compose fixtures verified defaults, per-service .env loading through the root include, standalone/candidate loading, all forwarded settings and shell precedence. No actual credentials printed; live gateway was not recreated. Docker Compose include/interpolation behavior checked against official Docker documentation.
+- Author review: Pending human review.
+
+### 2026-10-13 - Remove unused renderer header list
+
+- Tool: Codex (model: GPT-6), mode: refactor.
+- Exact prompt: "clean it up" (referring to the unused REMOVED list in envoy/render.py).
+- Key response: Removed the unused Python header constant; actual request/response filtering in compatibility.lua is unchanged.
+- Verification: Both existing route-loader tests passed.
+- Author review: Pending human review.
+
+### 2026-10-13 - Extract Envoy service route files
+
+- Tool: Codex (model: GPT-6), mode: refactor / explain.
+- Exact prompts: "yes refactor this"; "what does compatibility lua do?"
+- Scenario: User approved moving existing gateway routes into per-service JSON files with automatic renderer loading, retaining current behavior.
+- Key responses: Extracted User and Supplier routes into envoy/routes/10-user.routes.json and 20-supplier.routes.json. Renderer discovers files in filename order, generates upstream clusters using declared URL variables, validates definitions, keeps JWT protected by default, and preserves configurable prefixes, health, final 404 and Supplier test replicas. Dockerfile packages the route directory. Added loader tests and updated gateway documentation/agent notes. Explained that compatibility.lua strips selected headers on requests/responses, rejects malformed targets, and records paths without queries; JWT verification belongs to Envoy. Lua was unchanged.
+- Verification: Three complete generated configurations exactly match pre-refactor baselines (defaults, custom prefixes/issuer/audience, HTTPS/replicas). Two route-loader tests passed, including new-service discovery and malformed authentication definitions. Lightweight image built successfully; all 16 isolated Envoy integration tests passed. Final validation changes and disclosure updates do not alter generated configuration.
+- Author review: Pending human review.
+
+- Follow-up exact prompt: "why isit 10-user.route
+20-supplier route". Response: Numeric filename prefixes define deterministic load/route precedence; gaps permit insertion between existing services, and are unrelated to ports or IDs.
+
+### 2026-10-13 - Gateway Postman collection
+
+- Tool: Codex (model: GPT-6), mode: generate / explain.
+- Exact prompt: "can you create a similar json for the gateway?"
+- Scenario: Create a Postman collection for existing gateway routes, reusing the User and Supplier collections without changing APIs or authentication design.
+- Key response: Created api-gateway/postman/gateway.postman_collection.json with 92 requests, default baseUrl http://localhost:3003, shared login token variables, empty initial tokens, no development identity headers, and six safe gateway smoke checks. Updated missing-token logout checks for stock Envoy text responses. Added import/login instructions and documented existing workflows that mutate account/location data.
+- Verification: Official Postman v2.1 schema validation passed; 113 embedded scripts parsed successfully; six safe requests against the running gateway returned expected 200/401/404 responses. Full account/location workflows were not run.
+- Author review: Pending human review.
+
+### 2026-10-13 - Switch to official Envoy defaults
+
+- Tool and mode: Codex (GPT-6), generate, refactor and debug.
+- Exact user prompt: "just change it to the ENVOY defaults but note down all the differences in behaviour".
+- Key response: Replaced the custom native image with official Envoy v1.38.6 pinned by digest; removed native patches/build scripts/release workflow and registry overrides. Retained route allowlist, bearer forwarding, expiry requirement and header stripping. Documented JWT timing, key selection/cache, algorithm/claim parsing, errors, request-ID, logging and proxy differences.
+- Verification: Official image built in about 30 seconds; 16 stock integration tests passed. Compose gateway started; GET /health returned 200 and missing-token GET /locations returned 401. Docker recovered from engine errors with a restart; obsolete compilation is stopped. No secrets or database state were changed.
+- Files: gateway runtime Dockerfile/Compose, envoy renderer and behaviour-differences.md, integration tests, gateway documentation, environment templates; removed native release assets.
+- Human review: User explicitly accepted stock behaviours after the policy warning and explanations; generated code/documentation review pending.
+
+### 2026-10-13 - Separate native Envoy releases from app builds
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompts: "wait idw it to take so long everytime its first built..."; "yes do that,".
+- Key response: Moved native compilation/tests to Dockerfile.envoy-release and an explicitly dispatched release workflow; normal Dockerfile.envoy copies config onto a versioned custom base. Prepared optional GHCR publishing only after native and HTTP acceptance tests pass. No package was published and no workflow dispatched.
+- Files: gateway Dockerfiles, Compose build arguments, environment examples, gateway documentation, HTTP test host mapping, .github/workflows/envoy-release.yml.
+- Human review: User approved separating releases and normal builds; generated changes review pending.
+
+### 2026-10-12 - Make Envoy image builds self-contained
+
+- Tool and mode: Codex (GPT-6), debug and generate.
+- Exact user prompt: failed to solve: failed to compute cache key: failed to calculate checksum of ref ndmuapygnsk40eu7nky41bva3::v49y3fv9g7r74rlvkcmhbuvz4: "/.build/bin/envoy": not found
+- Key response: The standalone native build had not produced the executable. Replaced the host-binary COPY with a pinned Docker native build/test stage and locked BuildKit cache, followed by a runtime stage. Compose no longer requires a separately generated executable.
+- Files: api-gateway/Dockerfile.envoy, compose.yaml, AGENTS.md, README.md, envoy/README.md, ai/usage-log.md.
+- Human review: Debug fix within the approved custom-build scope; review pending.
+
+### 2026-10-12 - Select Envoy in the current Compose stack
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompt: "edit the current compose, i want to test the envoy migration and possibly remove the old implementation".
+- Key response: Changed api-gateway/compose.yaml to select Dockerfile.envoy and foc-envoy:local, retaining the Node reference and an explicit rollback override. Native compilation and runtime acceptance remain pending.
+- Files: api-gateway/compose.yaml, compose.node-reference.yaml, AGENTS.md, envoy/README.md, ai/usage-log.md.
+- Human review: User explicitly approved the current Compose switch for testing; removal is deferred until test results and an explicit removal request.
+
+### 2026-10-12 - Custom Envoy migration, stage 3
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompt: "implement this, commit incrementally, and update me on the progress".
+- Key response: Added the configuration renderer, header compatibility filter, candidate image/Compose file and HTTP comparison suite. Main stack remains unchanged until runtime checks pass.
+- Verification: Configuration validated against pinned Envoy v1.38.6; Python syntax and JavaScript syntax checked. Native release build and runtime acceptance pending.
+- Files: api-gateway/envoy/render.py and compatibility.lua, Dockerfile.envoy, compose.envoy-candidate.yaml, .dockerignore, .env.example, test/envoy.integration.mjs, ai/usage-log.md.
+- Human review: Implementation approved; generated code review pending.
+
+### 2026-10-12 - Custom Envoy migration, stage 2
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompt: "implement this, commit incrementally, and update me on the progress".
+- Key response: Added a pinned native JWT compatibility patch, request-ID compatibility, six native regressions, and a Linux/Bazel build script. No helper is used.
+- Verification: Existing Node gateway baseline passes 22 tests. Custom compilation is in progress; runtime acceptance remains pending.
+- Files: .gitignore, api-gateway/envoy build scripts, extension selection, foc-jwt.patch and refresh_patch.py, ai/usage-log.md.
+- Human review: Implementation approved; generated code review pending.
+
+### 2026-10-12 - Custom Envoy migration, stage 1
+
+- Tool and mode: Codex (GPT-6), generate and refactor.
+- Exact user prompts: "create a new branch and implement the migration to envoy"; "preserve exisitng behaviour"; "can we use a custom envoy extension and build"; "implement this, commit incrementally, and update me on the progress".
+- Key response: Implement the approved custom native Envoy build on feat/envoy-gateway; preserve HTTP/JWT behaviour without an authentication helper; test balancing with isolated replicas.
+- Usage scenario: Replace gateway proxy runtime after compatibility verification, retaining the existing gateway as reference.
+- Files: .gitignore, api-gateway/envoy/README.md, ai/usage-log.md.
+- Human review: User approved implementation and incremental commits; review of generated changes pending.
 
 ### 2026-09-29 23:41 SGT — Fix frontend origin check in Docker
 
@@ -1053,3 +1264,218 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Files: `frontend/app/components/location-image.tsx`, `frontend/next.config.ts`, `ai/usage-log.md`.
 - Verification: `npm.cmd run build` and `npx.cmd eslint app/components/location-image.tsx next.config.ts` passed.
 - Human review: Pending human review and browser check of a live image URL.
+
+## 2026-10-11 — Order Service implementation branch
+
+- Tool and mode: Codex (GPT-6), generate and explain.
+- Exact user prompt: “# Create Order Service Schema #50 Create a new branch for Order Service Implementation, then run me through the potential schema”.
+- Usage scenario: Create a local implementation branch for issue #50; inspect service context before discussing schema design.
+- Key response: Created feat/order-service-implementation from main. order-service/AGENTS.md and README.md are empty. Warned that proposing a schema is design work under AGENTS.md; awaiting explicit confirmation before proposing it. No schema or implementation files changed.
+- Human review: Branch creation requested by user; schema-design confirmation pending.
+## 2026-10-11 — Order Service AGENTS.md
+
+- Timestamp: 2026-10-11 (Asia/Singapore; exact time not recorded).
+- Tool and mode: Codex (GPT-6), generate.
+- Exact user prompt: “Oh wait can you generate the AGENTS.md for Order Service first?”.
+- Usage scenario: Populate empty service context from the user-supplied OSFR1–OSFR6 backlog, root AGENTS.md and meeting discussion, without selecting designs.
+- Key response: Added origin/status labels, source references and ownership, creation/read/edit/acceptance/lifecycle/cancellation/history/event requirements, existing communication decisions, cross-cutting rules, verification guidance and unresolved team inputs. Schema, API contracts, database choice, acknowledgement ambiguity and recovery patterns remain open/proposed. Flagged meeting async-reservation proposal against the recorded synchronous decision. No code, schema or interface introduced.
+- Files: order-service/AGENTS.md, ai/usage-log.md.
+- Verification: Checked diff whitespace and reviewed the document against supplied requirement IDs and root decisions.
+- Human review: Document creation requested; content pending team review. Earlier schema-proposal confirmation is still pending.
+## 2026-10-12 — Order schema review and draft implementation PR
+
+- Tool and mode: Codex (GPT-6), generate and explain.
+- Exact user prompts: “gimme a schema”; “yes”; “Snap shot approach is good, what else do i need to confirm, credit minimum should be 1”; “Yes database is postgresSQL”; “give me the schema, create a PR for the order service implementation branch first”.
+- Usage scenario: Prepare a reviewable schema draft on feat/order-service-implementation, without implementing unapproved migrations or contracts.
+- Key response: README documents proposed orders/items/history/confirmations tables, types, constraints/indexes, snapshots, external references and unresolved details. Updated service context for user-confirmed PostgreSQL, snapshot approach and minimum 1 credit. Schema discussion followed explicit confirmation after AI-policy warning; only those three decisions are confirmed. Remaining schema/design choices need team review and an approved implementation plan.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Verification: git diff --check passed; documentation-only draft, no runtime tests applicable.
+- Human review: User requested draft PR; documentation and remaining proposals pending review.
+## 2026-10-12 — PR schema comment
+
+- Tool and mode: Codex (GPT-6), generate.
+- Exact user prompt: “put the prposed schema in the comment of the PR”.
+- Usage scenario: Publish existing schema review draft as a top-level conversation comment on PR #66.
+- Key response: Posted tables, constraints, indexes, snapshot/reference behaviour and remaining decisions, distinguishing the three user-confirmed decisions from proposals. Included AI disclosure. GitHub returned comment ID 6122427501: https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/66#issuecomment-6122427501.
+- Human review: Comment publication requested by user; remaining design choices pending team review.
+## 2026-10-12 — Single order description schema revision
+
+- Tool and mode: Codex (GPT-6), generate.
+- Exact user prompts: “items seem abit useless?”; “isnt it more of order description?”; “yes its correct now change the proposed schema and update the comment in the PR”.
+- Usage scenario: Apply user-confirmed interpretation of item description(s) to the proposed schema and existing PR #66 schema comment.
+- Key response: Replaced order_items with orders.order_description TEXT NOT NULL in the README and PR comment; recorded confirmed interpretation in service context. Other schema proposals remain pending review; no migration added.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Human review: User explicitly approved the description change and requested publication; remaining design choices pending team review.
+## 2026-10-12 — Consolidate description and explain chat storage
+
+- Tool and mode: Codex (GPT-6), generate and explain.
+- Exact user prompt: “remove the separate field, just an order description where the user can put in specific details on what to do and special instructions. we’ll have a real time chat feature with the order service too that can handle the other communications. does that need its own table too?”.
+- Usage scenario: Apply confirmed description consolidation to schema draft and PR comment; explain persistent chat storage without choosing its service boundary or schema.
+- Key response: Removed delivery_description, keeping order_description for tasks/instructions and delivery coordinates for drop-off location. Chat persistence would need separate message records if history is required; table details and whether Order or a separate chat service owns them remain unapproved. Chat does not automatically replace lifecycle confirmations.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Human review: Description removal explicitly requested; chat design pending confirmation.
+## 2026-10-13 — Delivery Supplier reference and schema review
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Scope: Updated the schema draft and service context for user-directed delivery location storage.
+- Exact user prompt: “the delivery location should use supplier ID and supplier information as well.  what else do i need to review on the schema”.
+- Usage scenario: Record delivery as a Supplier location reference with snapshot information matching pickup, and restate outstanding schema review items.
+- Key response: Added delivery_location_id INTEGER NOT NULL and delivery_name TEXT NOT NULL alongside existing delivery coordinates. Recorded delivery snapshot behaviour; additional snapshot fields remain open. Reviewed timing, confirmation rules, assignment/constraints, history, indexes, location status and integration-dependent storage without selecting new designs.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: Delivery Supplier reference/information explicitly directed by user; final schema and implementation approval pending.
+
+## 2026-10-13 — Order location, timing, edits and chat review
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Scope: Recorded explicit user decisions and explained unresolved communication/chat ownership.
+- Exact user prompt:
+> Are name and coordinates enough for both snapshots, or do you also need address/building/floor? What happens when either location becomes inactive?   yes its enough, when users want to create an order, they cannot create an inactive order, so i think order needs to check with supplier directly?
+>
+> timing window - default can be 24 hrs from creation
+> confirmations - refer to the FRs
+> Edits are NOT allowed in ARRIVED
+>
+> Where would the chat database be ..?
+- Usage scenario: Continue schema review without implementing migrations or choosing new service contracts.
+- Key response: Recorded ID/name/coordinate snapshots, ACTIVE pickup and delivery at creation, 24-hour omitted-window default and no ARRIVED edits. Kept FR acknowledgement requirements and their unresolved gaps. Supplier must supply status, but direct HTTP needs confirmation against the recorded broker-query decision. Explained that chat stored within Order would use Order-owned tables/database; a separate Chat Service would own a separate database. No chat boundary selected; later location deactivation remains open.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: Listed decisions explicitly supplied by user; transport, chat ownership and remaining schema/plan approval pending.
+
+## 2026-10-13 — Order database tooling approval
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “yes”.
+- Approval context: Assistant asked “use pg like both services, with numbered SQL migrations like User Service?”.
+- Scope/usage scenario: Record explicit database tooling approval and continue the sequential schema review.
+- Key response: Recorded pg with parameterized SQL and numbered SQL migrations with an Order-local tracking runner. Framework and migration execution timing remain open. Next review explains coordinate precision, UUID generation, creation defaults and assignment constraints as proposals requiring approval. No migrations or runtime code implemented.
+- Files: order-service/AGENTS.md, order-service/README.md, ai/usage-log.md.
+- Author review: Database tooling approved by user; next schema details and implementation plan pending approval.
+
+## 2026-10-13 — Order core schema approval
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “yes”.
+- Approval context: User approved the preceding core column/default and status/assignment constraint proposals.
+- Scope/usage scenario: Record core schema approval and continue sequential blocker review.
+- Key response: Approved Supplier-matching coordinate precision, database-generated UUIDs and creation timestamps, initial PENDING/version 1, positive version, creation-to-24-hours default window, and documented courier/status constraints. Next review discusses atomic acceptance, active-courier uniqueness and version-based stale updates as proposals. No migrations or runtime code added.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: Core details approved by user; concurrency mechanisms and implementation plan pending approval.
+
+## 2026-10-13 — Order concurrency approval
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompts: “isnt the courier id just the user's uuid? wouldnt that prevent more than one assignment”; “arrived wouldnt be considered active anymore right? if not the courier cant take any more orders after completeing one”; “o yes, sorry i forgot about completed, the proposed handling works for all cases.”
+- Scope/usage scenario: Explain UUID references versus uniqueness, clarify ARRIVED/COMPLETED and record approval of the three proposed concurrency mechanisms.
+- Key response: Approved atomic PENDING/unassigned acceptance, partial unique active-courier index including ARRIVED, and loaded-version checks for edits/lifecycle actions with version increments after successful order changes. Next review explains history records and proposes action/change-detail vocabulary for approval. No migrations or runtime code added.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: All three mechanisms explicitly approved by user; history details and implementation plan pending review.
+
+## 2026-10-13 — Order history approval
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “approve”.
+- Approval context: User approved the preceding order_history fields, action vocabulary, old/new edit details, cancellation distinctions and transactional recording.
+- Scope/usage scenario: Record history approval and continue confirmation review one topic at a time.
+- Key response: Updated Order README and AGENTS.md with approved history design. Next topic is proposal initiation and whether initiation records approval; requester-only timing initiation, either-party cancellation/completion initiation and initiator approval are proposals requiring confirmation. No runtime code or migrations added.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: History approved by user; confirmation proposals and implementation plan remain pending.
+
+## 2026-10-13 — Confirmation initiation approval
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “yes”.
+- Approval context: User approved requester-only timing-change initiation after acceptance, either-party mutual cancellation/completion initiation and initiation counting as approval.
+- Scope/usage scenario: Record confirmation initiation approval and continue sequential review.
+- Key response: Recorded initiator ACCEPTED/other PENDING, no order change until both approve, completion only in ARRIVED and chat not counting as approval. Next review asks about requester-only direct timing edits in PENDING; flagged the apparent conflict with the blanket mutual timing-acknowledgement FR. No new PENDING rule chosen, migrations or runtime code added.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: Initiation rules explicitly approved; PENDING timing acknowledgement, expiry, concurrent proposals and implementation plan remain open.
+
+## 2026-10-13 — PENDING timing edit approval
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “yes, pending only has requester as a affected party”.
+- Scope/usage scenario: Record explicit approval following the warning about the blanket timing-acknowledgement FR.
+- Key response: PENDING requester timing edits apply directly with timing validation, loaded-version checks and transactional history; mutual timing acknowledgement applies after acceptance. Recorded this as a user-confirmed exception/clarification without editing source backlog. Next review discusses timing proposal expiry at the current window end and terminal-order invalidation; other proposal expiry remains open.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: PENDING exception approved by user; expiry, concurrency and final implementation plan pending approval.
+
+## 2026-10-13 — Timing proposal expiry approval
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “yup”.
+- Approval context: User approved timing-change expiry at current time >= existing window_end with no separate shorter deadline.
+- Scope/usage scenario: Record approval and continue cancellation/completion proposal expiry review.
+- Key response: Approved unchanged window on expiry, rejection of late approvals and retention of expired proposals. Next question distinguishes cancellation/completion proposals from timing changes; proposal lifetime until rejection or terminal order is presented for review, without changing the separate order timeout rules.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: Timing proposal expiry approved; cancellation/completion expiry, concurrency and implementation plan pending.
+
+## 2026-10-13 — Cancellation/completion proposal lifetime approval
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “yes”.
+- Approval context: User approved no separate expiry deadline for cancellation/completion proposals; outstanding proposals cannot be approved after order terminal state. Existing order timeout rules remain in force.
+- Scope/usage scenario: Record approval and continue concurrent-proposal review.
+- Key response: Recorded no independent timer and terminal-order invalidation. Next review presents one pending proposal per order versus one per kind, explaining the effect on cancellation while a timing proposal is pending; neither concurrency rule selected yet. Stored invalidation status remains open.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: Proposal lifetime approved by user; concurrent proposals, invalidation status and final implementation plan pending.
+
+## 2026-10-13 — One pending confirmation per order
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “1 pending proposal per order only”.
+- Scope/usage scenario: Record selected concurrent-proposal limit and continue sequential schema review.
+- Key response: Approved one PENDING proposal per order across all kinds, new-proposal rejection without automatic replacement, partial unique order_id index for pending proposals, and state/version rechecks when applying approval. Next review proposes SUPERSEDED for proposals invalidated by another terminal order action, with resolved_at set in the same transaction; status choice remains unapproved.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: Limit explicitly selected by user; terminal invalidation status and final implementation plan remain pending.
+
+## 2026-10-13 — Terminal-action proposal invalidation approval
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “yes”.
+- Approval context: User approved SUPERSEDED for outstanding proposals invalidated by another terminal action, resolved_at, transactional recording and rejection of later responses; the successful terminal proposal remains APPROVED and timing deadline expiry remains EXPIRED.
+- Scope/usage scenario: Record approval and explain remaining proposed query indexes.
+- Key response: Recorded terminal invalidation. Next review covers existing proposed available/requester/courier listing indexes, timeout scan index, history index and confirmation lookup index. No new indexes selected or executable migrations added.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: Invalidation approved by user; remaining query indexes, final confirmation constraints and implementation plan remain pending.
+
+## 2026-10-13 — Query index approval
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “yes”.
+- Approval context: User approved all six proposed query indexes for available/requester/courier listings, timeout scans, history and confirmation lookups.
+- Scope/usage scenario: Record index approval and continue final confirmation table constraint review.
+- Key response: All listed query indexes approved; removed stale notes about pending index and terminal-invalidation approval. Next review proposes allowed confirmation kinds/responses/status values, timing-only ordered window fields, resolution timestamp consistency and approval/rejection response consistency. Constraints remain unapproved until reviewed; no runtime code or migrations added.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: Query indexes approved; final confirmation constraints and implementation plan pending.
+
+## 2026-10-13 — Confirmation row constraint approval
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate and explain, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “yes”.
+- Approval context: User approved the preceding allowed confirmation values, timing field requirements, resolved_at consistency and approval/rejection consistency constraints.
+- Scope/usage scenario: Complete main schema review and present a concrete database-only implementation plan before writing migrations.
+- Key response: Recorded row-constraint approval. Proposed a framework-independent TypeScript/pg migration CLI, numbered SQL migration, PostgreSQL Compose database with persistent volume, migration image/one-shot Compose task, environment placeholders, schema/transaction/concurrency integration tests and attribution. This plan and execution timing await approval; no runtime code or migrations added. Supplier/Credit/events/chat contracts remain deferred.
+- Files: order-service/README.md, order-service/AGENTS.md, ai/usage-log.md.
+- Author review: Confirmation constraints explicitly approved; database-only implementation plan pending approval under root AGENTS.md.
+
+## 2026-10-13 19:48 +08:00 — Approved Order database implementation
+
+- Tool and mode: Codex (model: GPT-6), generate and debug.
+- Exact user prompt: “yes”.
+- Approval context: Assistant asked “Do you approve this database-only plan, including the one-shot migration task?” after listing migration/schema, TypeScript/pg CLI, Docker/Compose, environment, documentation and PostgreSQL integration-test files. User approved the plan after sequentially approving core fields/defaults, constraints, history, confirmations and indexes.
+- Usage scenario: Implement the approved Order database foundation for #50 without selecting unresolved HTTP, Supplier, Credit, event or chat contracts.
+- Key response: Created migrations/001_init.sql for orders/order_history/order_confirmations, approved check constraints/defaults/UUIDs and eight indexes. Added connection config, session-locked versioned SQL migrator and CLI, TypeScript/npm tooling/lockfile, non-root migration image, service-local PostgreSQL volume and health-gated one-shot task, root Compose include, environment placeholders and isolated Docker PostgreSQL tests. Updated service documentation/status and corrected stale blanket timing acknowledgement text to the previously approved PENDING exception.
+- Files: order-service/migrations/001_init.sql; order-service/src/db/{config,migrator,migrate-cli}.ts; order-service/src/test/database.test.ts; order-service/{package.json,package-lock.json,tsconfig.json,Dockerfile,.dockerignore,.gitignore,.env.example,compose.yaml,compose.test.yaml,README.md,AGENTS.md}; root compose.yaml, .env.example and ai/usage-log.md.
+- Verification: npm run build passed; docker compose config --quiet passed; all 14 PostgreSQL Docker integration tests passed (fresh/concurrent/idempotent migrations, failure rollback, approved indexes/defaults/row constraints, local references, transactional history, stale versions, concurrent acceptance and concurrent proposals). Production Docker build and one-shot migration succeeded. Replacing only Order's database container preserved schema; rerun reported “Schema is up to date”. Isolated test containers/network removed; Order database remains running with persistent volume and migration task exited successfully.
+- Debugging: Initial sandboxed npm installation could not complete; dependency installation succeeded with approved escalation. First Docker attempt preceded lockfile creation and failed npm ci; rebuilt successfully after generating package-lock.json. No schema changes were made in response to those tooling failures.
+- Limits: Concurrency tests use representative SQL; no application lifecycle/authorization/expiry handlers or automatic version/history triggers implemented. Service handlers must enforce approved transaction rules. Supplier ACTIVE validation, Credit recovery, notification publication, chat ownership and HTTP framework/contracts remain for later approved work.
+- Author review: User approved design and implementation plan; human code review remains required before merge. No commit, push or PR publication performed.
+
+## 2026-10-13 — Commit Order database foundation
+
+- AI Assistance Disclosure: Codex (model: GPT-6), generate, 2026-10-13 (Asia/Singapore).
+- Exact user prompt: “commit accordingly”.
+- Scope/usage scenario: Commit the approved Order database foundation and its schema review/attribution on feat/order-service-implementation.
+- Key response: Stage Order service files, root Compose/environment examples and the shared usage log; exclude unrelated api-gateway/.build artifacts. Commit message: feat(order): implement PostgreSQL database foundation. No push requested or performed.
+- Verification: Existing implementation checks passed: TypeScript build, root Compose configuration, 14 Docker PostgreSQL integration tests, production migration and schema persistence after container replacement. Pre-commit git diff --check passed.
+- Author review: User explicitly requested commit; human implementation review remains required before merge.

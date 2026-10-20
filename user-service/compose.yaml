@@ -1,14 +1,14 @@
 # AI Assistance Disclosure:
-# Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
-# Scope: Generated the first content of this file: the User Service and the three containers
-#        it needs (PostgreSQL, Redis, Mailpit). 2026-09-28 (model: Claude Opus 5.5): moved
-#        here from the root compose.yaml, which now includes this file.
-# Author review: Read in full; verified the full stack builds and runs, and that the database survives a down/up cycle.
-# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-01
-# Scope: Replaced `env_file: ../.env` with an explicit list of the variables the service reads.
-# Author review: Agreed by User Service owner Zi Yi (approved PR #45 on 2026-10-01).
-# Author review (Jian Bing): Ran `docker compose -f user-service/compose.yaml config` on 2026-10-01;
-#   the container's environment lists only LOG_LEVEL and the 14 USER_* variables, with no env_file.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+# Scope: Copied from user-service/compose.yaml (original disclosures: Claude Code, Claude Opus 5 /
+#        Opus 5.5, 2026-09-25 to 2026-10-01) so it drops in after the rename: same project name,
+#        services, ports, healthchecks, env list and volumes. Only comments changed.
+#        2026-10-16: renamed from refactored-user-service/ to user-service/; dropped the
+#        pre-rename test note.
+# Author review: Successfully reviewed by Deanson, 2026-10-16.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+# Scope: Added the Kafka and outbox relay variables, with no depends_on on Kafka.
+# Author review: pending — Deanson to record what he checked.
 #
 # The User Service and the containers only it uses. Its database is its own — no other
 # service connects to user-db (root AGENTS.md §3). The root compose.yaml includes this file.
@@ -80,10 +80,10 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
-    # Only the variables this service reads (src/config.ts), taken from the git-ignored .env at the
+    # Only the variables this service reads (src/config/env.validation.ts), taken from the git-ignored .env at the
     # repo root. No env_file: passing the whole .env would hand this container every other
     # service's secrets too, such as SUPPLIER_POSTGRES_PASSWORD. A variable left empty is treated as
-    # unset (src/config.ts), so a missing secret still fails at startup naming it.
+    # unset (src/config/env.validation.ts), so a missing secret still fails at startup naming it.
     environment:
       # These point at the containers above, because inside the compose network the hostnames
       # are the service names, not localhost.
@@ -103,6 +103,12 @@ services:
       USER_SMTP_PASS: ${USER_SMTP_PASS:-}
       USER_SMTP_FROM: ${USER_SMTP_FROM:-}
       USER_BOOTSTRAP_ADMIN_EMAIL: ${USER_BOOTSTRAP_ADMIN_EMAIL:-}
+      # The outbox relay publishes UserRegistered to the shared broker (infra/kafka). There is
+      # deliberately no depends_on on kafka or kafka-init: the service must start and accept
+      # sign-ups with Kafka down, and the relay keeps retrying until the broker and topic exist.
+      USER_KAFKA_BROKERS: kafka:9092
+      USER_OUTBOX_POLL_MS: ${USER_OUTBOX_POLL_MS:-}
+      USER_OUTBOX_MAX_BACKOFF_MS: ${USER_OUTBOX_MAX_BACKOFF_MS:-}
     ports:
       - "3001:3001"
 

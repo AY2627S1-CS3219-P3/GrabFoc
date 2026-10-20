@@ -1,0 +1,1721 @@
+{
+  "info": {
+    "name": "FoC Order Service",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19. Scope: generated this collection from the routes and error codes in order-service/README.md. Author review: Reviewed\n\nRequests for the Order Service. They go straight to the services (Order on port 3005), because the gateway does not route /orders yet.\n\nSETUP: start the whole stack with `docker compose up -d --build`. Set emailA, emailB and password to two verified test accounts (A is the requester, B the courier; B must have no active order), and serviceKey to ORDER_SERVICE_KEY from your .env (folder 5 only). Then run folder 0. Access tokens last 15 minutes: run folder 0 again when requests start returning 401.\n\nRUN each folder top to bottom (or with the Collection Runner). Each folder creates its own order, and each request saves orderId and version for the next one. Each order offers 1 credit. A full run needs A to have at least 5 available: folder 1 pays 1 to B, and a cancelled order's credit only returns about 10 s later, after the run has moved on. Credits never come back otherwise (closed economy), so if A runs low, swap the two accounts: B has been earning. Folder 1's last request waits 11 s for the credit settlement job."
+  },
+  "variable": [
+    {
+      "key": "orderUrl",
+      "value": "http://localhost:3005"
+    },
+    {
+      "key": "userUrl",
+      "value": "http://localhost:3001"
+    },
+    {
+      "key": "supplierUrl",
+      "value": "http://localhost:3002"
+    },
+    {
+      "key": "creditUrl",
+      "value": "http://localhost:3004"
+    },
+    {
+      "key": "emailA",
+      "value": "",
+      "description": "The requester's test account (an @u.nus.edu address)."
+    },
+    {
+      "key": "emailB",
+      "value": "",
+      "description": "The courier's test account. Must not have an active order."
+    },
+    {
+      "key": "password",
+      "value": "",
+      "description": "The test accounts' password. Do not commit a real one."
+    },
+    {
+      "key": "serviceKey",
+      "value": "",
+      "description": "ORDER_SERVICE_KEY from your .env (folder 5 only). Do not commit it."
+    },
+    {
+      "key": "tokenA",
+      "value": ""
+    },
+    {
+      "key": "tokenB",
+      "value": ""
+    },
+    {
+      "key": "userIdA",
+      "value": ""
+    },
+    {
+      "key": "userIdB",
+      "value": ""
+    },
+    {
+      "key": "pickupId",
+      "value": ""
+    },
+    {
+      "key": "deliveryId",
+      "value": ""
+    },
+    {
+      "key": "orderId",
+      "value": ""
+    },
+    {
+      "key": "version",
+      "value": ""
+    },
+    {
+      "key": "confirmationId",
+      "value": ""
+    },
+    {
+      "key": "courierBefore",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Setup (run first; again when tokens expire after 15 min)",
+      "item": [
+        {
+          "name": "Log in as A (requester)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{userUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailA}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('tokenA', pm.response.json().accessToken);",
+                  "  pm.collectionVariables.set('userIdA', pm.response.json().user.userId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log in as B (courier)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{userUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{emailB}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  pm.collectionVariables.set('tokenB', pm.response.json().accessToken);",
+                  "  pm.collectionVariables.set('userIdB', pm.response.json().user.userId);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pick two ACTIVE locations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": "{{supplierUrl}}/locations"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const active = pm.response.json().items.filter((l) => l.status === 'ACTIVE');",
+                  "pm.test('at least two ACTIVE locations', () => pm.expect(active.length).to.be.at.least(2));",
+                  "pm.collectionVariables.set('pickupId', active[0].id);",
+                  "pm.collectionVariables.set('deliveryId', active[1].id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Full order (create → complete)",
+      "item": [
+        {
+          "name": "Create an order (A) → 201 PENDING",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDescription\": \"Collect a parcel (Postman)\",\n  \"pickupLocationId\": {{pickupId}},\n  \"deliveryLocationId\": {{deliveryId}},\n  \"creditOffer\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('order is PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);",
+                  "pm.collectionVariables.set('orderId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Available orders (B) include it",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/available"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is listed', () => pm.expect(pm.response.json().items.map((o) => o.id)).to.include(pm.collectionVariables.get('orderId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier's balance before",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "url": "{{creditUrl}}/credits/{{userIdB}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200 or 404 (no wallet yet)', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
+                  "pm.collectionVariables.set('courierBefore', pm.response.code === 200 ? pm.response.json().available : '');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Accept (B) → ACCEPTED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/accept",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is ACCEPTED', () => pm.expect(pm.response.json().status).to.eql('ACCEPTED'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pick up (B) → PICKED_UP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/pick-up",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is PICKED_UP', () => pm.expect(pm.response.json().status).to.eql('PICKED_UP'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Start delivery (B) → IN_PROGRESS",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/start-delivery",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is IN_PROGRESS', () => pm.expect(pm.response.json().status).to.eql('IN_PROGRESS'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Arrive (B) → ARRIVED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/arrive",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is ARRIVED', () => pm.expect(pm.response.json().status).to.eql('ARRIVED'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Propose completion (B) → 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/confirmations",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"COMPLETION\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('confirmationId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Approve completion (A) → APPROVED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/confirmations/{{confirmationId}}/respond",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"response\": \"ACCEPTED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('proposal is APPROVED', () => pm.expect(pm.response.json().status).to.eql('APPROVED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Order is COMPLETED",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History, oldest first",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/history"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('every step recorded', () => pm.expect(pm.response.json().items.map((h) => h.action)).to.eql(",
+                  "  ['CREATED', 'CREDIT_RESERVED', 'ACCEPTED', 'PICKED_UP', 'IN_PROGRESS', 'ARRIVED', 'COMPLETED']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier's balance after (waits 11 s for settlement)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              }
+            ],
+            "url": "{{creditUrl}}/credits/{{userIdB}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(() => {}, 11000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const before = pm.collectionVariables.get('courierBefore');",
+                  "if (before !== '') pm.test('courier was paid 1 credit', () => pm.expect(pm.response.json().available).to.eql(Number(before) + 1));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Cancellation",
+      "item": [
+        {
+          "name": "Create an order (A) → 201 PENDING",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDescription\": \"Collect a parcel (Postman)\",\n  \"pickupLocationId\": {{pickupId}},\n  \"deliveryLocationId\": {{deliveryId}},\n  \"creditOffer\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('order is PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);",
+                  "pm.collectionVariables.set('orderId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requester cancels (A) → CANCELLED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/cancel",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is CANCELLED', () => pm.expect(pm.response.json().status).to.eql('CANCELLED'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create another order (A) → 201 PENDING",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDescription\": \"Collect a parcel (Postman)\",\n  \"pickupLocationId\": {{pickupId}},\n  \"deliveryLocationId\": {{deliveryId}},\n  \"creditOffer\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('order is PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);",
+                  "pm.collectionVariables.set('orderId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Accept (B) → ACCEPTED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/accept",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is ACCEPTED', () => pm.expect(pm.response.json().status).to.eql('ACCEPTED'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requester cancel after acceptance → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/cancel",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('error INVALID_STATE', () => pm.expect(pm.response.json().error.code).to.eql('INVALID_STATE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Propose cancellation (B) → 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/confirmations",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"CANCELLATION\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('confirmationId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject it (A) → REJECTED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/confirmations/{{confirmationId}}/respond",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"response\": \"REJECTED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('proposal is REJECTED', () => pm.expect(pm.response.json().status).to.eql('REJECTED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Order is still ACCEPTED",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is ACCEPTED', () => pm.expect(pm.response.json().status).to.eql('ACCEPTED'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Propose cancellation again (B) → 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/confirmations",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"CANCELLATION\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('confirmationId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Approve it (A) → APPROVED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/confirmations/{{confirmationId}}/respond",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"response\": \"ACCEPTED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('proposal is APPROVED', () => pm.expect(pm.response.json().status).to.eql('APPROVED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Order is CANCELLED",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is CANCELLED', () => pm.expect(pm.response.json().status).to.eql('CANCELLED'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Edit",
+      "item": [
+        {
+          "name": "Create an order (A) → 201 PENDING",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDescription\": \"Collect a parcel (Postman)\",\n  \"pickupLocationId\": {{pickupId}},\n  \"deliveryLocationId\": {{deliveryId}},\n  \"creditOffer\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('order is PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);",
+                  "pm.collectionVariables.set('orderId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edit the description (A) → 200",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"orderDescription\": \"Collect two parcels (Postman)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);",
+                  "pm.test('description changed', () => pm.expect(pm.response.json().orderDescription).to.eql('Collect two parcels (Postman)'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edit with a stale version → 409",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 1,\n  \"orderDescription\": \"Stale edit\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('error VERSION_CONFLICT', () => pm.expect(pm.response.json().error.code).to.eql('VERSION_CONFLICT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change the credit offer → 400",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"creditOffer\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('error VALIDATION_ERROR', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edit as B (not the requester) → 403",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}},\n  \"orderDescription\": \"Not mine\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "pm.test('error FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History shows the old and new description",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/history"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const edited = pm.response.json().items.find((h) => h.action === 'EDITED');",
+                  "pm.test('EDITED entry with from/to', () => pm.expect(edited.changeDetails.orderDescription.to).to.eql('Collect two parcels (Postman)'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Clean up: cancel (A) → CANCELLED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/cancel",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is CANCELLED', () => pm.expect(pm.response.json().status).to.eql('CANCELLED'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Errors",
+      "item": [
+        {
+          "name": "No token → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{orderUrl}}/orders/mine"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error TOKEN_INVALID', () => pm.expect(pm.response.json().error.code).to.eql('TOKEN_INVALID'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create an order (A) → 201 PENDING",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDescription\": \"Collect a parcel (Postman)\",\n  \"pickupLocationId\": {{pickupId}},\n  \"deliveryLocationId\": {{deliveryId}},\n  \"creditOffer\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('order is PENDING', () => pm.expect(pm.response.json().status).to.eql('PENDING'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);",
+                  "pm.collectionVariables.set('orderId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Accept your own order (A) → 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/accept",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "pm.test('error FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Accept with a stale version (B) → 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/accept",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('error VERSION_CONFLICT', () => pm.expect(pm.response.json().error.code).to.eql('VERSION_CONFLICT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pick up before accepting (B) → 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenB}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/pick-up",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "pm.test('error FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create with an unknown field → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDescription\": \"Collect a parcel (Postman)\",\n  \"pickupLocationId\": {{pickupId}},\n  \"deliveryLocationId\": {{deliveryId}},\n  \"creditOffer\": 1,\n  \"requesterId\": \"{{userIdB}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('error VALIDATION_ERROR', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create with a credit offer of 0 → 400",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderDescription\": \"Collect a parcel (Postman)\",\n  \"pickupLocationId\": {{pickupId}},\n  \"deliveryLocationId\": {{deliveryId}},\n  \"creditOffer\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('error VALIDATION_ERROR', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown order → 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/00000000-0000-4000-8000-000000000000"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('error NOT_FOUND', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Clean up: cancel (A) → CANCELLED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{orderUrl}}/orders/{{orderId}}/cancel",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{version}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('order is CANCELLED', () => pm.expect(pm.response.json().status).to.eql('CANCELLED'));",
+                  "pm.collectionVariables.set('version', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Internal active-order lookup (service key)",
+      "item": [
+        {
+          "name": "With the service key → 200",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Service-Key",
+                "value": "{{serviceKey}}"
+              }
+            ],
+            "url": "{{orderUrl}}/internal/orders/users/{{userIdA}}/active"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('answers with a boolean', () => pm.expect(pm.response.json().hasActiveOrders).to.be.a('boolean'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No key → 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{orderUrl}}/internal/orders/users/{{userIdA}}/active"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error SERVICE_KEY_INVALID', () => pm.expect(pm.response.json().error.code).to.eql('SERVICE_KEY_INVALID'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong key → 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Service-Key",
+                "value": "wrong-key"
+              }
+            ],
+            "url": "{{orderUrl}}/internal/orders/users/{{userIdA}}/active"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error SERVICE_KEY_INVALID', () => pm.expect(pm.response.json().error.code).to.eql('SERVICE_KEY_INVALID'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "User token instead of the key → 401",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": "{{orderUrl}}/internal/orders/users/{{userIdA}}/active"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('error SERVICE_KEY_INVALID', () => pm.expect(pm.response.json().error.code).to.eql('SERVICE_KEY_INVALID'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Not a UUID → 400",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Service-Key",
+                "value": "{{serviceKey}}"
+              }
+            ],
+            "url": "{{orderUrl}}/internal/orders/users/not-a-uuid/active"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('error VALIDATION_ERROR', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

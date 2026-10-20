@@ -1,0 +1,34 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+# Scope: Listed the topics from the redesign spec §9.2.
+# Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+# Scope: Listed Credit's retry topics here too, so this is the one list (K10 revised).
+# Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+# Scope: Added order.events (Order's state-change events for Notification) at Zi Yi's direction.
+# Author review: Reviewed
+#
+# Every Kafka topic in the system, and the only list of them: kafka-init creates exactly these
+# (root AGENTS.md §3 Messaging, rule 4). Add a topic by adding a line: <name> <partitions>.
+# Raising a number here raises the existing topic's partitions the next time kafka-init runs;
+# Kafka can never lower them (kafka-init warns instead).
+
+# Events, written by their owner
+user.events 3
+order.events 3
+
+# Commands, written to the receiver's topic
+credit.commands 3
+
+# Credit's retries: one per entry in CREDIT_RETRY_DELAYS (default 1s,5s,30s,2m,10m), in order.
+# Change both together; the Credit Service refuses to start if they don't match.
+credit.commands.retry.0 1
+credit.commands.retry.1 1
+credit.commands.retry.2 1
+credit.commands.retry.3 1
+credit.commands.retry.4 1
+
+# Dead-letter topics, one per consumer and source topic (rule 6)
+credit.commands.dlt 1
+credit.user-events.dlt 1
