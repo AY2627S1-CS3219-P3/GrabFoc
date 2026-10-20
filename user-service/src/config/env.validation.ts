@@ -4,6 +4,9 @@
  * Scope: Adapted from user-service/src/config.ts (original disclosure: Claude Code, Claude Opus 5,
  *   2026-09-25) into a validate() for @nestjs/config's ConfigModule. Same schema and env names.
  * Author review: Successfully reviewed by Deanson, 2026-10-16.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: Added USER_KAFKA_BROKERS, USER_OUTBOX_POLL_MS and USER_OUTBOX_MAX_BACKOFF_MS for the outbox relay.
+ * Author review: pending — Deanson to record what he checked.
  */
 // AI-generated (reviewed by Deanson)
 import { z } from 'zod';
@@ -50,6 +53,13 @@ const EnvSchema = z.object({
   // Becomes the first ADMIN while `users` is empty. Validated as an NUS address by
   // UsersService at startup, with the same EmailSchema the endpoints use.
   USER_BOOTSTRAP_ADMIN_EMAIL: z.string().optional(),
+
+  // Kafka for the outbox relay: kafka:9092 in compose, localhost:9094 from the host. The
+  // service starts even if no broker answers; the relay keeps retrying.
+  USER_KAFKA_BROKERS: z.string().min(1, 'required, e.g. kafka:9092 in compose or localhost:9094'),
+  // How often the relay polls the outbox, and the ceiling its backoff doubles up to.
+  USER_OUTBOX_POLL_MS: z.coerce.number().int().positive().default(1000),
+  USER_OUTBOX_MAX_BACKOFF_MS: z.coerce.number().int().positive().default(30000),
 });
 
 export type LogLevelName = z.infer<typeof EnvSchema>['LOG_LEVEL'];
@@ -67,6 +77,8 @@ export interface AppConfig {
   redisUrl: string;
   smtp: { host: string; port: number; user?: string; pass?: string; from: string };
   bootstrapAdminEmail?: string;
+  kafkaBrokers: string[];
+  outbox: { pollMs: number; maxBackoffMs: number };
 }
 
 /**
@@ -104,5 +116,9 @@ export function validate(raw: Record<string, unknown>): AppConfig {
       from: env.USER_SMTP_FROM,
     },
     bootstrapAdminEmail: env.USER_BOOTSTRAP_ADMIN_EMAIL,
+    kafkaBrokers: env.USER_KAFKA_BROKERS.split(',')
+      .map((broker) => broker.trim())
+      .filter(Boolean),
+    outbox: { pollMs: env.USER_OUTBOX_POLL_MS, maxBackoffMs: env.USER_OUTBOX_MAX_BACKOFF_MS },
   };
 }
