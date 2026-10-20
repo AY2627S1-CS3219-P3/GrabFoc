@@ -8,8 +8,12 @@
  *   New: reactivate re-checks in the database that the caller is an ACTIVE ADMIN (ai/plan.md).
  * Author review: Successfully reviewed by Deanson, 2026-10-16.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: The admin bootstrap writes the admin row and its UserRegistered outbox row in one transaction.
+ * Author review: pending — Deanson to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: Deactivation refused while the user has active orders (#71); admin suspension that
- *   writes a UserSuspended outbox row in the same transaction (#72).
+ *   writes a UserSuspended outbox row in the same transaction (#72). 2026-10-20: the row now
+ *   goes to Deanson's outbox table (merge of main).
  * Author review: Reviewed by Zi Yi, 2026-10-20.
  */
 // AI-generated (reviewed by Deanson)
@@ -25,12 +29,14 @@ import { EmailSchema } from '../common/validation/fields';
 import type { AppConfig } from '../config/env.validation';
 import { DatabaseService } from '../infra/database/database.service';
 import { MailService } from '../infra/mail/mail.service';
+import { OutboxRepository } from '../infra/outbox/outbox.repository';
 import { OTP_TTL_SECONDS, OtpPurpose, otpKey } from '../infra/redis/redis.constants';
 import { RedisService } from '../infra/redis/redis.service';
 import { OtpService } from '../security/otp.service';
 import { TokensService } from '../security/tokens.service';
 import { AdminProfile, SelfProfile } from './dto/profile.response';
 import { OrderClient } from './order.client';
+import { userRegistered, userSuspended } from './user-events';
 import { NewUser, UserFilter, UserRecord, UsersRepository } from './users.repository';
 
 /** The bootstrap admin's display name; the owner can change it with PATCH /users/me. */
@@ -67,6 +73,7 @@ export class UsersService implements OnApplicationBootstrap {
     private readonly tokens: TokensService,
     private readonly orders: OrderClient,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly outbox: OutboxRepository,
   ) {}
 
   // ---------------------------------------------------------------- used by AuthService
@@ -321,7 +328,7 @@ export class UsersService implements OnApplicationBootstrap {
 
       await this.users.suspend(target.id, ctx.tx);
       await this.tokens.revokeAll(target.id, ctx.tx);
-      await this.users.insertEvent('UserSuspended', target.id, ctx.tx);
+      await this.outbox.add(userSuspended(target.id), ctx.tx);
       return this.toAdminProfile((await this.users.findById(target.id, ctx.tx))!);
     });
 
@@ -359,11 +366,19 @@ export class UsersService implements OnApplicationBootstrap {
       throw new Error(`Invalid USER_BOOTSTRAP_ADMIN_EMAIL: ${parsed.error.issues.map((i) => i.message).join('; ')}`);
     }
 
-    const created = await this.users.insertBootstrapAdminIfFirst({
-      id: this.otp.generateId(),
-      displayName: BOOTSTRAP_ADMIN_DISPLAY_NAME,
-      emailHash: this.otp.hashEmail(parsed.data),
-      emailEncrypted: this.otp.encrypt(parsed.data),
+    // The admin row and its UserRegistered commit together, so the first admin gets a wallet too.
+    const created = await this.db.transaction(async (tx) => {
+      const admin = await this.users.insertBootstrapAdminIfFirst(
+        {
+          id: this.otp.generateId(),
+          displayName: BOOTSTRAP_ADMIN_DISPLAY_NAME,
+          emailHash: this.otp.hashEmail(parsed.data),
+          emailEncrypted: this.otp.encrypt(parsed.data),
+        },
+        tx,
+      );
+      if (admin) await this.outbox.add(userRegistered(admin), tx);
+      return admin;
     });
 
     if (!created) {

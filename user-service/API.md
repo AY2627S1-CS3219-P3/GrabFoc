@@ -8,6 +8,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 Scope: Documented the active-order deactivation guard (#71), POST /admin/users/:userId/suspend and
        the user.events contract (#72).
 Author review: Reviewed by Zi Yi, 2026-10-20.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+Scope: Merge of main: events now go through the `outbox` table; listed UserRegistered.
+Author review: pending — Zi Yi to review.
 -->
 
 # User Service — API reference
@@ -332,19 +335,21 @@ Errors: 400 (malformed `:userId`) · 403 `FORBIDDEN` · 404 `NOT_FOUND` · 409 `
 ## Events (`user.events`)
 
 The User Service owns the `user.events` Kafka topic and its message shape (root AGENTS.md §3
-Messaging, rule 3). Each event is written to the `user_events` outbox table in the same transaction
-as the change it reports, and published within about a second, **keyed by `userId`**. A crash
+Messaging, rule 3). Each event is written to the `outbox` table in the same transaction as the
+change it reports, and published within about a second, **keyed by `userId`**. A crash
 before the publish is marked resends it with the same `eventId`, so consumers must drop repeats.
 
 | `type` | When | Consumers |
 |---|---|---|
+| `UserRegistered` | an account is created (sign-up verification, first-admin bootstrap) | Credit Service (creates the wallet) |
 | `UserSuspended` | `POST /admin/users/:userId/suspend` committed | Order Service (cancels the user's ongoing orders) |
 
 ```json
 { "type": "UserSuspended", "eventId": "uuid", "occurredAt": "2026-10-19T08:00:00.000Z", "userId": "uuid" }
 ```
 
-Consumers should ignore types they don't handle, and fields they don't use.
+Consumers should ignore types they don't handle, and fields they don't use. Delivery details:
+[`AGENTS.md`](AGENTS.md#events-userevents).
 
 ---
 

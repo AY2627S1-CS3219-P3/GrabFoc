@@ -4,6 +4,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Wrote these notes from the open items in ai/plan.md (step 1), with context from the old user-service.
        2026-10-16: marked items 3 and 8 done after the swap; added item 11 (the --passWithNoTests flag).
 Author review: Successfully reviewed by Deanson, 2026-10-16.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Added the UserRegistered outbox follow-ups and the CI test note.
+Author review: pending — Deanson to record what he checked.
 -->
 
 # Open decisions — refactored User Service
@@ -66,3 +69,19 @@ mentor.
   tests. The CI matrix runs this service on Node 24 (`engines: node >=24` in `package.json`).
 - **Temporary:** CI passes with zero tests; add real tests for OTP/crypto, lockout and refresh
   rotation, then remove the flag.
+- 2026-10-19: the outbox tests (`user-events.spec.ts`, `outbox.relay.spec.ts`) now run in CI. The
+  PostgreSQL test (`outbox.repository.int.spec.ts`) is skipped unless `USER_TEST_DATABASE_URL`
+  is set, so CI doesn't run it yet.
+
+## UserRegistered outbox: follow-ups (noted 2026-10-19)
+See `user-service/AGENTS.md`, "Events".
+- **No backfill (Deanson's decision).** Accounts created before `002_outbox.sql` have no
+  `UserRegistered`, so they get a wallet only through Credit's lazy creation. Once Credit removes
+  that (#79), they have none. Wipe local data, or write a one-off re-publish, before then.
+- **Published rows are never pruned.** The table grows by one row per account. The partial index
+  keeps polling cheap. Open: delete rows published more than N days ago, or keep them as a record.
+- **Logging service.** Relay failures go only to stdout (`OUTBOX_RELAY_FAILED`,
+  `OUTBOX_BACKLOG_STALE`). `reportRelayFailure` has a `TODO(logging-service)` for the push. Until
+  then the failure history is lost when the container is removed.
+- **A row that can never be sent blocks the rows behind it**, by design: it keeps order and
+  retries forever. It needs someone to fix the cause.

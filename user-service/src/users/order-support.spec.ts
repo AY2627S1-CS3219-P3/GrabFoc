@@ -4,13 +4,17 @@
  * Scope: Generated unit tests for the active-order deactivation guard (#71) and suspension with
  *        the UserSuspended outbox (#72), with the database, Redis, Kafka and Order stubbed.
  * Author review: Reviewed by Zi Yi, 2026-10-20.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+ * Scope: Merge of main: UserSuspended now goes through OutboxRepository; replaced the
+ *        UserEventsPublisher tests with a test of the userSuspended builder.
+ * Author review: pending — Zi Yi to review.
  */
 // AI-generated (reviewed by Zi Yi)
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Role } from '../common/enums/role.enum';
 import { UserStatus } from '../common/enums/user-status.enum';
 import { OrderClient } from './order.client';
-import { UserEventsPublisher, toUserEvent } from './user-events.publisher';
+import { userSuspended } from './user-events';
 import { UsersService } from './users.service';
 
 const ADMIN = 'aaaaaaaa-0000-4000-8000-000000000001';
@@ -31,13 +35,13 @@ function makeService(opts: { hasActiveOrders?: boolean; target?: ReturnType<type
     listUsers: vi.fn(async () => [rows.get(ADMIN)]),
     suspend: vi.fn(),
     deactivate: vi.fn(),
-    insertEvent: vi.fn(),
   };
   const db = { transaction: vi.fn(async (fn: (t: unknown) => unknown) => fn(tx)) };
   const redis = { verifyOtp: vi.fn(async () => ({ status: 'OK', record: {} })) };
   const otp = { decrypt: () => 'x@u.nus.edu', hash: () => 'h' };
   const tokens = { revokeAll: vi.fn() };
   const orders = { hasActiveOrders: vi.fn(async () => opts.hasActiveOrders ?? false) };
+  const outbox = { add: vi.fn() };
   const service = new UsersService(
     users as never,
     db as never,
@@ -47,8 +51,9 @@ function makeService(opts: { hasActiveOrders?: boolean; target?: ReturnType<type
     tokens as never,
     orders as never,
     {} as never,
+    outbox as never,
   );
-  return { service, users, redis, tokens, orders };
+  return { service, users, redis, tokens, orders, outbox };
 }
 
 describe('deactivation guard (#71)', () => {
@@ -101,11 +106,14 @@ describe('OrderClient (#71)', () => {
 
 describe('suspension (#72)', () => {
   it('suspends, revokes sessions and writes UserSuspended in one transaction', async () => {
-    const { service, users, tokens } = makeService();
+    const { service, users, tokens, outbox } = makeService();
     await service.suspend(ADMIN, TARGET);
     expect(users.suspend).toHaveBeenCalledWith(TARGET, tx);
     expect(tokens.revokeAll).toHaveBeenCalledWith(TARGET, tx);
-    expect(users.insertEvent).toHaveBeenCalledWith('UserSuspended', TARGET, tx);
+    expect(outbox.add).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'UserSuspended', aggregateId: TARGET, topic: 'user.events' }),
+      tx,
+    );
   });
 
   it.each([
@@ -113,9 +121,9 @@ describe('suspension (#72)', () => {
     ['an unknown user', TARGET, null, 'NOT_FOUND'],
     ['a deactivated user', TARGET, user(TARGET, Role.USER, UserStatus.DEACTIVATED), 'USER_NOT_ACTIVE'],
   ] as const)('refuses %s with no event', async (_, targetId, target, code) => {
-    const { service, users } = makeService({ target });
+    const { service, outbox } = makeService({ target });
     await expect(service.suspend(ADMIN, targetId)).rejects.toMatchObject({ code });
-    expect(users.insertEvent).not.toHaveBeenCalled();
+    expect(outbox.add).not.toHaveBeenCalled();
   });
 
   it('refuses a caller who is not an active admin', async () => {
@@ -124,31 +132,11 @@ describe('suspension (#72)', () => {
   });
 });
 
-describe('UserEventsPublisher (#72)', () => {
-  const rows = [
-    { id: 'e1', type: 'UserSuspended', userId: TARGET, occurredAt: new Date('2026-10-19T00:00:00Z') },
-    { id: 'e2', type: 'UserSuspended', userId: ADMIN, occurredAt: new Date('2026-10-19T00:00:01Z') },
-  ];
-
-  it('publishes the flat shape keyed by userId and marks each row', async () => {
-    const kafka = { send: vi.fn() };
-    const repo = { unpublishedEvents: vi.fn(async () => rows), markEventPublished: vi.fn() };
-    await new UserEventsPublisher(kafka as never, repo as never).publishPending();
-    expect(kafka.send).toHaveBeenNthCalledWith(1, 'user.events', TARGET, {
-      type: 'UserSuspended',
-      eventId: 'e1',
-      occurredAt: '2026-10-19T00:00:00.000Z',
-      userId: TARGET,
-    });
-    expect(repo.markEventPublished.mock.calls).toEqual([['e1'], ['e2']]);
-    expect(toUserEvent(rows[1]).userId).toBe(ADMIN);
-  });
-
-  it('stops at the first failure and leaves the row unpublished', async () => {
-    const kafka = { send: vi.fn().mockRejectedValue(new Error('broker down')) };
-    const repo = { unpublishedEvents: vi.fn(async () => rows), markEventPublished: vi.fn() };
-    await new UserEventsPublisher(kafka as never, repo as never).publishPending();
-    expect(kafka.send).toHaveBeenCalledTimes(1);
-    expect(repo.markEventPublished).not.toHaveBeenCalled();
+describe('userSuspended (#72)', () => {
+  it('builds the same flat shape as UserRegistered, keyed by the user', () => {
+    const event = userSuspended(TARGET);
+    expect(event).toMatchObject({ id: event.payload.eventId, aggregateId: TARGET, eventType: 'UserSuspended' });
+    expect(Object.keys(event.payload).sort()).toEqual(['eventId', 'occurredAt', 'type', 'userId']);
+    expect(event.payload).toMatchObject({ type: 'UserSuspended', userId: TARGET });
   });
 });

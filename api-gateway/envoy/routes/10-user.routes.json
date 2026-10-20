@@ -1,0 +1,105 @@
+{
+  "_disclosure": "AI Assistance Disclosure:\nTool: Codex (model: GPT-6), date: 2026-10-13\nScope: AI-generated extraction of existing Envoy routes; no API or authentication changes.\nAuthor review: Pending human review.\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19\nScope: Added POST /admin/users/:userId/suspend (#72); moved from the old Node gateway on 2026-10-20.\nAuthor review: Reviewed by Zi Yi, 2026-10-20; pending review by Jie Yang.",
+  "service": "user",
+  "urlEnv": "USER_SERVICE_URL",
+  "prefixes": {
+    "auth": {
+      "env": "GATEWAY_AUTH_PREFIX",
+      "default": "/auth"
+    }
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/.well-known/jwks.json",
+      "public": true
+    },
+    {
+      "method": "POST",
+      "path": "{auth}/register",
+      "public": true
+    },
+    {
+      "method": "POST",
+      "path": "{auth}/register/verify",
+      "public": true
+    },
+    {
+      "method": "POST",
+      "path": "{auth}/register/resend-otp",
+      "public": true
+    },
+    {
+      "method": "POST",
+      "path": "{auth}/login",
+      "public": true
+    },
+    {
+      "method": "POST",
+      "path": "{auth}/refresh",
+      "public": true
+    },
+    {
+      "method": "POST",
+      "path": "{auth}/password/forgot",
+      "public": true
+    },
+    {
+      "method": "POST",
+      "path": "{auth}/password/reset",
+      "public": true
+    },
+    {
+      "method": "POST",
+      "path": "{auth}/logout"
+    },
+    {
+      "method": "GET",
+      "path": "/users/me"
+    },
+    {
+      "method": "PATCH",
+      "path": "/users/me"
+    },
+    {
+      "method": "POST",
+      "path": "/users/me/otp"
+    },
+    {
+      "method": "POST",
+      "path": "/users/me/email"
+    },
+    {
+      "method": "POST",
+      "path": "/users/me/email/verify"
+    },
+    {
+      "method": "POST",
+      "path": "/users/me/password"
+    },
+    {
+      "method": "POST",
+      "path": "/users/me/deactivate"
+    },
+    {
+      "method": "PATCH",
+      "path": "/users/me/mobile"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/users"
+    },
+    {
+      "method": "PATCH",
+      "regex": "/admin/users/[^/]+/role"
+    },
+    {
+      "method": "POST",
+      "regex": "/admin/users/[^/]+/reactivate"
+    },
+    {
+      "method": "POST",
+      "regex": "/admin/users/[^/]+/suspend"
+    }
+  ]
+}

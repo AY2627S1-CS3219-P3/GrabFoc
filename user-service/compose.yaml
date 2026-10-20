@@ -7,7 +7,10 @@
 #        pre-rename test note.
 # Author review: Successfully reviewed by Deanson, 2026-10-16.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
-# Scope: Kafka (user.events, #72) and Order Service (#71) settings; waits for kafka-init.
+# Scope: Added the Kafka and outbox relay variables, with no depends_on on Kafka.
+# Author review: pending — Deanson to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+# Scope: Order Service settings for the active-order check (#71).
 # Author review: Reviewed by Zi Yi, 2026-10-20.
 #
 # The User Service and the containers only it uses. Its database is its own — no other
@@ -80,11 +83,6 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
-      # user.events must exist before the outbox publishes to it; no service creates topics.
-      # kafka-init lives in infra/kafka/compose.yaml, so without the root compose file pass both:
-      #   docker compose -f infra/kafka/compose.yaml -f user-service/compose.yaml --env-file .env up user-service
-      kafka-init:
-        condition: service_completed_successfully
     # Only the variables this service reads (src/config/env.validation.ts), taken from the git-ignored .env at the
     # repo root. No env_file: passing the whole .env would hand this container every other
     # service's secrets too, such as SUPPLIER_POSTGRES_PASSWORD. A variable left empty is treated as
@@ -97,7 +95,6 @@ services:
       USER_REDIS_URL: redis://user-redis:6379
       USER_SMTP_HOST: mailpit
       USER_SMTP_PORT: 1025
-      USER_KAFKA_BROKERS: kafka:9092
       # Asked before a deactivation; until order-service runs, deactivation answers 503.
       USER_ORDER_URL: http://order-service:3005
       # Must equal the Order Service's ORDER_SERVICE_KEY; set it in the root .env.
@@ -113,6 +110,12 @@ services:
       USER_SMTP_PASS: ${USER_SMTP_PASS:-}
       USER_SMTP_FROM: ${USER_SMTP_FROM:-}
       USER_BOOTSTRAP_ADMIN_EMAIL: ${USER_BOOTSTRAP_ADMIN_EMAIL:-}
+      # The outbox relay publishes UserRegistered to the shared broker (infra/kafka). There is
+      # deliberately no depends_on on kafka or kafka-init: the service must start and accept
+      # sign-ups with Kafka down, and the relay keeps retrying until the broker and topic exist.
+      USER_KAFKA_BROKERS: kafka:9092
+      USER_OUTBOX_POLL_MS: ${USER_OUTBOX_POLL_MS:-}
+      USER_OUTBOX_MAX_BACKOFF_MS: ${USER_OUTBOX_MAX_BACKOFF_MS:-}
     ports:
       - "3001:3001"
 

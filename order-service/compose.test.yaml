@@ -1,0 +1,29 @@
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-10-13
+# Scope: Implemented the user-approved Order database-only plan.
+# Author review: Design and plan approved by user; implementation review pending.
+# AI-generated; human review pending.
+name: foc-order-db-tests
+services:
+  order-test-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: order_test
+      POSTGRES_USER: order_test
+      POSTGRES_PASSWORD: isolated-test-only
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "order_test", "-d", "order_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+  order-db-tests:
+    build:
+      context: .
+      target: test
+    depends_on:
+      order-test-db:
+        condition: service_healthy
+    environment:
+      ORDER_TEST_DATABASE_URL: postgresql://order_test:isolated-test-only@order-test-db:5432/order_test

@@ -3,8 +3,7 @@
 -- Scope: Transcribed the team's schema from user-service/AGENTS.md into the first migration.
 -- Author review: Read in full; verified every column against AGENTS.md §Schema and applied the migration to PostgreSQL 17.
 -- Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
--- Scope: Added the user_events outbox table and its partial index (issue #72). Zi Yi chose an outbox
---        table, added to this migration instead of a new one.
+-- Scope: Updated the SUSPENDED comment (#72).
 -- Author review: Reviewed by Zi Yi, 2026-10-20.
 --
 -- Keep in sync with the "Schema" section of user-service/AGENTS.md.
@@ -38,17 +37,3 @@ CREATE TABLE refresh_tokens (
 );
 
 CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens (user_id);
-
--- Outbox for the user.events topic: a row is written in the same transaction as the change it
--- reports, and UserEventsPublisher sends it to Kafka and sets published_at. id is the event's
--- eventId, so a resend after a crash carries the same id.
-CREATE TABLE user_events (
-    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    type          TEXT        NOT NULL,                          -- e.g. 'UserSuspended'
-    user_id       UUID        NOT NULL REFERENCES users(id),     -- also the Kafka message key
-    occurred_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    published_at  TIMESTAMPTZ                                    -- NULL until Kafka has stored it
-);
-
--- Serves the publisher's "oldest unpublished first" query.
-CREATE INDEX idx_user_events_unpublished ON user_events (occurred_at) WHERE published_at IS NULL;
