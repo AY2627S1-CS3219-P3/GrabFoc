@@ -8,7 +8,7 @@ Scope: Added a per-attempt timeout to the Envoy readiness check, which hung on L
 Author review: Pending Jie Yang's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Added POST /admin/users/:userId/suspend to the protected-route cases (#72).
-Author review: Pending Zi Yi's and Jie Yang's review.
+Author review: Reviewed by Zi Yi, 2026-10-21 (suspend route checked by hand through Envoy: 401 without a token, 404 from the User Service with one); the suite does not run on Zi Yi's machine; pending Jie Yang's review.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
 import assert from 'node:assert/strict';

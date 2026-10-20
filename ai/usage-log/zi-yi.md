@@ -47,7 +47,7 @@ Scope: Added the User Service Postman suspension entry.
 Author review: Reviewed by Zi Yi, 2026-10-20.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Added the merge-of-main entry for the User Service order-support branch.
-Author review: pending — Zi Yi to review.
+Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
 -->
 
 # AI Usage Log — Zi Yi
@@ -82,10 +82,43 @@ gateway with Envoy. This branch had its own `user_events` table and `UserEventsP
 **Prompts:**
 > merge main into this user service support branch, resolve the merge conflicts
 
-**Verification:** see the commit; `npm test`, lint and build in `user-service/`, and
-`python3 api-gateway/test/envoy_routes_test.py`.
+Follow-up questions while reviewing the resolution (explain):
+> what is User Service doesn't wait for Kafka, so our wait on kafka-init is gone. about?
 
-**Author review:** pending — Zi Yi to review the resolution.
+> why they can share a outbox? what is outbox for again?
+
+> so this outbox will just keep incrementing? will it delete rows?
+
+> so how is user suspended being implemented now
+
+> whats envoy
+
+> how is deactivation of users implemented now
+
+> explain more about the known gap
+
+> before updating the PR description, did we test already to ensure all is working well
+
+> i docker compose up --build already, give me explicit steps for testing
+
+Key response on the known gap: besides the millisecond race between the active-order check and
+the deactivation commit, the Order Service never checks a user's status (it only verifies the
+JWT), so a deactivated or suspended user's access token can still create and accept orders for
+up to 15 minutes. The AI listed options (Order checks status on create/accept; Order keeps a
+blocked-user list from events; a two-step deactivation; shorter tokens; accept it) with the
+AI-policy warning; nothing was chosen, it is for the team.
+
+**Verification:** `npm test` (24 passed, 3 skipped database tests), lint and build in
+`user-service/`; `python3 api-gateway/test/envoy_routes_test.py` (4 passed). The Envoy
+integration suite fails locally (Envoy gets 503 from the test's stub upstream, including tests
+unrelated to this change); left to CI. The AI dry-ran the deactivation steps on the merged stack
+(real order → 409, cancelled → 202 then 204) and the gateway 401 before handing them over.
+
+**Author review:** Zi Yi reviewed the resolution and tested it on the merged compose stack
+(fresh user-db), 2026-10-21: the full User Service Postman collection, the `UserSuspended` outbox
+row marked published and the message on `user.events`, deactivation against the real Order
+Service (409 with an order, 503 with Order stopped, 204 after cancelling), and the suspend route
+through Envoy (401 without a token, 404 from the User Service with an admin token).
 
 ### 2026-10-20 — User Service: Postman collection for suspension (#72) and the Order dependency (#71)
 

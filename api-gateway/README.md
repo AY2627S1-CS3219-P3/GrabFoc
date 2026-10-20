@@ -5,7 +5,7 @@ Scope: Documented stock Envoy configuration, testing, existing infrastructure en
 Author review: Jie Yang reviewed earlier documentation; Envoy implementation approved, new documentation review pending.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Listed POST /admin/users/:userId/suspend among the protected User routes (#72).
-Author review: Pending Zi Yi's and Jie Yang's review.
+Author review: Reviewed by Zi Yi, 2026-10-21; pending Jie Yang's review.
 -->
 
 # API Gateway

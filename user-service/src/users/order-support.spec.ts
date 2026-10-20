@@ -7,7 +7,7 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
  * Scope: Merge of main: UserSuspended now goes through OutboxRepository; replaced the
  *        UserEventsPublisher tests with a test of the userSuspended builder.
- * Author review: pending — Zi Yi to review.
+ * Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
  */
 // AI-generated (reviewed by Zi Yi)
 import { afterEach, describe, expect, it, vi } from 'vitest';

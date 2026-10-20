@@ -10,7 +10,7 @@ Scope: Documented the active-order deactivation guard (#71), POST /admin/users/:
 Author review: Reviewed by Zi Yi, 2026-10-20.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Merge of main: events now go through the `outbox` table; listed UserRegistered.
-Author review: pending — Zi Yi to review.
+Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
 -->
 
 # User Service — API reference

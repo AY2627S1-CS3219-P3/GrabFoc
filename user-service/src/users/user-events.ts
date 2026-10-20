@@ -5,7 +5,7 @@
  * Author review: pending — Deanson to record what he checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
  * Scope: Added the UserSuspended builder (#72), same shape as UserRegistered.
- * Author review: pending — Zi Yi to review.
+ * Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
  */
 // AI-generated (reviewed by Deanson)
 import { randomUUID } from 'crypto';

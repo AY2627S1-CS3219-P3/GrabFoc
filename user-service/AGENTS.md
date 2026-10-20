@@ -5,7 +5,7 @@ Scope: Wrote the Events section from Deanson's outbox design and the code that i
 Author review: pending — Deanson to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Added UserSuspended (#72) and why per-user order still holds with two event types.
-Author review: pending — Zi Yi to review.
+Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
 -->
 
 # AGENTS.md — User Service
