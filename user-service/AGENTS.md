@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 Scope: Wrote the Events section from Deanson's outbox design and the code that implements it.
 Author review: pending — Deanson to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+Scope: Added UserSuspended (#72) and why per-user order still holds with two event types.
+Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
 -->
 
 # AGENTS.md — User Service
@@ -46,6 +49,17 @@ Sent once per account, when the account is created:
 
 Consumer today: the Credit Service creates the wallet with the starting credits.
 
+### `UserSuspended`
+
+Sent when `POST /admin/users/:userId/suspend` commits (#72). Same topic, key and shape as
+`UserRegistered`; `occurredAt` is the time of the suspension.
+
+```json
+{ "type": "UserSuspended", "eventId": "<uuid>", "userId": "<uuid>", "occurredAt": "<ISO 8601>" }
+```
+
+Consumer: the Order Service cancels the user's ongoing orders (not built yet).
+
 ### Delivery: transactional outbox
 
 1. The account row and an `outbox` row are written in **one transaction**
@@ -86,5 +100,8 @@ Consumer today: the Credit Service creates the wallet with the starting credits.
 
 - Add a builder next to `src/users/user-events.ts`, write it with `OutboxRepository.add(event, tx)`
   in the transaction that makes the change, and document it here.
-- `created_at` is the transaction's *start* time, not its commit order. Once a user can have two
-  events, per-user order is no longer guaranteed; revisit the claim order then.
+- `created_at` is the transaction's *start* time, not its commit order, so two events for one
+  user written by overlapping transactions can be claimed out of order.
+- Today's two types can't overlap: only an ACTIVE account can be suspended, so the suspension's
+  transaction starts after the `UserRegistered` one committed, and an account is suspended at
+  most once. A new type that can overlap another needs the claim order revisited.

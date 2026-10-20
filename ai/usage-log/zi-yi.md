@@ -42,12 +42,184 @@ Author review (Zi Yi): Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 Scope: Added the Order Service Postman collection entry.
 Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+Scope: Added the User Service Postman suspension entry.
+Author review: Reviewed by Zi Yi, 2026-10-20.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+Scope: Added the merge-of-main entry for the User Service order-support branch.
+Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-20 — User Service: merge main into `feat/user-service-order-support`
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `.env.example`; `user-service/` `compose.yaml`, `src/config/env.validation.ts`,
+`src/users/users.service.ts`, `users.repository.ts`, `users.module.ts`, `user-events.ts`,
+`order-support.spec.ts`, `src/infra/outbox/outbox.repository.ts` (comment),
+`db/migrations/001_init.sql`, `AGENTS.md`, `API.md`, Postman collection; `api-gateway/`
+`envoy/routes/10-user.routes.json`, `test/envoy.integration.mjs`, `README.md`; removed
+`user-service/src/users/user-events.publisher.ts`, `api-gateway/src/routing/user.routes.ts`,
+`api-gateway/test/gateway.test.js`
+
+**Scenario:** main had gained Deanson's transactional outbox (`outbox` table in
+`002_outbox.sql`, `OutboxRelay`, `user-events.ts`) for `UserRegistered`, and replaced the Node
+gateway with Envoy. This branch had its own `user_events` table and `UserEventsPublisher` for
+`UserSuspended`. The AI resolved the conflicts by keeping main's design:
+- `UserSuspended` is now a builder in `user-events.ts`, written with `OutboxRepository.add` in
+  the suspend transaction; the branch's `user_events` table, publisher and Kafka producer copy
+  were removed (main's producer kept).
+- Compose keeps Deanson's "no `depends_on` on Kafka" (the branch had waited for `kafka-init`).
+- The suspend route moved to the Envoy route file and its integration test.
+- The outbox claim-order comment and `user-service/AGENTS.md` now explain why per-user order
+  still holds with two event types (only an ACTIVE account can be suspended, so its
+  transaction starts after the `UserRegistered` one committed).
+
+**Prompts:**
+> merge main into this user service support branch, resolve the merge conflicts
+
+Follow-up questions while reviewing the resolution (explain):
+> what is User Service doesn't wait for Kafka, so our wait on kafka-init is gone. about?
+
+> why they can share a outbox? what is outbox for again?
+
+> so this outbox will just keep incrementing? will it delete rows?
+
+> so how is user suspended being implemented now
+
+> whats envoy
+
+> how is deactivation of users implemented now
+
+> explain more about the known gap
+
+> before updating the PR description, did we test already to ensure all is working well
+
+> i docker compose up --build already, give me explicit steps for testing
+
+Key response on the known gap: besides the millisecond race between the active-order check and
+the deactivation commit, the Order Service never checks a user's status (it only verifies the
+JWT), so a deactivated or suspended user's access token can still create and accept orders for
+up to 15 minutes. The AI listed options (Order checks status on create/accept; Order keeps a
+blocked-user list from events; a two-step deactivation; shorter tokens; accept it) with the
+AI-policy warning; nothing was chosen, it is for the team.
+
+**Verification:** `npm test` (24 passed, 3 skipped database tests), lint and build in
+`user-service/`; `python3 api-gateway/test/envoy_routes_test.py` (4 passed). The Envoy
+integration suite fails locally (Envoy gets 503 from the test's stub upstream, including tests
+unrelated to this change); left to CI. The AI dry-ran the deactivation steps on the merged stack
+(real order → 409, cancelled → 202 then 204) and the gateway 401 before handing them over.
+
+**Author review:** Zi Yi reviewed the resolution and tested it on the merged compose stack
+(fresh user-db), 2026-10-21: the full User Service Postman collection, the `UserSuspended` outbox
+row marked published and the message on `user.events`, deactivation against the real Order
+Service (409 with an order, 503 with Order stopped, 204 after cancelling), and the suspend route
+through Envoy (401 without a token, 404 from the User Service with an admin token).
+
+### 2026-10-20 — User Service: Postman collection for suspension (#72) and the Order dependency (#71)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate, debug
+**Files:** `user-service/postman/user-service.postman_collection.json`
+
+**Scenario:** testing the #71/#72 branch. The AI explained that the existing collection now
+breaks without an Order Service (deactivation asks Order first, so it answers 503) and
+suggested adding the suspension cases instead of testing them by hand.
+
+**Prompts:**
+> list testing steps
+
+> give me next steps, i just ran docker compose up --build
+
+> why order svc not running?
+
+> should we update postman collection instead?
+
+> commit first, then make those changes
+
+**What it produced:** seven requests at the end of the Admin folder (403 suspend as a USER,
+409 suspend yourself, suspend, 403 `ACCOUNT_SUSPENDED` login, 401 refresh after suspension,
+409 `USER_NOT_ACTIVE` again, 404 unknown id), `400 malformed userId on suspend` in Validation,
+an `adminUserId` variable, and a note in the collection description that deactivation needs an
+Order Service answering "no active orders". The `HAS_ACTIVE_ORDERS` and Order-down cases stay
+manual. While testing, it also found my old `user-db` volume had no `user_events` table
+(`001_init.sql` changed after it was applied), and started a stand-in Order container for the run.
+
+**Verification:** newman against the compose stack on a fresh `user-db`, with the stand-in
+Order answering "no active orders": 144 requests, 366 assertions, 0 failures. The
+`UserSuspended` message was read back from `user.events`, keyed by the user id, and its outbox
+row was marked published.
+
+**What I changed or rejected:** Tested the collection myself in Postman on 2026-10-20.
+
+### 2026-10-19 — User Service: active-order deactivation guard (#71) and `UserSuspended` (#72)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** new `user-service/src/infra/kafka/kafka.producer.ts`,
+`src/users/{order.client,user-events.publisher,order-support.spec}.ts`; changed
+`db/migrations/001_init.sql`, `src/config/env.validation.ts`, `src/common/errors/error-codes.ts`,
+`src/users/{users.service,users.repository,users-admin.controller,users.module}.ts`, `API.md`,
+`compose.yaml`, `package.json`, `package-lock.json`; root `.env.example`;
+`api-gateway/src/routing/user.routes.ts`, `api-gateway/test/gateway.test.js`
+
+**Scenario:** the User Service side of the Order Service work on `feat/order-service`, on a new
+branch from `main`. The AI found Order's `GET /internal/orders/users/:userId/active` (my
+2026-10-18 decision), that nothing in the User Service could set `SUSPENDED`, and that Credit and
+Order's plan disagree on the `user.events` shape. It flagged the suspend endpoint, the event shape,
+the outbox table and the Order-down behaviour as interface/schema/trade-off decisions under the AI
+policy and asked me to choose before writing code.
+
+**Prompts:**
+> branch from main, we are trying to support order service (branch feat/order-service). So we
+> shall resolve two issues https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/71 and
+> https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/72
+
+Answers to the AI's questions: event shape "whats the difference and which is better?";
+suspension scope "Suspend only"; Order down "Fail closed, 503 (Recommended)"; delivery "outbox
+table but use migration 001 is okay". Then:
+> continue
+
+**My decisions** (chosen from the options the AI laid out):
+- `user.events` shape: flat `{ type, eventId, occurredAt, userId }`, keyed by `userId`. The AI
+  explained the flat shape is what Credit's reader already accepts; the envelope from the Order
+  plan (`eventType`, `data.userId`) would need Credit changed. I said continue with its
+  recommendation. Order's (unbuilt) consumer must read this shape.
+- `POST /admin/users/:userId/suspend` only; no endpoint to lift a suspension.
+- Deactivation fails closed: 503 `SERVICE_UNAVAILABLE` when Order cannot answer.
+- Outbox table `user_events` added to `001_init.sql`, not a new migration.
+
+**What it produced:**
+- `OrderClient.hasActiveOrders` (3 s timeout, `X-Service-Key`); the check runs in
+  `requestOtp(DEACTIVATION)` and in `deactivateSelf` before the code is spent; 409
+  `HAS_ACTIVE_ORDERS`;
+- `UsersService.suspend`: under the last-admin lock, caller re-checked as an active admin, not
+  yourself, target must be `ACTIVE`; status, session revoke and the outbox row in one transaction;
+- `UserEventsPublisher`: every second, oldest first, marks `published_at` once Kafka stores it,
+  stops at the first failure; `KafkaProducer` copied from Order's;
+- env `USER_KAFKA_BROKERS`, `USER_ORDER_URL`, `USER_ORDER_SERVICE_KEY` (compose passes
+  `ORDER_SERVICE_KEY`); gateway route; `API.md` events section; 14 unit tests.
+
+**Flagged:**
+- The partial index `idx_user_events_unpublished` is a schema detail beyond the table I approved.
+- Existing `user-db` volumes must be recreated (`001_init.sql` changed; the runner tracks file names).
+- Every root `.env` needs `ORDER_SERVICE_KEY` (≥ 32 characters) or the User Service won't start;
+  until `order-service` runs in compose, deactivation answers 503.
+- Known race: an order created between the active-order check and the deactivation commit is not
+  caught. A suspended or deactivated user's access token stays valid for up to 15 minutes.
+- `ORDER_SERVICE_KEY` is also added to `.env.example` on `feat/order-service`; keep one on merge.
+- Owners to confirm: the gateway route (Jie Yang), the endpoint and event (Deanson), the shape
+  (Order owners).
+
+**Verification:** `npm test` 14 passed, `npm run lint` and `nest build` clean; gateway `npm test`
+22 passed. End to end on a scratch database with a fake Order endpoint and the local Kafka:
+deactivation 409 with active orders, 503 with Order down, 204 with none; suspend 403 for a USER,
+200 for an admin, 409 again and for yourself; suspended login 403 `ACCOUNT_SUSPENDED`; the
+`UserSuspended` message read back from `user.events` with key = `userId`; Credit ignored it.
+
+**What I changed or rejected:** Reviewed every file on 2026-10-20.
 
 ### 2026-10-19 — Order Service: Postman collection
 

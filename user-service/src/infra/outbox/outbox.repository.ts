@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: Generated the outbox queries (add, claim with SKIP LOCKED, mark published) from Deanson's design.
  * Author review: pending — Deanson to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+ * Scope: Updated the claim-order comment for UserSuspended (#72).
+ * Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
  */
 // AI-generated (reviewed by Deanson)
 import { Injectable } from '@nestjs/common';
@@ -52,8 +55,9 @@ export class OutboxRepository {
    * replica) skips them instead of waiting, so no event is claimed twice at once.
    *
    * created_at is the time the writing transaction *started*, not when it committed, so a slow
-   * transaction can commit a row older than one already sent. Harmless while each user has a
-   * single event (UserRegistered); revisit before adding a second event type per user.
+   * transaction can commit a row older than one already sent. Harmless for UserRegistered and
+   * UserSuspended: only an ACTIVE account can be suspended, so that transaction always starts
+   * after the UserRegistered one committed (user-service/AGENTS.md, "Events").
    */
   async claimPending(tx: PoolClient, limit: number): Promise<PendingEvent[]> {
     const { rows } = await this.db.query<OutboxRow>(

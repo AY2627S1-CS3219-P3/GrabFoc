@@ -4,6 +4,13 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Wrote this API reference from the refactored code (controllers, DTOs, common/validation/fields.ts, services).
        2026-10-16: updated paths after the rename to user-service/.
 Author review: Successfully reviewed by Deanson, 2026-10-16.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Documented the active-order deactivation guard (#71), POST /admin/users/:userId/suspend and
+       the user.events contract (#72).
+Author review: Reviewed by Zi Yi, 2026-10-20.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+Scope: Merge of main: events now go through the `outbox` table; listed UserRegistered.
+Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
 -->
 
 # User Service — API reference
@@ -20,6 +27,7 @@ All request and response bodies are JSON (`Content-Type: application/json`). Fie
 - [Field rules](#field-rules)
 - [Limits](#limits)
 - [Endpoints](#endpoints): [Public](#public) · [Auth](#auth) · [Profile `/users/me`](#profile-usersme) · [Admin `/admin/users`](#admin-adminusers)
+- [Events (`user.events`)](#events-userevents)
 - [Manual testing with Postman](#manual-testing-with-postman)
 
 ---
@@ -31,7 +39,7 @@ All request and response bodies are JSON (`Content-Type: application/json`). Fie
   Other services verify it with the public key from `GET /.well-known/jwks.json`.
 - **Refresh token:** an opaque string, valid 90 days, **single-use**. Each `POST /auth/refresh` returns a new
   one and revokes the old. Presenting a used token again ends **every** session of that user.
-- Password change, password reset and deactivation revoke every refresh token of the user.
+- Password change, password reset, deactivation and suspension revoke every refresh token of the user.
 - Roles: `USER` and `ADMIN`. `/admin/*` routes need `ADMIN`. The role in a token can be up to 15 minutes
   stale; role changes and reactivation re-check the caller's role in the database.
 
@@ -69,13 +77,14 @@ Every error has the same shape:
 | 404 | `NOT_FOUND` | Unknown user, no pending sign-up, unknown route | — |
 | 409 | `EMAIL_TAKEN` | Address already belongs to an account | — |
 | 409 | `LAST_ADMIN` | The change would leave no active admin | — |
-| 409 | `CANNOT_MODIFY_SELF` | An admin demoting themselves while other admins exist | — |
-| 409 | `USER_NOT_ACTIVE` | Role change on a non-active user | — |
+| 409 | `CANNOT_MODIFY_SELF` | An admin demoting themselves while other admins exist, or suspending themselves | — |
+| 409 | `USER_NOT_ACTIVE` | Role change or suspension of a non-active user | — |
 | 409 | `NOT_DEACTIVATED` | Reactivating an account that is not deactivated | — |
+| 409 | `HAS_ACTIVE_ORDERS` | Deactivating (or requesting its code) while requester or courier on an order not `COMPLETED`/`CANCELLED` | — |
 | 423 | `ACCOUNT_LOCKED` | Too many failed logins | `retryAfterSeconds` |
 | 429 | `RATE_LIMITED` | Too many codes requested | `retryAfterSeconds` |
 | 500 | `INTERNAL_ERROR` | Unexpected failure | — |
-| 503 | `SERVICE_UNAVAILABLE` | Email could not be sent, or database down (`/health`) | — |
+| 503 | `SERVICE_UNAVAILABLE` | Email could not be sent, database down (`/health`), or the Order Service could not be asked about active orders (deactivation) | — |
 
 ## Field rules
 
@@ -135,6 +144,7 @@ All OTPs are sent by email (Mailpit at `http://localhost:8025` in development).
 | GET | `/admin/users` | Bearer, ADMIN | 200 |
 | PATCH | `/admin/users/:userId/role` | Bearer, ADMIN | 200 |
 | POST | `/admin/users/:userId/reactivate` | Bearer, ADMIN | 200 |
+| POST | `/admin/users/:userId/suspend` | Bearer, ADMIN | 200 |
 
 ### Response shapes
 
@@ -247,7 +257,7 @@ Emails a code to the caller's **current** address.
 { "purpose": "EMAIL_CHANGE" }
 ```
 `202 { "otpExpiresAt": "…" }`
-Errors: 400 · 409 `LAST_ADMIN` (`DEACTIVATION` by the only active admin) · 429 · 503
+Errors: 400 · 409 `LAST_ADMIN` (`DEACTIVATION` by the only active admin) / `HAS_ACTIVE_ORDERS` (`DEACTIVATION` with ongoing orders) · 429 · 503
 
 #### `POST /users/me/email`
 Step 2 of 3 of an email change. `otp` is the `EMAIL_CHANGE` code. Emails a second code to `newEmail`; nothing is changed yet.
@@ -284,11 +294,14 @@ Errors: 400 `VALIDATION_ERROR` (including same as current; the code stays valid)
 
 #### `POST /users/me/deactivate`
 Needs a `DEACTIVATION` code. Ends every session; login then answers 403 `ACCOUNT_DEACTIVATED`.
+Refused while the user is requester or courier on any order that is not `COMPLETED`/`CANCELLED`:
+the service asks the Order Service's `GET /internal/orders/users/:userId/active` first (before the
+code is spent), and refuses with 503 if Order cannot answer.
 ```json
 { "otp": "123456" }
 ```
 `204`
-Errors: 400 · 409 `LAST_ADMIN`
+Errors: 400 · 409 `LAST_ADMIN` / `HAS_ACTIVE_ORDERS` · 503 `SERVICE_UNAVAILABLE`
 
 ### Admin (`/admin/users`)
 
@@ -309,6 +322,34 @@ Errors: 400 (bad body or malformed `:userId`) · 403 `FORBIDDEN` (caller is no l
 No body. Keeps the target's role.
 `200 AdminProfile` with `status: "ACTIVE"`
 Errors: 400 (malformed `:userId`) · 403 `FORBIDDEN` · 404 `NOT_FOUND` · 409 `NOT_DEACTIVATED`
+
+#### `POST /admin/users/:userId/suspend`
+No body. Only an `ACTIVE` account, and not your own. Ends every session of the target; login then
+answers 403 `ACCOUNT_SUSPENDED`. Publishes `UserSuspended` on `user.events` (below), so the Order
+Service cancels the user's ongoing orders. There is no endpoint to lift a suspension yet.
+`200 AdminProfile` with `status: "SUSPENDED"`
+Errors: 400 (malformed `:userId`) · 403 `FORBIDDEN` · 404 `NOT_FOUND` · 409 `CANNOT_MODIFY_SELF` / `USER_NOT_ACTIVE`
+
+---
+
+## Events (`user.events`)
+
+The User Service owns the `user.events` Kafka topic and its message shape (root AGENTS.md §3
+Messaging, rule 3). Each event is written to the `outbox` table in the same transaction as the
+change it reports, and published within about a second, **keyed by `userId`**. A crash
+before the publish is marked resends it with the same `eventId`, so consumers must drop repeats.
+
+| `type` | When | Consumers |
+|---|---|---|
+| `UserRegistered` | an account is created (sign-up verification, first-admin bootstrap) | Credit Service (creates the wallet) |
+| `UserSuspended` | `POST /admin/users/:userId/suspend` committed | Order Service (cancels the user's ongoing orders) |
+
+```json
+{ "type": "UserSuspended", "eventId": "uuid", "occurredAt": "2026-10-19T08:00:00.000Z", "userId": "uuid" }
+```
+
+Consumers should ignore types they don't handle, and fields they don't use. Delivery details:
+[`AGENTS.md`](AGENTS.md#events-userevents).
 
 ---
 

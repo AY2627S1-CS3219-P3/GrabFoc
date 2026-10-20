@@ -9,6 +9,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 # Scope: Added the Kafka and outbox relay variables, with no depends_on on Kafka.
 # Author review: pending — Deanson to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+# Scope: Order Service settings for the active-order check (#71).
+# Author review: Reviewed by Zi Yi, 2026-10-20.
 #
 # The User Service and the containers only it uses. Its database is its own — no other
 # service connects to user-db (root AGENTS.md §3). The root compose.yaml includes this file.
@@ -92,6 +95,10 @@ services:
       USER_REDIS_URL: redis://user-redis:6379
       USER_SMTP_HOST: mailpit
       USER_SMTP_PORT: 1025
+      # Asked before a deactivation; until order-service runs, deactivation answers 503.
+      USER_ORDER_URL: http://order-service:3005
+      # Must equal the Order Service's ORDER_SERVICE_KEY; set it in the root .env.
+      USER_ORDER_SERVICE_KEY: ${ORDER_SERVICE_KEY:-}
       # From .env.
       LOG_LEVEL: ${LOG_LEVEL:-}
       USER_AES_KEY: ${USER_AES_KEY:-}

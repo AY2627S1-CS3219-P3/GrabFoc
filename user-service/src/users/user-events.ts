@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: Generated the UserRegistered builder from Deanson's payload ({ type, eventId, userId, occurredAt }).
  * Author review: pending — Deanson to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+ * Scope: Added the UserSuspended builder (#72), same shape as UserRegistered.
+ * Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
  */
 // AI-generated (reviewed by Deanson)
 import { randomUUID } from 'crypto';
@@ -29,5 +32,17 @@ export function userRegistered(user: Pick<UserRecord, 'id' | 'createdAt'>): Outb
       userId: user.id,
       occurredAt: user.createdAt.toISOString(),
     },
+  };
+}
+
+/** Sent when an admin suspends an account (#72). The Order Service cancels the user's open orders from it. */
+export function userSuspended(userId: string): OutboxEvent {
+  const eventId = randomUUID();
+  return {
+    id: eventId,
+    aggregateId: userId,
+    eventType: 'UserSuspended',
+    topic: USER_EVENTS_TOPIC,
+    payload: { type: 'UserSuspended', eventId, userId, occurredAt: new Date().toISOString() },
   };
 }

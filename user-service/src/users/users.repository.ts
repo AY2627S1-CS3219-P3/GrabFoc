@@ -5,6 +5,9 @@
  *   Claude Opus 5 and Claude Sonnet 5, 2026-09-26/27): same SQL, now through DatabaseService with
  *   an optional `tx`. UserStatus moved to common/enums.
  * Author review: Successfully reviewed by Deanson, 2026-10-16.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: Added suspend() (#72).
+ * Author review: Reviewed by Zi Yi, 2026-10-20.
  */
 // AI-generated (reviewed by Deanson)
 import { Injectable } from '@nestjs/common';
@@ -276,6 +279,16 @@ export class UsersRepository {
   async reactivate(userId: string, tx?: PoolClient): Promise<boolean> {
     const { rowCount } = await this.db.query(
       "UPDATE users SET status = 'ACTIVE', deactivated_at = NULL, updated_at = now() WHERE id = $1",
+      [userId],
+      tx,
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
+  /** No deactivated_at: that column belongs to self-deactivation. */
+  async suspend(userId: string, tx: PoolClient): Promise<boolean> {
+    const { rowCount } = await this.db.query(
+      "UPDATE users SET status = 'SUSPENDED', updated_at = now() WHERE id = $1",
       [userId],
       tx,
     );
