@@ -6,6 +6,8 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: After the reviews of PR #129: redact sensitive field names at any depth, not only at
  *        the top level, and compare the from/to range as instants rather than as text.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Truncate beyond the depth limit instead of returning the subtree (PR #130 review).
  * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
@@ -106,6 +108,7 @@ export interface LineRow {
 }
 
 const REDACTED = '[REDACTED]';
+const TRUNCATED = '[TRUNCATED]';
 const MAX_DEPTH = 6;
 
 /**
@@ -114,10 +117,14 @@ const MAX_DEPTH = 6;
  * once it is in the `extra` column, so dropping only the outer keys is not enough (PR #129 review).
  */
 function redactDeep(value: unknown, depth = 0): unknown {
-  if (depth > MAX_DEPTH || value === null || typeof value !== 'object') return value;
+  if (value === null || typeof value !== 'object') return value;
+  // Replaced rather than returned, for the same reasons as in the shipper: a secret nested deeper
+  // than this would be stored verbatim, and a cycle would reach the JSON serialiser (PR #130).
+  if (depth > MAX_DEPTH) return TRUNCATED;
   if (Array.isArray(value)) return value.map((item) => redactDeep(item, depth + 1));
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof item === 'function') continue;
     out[key] = neverStore(key) ? REDACTED : redactDeep(item, depth + 1);
   }
   return out;

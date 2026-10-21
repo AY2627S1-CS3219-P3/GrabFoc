@@ -86,6 +86,14 @@ describe('toRow', () => {
     expect((row.extra as { request: { retries: number } }).request.retries).toBe(2);
   });
 
+  it('truncates past the depth limit rather than storing what is down there', () => {
+    let nested: unknown = { token: 'leak-me' };
+    for (let i = 0; i < 9; i += 1) nested = { next: nested };
+    const row = toRow(parse({ ...valid, nested: nested as Record<string, unknown> }).data!);
+    expect(JSON.stringify(row)).not.toContain('leak-me');
+    expect(JSON.stringify(row)).toContain('[TRUNCATED]');
+  });
+
   it('cuts the path at the query string, so coordinates cannot be stored', () => {
     const row = toRow(parse({ ...valid, path: '/locations?lat=1.2966&lon=103.7764' }).data!);
     expect(row.path).toBe('/locations');

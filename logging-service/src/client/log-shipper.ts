@@ -15,6 +15,10 @@
  * Scope: After the reviews of PR #129: redact sensitive field names recursively, stop a
  *        caller's fields from overwriting the envelope, and make stop() wait for a publish
  *        that is already in flight.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: After the reviews of PR #130: truncate beyond the depth limit instead of returning the
+ *        subtree, drop function values so a toJSON hook cannot bypass redaction, and clear the
+ *        publish guard by identity so a synchronous throw cannot disable shipping for good.
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -118,6 +122,7 @@ const NEVER_LOG = [
 ];
 
 const REDACTED = '[REDACTED]';
+const TRUNCATED = '[TRUNCATED]';
 const MAX_DEPTH = 6;
 
 function isSensitive(key: string): boolean {
@@ -131,11 +136,19 @@ function isSensitive(key: string): boolean {
  * access can query, so this is the last point at which anything can be removed.
  */
 export function redactFields(value: unknown, depth = 0): unknown {
-  if (depth > MAX_DEPTH || value === null || typeof value !== 'object') return value;
+  if (value === null || typeof value !== 'object') return value;
+  // Beyond the limit the subtree is replaced, not returned: returning it would serialise a secret
+  // nested deeper than this verbatim, and would let a cycle through to JSON.stringify, which
+  // throws — crashing the caller over a log line (PR #130 review).
+  if (depth > MAX_DEPTH) return TRUNCATED;
   if (value instanceof Date) return value;
   if (Array.isArray(value)) return value.map((item) => redactFields(item, depth + 1));
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    // A function is dropped. JSON.stringify ignores functions anyway, except an own `toJSON`,
+    // which it calls instead of reading the object — so copying one across would let it return
+    // whatever it liked, unredacted, including a replacement for the whole envelope.
+    if (typeof item === 'function') continue;
     out[key] = isSensitive(key) ? REDACTED : redactFields(item, depth + 1);
   }
   return out;
@@ -197,18 +210,27 @@ export class LogShipper {
     if (this.publishing) return this.publishing;
     if (!this.options.publisher || !this.buffer.length) return;
     const batch = this.buffer.splice(0, this.buffer.length);
-    this.publishing = (async () => {
+    const publisher = this.options.publisher;
+    const pending = (async () => {
       try {
-        await this.options.publisher!.publish(batch);
+        // Awaited inside the promise, so a publisher that throws synchronously is still caught
+        // here rather than before `this.publishing` has been assigned (PR #130 review).
+        await publisher.publish(batch);
       } catch {
         // The lines are already on stdout, so losing them here is a counted inconvenience, not a
         // reason to grow the buffer without limit or to crash a service that was only logging.
         this.counts.failed += batch.length;
-      } finally {
-        this.publishing = undefined;
       }
     })();
-    return this.publishing;
+    this.publishing = pending;
+    try {
+      await pending;
+    } finally {
+      // By identity: clearing unconditionally could wipe a newer publish's guard, and leaving a
+      // settled promise in place would make every later flush() a no-op, disabling shipping for
+      // the life of the process.
+      if (this.publishing === pending) this.publishing = undefined;
+    }
   }
 
   /** Flushes what is left and stops the timer. Call from onModuleDestroy. */

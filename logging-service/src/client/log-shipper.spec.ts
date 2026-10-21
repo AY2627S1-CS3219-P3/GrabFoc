@@ -11,6 +11,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the redaction, envelope-override and shutdown cases after the reviews of
  *        PR #129.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Added the depth-limit, toJSON and synchronous-throw cases after the PR #130
+ *        reviews.
  * Author review: Cole Lin, read and approved.
  */
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -107,6 +110,46 @@ describe('redaction', () => {
   });
 });
 
+describe('redaction cannot be worked around', () => {
+  /** Nests `leaf` `depth` levels down. */
+  function deep(depth: number, leaf: unknown): unknown {
+    return depth === 0 ? leaf : { next: deep(depth - 1, leaf) };
+  }
+
+  // Returning the subtree beyond the limit served a secret nested deeper than six levels verbatim.
+  it('truncates past the depth limit instead of serialising what is down there', () => {
+    shipper().emit({ level: 'warn', event: 'deep', nested: deep(9, { token: 'must-not-appear' }) });
+    expect(written[0]).not.toContain('must-not-appear');
+    expect(written[0]).toContain('[TRUNCATED]');
+  });
+
+  // A cycle used to reach JSON.stringify, which throws - crashing a caller over a log line.
+  it('survives a cyclic object', () => {
+    const cyclic: Record<string, unknown> = { name: 'loop' };
+    cyclic.self = cyclic;
+    const log = shipper();
+    expect(() => log.emit({ level: 'warn', event: 'cycle', cyclic })).not.toThrow();
+    expect(written).toHaveLength(1);
+  });
+
+  // JSON.stringify calls an own toJSON instead of reading the object, so copying one across would
+  // let it return anything it liked, unredacted.
+  it('ignores a toJSON hook on a nested field', () => {
+    shipper().emit({
+      level: 'warn',
+      event: 'hooked',
+      payload: { toJSON: () => ({ token: 'must-not-appear' }), safe: 1 },
+    });
+    expect(written[0]).not.toContain('must-not-appear');
+    expect(JSON.parse(written[0]).payload.safe).toBe(1);
+  });
+
+  it('keeps a Date readable, since its toJSON is on the prototype', () => {
+    shipper().emit({ level: 'info', event: 'dated', when: new Date('2026-10-21T00:00:00.000Z') });
+    expect(JSON.parse(written[0]).when).toBe('2026-10-21T00:00:00.000Z');
+  });
+});
+
 describe('the envelope cannot be overwritten', () => {
   // A line claiming another service's name, or its own timestamp, would make the store unreadable.
   it.each([
@@ -185,6 +228,30 @@ describe('with a broker', () => {
     log.emit({ level: 'info', event: 'service_started' });
     await log.flush();
     expect(published[0].key).toBeUndefined();
+  });
+
+  /**
+   * A publisher that threw synchronously used to leave a settled promise in the guard, so every
+   * later flush() returned it and nothing was ever published again (PR #130 review).
+   */
+  it('keeps shipping after a publisher throws synchronously', async () => {
+    let fail = true;
+    const log = shipper({
+      publish: (lines) => {
+        if (fail) throw new Error('no connection');
+        published.push(...lines);
+        return Promise.resolve();
+      },
+    });
+
+    log.emit({ level: 'info', event: 'first' });
+    await log.flush();
+    expect(log.counts.failed).toBe(1);
+
+    fail = false;
+    log.emit({ level: 'info', event: 'second' });
+    await log.flush();
+    expect(published.map((line) => JSON.parse(line.value).event)).toEqual(['second']);
   });
 
   it('flushes what is left when the service shuts down', async () => {
