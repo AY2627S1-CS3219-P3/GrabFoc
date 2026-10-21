@@ -3,10 +3,11 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Copied from logging-service/src/client/log-shipper.ts, which is the canonical copy.
  *        This repository has no shared package, so common code is copied, not imported: a change
- *        there has to be repeated here. Re-copied after the PR #129 and #130 reviews, which added
- *        recursive redaction, envelope precedence, a stop() that waits for a publish in flight,
- *        truncation past the depth limit, dropped function values, and a publish guard cleared by
- *        identity.
+ *        there has to be repeated here. Re-copied after the reviews of PR #129 and #130, which
+ *        added recursive redaction, substring matching of sensitive names, envelope precedence,
+ *        truncation past the depth limit, dropped function values, a publish guard cleared by
+ *        identity, a stop() that waits for a publish in flight, and an emit() that cannot throw
+ *        on a value JSON refuses to serialise.
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -113,8 +114,15 @@ const REDACTED = '[REDACTED]';
 const TRUNCATED = '[TRUNCATED]';
 const MAX_DEPTH = 6;
 
+/**
+ * Matched as a **substring** of the normalised key, not as the whole key: `adminToken`,
+ * `passwordResetToken`, `apiSecret` and `customerEmail` all have to be caught, and listing every
+ * compound anyone might invent is not possible (PR #129 review). This over-redacts — `tokenCount`
+ * goes too — which is the right direction to err in for a log line.
+ */
 function isSensitive(key: string): boolean {
-  return NEVER_LOG.includes(key.toLowerCase().replace(/[-_]/g, ''));
+  const normalised = key.toLowerCase().replace(/[-_]/g, '');
+  return NEVER_LOG.some((name) => normalised.includes(name));
 }
 
 /**
@@ -130,16 +138,28 @@ export function redactFields(value: unknown, depth = 0): unknown {
   // throws — crashing the caller over a log line (PR #130 review).
   if (depth > MAX_DEPTH) return TRUNCATED;
   if (value instanceof Date) return value;
-  if (Array.isArray(value)) return value.map((item) => redactFields(item, depth + 1));
+  if (Array.isArray(value)) return value.map((item) => serialisable(redactFields(item, depth + 1)));
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
     // A function is dropped. JSON.stringify ignores functions anyway, except an own `toJSON`,
     // which it calls instead of reading the object — so copying one across would let it return
     // whatever it liked, unredacted, including a replacement for the whole envelope.
     if (typeof item === 'function') continue;
-    out[key] = isSensitive(key) ? REDACTED : redactFields(item, depth + 1);
+    out[key] = isSensitive(key) ? REDACTED : serialisable(redactFields(item, depth + 1));
   }
   return out;
+}
+
+/**
+ * JSON cannot serialise every value a caller might pass: a `bigint` makes JSON.stringify throw,
+ * which would replace the operation being logged with a TypeError (PR #129 review). emit() must
+ * never throw, so the unsupported primitives become text.
+ */
+function serialisable(value: unknown): unknown {
+  if (typeof value === 'bigint') return `${value}`;
+  if (typeof value === 'symbol') return value.toString();
+  if (typeof value === 'number' && !Number.isFinite(value)) return `${value}`;
+  return value;
 }
 
 export class LogShipper {
@@ -166,7 +186,7 @@ export class LogShipper {
    */
   emit(input: LineInput): void {
     const { level, event, path, ...rest } = input;
-    const payload = JSON.stringify({
+    const payload = this.serialise({
       // The caller's own fields go in FIRST, so the envelope below always wins: a line claiming
       // `service: "gateway"` or its own `ts` would make the store unreadable.
       ...(redactFields(rest) as Record<string, unknown>),
@@ -191,6 +211,26 @@ export class LogShipper {
       return;
     }
     this.buffer.push({ key: input.requestId, value: payload });
+  }
+
+  /**
+   * JSON for one line, or a line saying it could not be built. Nothing a caller passes may turn a
+   * log call into an exception on the path being logged.
+   */
+  private serialise(line: Record<string, unknown>): string {
+    try {
+      return JSON.stringify(line);
+    } catch (err) {
+      return JSON.stringify({
+        lineId: line.lineId,
+        ts: line.ts,
+        service: line.service,
+        level: 'error',
+        event: 'line_unserialisable',
+        reason: err instanceof Error ? err.message : 'unknown',
+        originalEvent: typeof line.event === 'string' ? line.event : null,
+      });
+    }
   }
 
   /** Drains the buffer. Safe to call while one is already running; one publish at a time. */
