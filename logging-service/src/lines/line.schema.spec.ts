@@ -4,6 +4,9 @@
  * Scope: Generated these unit tests for the inbound-line envelope and the query parameters.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the nested-redaction and timestamp-precision cases after the PR #129 reviews.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: A line with an odd requestId is now stored rather than dropped, plus the compound-name
+ *        and page-bound cases (third review round on PR #129).
  * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, toRow } from './line.schema';
@@ -34,9 +37,27 @@ describe('the inbound line envelope', () => {
     ['a status outside 100-599', { ...valid, status: 42 }],
     ['a negative duration', { ...valid, durationMs: -1 }],
     ['a role that is not ADMIN or USER', { ...valid, role: 'COURIER' }],
-    ['a requestId with a space', { ...valid, requestId: 'has space' }],
   ])('rejects a line with %s', (_why, line) => {
     expect(parse(line as Record<string, unknown>).success).toBe(false);
+  });
+
+  /**
+   * The store records what happened; the *service* decides what id to use. Dropping the line
+   * because its id looks odd is how an access_denied event disappears from the store, which is
+   * exactly what a caller sending a strange header would want (PR #129 review).
+   */
+  it.each(['unsafe/id', 'has space', 'trace#1', 'x'.repeat(200)])(
+    'stores a line whose requestId is %s rather than dropping it',
+    (requestId) => {
+      expect(parse({ ...valid, requestId }).success).toBe(true);
+    },
+  );
+
+  it.each([
+    ['a control character', 'traceone'],
+    ['over 200 characters', 'x'.repeat(201)],
+  ])('still rejects a requestId with %s', (_why, requestId) => {
+    expect(parse({ ...valid, requestId }).success).toBe(false);
   });
 
   // A timestamp without a zone cannot be compared across containers, which is the one thing a
@@ -94,6 +115,15 @@ describe('toRow', () => {
     expect(JSON.stringify(row)).toContain('[TRUNCATED]');
   });
 
+  // Listing every compound anyone might invent is not possible, so the match is a substring.
+  it.each(['adminToken', 'passwordResetToken', 'apiSecret', 'customerEmail', 'userEmailAddress'])(
+    'never stores a compound field called %s',
+    (field) => {
+      const row = toRow(parse({ ...valid, [field]: 'leak-me' }).data!);
+      expect(JSON.stringify(row)).not.toContain('leak-me');
+    },
+  );
+
   it('cuts the path at the query string, so coordinates cannot be stored', () => {
     const row = toRow(parse({ ...valid, path: '/locations?lat=1.2966&lon=103.7764' }).data!);
     expect(row.path).toBe('/locations');
@@ -125,6 +155,11 @@ describe('the query parameters', () => {
       to: '2026-10-16T09:00:00.000Z',
     });
     expect(result.success).toBe(false);
+  });
+
+  // page=1e20 passes an unbounded integer check and then overflows PostgreSQL's OFFSET.
+  it.each(['1e20', '1000001', '999999999999'])('rejects page=%s rather than failing in SQL', (page) => {
+    expect(logQuerySchema.safeParse({ page }).success).toBe(false);
   });
 
   it('caps pageSize, so one query cannot ask for everything', () => {

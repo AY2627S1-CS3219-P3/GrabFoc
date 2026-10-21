@@ -3,6 +3,8 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Generated these integration tests against a real PostgreSQL (logging_test in the
  *        logging-db container): insert, deduplication, the query filters, paging and the purge.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Added the future-timestamp retention case (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 import { Pool } from 'pg';
@@ -144,16 +146,33 @@ describe('querying', () => {
 });
 
 describe('the retention purge', () => {
-  it('deletes what is past the window and keeps the rest', async () => {
-    const old = new Date(Date.now() - 31 * 24 * 3600_000).toISOString();
-    const recent = new Date(Date.now() - 24 * 3600_000).toISOString();
-    await lines.insert(line({ ts: old }));
-    await lines.insert(line({ ts: recent }));
+  it('deletes what arrived before the window and keeps the rest', async () => {
+    const stale = line({ ts: '2026-09-20T00:00:00.000Z' });
+    const fresh = line({ ts: '2026-10-21T00:00:00.000Z' });
+    await lines.insert(stale);
+    await lines.insert(fresh);
+    // received_at is set by the database, so backdate one here: retention is measured by arrival,
+    // not by the producer's ts, which a producer could set to anything (PR #129 review).
+    await pool.query(`UPDATE log_lines SET received_at = now() - interval '31 days' WHERE line_id = $1`, [
+      stale.lineId,
+    ]);
 
     expect(await lines.purge(30)).toBe(1);
     const { lines: left, total } = await lines.query({ page: 1, pageSize: 50 });
     expect(total).toBe(1);
-    expect(left[0].ts).toBe(recent);
+    expect(left[0].lineId).toBe(fresh.lineId);
+  });
+
+  /**
+   * Purging on the producer's `ts` kept a line dated a year ahead for thirteen months, with its
+   * user id and path, which is not the retention this service promises (PR #129 review).
+   */
+  it('deletes a line dated in the future once it has been held for the window', async () => {
+    const future = new Date(Date.now() + 365 * 24 * 3600_000).toISOString();
+    await lines.insert(line({ ts: future }));
+    // received_at is now, so a zero-day window must take it however far ahead its ts claims to be.
+    expect(await lines.purge(0)).toBe(1);
+    expect((await lines.query({ page: 1, pageSize: 50 })).total).toBe(0);
   });
 
   it('deletes nothing when everything is inside the window', async () => {

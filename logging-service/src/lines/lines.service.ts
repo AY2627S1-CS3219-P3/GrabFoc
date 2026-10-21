@@ -3,6 +3,8 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Generated the insert, query and purge SQL, following the parameterised-query style of
  *        supplier-service/src/locations/locations.service.ts.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Purge on arrival time rather than the producer's timestamp (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable } from '@nestjs/common';
@@ -115,10 +117,17 @@ export class LinesService {
     };
   }
 
-  /** Deletes lines older than the retention window. Returns how many went. */
+  /**
+   * Deletes lines older than the retention window, measured by **arrival** rather than by the
+   * producer's `ts`. A producer with a fast clock, or any line carrying a future timestamp, would
+   * otherwise keep its user id and path for thirty days *after that future date* — a line dated a
+   * year ahead would sit here for thirteen months, which is not the retention this service
+   * promises (PR #129 review). `received_at` is written by this database and cannot be influenced
+   * by a producer.
+   */
   async purge(retentionDays: number): Promise<number> {
     const result = await this.pool.query(
-      `DELETE FROM log_lines WHERE ts < now() - ($1 || ' days')::interval`,
+      `DELETE FROM log_lines WHERE received_at < now() - ($1 || ' days')::interval`,
       [String(retentionDays)],
     );
     return result.rowCount ?? 0;

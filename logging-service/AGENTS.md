@@ -73,7 +73,7 @@ _Origin: AI doc, from the table Cole Lin approved on 2026-10-16_
 
 See [`src/db/schema.ts`](src/db/schema.ts), created at startup like the Supplier Service's. One table, `log_lines`, plus `received_at` — when this store got the line, so the gap is broker lag and a negative gap is clock skew. Indexes: `request_id`, `ts DESC`, `(service, event, ts DESC)`, `(user_id, ts DESC)`.
 
-Retention: **30 days** (`LOGGING_RETENTION_DAYS`), purged hourly. Deliberately shorter than the 90 days the root AGENTS.md gives `location_changes`, because these rows put a user id, a path and a timestamp in one place.
+Retention: **30 days** (`LOGGING_RETENTION_DAYS`), purged hourly, measured by **`received_at`** rather than the producer's `ts`: a producer can put any timestamp on a line, and purging on `ts` kept a line dated a year ahead for thirteen months. Deliberately shorter than the 90 days the root AGENTS.md gives `location_changes`, because these rows put a user id, a path and a timestamp in one place.
 
 ## API
 
@@ -84,7 +84,14 @@ _Origin: AI doc, following the Supplier Service's conventions_
 | `GET /logs` with `requestId`, `service`, `event`, `userId`, `level`, `status`, `from`, `to`, `page`, `pageSize` | **ADMIN only** |
 
 - **ADMIN only, with no dev-auth fallback.** The Supplier Service accepts `X-User-Id` / `X-User-Role` when `SUPPLIER_DEV_AUTH=true` so it can be tested alone; this service has no such mode, because pooled rows say which user called which path and when. A USER gets **403** — not even for their own lines, which would still expose the rest of each line.
-- Unknown filters are rejected (**400**), not ignored: a typo is a typo, not a wildcard.
+- Unknown filters are rejected (**400**), not ignored: a typo is a typo, not a wildcard. `page` is
+  bounded as well as positive, because an offset larger than PostgreSQL's integer range would
+  surface as a 500 on an otherwise valid query.
+- **A line is never dropped because its `requestId` looks odd.** The pattern a service applies
+  to an inbound header decides what it will *use*; this store records what happened, and
+  refusing the line would make an `access_denied` event disappear — which is what a caller
+  sending a strange header would want. Control characters and anything over 200 characters are
+  still refused.
 - `pageSize` is capped at 200. Newest first, with `line_id` breaking ties so a page boundary is stable when several lines share a millisecond.
 - Errors are Problem Details (RFC 9457), the same shape as every other service. 401, 403 and 503 match the Supplier Service exactly, including 503 when the JWKS cannot be reached.
 
@@ -98,7 +105,7 @@ _Origin: AI doc, from the plan Cole Lin approved_
 - **No broker configured means stdout only**, with no producer and no warnings. The Supplier Service's standalone Postman testing depends on that.
 - `emit()` returns immediately, buffers up to 1000 lines, and **drops rather than blocking** when the buffer is full or a publish fails. Dropping is acceptable because the line reaches stdout regardless, and the same `lineId` is on both, so re-reading stdout later cannot double-count.
 - Each message is **keyed by `requestId`** (Kafka rule 5), so one request's lines keep their order.
-- **Sensitive field names are replaced at any depth**, so a caller passing `password`, a `token`,
+- **Sensitive field names are matched as substrings and replaced at any depth** (so `adminToken` and `customerEmail` go too, and it over-redacts rather than under-redacts), so a caller passing `password`, a `token`,
   or `{ request: { headers: { authorization } } }` cannot write it to stdout or Kafka. The store
   does the same on ingest; this is the only guard on the stdout copy.
 - **A caller cannot overwrite the envelope.** Their fields are serialised first, so `lineId`,

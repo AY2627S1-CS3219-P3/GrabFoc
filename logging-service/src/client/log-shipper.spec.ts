@@ -14,6 +14,8 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the depth-limit, toJSON and synchronous-throw cases after the PR #130
  *        reviews.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Added the compound-name and unserialisable-value cases (third review round, PR #129).
  * Author review: Cole Lin, read and approved.
  */
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -147,6 +149,42 @@ describe('redaction cannot be worked around', () => {
   it('keeps a Date readable, since its toJSON is on the prototype', () => {
     shipper().emit({ level: 'info', event: 'dated', when: new Date('2026-10-21T00:00:00.000Z') });
     expect(JSON.parse(written[0]).when).toBe('2026-10-21T00:00:00.000Z');
+  });
+});
+
+describe('compound sensitive names', () => {
+  // An exact-name check missed all of these, which are the names people actually write.
+  it.each(['adminToken', 'passwordResetToken', 'apiSecret', 'customerEmail', 'userEmailAddress'])(
+    'redacts a field called %s',
+    (field) => {
+      shipper().emit({ level: 'warn', event: 'denied', [field]: 'must-not-appear' });
+      expect(written[0]).not.toContain('must-not-appear');
+    },
+  );
+
+  it('still writes fields that are not sensitive', () => {
+    shipper().emit({ level: 'info', event: 'ok', orderId: 17, building: 'COM3' });
+    expect(JSON.parse(written[0])).toMatchObject({ orderId: 17, building: 'COM3' });
+  });
+});
+
+describe('a value JSON cannot serialise', () => {
+  // A bigint makes JSON.stringify throw, which would replace the operation being logged with a
+  // TypeError. emit() must never throw.
+  it('turns a bigint into text instead of throwing', () => {
+    const log = shipper();
+    expect(() => log.emit({ level: 'info', event: 'counted', total: 9007199254740993n })).not.toThrow();
+    expect(JSON.parse(written[0]).total).toBe('9007199254740993');
+  });
+
+  it.each([
+    ['a symbol', Symbol('x')],
+    ['Infinity', Infinity],
+    ['NaN', NaN],
+  ])('writes %s as text rather than failing', (_why, value) => {
+    const log = shipper();
+    expect(() => log.emit({ level: 'info', event: 'odd', value })).not.toThrow();
+    expect(written).toHaveLength(1);
   });
 });
 
