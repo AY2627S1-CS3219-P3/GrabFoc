@@ -47,6 +47,7 @@ jobs:
             node: 22
           - service: credit-service
             node: 22
+          # added for logging service
           - service: logging-service
             node: 22
     defaults:
