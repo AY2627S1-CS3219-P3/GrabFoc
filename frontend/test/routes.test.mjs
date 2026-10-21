@@ -1,8 +1,13 @@
 /*
 AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
-Scope: Verified session flows, Supplier management and responsive layout, downstream 401 handling, and recovery after an edit conflict; updated filter and card layout assertions.
+Scope: Verified session flows and added JWKS-style 503 preservation/recovery checks on 2026-10-13.
 Author review: Jie Yang reviewed the earlier tests; updated layout assertions await review.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: Asserted the reset-code notice in the unknown-account recovery test (issue #63).
+Author review: pending review by Zi Yi.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -453,6 +458,7 @@ test("recovery keeps unknown accounts indistinguishable and handles rate limits 
     await page.getByLabel("Email").fill("unknown@u.nus.edu");
     await page.getByRole("button", { name: "Send reset code" }).click();
     await page.waitForURL("**/reset-password");
+    await page.getByRole("status").getByText("If an account exists for that email, we've sent a 6-digit code. It expires in 5 minutes.", { exact: false }).waitFor();
     await page.getByLabel("New password").fill("NewPassw0rd");
     await page.getByLabel("Confirm password").fill("NewPassw0rd");
     await page.getByLabel("Six-digit code").fill("333333");
@@ -1151,4 +1157,31 @@ test("Supplier 401 clears cookies when User Service and refresh reject the sessi
     assert.equal(response.status, 401);
     assert.ok(response.headers.getSetCookie().some((cookie) => cookie.startsWith("foc_access=")));
   } finally { supplier401 = false; authorityStatus = 200; refreshOutcome = 200; }
+});
+
+// AI-generated; approved gateway JWKS 503 contract, frontend behavior unchanged.
+test("JWKS-style 503 preserves existing and newly rotated sessions until recovery", async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/home");
+    await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
+    const initial = await context.cookies();
+    const oldRefresh = initial.find((cookie) => cookie.name === "foc_refresh");
+    const refreshCount = requests.filter((request) => request.path === "/auth/refresh").length;
+    authorityStatus = 503;
+    assert.equal(await page.evaluate(() => fetch("/api/session/profile").then((r) => r.status)), 500);
+    assert.equal(requests.filter((request) => request.path === "/auth/refresh").length, refreshCount);
+    assert.equal((await context.cookies()).find((cookie) => cookie.name === "foc_refresh")?.value, oldRefresh.value);
+    await context.clearCookies();
+    await context.addCookies([oldRefresh]);
+    assert.equal(await page.evaluate(() => fetch("/api/session/profile").then((r) => r.status)), 502);
+    assert.equal((await context.cookies()).find((cookie) => cookie.name === "foc_refresh")?.value, `rotated-${oldRefresh.value}`);
+    authorityStatus = 200;
+    assert.equal(await page.evaluate(() => fetch("/api/session/profile").then((r) => r.status)), 200);
+  } finally { authorityStatus = 200; await context.close(); }
 });

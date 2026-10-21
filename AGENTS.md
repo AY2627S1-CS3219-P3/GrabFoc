@@ -1,3 +1,19 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-05
+Scope: §9 D2 demo checks: replaced the stale `status=INACTIVE` / `ALL` query with `includeInactive=true`, the parameter documented in supplier-service/AGENTS.md and implemented by the Supplier Service.
+Author review (Jian Bing): Checked the whole end-to-end flow locally.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: §3 "Messaging (Kafka)" [Proposed] (six rules and two proposed changes to [Decided] items) and three §10 open items, written from Jian Bing's walkthrough decisions (redesign spec §9, K1–K13); consumer rules 1–2 proposed by Claude Code and confirmed by him.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: Rule 4: topics.txt is the single list, retry topics included; startup check (K10 revised by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+Scope: §3 Communication: HTTP for reserve only; transfer and release as credit.commands (Zi Yi's direction).
+Author review: Reviewed
+-->
+
 # AGENTS.md — FoC (CS3219 AY26/27 S1, Project Group 3)
 
 Context for AI coding agents and new contributors. Read this before changing code or docs.
@@ -120,13 +136,28 @@ _Origin: Restated from the Brief (M2–M7) and Lecture; Team (API Gateway, authe
 - Services: **API Gateway**, **User**, **Supplier**, **Order**, **Credit**, **Notification** (+ Frontend; Centralized Logging is an N2H).
 - **API Gateway [Decided]:** the single entry point for the frontend. It authenticates requests (JWT middleware) and routes them to services. See §6.
 - Communication **[Decided]**:
-  - Synchronous HTTP between Order → Credit to reserve/transfer/release
+  - Synchronous HTTP from Order → Credit **only to reserve** credits. **Transfer** (on completion) and **release** (on cancellation) are commands Order sends on Kafka's `credit.commands` (`TransferCredits`, `ReleaseCredits`; shapes in `credit-service/AGENTS.md`). Changed from HTTP for all three by Zi Yi (Credit owner) on 2026-10-17; confirm with the team and validate with the mentor.
   - Order Service **publishes** query events to a message broker to query Supplier's database (e.g. all locations of type Food); **Supplier Service is the only consumer**. Order just shows loading while it waits for the response; if no response arrives, it times out and shows an error. Each query carries a timestamp, so Supplier can reject old requests (when the same user has sent a newer query).
   - Order Service **publishes** order-state events to a message broker; **Notification Service is the only consumer**. Order never waits on Notification.
 - **Database [Decided]:** PostgreSQL for User and Supplier. **[Proposed]** PostgreSQL for the rest of the other services (for simplicity)
 - **Tests [Decided]:** run database tests against **PostgreSQL in Docker** (e.g. Testcontainers or a test service in `compose.yaml`)
 - **Stack [Decided]:** TypeScript/Nodejs with **Zod** for request validation and an ORM / parameterized queries for database access.
 - Containerised with Docker / Docker Compose (M7). Cloud deployment and CI/CD are N2Hs.
+
+### Messaging (Kafka) [Proposed]
+
+_Origin: Team (Jian Bing, 2026-10-15: Kafka chosen with Jie Yang; topic ownership, central topic creation, per-consumer retry delays, keying); AI doc (consumer rules 1–2 proposed by Claude Code and confirmed by Jian Bing). Confirm with the whole team before relying on it. Details: `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md` §9._
+
+- **Broker:** one Kafka broker shared by every service, defined in `infra/kafka/` (shared infrastructure, owned by no single service).
+- Rules for every service that uses it:
+  1. **Consumers are idempotent.** Kafka may deliver a message more than once, so handling it twice must change nothing (e.g. `INSERT … ON CONFLICT DO NOTHING`, or a conditional update on the current state).
+  2. **Commit a message's offset only after its work is saved**, so a crash redelivers it instead of losing it.
+  3. **Events go to the publisher's topic; commands go to the receiver's topic** (e.g. `user.events`, `order.events`; `credit.commands`). The topic's owner defines its message shape and documents it in its own `AGENTS.md`; other services adapt to it and ask the owner if they need more data.
+  4. **All topics are created centrally** by the `infra/kafka` init container from one topic list file, `infra/kafka/topics.txt`, the single source of truth for every topic, retry and dead-letter topics included (broker auto-creation is off); add a topic by adding a line there. A service never creates topics. Each consumer's retry delays are one variable in the root `.env` (e.g. `CREDIT_RETRY_DELAYS`); the consumer checks at startup that its retry topics in the list match its delays, and refuses to start if not.
+  5. **Key each message by the entity whose order matters** (e.g. `orderId`, `userId`): Kafka keeps order only per key.
+  6. **Each consumer has its own dead-letter topic per source topic**, never one shared by all services: `<topic>.dlt` when the consumer owns the topic (e.g. `credit.commands.dlt`), otherwise `<consumer>.<topic>.dlt` (e.g. `credit.user-events.dlt`), because one message can fail for one consumer and succeed for another.
+- Proposed change to the [Decided] items above, pending the team (the transfer/release change is now in the Communication bullet):
+  - Order → Supplier location reads become plain HTTP instead of query events: Order waits for the answer, so a broker adds machinery without removing the coupling.
 
 ### Repository layout [Decided]
 
@@ -316,8 +347,8 @@ _Origin: Restated from the D2 brief and Lecture; Team (the admin, 403, 401, Post
 Service-specific edge cases are in each service's `AGENTS.md`.
 
 - An ADMIN can create, edit, deactivate and restore a location.
-- A USER can browse, search and filter locations, but gets **403** on `POST /locations`, `PATCH /locations/:id` and `GET /locations?status=INACTIVE`, and can't open the admin screens.
-- An ADMIN can list deactivated locations (`status=INACTIVE` or `ALL`) and restore one from the UI.
+- A USER can browse, search and filter locations, but gets **403** on `POST /locations`, `PATCH /locations/:id` and `GET /locations?includeInactive=true`, and can't open the admin screens.
+- An ADMIN can list deactivated locations (`includeInactive=true`) and restore one from the UI.
 - No token → **401**. The Order Service doesn't exist until D3, so demo this against a Supplier endpoint (e.g. `GET /locations`).
 - The same CRUD calls work from **Postman** with the UI stopped.
 - The UI shows live data and adapts from desktop to mobile.
@@ -347,4 +378,6 @@ _Origin: AI doc, compiled from the team's notes, checks against the brief, backl
 - Add a backlog FR that pickup and drop-off points must be on campus (the Order rules require it).
 - Frontend UI styling / component library (§4).
 - Architecture diagram notation (§9) — to be discussed later.
-- Order → Supplier query events: how the response gets back to Order (`supplier-service/AGENTS.md`).
+- Order → Supplier query events: how the response gets back to Order (`supplier-service/AGENTS.md`). Proposed answer: use plain HTTP instead (§3 Messaging).
+- Confirm Kafka and the §3 Messaging rules with the whole team.
+- Later: move the per-consumer Kafka settings (retry delays, topic list) out of the root `.env` into a separate config area, e.g. alongside Terraform in `infra/`.

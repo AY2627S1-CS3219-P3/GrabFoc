@@ -1,0 +1,58 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+# Scope: Generated the Envoy gateway CI workflow (route config tests, image build, integration
+#   tests), replacing the api-gateway entry in ci.yml's Node matrix after the Node gateway was removed.
+# Author review: Pending Jie Yang's review.
+name: API Gateway CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Same check name as the old Node matrix entry, so branch protection still matches it.
+    name: Test (api-gateway)
+    runs-on: ubuntu-latest
+    # The integration tests take about a minute; stop a hung run instead of waiting 6 hours.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+      # Standard library only; checks the rendered Envoy config and route files.
+      - name: Route config tests
+        run: python3 api-gateway/test/envoy_routes_test.py
+      # The gateway's own Compose file, so CI needs no root .env.
+      - name: Build Envoy image (foc-envoy:local)
+        run: docker compose -f api-gateway/compose.yaml build api-gateway
+      # Starts foc-envoy:local against mock User and Supplier services; Node built-ins only.
+      - name: Integration tests
+        timeout-minutes: 5
+        run: node --test --test-concurrency=1 api-gateway/test/envoy.integration.mjs
+      # Shows why the Envoy test containers did not respond, if the tests fail or time out.
+      - name: Gateway test container diagnostics
+        if: failure()
+        run: |
+          docker ps -a --filter label=foc.task=envoy-integration
+          for id in $(docker ps -aq --filter label=foc.task=envoy-integration); do
+            echo "== $id"; docker port "$id"; docker logs --tail 50 "$id" 2>&1
+            port=$(docker port "$id" 3003/tcp | head -1)
+            curl -s -m 5 -w ' -> %{http_code}\n' "http://$port/health" || echo "no /health response from $port"
+          done
+          python3 -m http.server 18080 --bind 0.0.0.0 >/dev/null 2>&1 &
+          sleep 1
+          docker run --rm --add-host host.docker.internal:host-gateway --entrypoint /bin/sh foc-envoy:local             -c 'python3 -c "import urllib.request as u; print(u.urlopen(\"http://host.docker.internal:18080\", timeout=5).status)"'             || echo "container cannot reach the runner via host.docker.internal"
