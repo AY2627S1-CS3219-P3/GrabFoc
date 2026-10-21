@@ -3,6 +3,8 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Generated these startup tests, using the isolateModules approach in
  *        supplier-service/src/config.spec.ts.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Added the database-URL cases after the PR #129 review.
  * Author review: Cole Lin, read and approved.
  */
 
@@ -45,6 +47,18 @@ it.each(['LOGGING_DATABASE_URL', 'LOGGING_JWKS_URL'])('refuses to start without 
   expect(loadConfig({ ...base, [name]: '' })).toContain(`Missing environment variable ${name}`);
 });
 
+// compose interpolates the password into this URL and cannot percent-encode it (PR #129 review).
+// A `#` truncates the authority, so the URL is no longer the one anyone intended.
+it('refuses a database URL that does not parse', () => {
+  expect(loadConfig({ ...base, LOGGING_DATABASE_URL: 'postgres://foc:pa#ss@localhost:5436/logging' }))
+    .toContain('percent-encode');
+});
+
+it('refuses a database URL that is not postgres', () => {
+  expect(loadConfig({ ...base, LOGGING_DATABASE_URL: 'mysql://foc:pass@localhost:3306/logging' }))
+    .toContain('must be a postgres:// URL');
+});
+
 it.each([
   ['LOGGING_RETENTION_DAYS', '0'],
   ['LOGGING_RETENTION_DAYS', '-1'],
@@ -60,7 +74,7 @@ it('defaults retention to 30 days and the topic to logging.lines', () => {
   jest.isolateModules(() => {
     loaded = (require('./config') as typeof import('./config')).config;
   });
-  expect(loaded).toMatchObject({ retentionDays: 30, kafkaTopic: 'logging.lines', port: 3005 });
+  expect(loaded).toMatchObject({ retentionDays: 30, kafkaTopic: 'logging.lines', port: 3006 });
   expect(loaded!.kafkaBrokers).toEqual([]);
 });
 

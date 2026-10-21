@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Generated the Zod schemas for an inbound log line and for the query parameters, from the
  *        field convention Cole Lin posted on issue #52 and the plan he approved on 2026-10-16.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: After the reviews of PR #129: redact sensitive field names at any depth, not only at
+ *        the top level, and compare the from/to range as instants rather than as text.
  * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
@@ -102,13 +105,31 @@ export interface LineRow {
   extra: Record<string, unknown> | null;
 }
 
-/** Everything the columns don't cover, with the names that must never be stored dropped. */
+const REDACTED = '[REDACTED]';
+const MAX_DEPTH = 6;
+
+/**
+ * A copy of `value` with every sensitive field replaced, at any depth. A nested secret —
+ * `{ request: { headers: { authorization: … } } }` — is exactly as queryable as a top-level one
+ * once it is in the `extra` column, so dropping only the outer keys is not enough (PR #129 review).
+ */
+function redactDeep(value: unknown, depth = 0): unknown {
+  if (depth > MAX_DEPTH || value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((item) => redactDeep(item, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = neverStore(key) ? REDACTED : redactDeep(item, depth + 1);
+  }
+  return out;
+}
+
+/** Everything the columns don't cover, with the names that must never be stored replaced. */
 function extraOf(line: InboundLine): Record<string, unknown> | null {
   const known = new Set<string>(KNOWN_FIELDS);
   const extra: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(line)) {
-    if (known.has(key) || neverStore(key)) continue;
-    extra[key] = value;
+    if (known.has(key)) continue;
+    extra[key] = neverStore(key) ? REDACTED : redactDeep(value);
   }
   return Object.keys(extra).length ? extra : null;
 }
@@ -154,7 +175,9 @@ export const logQuerySchema = z
     pageSize: positiveInt.max(200).default(50),
   })
   .strict()
-  .refine((q) => !q.from || !q.to || q.from <= q.to, {
+  // Compared as instants, not as text: 08:00:00Z and 08:00:00.000Z are the same moment but sort
+  // the wrong way round as strings (PR #129 review).
+  .refine((q) => !q.from || !q.to || Date.parse(q.from) <= Date.parse(q.to), {
     message: 'from must not be after to',
     path: ['from'],
   });

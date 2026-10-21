@@ -2,6 +2,8 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Generated these unit tests for the inbound-line envelope and the query parameters.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Added the nested-redaction and timestamp-precision cases after the PR #129 reviews.
  * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, toRow } from './line.schema';
@@ -67,6 +69,23 @@ describe('toRow', () => {
     },
   );
 
+  // A nested secret is exactly as queryable as a top-level one once it is in `extra`.
+  it('replaces a sensitive field nested inside an object', () => {
+    const row = toRow(parse({ ...valid, request: { headers: { authorization: 'Bearer leak-me' } } }).data!);
+    expect(JSON.stringify(row)).not.toContain('leak-me');
+    expect(JSON.stringify(row)).toContain('[REDACTED]');
+  });
+
+  it('replaces a sensitive field nested inside an array', () => {
+    const row = toRow(parse({ ...valid, items: [{ ok: 1 }, { token: 'leak-me' }] }).data!);
+    expect(JSON.stringify(row)).not.toContain('leak-me');
+  });
+
+  it('keeps the rest of a nested object', () => {
+    const row = toRow(parse({ ...valid, request: { retries: 2, password: 'leak-me' } }).data!);
+    expect((row.extra as { request: { retries: number } }).request.retries).toBe(2);
+  });
+
   it('cuts the path at the query string, so coordinates cannot be stored', () => {
     const row = toRow(parse({ ...valid, path: '/locations?lat=1.2966&lon=103.7764' }).data!);
     expect(row.path).toBe('/locations');
@@ -81,6 +100,15 @@ describe('the query parameters', () => {
 
   it('rejects an unknown filter rather than ignoring it', () => {
     expect(logQuerySchema.safeParse({ serivce: 'supplier' }).success).toBe(false);
+  });
+
+  // The same instant written with and without milliseconds sorts the wrong way round as text.
+  it('accepts a range whose ends differ only in precision', () => {
+    const result = logQuerySchema.safeParse({
+      from: '2026-10-16T08:00:00Z',
+      to: '2026-10-16T08:00:00.000Z',
+    });
+    expect(result.success).toBe(true);
   });
 
   it('rejects a time range that runs backwards', () => {

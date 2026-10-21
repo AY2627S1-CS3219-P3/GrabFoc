@@ -2,6 +2,8 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Generated the application entry point, following supplier-service/src/main.ts.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Handle a failed bootstrap instead of leaving an unhandled rejection (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 import 'reflect-metadata';
@@ -23,4 +25,12 @@ async function bootstrap() {
   new Logger('Logging').log(`Logging Service listening on port ${config.port}`);
 }
 
-bootstrap();
+// A failed bootstrap (no database, a bad LOGGING_ variable) would otherwise be an unhandled
+// rejection: Node prints a stack and the process may linger with nothing listening. Fail loudly.
+void bootstrap().catch((err: unknown) => {
+  new Logger('Logging').error(
+    JSON.stringify({ event: 'startup_failed' }),
+    err instanceof Error ? (err.stack ?? err.message) : String(err),
+  );
+  process.exitCode = 1;
+});

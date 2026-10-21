@@ -27,7 +27,7 @@ Or this service and its database alone:
 docker compose -f logging-service/compose.yaml --env-file .env up --build
 ```
 
-It listens on `3005` and `logging-db` on `5436`.
+It listens on `3006` and `logging-db` on `5436`.
 
 ## Ingest
 
@@ -48,7 +48,7 @@ dev-header fallback here, unlike the Supplier Service. Filters: `requestId`, `se
 `userId`, `level`, `status`, `from`, `to`, plus `page` and `pageSize` (at most 200).
 
 ```bash
-curl.exe "http://localhost:3005/logs?requestId=9f3c0b1e-..." -H "Authorization: Bearer $env:ADMIN_TOKEN"
+curl.exe "http://localhost:3006/logs?requestId=9f3c0b1e-..." -H "Authorization: Bearer $env:ADMIN_TOKEN"
 ```
 
 ## Environment
@@ -58,7 +58,9 @@ of its own.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `LOGGING_PORT` | `3005` | |
+| `LOGGING_PORT` | `3006` | Order already publishes 3005 |
+| `LOGGING_KAFKA_GROUP_ID` | `logging-service` | |
+| `LOGGING_PURGE_INTERVAL_MINUTES` | `60` | |
 | `LOGGING_DATABASE_URL` | — | Required |
 | `LOGGING_JWKS_URL` | — | Required. The User Service's public keys |
 | `LOGGING_JWT_ISSUER`, `LOGGING_JWT_AUDIENCE` | unset | Checked only when set |

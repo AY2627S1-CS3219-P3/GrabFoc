@@ -98,6 +98,12 @@ _Origin: AI doc, from the plan Cole Lin approved_
 - **No broker configured means stdout only**, with no producer and no warnings. The Supplier Service's standalone Postman testing depends on that.
 - `emit()` returns immediately, buffers up to 1000 lines, and **drops rather than blocking** when the buffer is full or a publish fails. Dropping is acceptable because the line reaches stdout regardless, and the same `lineId` is on both, so re-reading stdout later cannot double-count.
 - Each message is **keyed by `requestId`** (Kafka rule 5), so one request's lines keep their order.
+- **Sensitive field names are replaced at any depth**, so a caller passing `password`, a `token`,
+  or `{ request: { headers: { authorization } } }` cannot write it to stdout or Kafka. The store
+  does the same on ingest; this is the only guard on the stdout copy.
+- **A caller cannot overwrite the envelope.** Their fields are serialised first, so `lineId`,
+  `ts` and `service` always win — a line claiming another service's name would make the store
+  unreadable.
 - It writes the line itself rather than through Nest's logger, which would wrap the JSON in Nest's own timestamp, PID and context and leave a collector digging it out.
 
 **Adopted by:** the Supplier Service (`supplier-service/src/common/log.ts`), whose `access_denied`, `jwks_unavailable` and `unhandled_error` lines now go through it.

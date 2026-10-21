@@ -21,5 +21,5 @@ ENV NODE_ENV=production
 COPY logging-service/package.json logging-service/package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
-EXPOSE 3005
+EXPOSE 3006
 CMD ["node", "dist/main.js"]

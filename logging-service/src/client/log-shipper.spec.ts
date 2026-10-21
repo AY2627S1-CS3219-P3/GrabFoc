@@ -8,6 +8,9 @@
  * Scope: Updated for the requestId message key (Kafka rule 5) and added its cases.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the query-string cases after the SoCLaaS review of PR #90.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Added the redaction, envelope-override and shutdown cases after the reviews of
+ *        PR #129.
  * Author review: Cole Lin, read and approved.
  */
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -73,6 +76,52 @@ describe('the envelope', () => {
   it('keeps event-specific fields', () => {
     shipper().emit({ level: 'info', event: 'order_created', orderId: 17 });
     expect(JSON.parse(written[0]).orderId).toBe(17);
+  });
+});
+
+describe('redaction', () => {
+  // The store filters these names too, but only at the top level and only on ingest; stdout has
+  // no filter at all. The one place that can stop a secret being written is here.
+  it.each(['password', 'token', 'authorization', 'X-Service-Key', 'otp_hash', 'email'])(
+    'never writes a field called %s',
+    (field) => {
+      shipper().emit({ level: 'warn', event: 'access_denied', [field]: 'must-not-appear' });
+      expect(written[0]).not.toContain('must-not-appear');
+      expect(written[0]).toContain('[REDACTED]');
+    },
+  );
+
+  it('redacts a nested secret, not just a top-level one', () => {
+    shipper().emit({
+      level: 'error',
+      event: 'upstream_failed',
+      request: { headers: { authorization: 'Bearer must-not-appear' }, retries: 2 },
+    });
+    expect(written[0]).not.toContain('must-not-appear');
+    expect(JSON.parse(written[0]).request.retries).toBe(2);
+  });
+
+  it('redacts inside an array', () => {
+    shipper().emit({ level: 'warn', event: 'batch_failed', items: [{ token: 'must-not-appear' }] });
+    expect(written[0]).not.toContain('must-not-appear');
+  });
+});
+
+describe('the envelope cannot be overwritten', () => {
+  // A line claiming another service's name, or its own timestamp, would make the store unreadable.
+  it.each([
+    ['service', 'gateway'],
+    ['ts', '1999-01-01T00:00:00.000Z'],
+    ['lineId', 'not-a-uuid'],
+  ])('ignores a caller-supplied %s', (field, value) => {
+    shipper().emit({ level: 'warn', event: 'access_denied', [field]: value });
+    const line = JSON.parse(written[0]);
+    expect(line[field]).not.toBe(value);
+  });
+
+  it('keeps the envelope this service is responsible for', () => {
+    shipper().emit({ level: 'warn', event: 'access_denied', service: 'gateway' });
+    expect(JSON.parse(written[0])).toMatchObject({ service: 'supplier', level: 'warn', event: 'access_denied' });
   });
 });
 
@@ -143,5 +192,38 @@ describe('with a broker', () => {
     log.emit({ level: 'info', event: 'one' });
     await log.stop();
     expect(published).toHaveLength(1);
+  });
+
+  /**
+   * flush() used to return early while a publish was in flight, so stop() could return before the
+   * lines it was meant to drain had gone anywhere (PR #129 review).
+   */
+  it('waits for a publish already in flight, and for what was buffered during it', async () => {
+    const releases: Array<() => void> = [];
+    const slow: LinePublisher = {
+      publish: (lines) =>
+        new Promise((resolve) => {
+          published.push(...lines);
+          releases.push(resolve);
+        }),
+    };
+    const log = shipper(slow);
+    log.emit({ level: 'info', event: 'first' });
+    const inFlight = log.flush();
+    log.emit({ level: 'info', event: 'second' });
+
+    const stopped = log.stop();
+    let finished = false;
+    void stopped.then(() => (finished = true));
+    await Promise.resolve();
+    expect(finished).toBe(false);
+
+    // Release the publish that was in flight, then the one stop() started for the buffered line.
+    releases.shift()!();
+    await inFlight;
+    await Promise.resolve();
+    releases.forEach((resolve) => resolve());
+    await stopped;
+    expect(published.map((line) => JSON.parse(line.value).event)).toEqual(['first', 'second']);
   });
 });

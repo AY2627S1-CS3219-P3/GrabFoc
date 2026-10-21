@@ -2,6 +2,9 @@
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
 # Scope: Generated this file, following supplier-service/compose.yaml: the Logging Service and
 #        its own PostgreSQL container, included from the root compose.yaml.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+# Scope: After the PR #129 reviews: moved to host port 3006 (Order publishes 3005), and forward
+#        the two settings that were in .env.example but never reached the container.
 # Author review: Cole Lin, read and approved.
 #
 # The Logging Service and the database only it uses (root AGENTS.md §3). The root compose.yaml
@@ -25,6 +28,9 @@ services:
       # Supplied by the git-ignored .env so no working credential lives in the repository.
       POSTGRES_USER: foc
       # Its own password, separate from every other service's.
+      # Compose cannot percent-encode, and the service's connection string embeds this value,
+      # so keep it URL-safe: no @ : / ? # [ ] or %. src/config.ts rejects a URL that is outright
+      # invalid, but a password with an @ parses and fails later at the driver instead.
       POSTGRES_PASSWORD: ${LOGGING_POSTGRES_PASSWORD:-change-me-in-dotenv}
       POSTGRES_DB: logging
     ports:
@@ -49,18 +55,21 @@ services:
     # No env_file: passing the whole .env would hand this container other services' secrets.
     # Only the variables below reach it.
     environment:
-      LOGGING_PORT: 3005
+      LOGGING_PORT: 3006
       LOGGING_DATABASE_URL: postgres://foc:${LOGGING_POSTGRES_PASSWORD:-change-me-in-dotenv}@logging-db:5432/logging
       LOGGING_JWKS_URL: http://user-service:3001/.well-known/jwks.json
       # Empty until the shared broker (#75) is merged; then kafka:9092.
       LOGGING_KAFKA_BROKERS: ${LOGGING_KAFKA_BROKERS:-}
       LOGGING_KAFKA_TOPIC: ${LOGGING_KAFKA_TOPIC:-logging.lines}
+      LOGGING_KAFKA_GROUP_ID: ${LOGGING_KAFKA_GROUP_ID:-logging-service}
       LOGGING_RETENTION_DAYS: ${LOGGING_RETENTION_DAYS:-30}
+      LOGGING_PURGE_INTERVAL_MINUTES: ${LOGGING_PURGE_INTERVAL_MINUTES:-60}
       # Optional; checked only when set in .env.
       LOGGING_JWT_ISSUER: ${LOGGING_JWT_ISSUER:-}
       LOGGING_JWT_AUDIENCE: ${LOGGING_JWT_AUDIENCE:-}
     ports:
-      - "3005:3005"
+      # 3006: user-db has 3001, supplier 3002, gateway 3003, credit 3004, order 3005.
+      - "3006:3006"
 
 volumes:
   logging-db-data:

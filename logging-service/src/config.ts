@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Generated configuration loading, following supplier-service/src/config.ts. The variable
  *        names and defaults follow the plan Cole Lin approved in chat on 2026-10-16.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Check the database URL parses, after the PR #129 review noted compose interpolates the
+ *        password into it without percent-encoding.
  * Author review: Cole Lin, read and approved.
  */
 import { existsSync } from 'fs';
@@ -30,6 +33,33 @@ function required(name: string): string {
   return value;
 }
 
+/**
+  * compose.yaml interpolates LOGGING_POSTGRES_PASSWORD straight into the connection string and
+  * cannot percent-encode it, so an unsafe character there produces a URL that means something else.
+  *
+  * This catches only the URLs that are outright invalid — `#` truncates the authority, and a wrong
+  * scheme is a typo. It deliberately does not try to catch everything: `new URL()` accepts
+  * `foc:pa@ss@host` by taking the last `@` and encoding the rest, so a password with an `@` parses
+  * and then fails later at the driver. Choosing a URL-safe password is the actual protection; this
+  * only turns the worst case into a message that says what to do.
+  */
+function databaseUrl(): string {
+  const value = required('LOGGING_DATABASE_URL');
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(
+      'LOGGING_DATABASE_URL is not a valid URL. If the password contains # @ : / ? [ ] or %, ' +
+        'percent-encode it or choose a password without them (see .env.example).',
+    );
+  }
+  if (!parsed.protocol.startsWith('postgres')) {
+    throw new Error(`LOGGING_DATABASE_URL must be a postgres:// URL, got "${parsed.protocol}"`);
+  }
+  return value;
+}
+
 function positive(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -41,8 +71,8 @@ function positive(name: string, fallback: number): number {
 }
 
 export const config = {
-  port: positive('LOGGING_PORT', 3005),
-  databaseUrl: required('LOGGING_DATABASE_URL'),
+  port: positive('LOGGING_PORT', 3006),
+  databaseUrl: databaseUrl(),
 
   // There is no dev-auth header fallback here, unlike the Supplier Service. This store pools one
   // row per request across every service, so a USER's id, the paths they called and when sit in
