@@ -9,6 +9,10 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Rule 4: topics.txt is the single list, retry topics included; startup check (K10 revised by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+Scope: Added logging-service/ to the repository layout, and recorded the three N2Hs whose GitHub
+assignees differ from the Gantt chart (issue #52 to Cole Lin; #57 and #58 to Jian Bing).
+Author review: Cole Lin, read and approved.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
 Scope: §3 Communication: HTTP for reserve only; transfer and release as credit.commands (Zi Yi's direction).
 Author review: Reviewed
