@@ -57,9 +57,9 @@ Kafka is at-least-once, so **duplicates are expected**, and `lineId` is what mak
 Those six rules landed while this service was being written. Where it stands against each:
 
 1. **Idempotent consumer** — yes: `INSERT … ON CONFLICT DO NOTHING` on `lineId`.
-2. **Commit the offset only after the work is saved** — for the real consumer to honour (`src/ingest/consumer.ts`); `handle()` already rethrows on a temporary failure so there is something to redeliver.
+2. **Commit the offset only after the work is saved** — yes: `eachMessage` stores the offset only after the handler resolves (`src/ingest/kafka.consumer.ts`), and `handle()` only throws for failures worth retrying.
 3. **Commands go to the receiver's topic** — `logging.lines` is named after the receiver, as `credit.commands` is.
-4. **Topics created centrally** — **[Open]**, see below.
+4. **Topics created centrally** — yes: `logging.lines` and `logging.lines.dlt` are in `infra/kafka/topics.txt`, and the service refuses to start if either is missing from the broker rather than letting lines vanish.
 5. **Keyed by the entity whose order matters** — `requestId`, set by the shipper, so one request's lines stay in one partition and in order. A line with no request (startup, purge) is unkeyed; it has no sequence to preserve.
 6. **A dead-letter topic per consumer** — yes: `logging.lines.dlt`, listed in `infra/kafka/topics.txt` beside Credit's. A line this service cannot store is parked there as well as counted, with the same headers Credit uses (`x-source-topic`, `x-source-partition`, `x-source-offset`, `x-error`, `x-dead-lettered-at`) so one admin screen can read every service's dead letters.
 
@@ -119,7 +119,7 @@ _Origin: AI doc, from the plan Cole Lin approved_
 
 ## Pending
 
-- The real Kafka consumer. `src/ingest/consumer.ts` is the seam; nothing provides it until #75. With `LOGGING_KAFKA_BROKERS` set and no consumer, startup says so and the query API still runs.
+- ~~The real Kafka consumer.~~ Done: `src/ingest/kafka.consumer.ts`, verified end to end on 2026-10-21 (a 401 in Supplier reaching this store through the broker, and a malformed message reaching the dead-letter topic). With `LOGGING_KAFKA_BROKERS` unset, ingest is off and the query API still runs.
 - Services adopting the shipper: Supplier **done**. Then User (the rewrite landed in #125, so this is now a retrofit), Order (#119 landed too), Credit (#85, which already has the client). Each is its owner's to copy in; the file is ~130 lines and needs no dependency.
 - **[Open]** Nest's logger prefixes its own timestamp, PID and context, so the JSON object is the *message*, not the whole line, and a collector has to dig it out. `ConsoleLogger({ json: true })` makes it worse, nesting our JSON inside Nest's own envelope. The shipper sidesteps this by writing the line itself, which is the proposed answer for every service.
 - **[Open]** Where logs surface in the UI: a page in Zi Yi's admin dashboard, or a screen here.

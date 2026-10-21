@@ -31,12 +31,73 @@ It listens on `3006` and `logging-db` on `5436`.
 
 ## Ingest
 
-Services produce log lines to the Kafka topic `logging.lines`. The consumer is not wired up yet: the
-shared broker arrives with #75, and `src/ingest/consumer.ts` is the seam it plugs into. Until then:
+Services produce log lines to the Kafka topic `logging.lines`, and this service consumes them
+(`src/ingest/kafka.consumer.ts`). A line it cannot store goes to `logging.lines.dlt` with the same
+headers Credit uses.
 
-- with `LOGGING_KAFKA_BROKERS` unset, ingest is off and the query API runs — this is a normal way to
-  run the service, not a failure;
-- with it set and no consumer provided, startup says so and the query API still runs.
+With `LOGGING_KAFKA_BROKERS` unset, ingest is off and the query API still runs — a normal way to run
+the service, not a failure. Both topics must exist in `infra/kafka/topics.txt`; the service refuses
+to start if they are missing rather than letting lines vanish, because services never create topics.
+
+The API Gateway does **not** publish here. Envoy has no Kafka access logger, so its lines stay on
+stdout; see "Ingest" in `AGENTS.md` for what that costs.
+
+## Demo: one request, traced
+
+Verified end to end on 2026-10-21. From the repository root, with `.env` in place:
+
+```bash
+docker compose up -d kafka kafka-init logging-db logging-service supplier-db supplier-service
+```
+
+Wait for `Consuming "logging.lines"` in `docker logs foc-logging-service-1`, then make a request that
+will be refused, with an id of your choosing:
+
+```bash
+curl.exe -i -X POST "http://localhost:3002/locations" -H "x-request-id: d3-demo-1"
+```
+
+That returns **401** and echoes `x-request-id: d3-demo-1`. The line is then in the store:
+
+```bash
+docker exec foc-logging-db-1 psql -U foc -d logging -c "SELECT request_id, service, event, status, path FROM log_lines ORDER BY received_at DESC LIMIT 5;"
+```
+
+Through the API instead — ADMIN only, and there is no dev-header fallback here, so this needs a real
+token from the User Service:
+
+```bash
+curl.exe "http://localhost:3006/logs?requestId=d3-demo-1" -H "Authorization: Bearer $env:ADMIN_TOKEN"
+```
+
+Two more worth showing, both verified:
+
+- **The query string never reaches the store.** `POST /locations?lat=1.2966&lon=103.7764` stores
+  `path` as `/locations` — those coordinates are the caller's position, on a line that also names them.
+- **A bad message is parked, not lost, and does not stop the consumer.**
+
+  ```bash
+  echo 'this is not a log line' | docker exec -i foc-kafka-1 /opt/kafka/bin/kafka-console-producer.sh --bootstrap-server localhost:9092 --topic logging.lines
+  docker exec foc-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic logging.lines.dlt --from-beginning --max-messages 1 --property print.headers=true
+  ```
+
+  The dead letter carries `x-error`, `x-source-topic`, `x-source-partition`, `x-source-offset` and
+  `x-dead-lettered-at`, with the original bytes unchanged.
+
+Kafka UI is on <http://127.0.0.1:8085> and shows the messages on both topics, which is the clearest
+way to make "asynchronous" visible rather than asserted.
+
+### Two things that will bite on Windows
+
+**`localhost` vs `127.0.0.1`.** The broker advertises `EXTERNAL://localhost:9094`, so a client run on
+the host is told to reconnect to `localhost`, which can resolve to IPv6 `[::1]` and fail — the broker
+only binds IPv4. Inside Compose it is `kafka:9092` and this does not arise, which is why the demo
+runs in containers. It does affect host-run tools, including Credit's Kafka tests.
+
+**Line endings.** `infra/kafka/` now has a `.gitattributes` forcing LF. Without it, git checks out
+`create-topics.sh` with CRLF and the container shell reads `set -eu\r` as an illegal option, and
+`topics.txt` with CRLF so a partition count arrives as `"3\r"`. Either way `kafka-init` creates
+nothing, and every Kafka demo on that machine fails.
 
 The API Gateway does **not** produce to this topic. Envoy has no Kafka access logger, so its lines
 stay on stdout; see "Ingest" in `AGENTS.md` for what that costs.

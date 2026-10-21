@@ -54,6 +54,13 @@ export const config = {
   jwtIssuer: process.env.SUPPLIER_JWT_ISSUER || undefined,
   jwtAudience: process.env.SUPPLIER_JWT_AUDIENCE || undefined,
   devAuth,
+  // Where this service's log lines go, for the Logging Service (issue #52). Unset means stdout
+  // only: no producer, no broker needed, and standalone Postman testing is unaffected.
+  kafkaBrokers: (process.env.SUPPLIER_KAFKA_BROKERS || '')
+    .split(',')
+    .map((broker) => broker.trim())
+    .filter(Boolean),
+  kafkaLogTopic: process.env.SUPPLIER_KAFKA_LOG_TOPIC || 'logging.lines',
 };
 
 if (config.devAuth && process.env.NODE_ENV === 'production') {

@@ -53,6 +53,10 @@ services:
     depends_on:
       supplier-db:
         condition: service_healthy
+      # Log lines are published to a topic kafka-init creates. The producer connects lazily, so
+      # this only orders startup; it is not a hard dependency.
+      kafka-init:
+        condition: service_completed_successfully
     # No env_file: passing the whole .env would hand this container other services' secrets
     # (such as user-db's password) and local-run values such as SUPPLIER_DEV_AUTH=true, which
     # the production image refuses. Only the variables below reach it.
@@ -64,6 +68,10 @@ services:
       # Optional; checked only when set in .env.
       SUPPLIER_JWT_ISSUER: ${SUPPLIER_JWT_ISSUER:-}
       SUPPLIER_JWT_AUDIENCE: ${SUPPLIER_JWT_AUDIENCE:-}
+      # Where this service's log lines go, for the Logging Service (issue #52). Empty means
+      # stdout only, with no producer and no dependency on the broker.
+      SUPPLIER_KAFKA_BROKERS: ${SUPPLIER_KAFKA_BROKERS:-kafka:9092}
+      SUPPLIER_KAFKA_LOG_TOPIC: ${SUPPLIER_KAFKA_LOG_TOPIC:-logging.lines}
     ports:
       - "3002:3002"
 

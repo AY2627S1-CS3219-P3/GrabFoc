@@ -1,0 +1,9 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+# Scope: Keep this folder LF-encoded. On a Windows checkout git gave create-topics.sh CRLF, so the
+#   container shell read "set -eu" as an illegal option; and topics.txt too, so a partition
+#   count arrived as "3" and kafka-topics.sh threw NumberFormatException. Either way kafka-init
+#   exits without creating a topic, which breaks every Kafka demo on that machine. Same fix as
+#   api-gateway/envoy/.gitattributes.
+# Author review: pending - Jian Bing to record what he checked (infra/kafka is his).
+* text eol=lf

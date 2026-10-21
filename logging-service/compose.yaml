@@ -52,6 +52,10 @@ services:
     depends_on:
       logging-db:
         condition: service_healthy
+      # The topics are created by kafka-init, and this service refuses to start if its topics
+      # are missing (rule 4), so wait for that one-shot container to finish.
+      kafka-init:
+        condition: service_completed_successfully
     # No env_file: passing the whole .env would hand this container other services' secrets.
     # Only the variables below reach it.
     environment:
@@ -59,7 +63,8 @@ services:
       LOGGING_DATABASE_URL: postgres://foc:${LOGGING_POSTGRES_PASSWORD:-change-me-in-dotenv}@logging-db:5432/logging
       LOGGING_JWKS_URL: http://user-service:3001/.well-known/jwks.json
       # Empty until the shared broker (#75) is merged; then kafka:9092.
-      LOGGING_KAFKA_BROKERS: ${LOGGING_KAFKA_BROKERS:-}
+      # kafka:9092 inside the compose network. Empty turns ingest off.
+      LOGGING_KAFKA_BROKERS: ${LOGGING_KAFKA_BROKERS:-kafka:9092}
       LOGGING_KAFKA_TOPIC: ${LOGGING_KAFKA_TOPIC:-logging.lines}
       LOGGING_KAFKA_GROUP_ID: ${LOGGING_KAFKA_GROUP_ID:-logging-service}
       LOGGING_KAFKA_DLT_TOPIC: ${LOGGING_KAFKA_DLT_TOPIC:-logging.lines.dlt}
