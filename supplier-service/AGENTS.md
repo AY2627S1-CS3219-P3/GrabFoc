@@ -144,7 +144,7 @@ Postman needs a real token: log in through the User Service and put it in the co
 
 ## Logging
 
-_Origin: AI doc, from the root AGENTS.md cross-cutting rule ("log unauthorised access attempts in a consistent structured format") and the correlation design approved by Cole Lin in chat on 2026-10-11. The shared log-line schema across all six services is **[Open]** and belongs to the team_
+_Origin: AI doc, from the root AGENTS.md cross-cutting rule ("log unauthorised access attempts in a consistent structured format") and the correlation design approved by Cole Lin in chat on 2026-10-11. The [Open] item at the end of "Correlation" was raised by the Codex review of PR #130 and is the gateway owner's to settle. The shared log-line schema across all six services is **[Open]** and belongs to the team_
 
 Every log line this service writes about a request is **one JSON object on one line**, so the lines
 can be collected and searched by the Centralized Logging service (issue #52).
@@ -193,6 +193,29 @@ the gateway's `request_completed` line for the same request:
   personal data). The gateway drops query strings for the same reason. See `logPath()`.
 - See `src/common/request-id.ts`. Service-layer code (`locations.service.ts`) has no request object
   and so logs no id; if that is ever needed, it takes an `AsyncLocalStorage` store.
+
+**[Open] Replacing a caller's id breaks the correlation it exists for.** Raised by the Codex review
+of PR #130. When the gateway forwards a caller-supplied id this service rejects — `unsafe/id`, say —
+this service mints a new one, but the gateway has already logged the original and returned the
+original to the client. The gateway's line and this service's line then share nothing, for exactly
+the requests where someone sent a deliberately odd id, which is when a trace is most wanted.
+
+This service cannot fix it: the gateway mints the id, tells the client what it was, and logs it, so
+any downstream replacement is a second id nobody else knows about. **The fix belongs to the gateway
+(Jie Yang):** have Envoy always generate its own id for edge requests instead of preserving a
+caller's. Envoy preserves only for requests it classifies as *internal*, and
+`api-gateway/envoy/behaviour-differences.md` records its Docker tests retaining `trace-123` and
+`unsafe/id` — so the first thing to check is whether outside requests are being treated as internal,
+which is worth fixing regardless of logging: an edge caller should not get to choose its own trace
+id. **Verify before changing anything:** send `x-request-id: unsafe/id` through the running gateway
+and read the access log.
+
+Rejected on purpose: logging the invalid id alongside the new one. That means writing a
+caller-controlled string into a queryable store to paper over a case that should not arise, and adds
+a field to the shared schema in #52 that the team has not agreed.
+
+The mint stays either way — a direct call to `:3002` has no id at all, and D2 requires this service
+to be testable alone.
 
 **[Open]** Service-to-service calls (Order → Supplier in D3) must forward the incoming
 `x-request-id`, or the chain breaks at the first hop. That is a team-wide convention, not this
