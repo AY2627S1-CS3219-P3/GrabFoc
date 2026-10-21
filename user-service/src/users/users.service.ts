@@ -7,6 +7,14 @@
  *   Same rules, codes and messages. OTP issue/verify now go through RedisService + OtpService.
  *   New: reactivate re-checks in the database that the caller is an ACTIVE ADMIN (ai/plan.md).
  * Author review: Successfully reviewed by Deanson, 2026-10-16.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: The admin bootstrap writes the admin row and its UserRegistered outbox row in one transaction.
+ * Author review: pending — Deanson to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: Deactivation refused while the user has active orders (#71); admin suspension that
+ *   writes a UserSuspended outbox row in the same transaction (#72). 2026-10-20: the row now
+ *   goes to Deanson's outbox table (merge of main).
+ * Author review: Reviewed by Zi Yi, 2026-10-20.
  */
 // AI-generated (reviewed by Deanson)
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
@@ -21,11 +29,14 @@ import { EmailSchema } from '../common/validation/fields';
 import type { AppConfig } from '../config/env.validation';
 import { DatabaseService } from '../infra/database/database.service';
 import { MailService } from '../infra/mail/mail.service';
+import { OutboxRepository } from '../infra/outbox/outbox.repository';
 import { OTP_TTL_SECONDS, OtpPurpose, otpKey } from '../infra/redis/redis.constants';
 import { RedisService } from '../infra/redis/redis.service';
 import { OtpService } from '../security/otp.service';
 import { TokensService } from '../security/tokens.service';
 import { AdminProfile, SelfProfile } from './dto/profile.response';
+import { OrderClient } from './order.client';
+import { userRegistered, userSuspended } from './user-events';
 import { NewUser, UserFilter, UserRecord, UsersRepository } from './users.repository';
 
 /** The bootstrap admin's display name; the owner can change it with PATCH /users/me. */
@@ -60,7 +71,9 @@ export class UsersService implements OnApplicationBootstrap {
     private readonly mail: MailService,
     private readonly otp: OtpService,
     private readonly tokens: TokensService,
+    private readonly orders: OrderClient,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly outbox: OutboxRepository,
   ) {}
 
   // ---------------------------------------------------------------- used by AuthService
@@ -103,7 +116,8 @@ export class UsersService implements OnApplicationBootstrap {
 
   /**
    * POST /users/me/otp. Mails a code to the caller's current email. For DEACTIVATION, the sole
-   * admin is refused first so no code is wasted; deactivateSelf re-checks under the lock.
+   * admin and a user with active orders are refused first so no code is wasted; deactivateSelf
+   * checks both again.
    */
   async requestOtp(userId: string, purpose: SelfServicePurpose): Promise<{ otpExpiresAt: Date }> {
     if (purpose === OtpPurpose.DEACTIVATION) {
@@ -111,6 +125,7 @@ export class UsersService implements OnApplicationBootstrap {
       if (activeAdmins.length === 1 && activeAdmins[0].id === userId) {
         throw this.lastAdmin();
       }
+      await this.assertNoActiveOrders(userId);
     }
 
     await this.assertWithinOtpLimit(userId);
@@ -182,8 +197,14 @@ export class UsersService implements OnApplicationBootstrap {
     await this.redis.deleteOtp(otpKey(OtpPurpose.PASSWORD_CHANGE, userId));
   }
 
-  /** POST /users/me/deactivate. Under the last-admin lock, with every session revoked in the same transaction. */
+  /**
+   * POST /users/me/deactivate. Refused while the user has active orders (checked before the code
+   * is spent), then under the last-admin lock, with every session revoked in the same transaction.
+   */
   async deactivateSelf(userId: string, code: string): Promise<void> {
+    // ponytail: an order created between this check and the commit is not caught; the Order
+    // Service has no hook to block it. Accept the race until the team asks for one.
+    await this.assertNoActiveOrders(userId);
     await this.checkOtp(OtpPurpose.DEACTIVATION, userId, code, { consume: true });
 
     await this.withAdminLock(userId, async (ctx) => {
@@ -283,6 +304,47 @@ export class UsersService implements OnApplicationBootstrap {
     return this.toAdminProfile(updated!);
   }
 
+  /**
+   * POST /admin/users/:userId/suspend. Only an ACTIVE account, and never the caller's own (so the
+   * last-admin rule always holds: the caller stays). Status, session revoke and the UserSuspended
+   * outbox row commit together, so the Order Service always hears of it.
+   */
+  async suspend(callerId: string, targetId: string): Promise<AdminProfile> {
+    const profile = await this.withAdminLock(callerId, async (ctx) => {
+      if (ctx.activeAdminIds === null) {
+        throw this.notActiveAdmin();
+      }
+      if (targetId === callerId) {
+        throw new AppError(409, ErrorCode.CANNOT_MODIFY_SELF, 'You cannot suspend your own account.');
+      }
+
+      const target = await this.users.findByIdForUpdate(targetId, ctx.tx);
+      if (!target) {
+        throw new AppError(404, ErrorCode.NOT_FOUND, 'No such user.');
+      }
+      if (target.status !== UserStatus.ACTIVE) {
+        throw new AppError(409, ErrorCode.USER_NOT_ACTIVE, 'Only an active user can be suspended.');
+      }
+
+      await this.users.suspend(target.id, ctx.tx);
+      await this.tokens.revokeAll(target.id, ctx.tx);
+      await this.outbox.add(userSuspended(target.id), ctx.tx);
+      return this.toAdminProfile((await this.users.findById(target.id, ctx.tx))!);
+    });
+
+    // Logged only after the transaction has committed.
+    this.logger.log(
+      auditLine(AuditEvent.ADMIN_ACTION, {
+        actorId: callerId,
+        targetId,
+        action: 'SUSPEND',
+        from: UserStatus.ACTIVE,
+        to: UserStatus.SUSPENDED,
+      }),
+    );
+    return profile;
+  }
+
   // ---------------------------------------------------------------- first admin
 
   /**
@@ -304,11 +366,19 @@ export class UsersService implements OnApplicationBootstrap {
       throw new Error(`Invalid USER_BOOTSTRAP_ADMIN_EMAIL: ${parsed.error.issues.map((i) => i.message).join('; ')}`);
     }
 
-    const created = await this.users.insertBootstrapAdminIfFirst({
-      id: this.otp.generateId(),
-      displayName: BOOTSTRAP_ADMIN_DISPLAY_NAME,
-      emailHash: this.otp.hashEmail(parsed.data),
-      emailEncrypted: this.otp.encrypt(parsed.data),
+    // The admin row and its UserRegistered commit together, so the first admin gets a wallet too.
+    const created = await this.db.transaction(async (tx) => {
+      const admin = await this.users.insertBootstrapAdminIfFirst(
+        {
+          id: this.otp.generateId(),
+          displayName: BOOTSTRAP_ADMIN_DISPLAY_NAME,
+          emailHash: this.otp.hashEmail(parsed.data),
+          emailEncrypted: this.otp.encrypt(parsed.data),
+        },
+        tx,
+      );
+      if (admin) await this.outbox.add(userRegistered(admin), tx);
+      return admin;
     });
 
     if (!created) {
@@ -349,6 +419,16 @@ export class UsersService implements OnApplicationBootstrap {
           : null;
       return fn({ tx, caller, activeAdminIds });
     });
+  }
+
+  private async assertNoActiveOrders(userId: string): Promise<void> {
+    if (await this.orders.hasActiveOrders(userId)) {
+      throw new AppError(
+        409,
+        ErrorCode.HAS_ACTIVE_ORDERS,
+        'Finish or cancel your ongoing orders, as requester and as courier, before deactivating.',
+      );
+    }
   }
 
   /** One shared 3-per-10-minutes bucket per user across every self-service purpose. */

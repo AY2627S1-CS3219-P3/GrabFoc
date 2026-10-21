@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
  * Scope: Adapted from user-service/src/users/admin.controller.ts (original disclosure: Claude Code, Claude Sonnet 5, 2026-09-27): same routes and status codes, now with DTOs and @Roles(Role.ADMIN).
  * Author review: Successfully reviewed by Deanson, 2026-10-16.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: Added POST /admin/users/:userId/suspend (#72).
+ * Author review: Reviewed by Zi Yi, 2026-10-20.
  */
 // AI-generated (reviewed by Deanson)
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
@@ -38,5 +41,11 @@ export class UsersAdminController {
   @HttpCode(200)
   reactivate(@CurrentUser('id') callerId: string, @Param('userId', ParseUUIDPipe) userId: string) {
     return this.usersService.reactivate(callerId, userId);
+  }
+
+  @Post(':userId/suspend')
+  @HttpCode(200)
+  suspend(@CurrentUser('id') callerId: string, @Param('userId', ParseUUIDPipe) userId: string) {
+    return this.usersService.suspend(callerId, userId);
   }
 }

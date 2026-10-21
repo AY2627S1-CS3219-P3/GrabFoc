@@ -1,4 +1,7 @@
 # AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-10-13
+# Scope: Include approved Order database and one-shot migration task.
+# Author review: Plan approved; implementation review pending.
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
 # Scope: Generated the first content of this file. 2026-09-28 (model: Claude Opus 5.5): moved
 #        the User Service to user-service/compose.yaml and included it from here.
@@ -45,4 +48,7 @@ include:
   # Load optional api-gateway/.env defaults; root/shell variables can override them.
   - api-gateway/compose.yaml
   - path: frontend/compose.yaml
+    env_file: .env
+  # AI-generated; user-approved database-only integration.
+  - path: order-service/compose.yaml
     env_file: .env

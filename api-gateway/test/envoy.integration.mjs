@@ -6,6 +6,9 @@ Author review: Pending human review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Added a per-attempt timeout to the Envoy readiness check, which hung on Linux CI runners.
 Author review: Pending Jie Yang's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+Scope: Added POST /admin/users/:userId/suspend to the protected-route cases (#72).
+Author review: Reviewed by Zi Yi, 2026-10-21 (suspend route checked by hand through Envoy: 401 without a token, 404 from the User Service with one); the suite does not run on Zi Yi's machine; pending Jie Yang's review.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
 import assert from 'node:assert/strict';
@@ -297,7 +300,8 @@ test('all protected User and Supplier routes enforce JWT and reach their service
     ['POST', '/users/me/email/verify', 201], ['POST', '/users/me/password', 201],
     ['POST', '/users/me/deactivate', 201], ['PATCH', '/users/me/mobile', 201],
     ['GET', '/admin/users', 201], ['PATCH', '/admin/users/test-id/role', 201],
-    ['POST', '/admin/users/test-id/reactivate', 201], ['GET', '/location-types', 200],
+    ['POST', '/admin/users/test-id/reactivate', 201], ['POST', '/admin/users/test-id/suspend', 201],
+    ['GET', '/location-types', 200],
     ['GET', '/locations', 200], ['POST', '/locations', 200], ['GET', '/locations/test-id', 200],
     ['PATCH', '/locations/test-id', 200], ['POST', '/locations/test-id/deactivate', 200],
     ['POST', '/locations/test-id/restore', 200],

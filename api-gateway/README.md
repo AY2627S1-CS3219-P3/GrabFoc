@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Documented stock Envoy configuration, testing, existing infrastructure environment settings and removal of the legacy Node gateway. Includes the approved JWKS 503 exception.
 Author review: Jie Yang reviewed earlier documentation; Envoy implementation approved, new documentation review pending.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+Scope: Listed POST /admin/users/:userId/suspend among the protected User routes (#72).
+Author review: Reviewed by Zi Yi, 2026-10-21; pending Jie Yang's review.
 -->
 
 # API Gateway
@@ -17,7 +20,7 @@ contains login and smoke-test instructions. The legacy Node gateway has been rem
 
 _Origin: AI doc; implementation of the gateway direction recorded in the project `AGENTS.md`._
 
-The gateway routes only implemented User Service methods and paths. Public routes are `POST /auth/register`, `/auth/register/verify`, `/auth/register/resend-otp`, `/auth/login`, `/auth/refresh`, `/auth/password/forgot`, `/auth/password/reset`, and `GET /.well-known/jwks.json`. Protected User routes are `POST /auth/logout`; `GET` and `PATCH /users/me`; `POST /users/me/otp`, `/users/me/email`, `/users/me/email/verify`, `/users/me/password`, and `/users/me/deactivate`; `PATCH /users/me/mobile`; `GET /admin/users`; `PATCH /admin/users/:userId/role`; and `POST /admin/users/:userId/reactivate`. The `/auth` prefix is configurable. Unknown methods and paths, including `/internal/**`, return 404.
+The gateway routes only implemented User Service methods and paths. Public routes are `POST /auth/register`, `/auth/register/verify`, `/auth/register/resend-otp`, `/auth/login`, `/auth/refresh`, `/auth/password/forgot`, `/auth/password/reset`, and `GET /.well-known/jwks.json`. Protected User routes are `POST /auth/logout`; `GET` and `PATCH /users/me`; `POST /users/me/otp`, `/users/me/email`, `/users/me/email/verify`, `/users/me/password`, and `/users/me/deactivate`; `PATCH /users/me/mobile`; `GET /admin/users`; `PATCH /admin/users/:userId/role`; `POST /admin/users/:userId/reactivate`; and `POST /admin/users/:userId/suspend`. The `/auth` prefix is configurable. Unknown methods and paths, including `/internal/**`, return 404.
 
 Supplier routes are `GET /location-types`, `GET` and `POST /locations`, `GET` and `PATCH /locations/:locationId`, and `POST /locations/:locationId/deactivate` or `/restore`. All require a valid User Service bearer JWT. The `/locations` prefix is configurable.
 

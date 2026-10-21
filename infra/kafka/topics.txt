@@ -8,6 +8,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
 # Author review: Jian Bing supplied what it states; the wording is Claude's.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+# Scope: Added order.events (Order's state-change events for Notification) at Zi Yi's direction.
+# Author review: Reviewed
 #
 # Every Kafka topic in the system, and the only list of them: kafka-init creates exactly these
 # (root AGENTS.md §3 Messaging, rule 4). Add a topic by adding a line: <name> <partitions>.
@@ -16,6 +19,7 @@
 
 # Events, written by their owner
 user.events 3
+order.events 3
 
 # Commands, written to the receiver's topic
 credit.commands 3
