@@ -5,6 +5,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 # Scope: Listed Credit's retry topics here too, so this is the one list (K10 revised).
 # Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+# Scope: Added order.events (Order's state-change events for Notification) at Zi Yi's direction.
+# Author review: Reviewed
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 # Scope: Added supplier.events (issue #120).
 # Author review: pending — Jie Yang to record what he checked.
@@ -16,6 +19,7 @@
 
 # Events, written by their owner
 user.events 3
+order.events 3
 supplier.events 3
 
 # Commands, written to the receiver's topic

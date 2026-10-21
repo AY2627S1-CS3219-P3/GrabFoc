@@ -2,12 +2,15 @@
 -- Tool: Claude Code (model: Claude Opus 5), date: 2026-09-25
 -- Scope: Transcribed the team's schema from user-service/AGENTS.md into the first migration.
 -- Author review: Read in full; verified every column against AGENTS.md §Schema and applied the migration to PostgreSQL 17.
+-- Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+-- Scope: Updated the SUSPENDED comment (#72).
+-- Author review: Reviewed by Zi Yi, 2026-10-20.
 --
 -- Keep in sync with the "Schema" section of user-service/AGENTS.md.
 
 CREATE TYPE user_role   AS ENUM ('USER', 'ADMIN');
 CREATE TYPE user_status AS ENUM ('ACTIVE', 'DEACTIVATED', 'SUSPENDED');
--- Nothing sets SUSPENDED until the deferred status endpoint exists.
+-- SUSPENDED is set only by POST /admin/users/:userId/suspend.
 
 CREATE TABLE users (
     id                UUID         PRIMARY KEY,                  -- generated at register, before the row exists

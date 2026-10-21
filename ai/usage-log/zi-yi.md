@@ -3,12 +3,552 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Zi Yi's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+Scope: Added the Order Service Phase A entry.
+Author review (Zi Yi): Read the entry in full.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added the Order Service Phase B entry.
+Author review (Zi Yi): Read the entry in full.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added the Order Service revised creation flow entry.
+Author review (Zi Yi): Read the entry in full.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added the single-migration entry.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+Scope: Added the Order Service Phase C entry.
+Author review (Zi Yi): Reviewed; ran `npm test` and the `compose.test.yaml` tests.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
+Scope: Added the courier timing-change entry.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+Scope: Added the Order Service Phase D step 1 (credit settlement over Kafka) entry.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Recorded the manual-check results Zi Yi reported, and the prompts that led to them.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Added the Order Service Phase D expiry worker entry.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Added the Order Service Phase D order.events and active-order lookup entry.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Recorded the manual-check results Zi Yi reported, and the prompts that led to them.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Added the Order Service Phase E tests entry.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Added the Order Service Postman collection entry.
+Author review (Zi Yi): Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+Scope: Added the User Service Postman suspension entry.
+Author review: Reviewed by Zi Yi, 2026-10-20.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
+Scope: Added the merge-of-main entry for the User Service order-support branch.
+Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-20 — User Service: merge main into `feat/user-service-order-support`
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `.env.example`; `user-service/` `compose.yaml`, `src/config/env.validation.ts`,
+`src/users/users.service.ts`, `users.repository.ts`, `users.module.ts`, `user-events.ts`,
+`order-support.spec.ts`, `src/infra/outbox/outbox.repository.ts` (comment),
+`db/migrations/001_init.sql`, `AGENTS.md`, `API.md`, Postman collection; `api-gateway/`
+`envoy/routes/10-user.routes.json`, `test/envoy.integration.mjs`, `README.md`; removed
+`user-service/src/users/user-events.publisher.ts`, `api-gateway/src/routing/user.routes.ts`,
+`api-gateway/test/gateway.test.js`
+
+**Scenario:** main had gained Deanson's transactional outbox (`outbox` table in
+`002_outbox.sql`, `OutboxRelay`, `user-events.ts`) for `UserRegistered`, and replaced the Node
+gateway with Envoy. This branch had its own `user_events` table and `UserEventsPublisher` for
+`UserSuspended`. The AI resolved the conflicts by keeping main's design:
+- `UserSuspended` is now a builder in `user-events.ts`, written with `OutboxRepository.add` in
+  the suspend transaction; the branch's `user_events` table, publisher and Kafka producer copy
+  were removed (main's producer kept).
+- Compose keeps Deanson's "no `depends_on` on Kafka" (the branch had waited for `kafka-init`).
+- The suspend route moved to the Envoy route file and its integration test.
+- The outbox claim-order comment and `user-service/AGENTS.md` now explain why per-user order
+  still holds with two event types (only an ACTIVE account can be suspended, so its
+  transaction starts after the `UserRegistered` one committed).
+
+**Prompts:**
+> merge main into this user service support branch, resolve the merge conflicts
+
+Follow-up questions while reviewing the resolution (explain):
+> what is User Service doesn't wait for Kafka, so our wait on kafka-init is gone. about?
+
+> why they can share a outbox? what is outbox for again?
+
+> so this outbox will just keep incrementing? will it delete rows?
+
+> so how is user suspended being implemented now
+
+> whats envoy
+
+> how is deactivation of users implemented now
+
+> explain more about the known gap
+
+> before updating the PR description, did we test already to ensure all is working well
+
+> i docker compose up --build already, give me explicit steps for testing
+
+Key response on the known gap: besides the millisecond race between the active-order check and
+the deactivation commit, the Order Service never checks a user's status (it only verifies the
+JWT), so a deactivated or suspended user's access token can still create and accept orders for
+up to 15 minutes. The AI listed options (Order checks status on create/accept; Order keeps a
+blocked-user list from events; a two-step deactivation; shorter tokens; accept it) with the
+AI-policy warning; nothing was chosen, it is for the team.
+
+**Verification:** `npm test` (24 passed, 3 skipped database tests), lint and build in
+`user-service/`; `python3 api-gateway/test/envoy_routes_test.py` (4 passed). The Envoy
+integration suite fails locally (Envoy gets 503 from the test's stub upstream, including tests
+unrelated to this change); left to CI. The AI dry-ran the deactivation steps on the merged stack
+(real order → 409, cancelled → 202 then 204) and the gateway 401 before handing them over.
+
+**Author review:** Zi Yi reviewed the resolution and tested it on the merged compose stack
+(fresh user-db), 2026-10-21: the full User Service Postman collection, the `UserSuspended` outbox
+row marked published and the message on `user.events`, deactivation against the real Order
+Service (409 with an order, 503 with Order stopped, 204 after cancelling), and the suspend route
+through Envoy (401 without a token, 404 from the User Service with an admin token).
+
+### 2026-10-20 — User Service: Postman collection for suspension (#72) and the Order dependency (#71)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate, debug
+**Files:** `user-service/postman/user-service.postman_collection.json`
+
+**Scenario:** testing the #71/#72 branch. The AI explained that the existing collection now
+breaks without an Order Service (deactivation asks Order first, so it answers 503) and
+suggested adding the suspension cases instead of testing them by hand.
+
+**Prompts:**
+> list testing steps
+
+> give me next steps, i just ran docker compose up --build
+
+> why order svc not running?
+
+> should we update postman collection instead?
+
+> commit first, then make those changes
+
+**What it produced:** seven requests at the end of the Admin folder (403 suspend as a USER,
+409 suspend yourself, suspend, 403 `ACCOUNT_SUSPENDED` login, 401 refresh after suspension,
+409 `USER_NOT_ACTIVE` again, 404 unknown id), `400 malformed userId on suspend` in Validation,
+an `adminUserId` variable, and a note in the collection description that deactivation needs an
+Order Service answering "no active orders". The `HAS_ACTIVE_ORDERS` and Order-down cases stay
+manual. While testing, it also found my old `user-db` volume had no `user_events` table
+(`001_init.sql` changed after it was applied), and started a stand-in Order container for the run.
+
+**Verification:** newman against the compose stack on a fresh `user-db`, with the stand-in
+Order answering "no active orders": 144 requests, 366 assertions, 0 failures. The
+`UserSuspended` message was read back from `user.events`, keyed by the user id, and its outbox
+row was marked published.
+
+**What I changed or rejected:** Tested the collection myself in Postman on 2026-10-20.
+
+### 2026-10-19 — User Service: active-order deactivation guard (#71) and `UserSuspended` (#72)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** new `user-service/src/infra/kafka/kafka.producer.ts`,
+`src/users/{order.client,user-events.publisher,order-support.spec}.ts`; changed
+`db/migrations/001_init.sql`, `src/config/env.validation.ts`, `src/common/errors/error-codes.ts`,
+`src/users/{users.service,users.repository,users-admin.controller,users.module}.ts`, `API.md`,
+`compose.yaml`, `package.json`, `package-lock.json`; root `.env.example`;
+`api-gateway/src/routing/user.routes.ts`, `api-gateway/test/gateway.test.js`
+
+**Scenario:** the User Service side of the Order Service work on `feat/order-service`, on a new
+branch from `main`. The AI found Order's `GET /internal/orders/users/:userId/active` (my
+2026-10-18 decision), that nothing in the User Service could set `SUSPENDED`, and that Credit and
+Order's plan disagree on the `user.events` shape. It flagged the suspend endpoint, the event shape,
+the outbox table and the Order-down behaviour as interface/schema/trade-off decisions under the AI
+policy and asked me to choose before writing code.
+
+**Prompts:**
+> branch from main, we are trying to support order service (branch feat/order-service). So we
+> shall resolve two issues https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/71 and
+> https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/72
+
+Answers to the AI's questions: event shape "whats the difference and which is better?";
+suspension scope "Suspend only"; Order down "Fail closed, 503 (Recommended)"; delivery "outbox
+table but use migration 001 is okay". Then:
+> continue
+
+**My decisions** (chosen from the options the AI laid out):
+- `user.events` shape: flat `{ type, eventId, occurredAt, userId }`, keyed by `userId`. The AI
+  explained the flat shape is what Credit's reader already accepts; the envelope from the Order
+  plan (`eventType`, `data.userId`) would need Credit changed. I said continue with its
+  recommendation. Order's (unbuilt) consumer must read this shape.
+- `POST /admin/users/:userId/suspend` only; no endpoint to lift a suspension.
+- Deactivation fails closed: 503 `SERVICE_UNAVAILABLE` when Order cannot answer.
+- Outbox table `user_events` added to `001_init.sql`, not a new migration.
+
+**What it produced:**
+- `OrderClient.hasActiveOrders` (3 s timeout, `X-Service-Key`); the check runs in
+  `requestOtp(DEACTIVATION)` and in `deactivateSelf` before the code is spent; 409
+  `HAS_ACTIVE_ORDERS`;
+- `UsersService.suspend`: under the last-admin lock, caller re-checked as an active admin, not
+  yourself, target must be `ACTIVE`; status, session revoke and the outbox row in one transaction;
+- `UserEventsPublisher`: every second, oldest first, marks `published_at` once Kafka stores it,
+  stops at the first failure; `KafkaProducer` copied from Order's;
+- env `USER_KAFKA_BROKERS`, `USER_ORDER_URL`, `USER_ORDER_SERVICE_KEY` (compose passes
+  `ORDER_SERVICE_KEY`); gateway route; `API.md` events section; 14 unit tests.
+
+**Flagged:**
+- The partial index `idx_user_events_unpublished` is a schema detail beyond the table I approved.
+- Existing `user-db` volumes must be recreated (`001_init.sql` changed; the runner tracks file names).
+- Every root `.env` needs `ORDER_SERVICE_KEY` (≥ 32 characters) or the User Service won't start;
+  until `order-service` runs in compose, deactivation answers 503.
+- Known race: an order created between the active-order check and the deactivation commit is not
+  caught. A suspended or deactivated user's access token stays valid for up to 15 minutes.
+- `ORDER_SERVICE_KEY` is also added to `.env.example` on `feat/order-service`; keep one on merge.
+- Owners to confirm: the gateway route (Jie Yang), the endpoint and event (Deanson), the shape
+  (Order owners).
+
+**Verification:** `npm test` 14 passed, `npm run lint` and `nest build` clean; gateway `npm test`
+22 passed. End to end on a scratch database with a fake Order endpoint and the local Kafka:
+deactivation 409 with active orders, 503 with Order down, 204 with none; suspend 403 for a USER,
+200 for an admin, 409 again and for yourself; suspended login 403 `ACCOUNT_SUSPENDED`; the
+`UserSuspended` message read back from `user.events` with key = `userId`; Credit ignored it.
+
+**What I changed or rejected:** Reviewed every file on 2026-10-20.
+
+### 2026-10-19 — Order Service: Postman collection
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** new `order-service/postman/order-service.postman_collection.json`; `order-service/README.md`
+
+**Scenario:** I asked whether a Postman collection would help. The AI said yes: User, Supplier and
+Credit each have one, the frontend has no order pages for the D3 demo, and a collection can carry
+the two tokens, `orderId` and `version` between requests, which is where my manual curl checks went
+wrong. It noted Postman cannot show the background jobs.
+
+**Prompts:**
+> will postman collection be useful
+
+> yes build the postman collection
+
+> whats wrong (with a screenshot of the collection's variables)
+
+> i have some errors (with two screenshots of the Runner results)
+
+(two more screenshots, no text: the variables and a Runner result with a 401 on login)
+
+**What it produced:** a collection of 47 requests in six folders, in the style of Credit's: setup
+(log in as requester and courier, pick two `ACTIVE` locations), a full order through completion with
+the courier's balance before and after settlement, requester and mutual cancellation, edit, error
+cases, and the internal lookup. Every request has test scripts. Emails, password and service key are
+empty variables, so nothing secret is committed. A README section on using it.
+
+**Verification:** ran the whole collection with Newman against the local Compose stack: 47 requests,
+89 assertions, no failures; the courier's balance rose by the 1-credit offer after settlement. The
+first run failed every request because the URLs were written as Postman objects with only `raw`;
+changed to plain strings.
+
+**Debugging my own run:** first, every login failed because my variables named accounts that do not
+exist locally (`INVALID_CREDENTIALS`); the AI pointed me to the existing test accounts and warned that
+the password and service key were set to sync to my Postman cloud workspace. Then a create in folder 3
+returned `409`: the requester had 2 credits left (earlier checks had paid couriers, and Credit's
+database outlived Order's resets), and cancelled orders' credits only return about 10 s later. The
+collection description and README now say a full run needs 5 available credits, and to swap the
+accounts when the requester runs low.
+Last, login itself returned 401: every Compose volume had been recreated at 18:57 UTC, so the
+test accounts were gone. The AI registered them again (codes read from Mailpit), made the login
+script skip saving when login fails instead of throwing a `TypeError`, and reran the collection:
+47 requests, 88 assertions, no failures (the payment check is skipped while the courier has no
+wallet yet).
+
+Then I ran the collection in the Postman Runner myself: all passed.
+
+**What I changed or rejected:** Reviewed the changed files.
+
+### 2026-10-19 — Order Service: Phase E tests
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `order-service/src/test/orders.api.test.ts`, `README.md`, `AGENTS.md`;
+`docs/order-service-plan.md`
+
+**Scenario:** Phase E of the plan (§8) is verification and the D3 demo. The AI compared each
+Phase E test item with the existing 61 tests and added only what was missing.
+
+**Prompts:**
+> implement phase E
+
+**What it produced:**
+- three integration tests: one courier accepting two orders at once (one 200, one `COURIER_BUSY`,
+  one history entry); expiry racing a timing approval both ways (an approval that commits first
+  keeps the order; an expiry that commits first makes the later approval a 409); failed
+  transitions (403, stale version, skipped/repeated step, cancel outside `PENDING`, answering a
+  resolved proposal) add no history and publish no event;
+- plan §8 Phase E ticks and §6 edge-case statuses updated to what the tests now cover; README test
+  count; `AGENTS.md` status.
+
+**Flagged:**
+- Suspension/deactivation consumer tests stay blocked with the consumers.
+- The full D3 demo needs a Notification Service, which does not exist yet; Order has been run with
+  User, Supplier, Credit and Kafka.
+- §6's Kafka-publish row was still "no outbox"; it now records the 2026-10-18 outbox decision.
+
+**Verification:** `compose.test.yaml`: 64 tests passed. Removing the window recheck from
+`lockExpired` made 1 test fail (the change was reverted).
+
+**What I changed or rejected:** Reviewed the changed files.
+
+### 2026-10-18 — Order Service: Phase D `order.events` and internal active-order lookup
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, explain, debug
+**Files:** new `order-service/src/integrations/{kafka.producer,order.events}.ts`,
+`src/common/service-key.guard.ts`, `src/orders/internal.controller.ts`; changed
+`migrations/001_init.sql`, `src/{config,main,app.module}.ts`, `src/common/{errors,jwt-auth.guard}.ts`,
+`src/integrations/credit.commands.ts`, `src/orders/orders.{service,repository}.ts`,
+`src/test/{orders.api,database}.test.ts`, `compose.yaml`, `README.md`, `AGENTS.md`; root
+`.env.example`; `infra/kafka/topics.txt`; `docs/order-service-plan.md`
+
+**Scenario:** build what is left of Phase D that does not wait on other services. The AI checked
+`origin/main`: the User Service publishes nothing on `user.events` and there is no
+`supplier.events`, so the suspension/deactivation consumers stay blocked. It flagged the lookup
+endpoint, the event payload and the outbox schema change as interface/schema decisions under the
+AI policy and asked me to choose.
+
+**Prompts:**
+> implement remaining of phase D that can be implemented right now
+
+> why is checking whether use has active users important again?
+
+> what is the purpose of order_history_unpublished_idx
+
+> list files changed and what they do, and the testing steps
+
+> commit first
+
+(a terminal screenshot of the first lookup check, no text)
+
+(a second terminal screenshot of the same check, no text)
+
+> relist the remaining testing steps with jq
+
+> for check 2 i get null
+
+(a terminal screenshot of check 2's output, no text)
+
+> all checks passed, update the verification lines
+
+**My decisions** (chosen from the options the AI laid out):
+- Active-order lookup: `X-Service-Key` (new `ORDER_SERVICE_KEY`), returns `{ userId, hasActiveOrders }`;
+  active = any status but `COMPLETED`/`CANCELLED`, as requester or courier.
+- `order.events` delivery: `order_history` as the outbox (`published_at` column in `001_init.sql`),
+  `eventId` = history entry ID. This changes plan §9's "no transactional outbox for events".
+- Payload: plan §5 envelope plus `data.status`; six event types; nothing for create, edits or a
+  create cancelled for credit; topic `order.events` (3 partitions) added to `topics.txt`.
+
+**What it produced:**
+- `KafkaProducer`, one connection shared by `CreditCommands` and the new `OrderEvents` publisher;
+- `OrderEvents.publishPending`, every second from `main.ts` (for NFR3.4's 10 s): oldest first,
+  keyed by `orderId`, marks `published_at` once Kafka stores the event, stops at the first failure;
+- a partial index `order_history_unpublished_idx` for the publisher's query (checked with `EXPLAIN`);
+- `ServiceKeyGuard` / `@Internal()` (constant-time key check; the JWT guard skips these routes),
+  `SERVICE_KEY_INVALID`, and `GET /internal/orders/users/:userId/active`;
+- five integration tests (lifecycle events in order with history IDs and no repeats; cancellation
+  reasons and no event for a refused create; resend after Kafka was down; lookup auth; lookup
+  results) and the index-count test updated to nine; doc updates.
+
+**Flagged:**
+- The partial index is an extra schema detail beyond the column I approved.
+- Every teammate's root `.env` needs `ORDER_SERVICE_KEY` (≥ 32 characters) or Order won't start, and
+  existing `order-db` volumes must be recreated (`001_init.sql` changed again).
+- The User Service doesn't call the lookup yet, and no Notification Service reads `order.events`;
+  both contracts need their owners' confirmation.
+- The suspension/deactivation consumers stay blocked on User and Supplier events.
+
+**Key responses:** explained why the lookup matters (the User Service must not deactivate or
+suspend someone mid-order) and that the partial index keeps the 1 s publisher query cheap as
+history grows. Debugging the manual check: the first lookup calls printed nothing because the repo
+was on another branch with no Order Service running, and `curl -s` hid the connection error; the
+AI's own `active` helper was wrong under zsh (it passed `-H "X-Service-Key: …"` as one word, so
+the request was malformed) and was rewritten; the `null` in check 2 was most likely an access
+token past its 15-minute lifetime, fixed by logging in again. Its check 2 instructions also wrongly
+expected the completion response to say `COMPLETED` (it returns the confirmation's `APPROVED`).
+A leftover `PENDING` order from the first attempt explained the lookup's extra `true`.
+
+**Verification:** `compose.test.yaml`: 61 tests passed. Manual check with the real stack
+(2026-10-19, run by me): all five checks passed: the lookup rejected a missing key, a wrong key and
+a user token, rejected a non-UUID, and answered `true`/`false` correctly for requester and courier;
+a full lifecycle published its five events in order with `eventId`s matching the history; a
+requester cancellation and an expiry each published one `OrderCancelled` with the right reason;
+with Kafka stopped the event waited unpublished and was sent after Kafka restarted, with
+`ORDER_EVENT_PUBLISH_FAILED` logged only during that outage.
+
+**What I changed or rejected:** Reviewed the changed files.
+
+### 2026-10-18 — Order Service: Phase D expiry worker
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, explain, debug
+**Files:** `order-service/src/main.ts`, `src/orders/orders.{service,repository}.ts`,
+`src/test/orders.api.test.ts`, `README.md`, `AGENTS.md`; `docs/order-service-plan.md`
+
+**Scenario:** implement the 60 s expiry worker from plan §8 Phase D, following the rules already
+in plan §0/§2/§6 (expire `PENDING`/`ACCEPTED`/`PICKED_UP`/`IN_PROGRESS` once `now >= window_end`,
+never `ARRIVED`; timing proposals `EXPIRED`, other pending proposals `SUPERSEDED`).
+
+**Prompts:**
+> implement the 60s expiry worker in phase D
+
+> explain this function
+
+> i am a little confused, try explaining again
+
+> how to test the expiry worker
+
+> use jq, relist the testing steps
+
+> login failed, echo "A=$A_ID B=$B_ID pickup=$P delivery=$D" got nothing
+
+> there is something wrong chenziyi@Chens-MacBook-Air-6 GrabFoc % docker compose up --build
+> unable to get image 'foc-user-service': request returned 500 Internal Server Error for API route and version http://%2FUsers%2Fchenziyi%2F.docker%2Frun%2Fdocker.sock/v1.49/images/foc-user-service/json, check if the server supports the requested API version
+
+> chenziyi@Chens-MacBook-Air-6 project % endnow $E1
+> no configuration file provided: not found
+
+> all checks passed, update the verification lines
+
+**Key responses:** explained `supersedePending` (closes an order's waiting proposals of the given
+kinds as `SUPERSEDED`, or `EXPIRED` for timing changes, in the same transaction as the order
+change), first in full and then with two worked examples. Gave manual-check commands that push an
+order's window into the past with SQL, since the API refuses already-ended windows. Debugging:
+the login returned nothing because the setup step started only the Order Service and its
+dependencies, not User, Supplier and Credit (fix: `docker compose up -d --build`); the 500 error
+was Docker Desktop's engine not responding (fix: restart Docker Desktop); `endnow` failed because
+it was run outside the repo folder, where `docker compose` finds no `compose.yaml`.
+
+**What it produced:**
+- `OrdersService.expireOrders`, run every 60 s from `main.ts` (each run after the previous one ends,
+  like the settlement job): finds up to 100 expired orders, then for each one locks and rechecks it
+  in its own transaction, cancels it, writes `CANCELLED` history (no actor, `reason: EXPIRED`) and
+  resolves pending proposals; the settlement job then releases the credits;
+- repository queries `expired()` and `lockExpired()`; `supersedePending` can now resolve as `EXPIRED`;
+- three integration tests: each expirable state is cancelled and released while `ARRIVED`, unexpired
+  and finished orders are untouched; pending proposals become `EXPIRED` / `SUPERSEDED`; an order a
+  concurrent transaction moves to `ARRIVED` is skipped.
+
+**Flagged:**
+- No `OrderCancelled` event yet: it needs the `order.events` producer (next Phase D items).
+- The history reason `EXPIRED` reuses the `OrderCancelled` reason name from plan §5.
+- `order-service/AGENTS.md` still lists the expiry boundary and scheduler behaviour as **[Open]**,
+  though plan §0/§6 already say `now >= window_end` every 60 s; left for me to settle.
+
+**Verification:** `compose.test.yaml`: 56 tests passed. Manual check with the real stack
+(2026-10-18, run by me): all four checks passed: an expired `PENDING` order was cancelled with
+`reason: EXPIRED` and its credits returned; an expired `ACCEPTED` order was cancelled and its
+pending timing change became `EXPIRED`; an `ARRIVED` order past its window stayed `ARRIVED`; no
+`ORDER_EXPIRY_FAILED` in the logs.
+
+**What I changed or rejected:** Reviewed the changed files.
+
+### 2026-10-17 — Order Service: Phase D step 1 (credit settlement over `credit.commands`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** new `order-service/src/integrations/credit.commands.ts`; changed `migrations/001_init.sql`,
+`src/config.ts`, `main.ts`, `app.module.ts`, `integrations/credit.client.ts`,
+`orders/orders.{service,repository}.ts`, `orders/confirmations.service.ts`,
+`test/orders.api.test.ts`, `package.json`, `package-lock.json`, `compose.yaml`, `README.md`,
+`AGENTS.md`; root `.env.example`; `docs/order-service-plan.md`; `credit-service/AGENTS.md`
+
+**Scenario:** after merging Jian Bing's Kafka and Credit work, decide where Phase D continues.
+The AI found that Credit consumes commands (`TransferCredits`, `ReleaseCredits` on
+`credit.commands`) rather than the `OrderCompleted` / `OrderCancelled` events I had decided on
+2026-10-15, and flagged the event-interface and schema choices under the AI policy.
+
+**Prompts:**
+> i have merged my teammate's kafka set up, we can continue implementing, where should we continue from
+
+> explain the difference between commands and events
+
+> i agree with having credit.commands for settlement and order.events for notification
+
+> yes, go with 1-3 as recommended, but for migrations, edit 001 instead of having 002. should cleanUpCredits() be renamed? use clean-up job to act as outbox.
+> Fake publisher in the automated tests, plus a manual check with Credit. The alternative is adding a Kafka broker to compose.test.yaml, which is slower but tests the real thing. explain more on this, why need another kafka broker?
+> doc the credit side issue, credit owner shall handle it
+
+> fake publisher vs kafka broker, whats the pros and cons of each, which are we using now
+
+> update this accordingly, HTTP is only for reserving credits right? release and transfer of credits is via commands
+
+> list steps for manual checks
+
+> give me the explicit commands to copy and test
+
+> jq command not found
+
+> all sections passed, update the verification lines
+
+**Key responses:** an event is a fact the publisher announces to anyone (the consumer decides what
+it means); a command asks one service to do one thing (the sender decides). Suggested Phase D
+order: credit commands, expiry worker, internal active-order lookup, `order.events`, then the
+suspension/deactivation consumers (blocked: User and Supplier publish nothing yet).
+
+**My decisions:** `credit.commands` for settlement, `order.events` for Notification. Rename the
+column to `credit_settled_at` by editing `001_init.sql` (teammates recreate the volume). The
+settlement job is the outbox. Fake producer in the automated tests, plus a manual check with
+Credit. The Credit owner handles releases for unknown orders.
+
+**What it produced:**
+- a Kafka producer (`@confluentinc/kafka-javascript`, as in Credit) sending `TransferCredits` /
+  `ReleaseCredits`, keyed by `orderId`;
+- `cleanUpCredits` renamed `settleCredits`: it also sends transfers for `COMPLETED` orders and
+  marks `credit_settled_at` once Kafka stores the command; each run waits for the previous one;
+- no release after `INSUFFICIENT_CREDITS`, since Credit kept nothing;
+- HTTP release removed (reserve stays on HTTP); `ORDER_KAFKA_BROKERS`; Compose waits for `kafka-init`;
+- tests rewritten around a fake producer (transfer on completion, releases, Kafka down, no resend);
+- doc updates, and the Credit open item.
+
+**Flagged:**
+- Root §3's [Decided] Communication bullet said HTTP for reserve, transfer and release. At my direction it
+  now says HTTP for reserve only, with transfer and release as `credit.commands`; the team still has to
+  confirm it, and the mentor to validate it.
+- The migrator does not detect edited files, so an old `order-db` volume keeps `credit_released_at`
+  and the service fails until it is recreated (`down -v`).
+- Credit dead-letters a `ReleaseCredits` for an unknown order (`HOLD_NOT_FOUND`); recorded for
+  the Credit owner with the `RELEASED` marker.
+
+**Verification:** `compose.test.yaml`: 53 tests passed. The runtime image loaded the Kafka client.
+Manual check with the real Kafka and Credit (2026-10-18, run by me): all five sections passed:
+completion pays the courier, cancellation returns the requester's credits, insufficient credits
+sends no command, and a cancellation while Kafka was stopped settled after it restarted.
+
+**What I changed or rejected:** Reviewed the changed files.
+
+### 2026-10-16 — Order Service: courier can propose timing changes
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `order-service/src/orders/confirmations.service.ts`, `src/test/orders.api.test.ts`,
+`README.md`, `AGENTS.md`, `docs/order-service-plan.md`
+
+**Scenario:** change the [Decided] rule (2026-10-13) that only the requester proposes a
+`TIMING_CHANGE` after acceptance.
+
+**Prompts:**
+> why only requester can propose timing change?
+
+> allow both requester and courier to propose timing change
+
+**My decision:** either participant can propose a timing change; the other approves or rejects.
+
+**What it produced:** removed the requester-only 403 check; the test now has the courier propose
+one in `PICKED_UP` (courier ACCEPTED, requester PENDING); the three docs record the change.
+
+**Flagged:** this changes a [Decided] team rule, so the team needs to be told.
+
+**Verification:** `compose.test.yaml`: 53 tests passed.
+
+**What I changed or rejected:** Reviewed the changed files.
 
 ### 2026-10-16 — Frontend: forgot-password feedback (issue #63)
 
@@ -30,6 +570,241 @@ an assertion for the notice to the unknown-account recovery test. No API or back
 temporary copy because the suite hard-codes the `msedge` channel.
 
 **What I changed or rejected:** _(pending my review)_
+
+### 2026-10-15 — Order Service: Phase C (lifecycle, cancellation, confirmations)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** new `order-service/src/orders/confirmations.{controller,service}.ts`; changed
+`orders/orders.{controller,service,repository,schemas}.ts`, `common/errors.ts`, `app.module.ts`,
+`test/orders.api.test.ts`, `README.md`, `AGENTS.md`, `docs/order-service-plan.md`
+
+**Scenario:** implement Phase C of the plan. Before writing code, the AI flagged three design
+points under the AI policy (credit settlement, confirmation API shapes, expired orders). I asked
+for explanations and made the decisions.
+
+**Prompts:**
+> implement phase C, list the files changed/created and what they do
+
+> explain the credits question more, whats the difference between using http and kafka events
+
+> why can we have the credit reservation part using http, then for completed or cancelled orders use events?
+
+> for the credit reservation, if anything goes wrong, actually the release cna also use event?
+
+> the final implementation should be reserve is HTTP, release and transfer to be events. but since phase D is not ready to be implemented yet, we can implement as HTTP first? or we jsut implement what we can for now, and wait for the kafka to be set up?
+
+> (question answers) Credits: "Yes, as recommended"; Confirmation API: "As previewed (Recommended)"
+
+> whats the pros and cons
+
+> yes, go with that and implement phase C
+
+**Key responses:** explained HTTP vs Kafka for settlement (HTTP plus the clean-up job never loses
+a release because the `orders` table tracks it; Kafka without an outbox can lose an event between
+commit and publish). Pointed out that root `AGENTS.md` §3 records HTTP for transfer and release,
+which conflicts with the plan's events. Laid out the pros and cons of refusing or allowing
+actions on expired orders before the Phase D worker.
+
+**My decisions:** final design is reserve over HTTP, release and transfer as events. For now
+the clean-up job keeps releasing cancellations over HTTP, and completions stay held until Phase D.
+The confirmation API is as previewed. Expired orders refuse lifecycle steps and timing changes,
+but cancellation stays allowed.
+
+**What it produced:**
+- the courier steps `pick-up`, `start-delivery` and `arrive`;
+- requester cancellation of `PENDING` orders;
+- proposing, listing and answering `TIMING_CHANGE`, `CANCELLATION` and `COMPLETION` confirmations,
+  with the order and proposal locked and rechecked in one transaction;
+- the `CONFIRMATION_PENDING` error code;
+- 11 HTTP tests;
+- doc updates recording the decisions.
+
+**Flagged:**
+- `arrive` marks a pending `TIMING_CHANGE` `SUPERSEDED`. Otherwise it would block `COMPLETION`.
+  This is **[Proposed]**, because it extends SUPERSEDED beyond terminal actions.
+- Root §3 still needs a team update for events.
+- The D3 demo needs transfer, so if Kafka is late, an HTTP transfer fallback may be needed.
+
+**Verification:** `compose.test.yaml`: 53 tests passed (12 unit, 14 database, 27 HTTP).
+
+**What I changed or rejected:** Reviewed the generated files and ran `npm test` and the `compose.test.yaml` tests.
+
+### 2026-10-15 — Order Service: one migration file
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `order-service/migrations/001_init.sql` (changed), `002_credit_reservation.sql` (deleted),
+`src/test/database.test.ts`, `README.md`, `AGENTS.md`, `docs/order-service-plan.md`
+
+**Scenario:** keep the Order schema in a single migration.
+
+**Prompts:**
+> under migrations/, i want only one migration
+
+**What it produced:** folded `002_credit_reservation.sql` into `001_init.sql` (`AWAITING_CREDIT` in
+the status checks and the no-courier rule, the `CREDIT_RESERVED` history action, the nullable
+`orders.credit_released_at`), deleted 002, and updated the tests and docs that named it. Same
+schema as before; no design change.
+
+**Flagged:** a database that has already applied the old `001_init.sql` won't pick up these
+changes, because the runner tracks applied files by name; it has to be recreated.
+
+**Verification:** `compose.test.yaml`: 42 tests passed (12 unit, 14 database, 16 HTTP).
+
+**What I changed or rejected:** Reviewed the generated files.
+
+### 2026-10-15 — Order Service: revised creation flow (credit release and clean-up)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** new `order-service/migrations/002_credit_reservation.sql`; changed
+`integrations/credit.client.ts`, `orders/orders.{service,repository,schemas}.ts`, `main.ts`,
+`test/orders.api.test.ts`, `test/database.test.ts`, `README.md`, `AGENTS.md`,
+`docs/order-service-plan.md`
+
+**Scenario:** questions about the Phase B code led to the stuck-credit problem in insert,
+reserve, commit; I compared fixes, drafted a message for my teammates, and had the plan and code
+revised to the flow I chose.
+
+**Prompts:**
+> should this part be here or in src/common/zod-validation
+
+> is it better to ask supplier service to give us the exact fields we want so we can use .strict()
+
+> what does this mean _(on the comment about a lost Credit reply leaving a hold)_
+
+> yes change it to Known limitation. what are the possible ways to solve this issue. also list the issue here
+
+> if we implement release after failure, then how cna we handle the case where the credit is down when Order sends the release? should this release by sent as event or what?
+
+> what is commonly used though.
+
+> write the case, issue, common way to solve it as a message here, i will send it to chekc with my teammate
+
+> how are we implementing it right now? the transaction and sync call right
+
+> if i implement release on failure and outbox, there is still the issue of timing gap. what if before credit commits, check order
+
+> _(pasted proposed flow)_ Order creates a committed PENDING record. Order requests a credit reservation. Credit checks that the order is PENDING. If the reservation succeeds, Order commits the actual order and changes its status to CONFIRMED. If creation fails, Order changes the status to CANCELLED and records a release request in its outbox. Credit processes the release. Even if no reservation exists yet, it records a cancellation marker so that a late reservation cannot succeed. A background worker retries failed releases. — what about this
+
+> update the plan and the code according to the revised flow
+
+**Key responses:** keep Supplier's response schema in the client and non-strict (tolerant
+reader); the stuck-hold cases (lost reply, failed commit) and the timing gap where a release
+beats a slow reserve; options compared (release on failure, retry, commit first, Credit sweep,
+outbox, events), with saga plus transactional outbox plus reconciliation named as the usual
+practice; a Credit-side check of Order cannot close the gap (uncommitted row, check-then-act),
+a `RELEASED` marker on Credit's primary key can. On the pasted flow it advised a new
+`AWAITING_CREDIT` state instead of reusing `PENDING`/adding `CONFIRMED`, dropping the
+Credit→Order check, and a job that also cancels stuck creates, with the `orders` table as the
+outbox.
+
+**Design input flagged:** Claude Code warned each time that the new state, column, background
+job, Credit release behaviour and replacing my earlier insert-reserve-commit decision are
+schema, architecture and interface decisions under the AI policy, to confirm with the team and
+the Credit owner. I told it to update the plan and code; the Credit `RELEASED` marker was not
+implemented (it belongs on `feature/credit-service`).
+
+**What it produced:** migration 002 (`AWAITING_CREDIT`, `CREDIT_RESERVED` action,
+`credit_released_at`); create now saves `AWAITING_CREDIT`, reserves outside any transaction,
+opens the order as `PENDING`, or cancels it and calls release; `CreditClient.release`;
+`OrdersService.cleanUpCredits` run every 10 s from `main.ts`; plan §0/§1/§2/§4/§6/§8/§9/§10,
+README and AGENTS.md updated; the teammate message.
+
+**Verification:** `compose.test.yaml`: 42 tests passed (12 unit, 14 database, 16 HTTP), including
+failed reservations cancelling and releasing, and the clean-up job retrying releases while
+Credit is down and cancelling only stale `AWAITING_CREDIT` orders.
+
+**What I changed or rejected:** Reviewed the generated files.
+
+### 2026-10-15 — Order Service Phase B: create, edit and accept
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** new `order-service/src/integrations/supplier.client.ts`, `integrations/credit.client.ts`,
+`orders/timing.ts`, `orders/timing.spec.ts`; changed `config.ts`, `app.module.ts`,
+`common/errors.ts`, `common/zod-validation.pipe.ts`, `orders/orders.{controller,service,repository,schemas}.ts`,
+`test/orders.api.test.ts`, `compose.yaml`, both `.env.example` files, `README.md`, `AGENTS.md`
+
+**Scenario:** implement Phase B of `docs/order-service-plan.md` on top of Phase A.
+
+**Prompts:**
+> implement phase B with the corresponding tests, list the steps for me to run testing on my own, list the new files you added and what they do. keep the code implementation clean, and keep comments concise, avoid unnecessary files
+
+> we should Insert, reserve, commit. ask Credit to reserve, and commit only if the reservation succeeded
+
+**Design input flagged:** Claude Code warned that sequencing the Credit reservation against the
+Order insert is an [Open] consistency trade-off under the AI policy and asked me to choose. I
+chose insert, reserve, commit. It also flagged, without choosing for the team: forwarding the
+caller's token to Supplier, campus time (UTC+8) for opening hours, equal open/close times as
+24 hours, the new error codes, and the conflict between the plan's direct Supplier HTTP calls
+and root AGENTS.md §3's query events.
+
+**What it produced:** `POST /orders` (window defaults/validation, both locations ACTIVE via
+Supplier, pickup-hours overlap including overnight hours, snapshots, CREATED history, Credit
+reserve inside the open transaction); `PATCH /orders/:orderId` (requester-only, PENDING-only,
+version-guarded, snapshot refresh, EDITED history with from/to values); `POST
+/orders/:orderId/accept` (one conditional update, COURIER_BUSY from the partial unique index,
+ACCEPTED history). Matches Credit's existing `/internal/credits/reserve` contract.
+
+**Verification:** `compose.test.yaml`: 41 tests passed (12 unit, 14 database, 15 HTTP against a
+fake Supplier/Credit server, including insufficient credits rolling back and two couriers
+accepting at once). Container refused to start without `ORDER_CREDIT_SERVICE_KEY` and started
+with it.
+
+**What I changed or rejected:** Reviewed the generated files.
+
+### 2026-10-14 — Order Service Phase A: NestJS and basic access
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** `order-service/src/**` (new `main.ts`, `app.module.ts`, `config.ts`, `auth/`, `common/`,
+`db/database.module.ts`, `health/`, `orders/`, tests), `order-service/package.json`,
+`tsconfig.json`, `Dockerfile`, `compose.yaml`, `.env.example`, `README.md`, `AGENTS.md`,
+root `.env.example`, `ai/usage-log/jie-yang.md` (merge resolution)
+
+**Scenario:** implement Phase A of the team's consolidated `order-service-plan.md` on top of
+Jie Yang's database foundation branch.
+
+**Prompts:**
+> Refer to the created plan order-service-plan.md, implement phase A with respective tests required. After you are done, summarise the code structure and folder structure. Try to keep the code implementation clean, keep comments concise too, structure of code and folder should be organised
+
+**What it produced:** merged `origin/feat/order-service-implementation` into
+`feat/order-service`, moving that branch's Order log entries into `jie-yang.md` (main had
+split the log). Added a NestJS server: RS256 JWKS verification with `jose` (401 bad token,
+503 keys unreachable), strict Zod paging/ID validation, the User Service error envelope,
+structured request and UNAUTHORISED_ACCESS log lines, `/health` and `/health/ready`, and
+`GET /orders/available|mine|assigned|:orderId|:orderId/history` with participant checks and
+`{ items, page, pageSize, total }` pagination. Runtime image now serves HTTP on 3005;
+`order-migrate` overrides the command.
+
+**Design input flagged:** response shapes, paging parameters, health paths and port 3005 are
+not in the plan; they copy Supplier/User conventions and are marked [Proposed] for the team.
+
+**Verification:** `npm test` (7 unit tests) and `compose.test.yaml` (27 tests: unit, 14
+existing database tests, 6 new HTTP tests against PostgreSQL 17 with a stub JWKS) passed.
+Compose stack smoke test: migration then `order-service` started, `/health/ready` 200,
+`/orders/mine` 401 without a token.
+
+**Follow-up prompt:**
+> move auth files into common/ and the health/ is not required
+
+**What I changed or rejected:** moved the JWT guard and its tests into `src/common/`; removed
+the `/health` and `/health/ready` endpoints and the now-unused `@Public` decorator. Tests
+re-run: 27 passed.
+
+**Later prompts (explain / formatting):**
+> list the steps so i can do testing on my own
+
+> what is paging about?
+
+> update the author review lines for me
+
+> yes update the usage log too
+
+Claude Code listed manual test steps and explained the paging design. It declined to write
+review checks I had not stated and asked what I had actually done; the `Author review` lines
+in every Phase A file header now record only those checks.
+
+**Author review:** I read every Phase A file in full and ran `npm test` (7 passed) and the
+`compose.test.yaml` integration tests (27 passed). The manual end-to-end steps have not been
+run yet.
 
 ### 2026-09-24 to 2026-09-25 — User Service Phase 0 foundation (PRs #9, #10, #12, #13)
 
