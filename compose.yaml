@@ -49,3 +49,5 @@ include:
   # AI-generated; user-approved database-only integration.
   - path: order-service/compose.yaml
     env_file: .env
+  - path: logging-service/compose.yaml
+    env_file: .env

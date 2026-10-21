@@ -10,6 +10,10 @@
 # Scope: Added the credit-service unit-test/build job and its integration tests against a
 #   PostgreSQL service container.
 # Author review: pending — Jian Bing to record what he checked.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+# Scope: Added the logging-service entry to the unit-test matrix (issue #52), so its tests
+#   run on every pull request like every other service's.
+# Author review: pending — Cole Lin to record what he checked.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Removed api-gateway from the Node matrix; the Envoy gateway has its own workflow
 #   (api-gateway.yml).
@@ -42,6 +46,8 @@ jobs:
           - service: supplier-service
             node: 22
           - service: credit-service
+            node: 22
+          - service: logging-service
             node: 22
     defaults:
       run:

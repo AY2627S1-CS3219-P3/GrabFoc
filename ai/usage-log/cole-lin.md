@@ -10,6 +10,20 @@ Author review: Jian Bing checked the logs locally against the AI usage-log guide
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-21 — The Logging Service (issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate and review.
+- Usage scenario: Build the Centralized Logging N2H I was assigned: a store for the structured log lines every service already writes, an ADMIN-only way to query them, and the module other services copy to produce them.
+- Prompts (exact):
+  - "I want to start work on the logging service. Ask any questions you need, and if these questions require other services input, let me know as well as I need to coordinate with my team on when they are doing these parts. You can start with a quick excerpt on what you think the logging service is."
+  - "ok ask me again what do I need to decide" — then chose: stub the consumer until the shared broker is merged; a line id with deduplication on insert; 30-day retention; and one PR covering the service, the shipper and Supplier adopting it.
+  - My answers on the line format: an explicit `service` field written by each service; `ts` as ISO-8601 UTC; align Envoy's field names; `x-request-id` as the Kafka header for tracing, with `eventId` staying the idempotency and dead-letter key.
+  - My corrections to the first ingest proposal: Envoy cannot produce to Kafka (its access loggers are stdout/file, gRPC ALS and OpenTelemetry), so the gateway stays stdout-only and services log through Kafka; "nothing can slow a request down" is not the argument, because a non-awaited HTTP POST also stays out of the request path — buffering is; the Kafka client is a real cost for every service; and at-least-once delivery means expecting duplicate rows.
+  - "finish it all first" / "do 1 to 4 and split the PRs"
+- Key response: `logging-service/` with the `log_lines` table, ingest behind an interface so the service works before the broker exists, the ADMIN-only `GET /logs`, a 30-day purge, and `src/client/log-shipper.ts` for other services to copy.
+- What I changed or rejected: Rejected the first ingest design — it assumed Envoy could produce to Kafka and argued for Kafka on the wrong grounds. Took the hybrid (services on Kafka, gateway on stdout) knowing it leaves the gateway's own line out of the store, and had that gap written down rather than glossed over. Chose deduplication on a line id over accepting approximate counts. Set retention to 30 days, shorter than the 90 for `location_changes`, because these rows hold a user id, a path and a timestamp together. Refused a dev-auth header fallback on the query API even though Supplier has one. Declined to add the Kafka topic to `infra/kafka/topics.txt` (Jian Bing's file, and nothing produces to it yet) and declined a dead-letter topic, with the reasoning recorded in `logging-service/AGENTS.md` for him to accept or refuse.
+- Verification: Read the service in full. `npm test` (78 passed) and `npm run test:int` against the `logging-db` container (16 passed: insert, a redelivered line deduplicated, every filter, paging and the purge), plus `npm run build`. Added the service to the CI matrix so its tests run on every pull request, and checked `docker compose config` still validates the whole stack with it included.
+
 ### 2026-09-29 — Coordinate search, dev-mode fix and these log entries (PR #33)
 
 - Tool and mode: Claude Code (Claude Opus 5), generate and debug.
