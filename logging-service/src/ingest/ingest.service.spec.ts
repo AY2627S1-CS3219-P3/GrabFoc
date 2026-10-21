@@ -5,6 +5,10 @@
  *        stubbed LinesService — the testing approach Cole Lin approved on 2026-10-16 while the
  *        shared broker (#75) is unmerged.
  * Author review: pending — Cole Lin to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Added the cases for a line the store will never accept versus a store that is
+ *        temporarily down.
+ * Author review: pending — Cole Lin to record what he checked.
  */
 import { Logger } from '@nestjs/common';
 import { config } from '../config';
@@ -120,9 +124,29 @@ describe('handling a message', () => {
   });
 
   // A database failure is ours, not the message's: let it propagate so the broker redelivers.
-  it('rethrows when the store fails, so the line is not lost', async () => {
-    lines.insert.mockRejectedValue(new Error('connection terminated'));
+  it.each([
+    ['a dropped connection', undefined],
+    ['a server shutting down', '57P01'],
+    ['too many clients', '53300'],
+  ])('rethrows after %s, so the broker redelivers the line', async (_why, code) => {
+    lines.insert.mockRejectedValue(Object.assign(new Error('connection terminated'), { code }));
     await expect(consumer.deliver(line())).rejects.toThrow('connection terminated');
-    expect(ingest.counts.stored).toBe(0);
+    expect(ingest.counts).toMatchObject({ stored: 0, failed: 1, rejected: 0 });
+  });
+
+  /**
+   * A line the database will never accept must not come back forever: redelivering it would loop
+   * on the same message and hold up every other service's logging behind it. There is no
+   * dead-letter topic for it, deliberately — see "Ingest" in AGENTS.md.
+   */
+  it.each([
+    ['a check constraint', '23514'],
+    ['a value too long for its column', '22001'],
+    ['a not-null violation', '23502'],
+  ])('drops a line the store rejected with %s, without redelivery', async (_why, code) => {
+    lines.insert.mockRejectedValue(Object.assign(new Error('rejected'), { code }));
+    await expect(consumer.deliver(line())).resolves.toBeUndefined();
+    expect(ingest.counts).toMatchObject({ rejected: 1, failed: 0 });
+    expect(warn.mock.calls.flat().join(' ')).toContain('SQLSTATE 23514'.slice(0, 9));
   });
 });

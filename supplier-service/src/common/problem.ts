@@ -11,10 +11,15 @@
  *        log the path without its query string.
  * Author review (Cole Lin): Read in full; confirmed the denial and error lines carry the id, that
  *        no token or failure message appears in them, and that the logged path has no query string.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Emit the 500 line through the shipper, keeping the stack in Nest's local log only
+ *        (issue #52).
+ * Author review: pending — Cole Lin to record what he checked.
  */
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { STATUS_CODES } from 'http';
+import { log } from './log';
 import { logPath, requestIdOf } from './request-id';
 
 /** Throw this to send a Problem Details response with the given status and detail text. */
@@ -51,15 +56,17 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     // (a connection string, say), and a central log store that anyone can query is the last place
     // that should hold it.
     if (status === 500) {
-      this.logger.error(
-        JSON.stringify({
-          event: 'unhandled_error',
-          requestId: requestIdOf(req),
-          method: req.method,
-          path: logPath(req),
-        }),
-        exception instanceof Error ? exception.stack : String(exception),
-      );
+      log.emit({
+        level: 'error',
+        event: 'unhandled_error',
+        requestId: requestIdOf(req),
+        method: req.method,
+        path: logPath(req),
+      });
+      // The stack stays in Nest's local log, never in the shipped line: a failure message can
+      // carry whatever it touched (a connection string, say), and a central log store that anyone
+      // can query is the last place that should hold it.
+      this.logger.error(exception instanceof Error ? exception.stack : String(exception));
     }
 
     res

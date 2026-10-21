@@ -11,12 +11,17 @@
  *        failure message out of the structured line.
  * Author review (Cole Lin): Read in full; confirmed the denial and error lines carry the id, that
  *        no token or failure message appears in them, and that the logged path has no query string.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Emit the denial and JWKS lines through the shipper, so they carry lineId, ts and
+ *        service and the Logging Service can store them (issue #52).
+ * Author review: pending — Cole Lin to record what he checked.
  */
 import { CanActivate, ExecutionContext, Injectable, Logger, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { config } from '../config';
 import { JwksUnavailableError, verifyToken } from './jwks';
+import { log } from './log';
 import { ProblemException } from './problem';
 import { logPath, requestIdOf } from './request-id';
 
@@ -34,17 +39,16 @@ const logger = new Logger('Access');
 
 /** Log a denied attempt in one structured format (401 and 403) and return the exception to throw. */
 export function denied(req: Request, status: 401 | 403, detail: string, caller?: Caller): ProblemException {
-  logger.warn(
-    JSON.stringify({
-      event: 'access_denied',
-      requestId: requestIdOf(req),
-      status,
-      method: req.method,
-      path: logPath(req),
-      userId: caller?.id ?? null,
-      role: caller?.role ?? null,
-    }),
-  );
+  log.emit({
+    level: 'warn',
+    event: 'access_denied',
+    requestId: requestIdOf(req),
+    status,
+    method: req.method,
+    path: logPath(req),
+    userId: caller?.id,
+    role: caller?.role,
+  });
   return new ProblemException(status, detail);
 }
 
@@ -78,17 +82,16 @@ export class JwtAuthGuard implements CanActivate {
       claims = await verifyToken(authorization);
     } catch (err) {
       if (err instanceof JwksUnavailableError) {
-        // The message names the JWKS URL and the underlying failure, so it goes in Nest's
-        // trace argument rather than the structured line, as on the 500 path in problem.ts.
-        logger.error(
-          JSON.stringify({
-            event: 'jwks_unavailable',
-            requestId: requestIdOf(req),
-            method: req.method,
-            path: logPath(req),
-          }),
-          err.message,
-        );
+        log.emit({
+          level: 'error',
+          event: 'jwks_unavailable',
+          requestId: requestIdOf(req),
+          method: req.method,
+          path: logPath(req),
+        });
+        // The message names the JWKS URL and the underlying failure, so it stays in Nest's local
+        // log and out of the shipped line: the store is queryable by anyone with access.
+        logger.error(`Cannot verify tokens: ${err.message}`);
         throw new ProblemException(503, 'Cannot verify credentials right now. Try again shortly.');
       }
       throw err;

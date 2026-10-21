@@ -52,7 +52,20 @@ Why Kafka rather than a non-awaited HTTP POST: **buffering**. Both stay out of t
 
 Kafka is at-least-once, so **duplicates are expected**, and `lineId` is what makes them harmless.
 
-**[Open]** `logging.lines` must be added to `infra/kafka/topics.txt` — services never create topics (#75). **Jian Bing's file.** The `x-request-id` message header must also survive republication to the retry topics and the dead-letter topic (#77, #78), and an admin **replay** needs a rule: keep the original `x-request-id` and record the replaying admin's separately, or one of the two traces is lost.
+### Against the team's Kafka rules (root `AGENTS.md` §3)
+
+Those six rules landed while this service was being written. Where it stands against each:
+
+1. **Idempotent consumer** — yes: `INSERT … ON CONFLICT DO NOTHING` on `lineId`.
+2. **Commit the offset only after the work is saved** — for the real consumer to honour (`src/ingest/consumer.ts`); `handle()` already rethrows on a temporary failure so there is something to redeliver.
+3. **Commands go to the receiver's topic** — `logging.lines` is named after the receiver, as `credit.commands` is.
+4. **Topics created centrally** — **[Open]**, see below.
+5. **Keyed by the entity whose order matters** — `requestId`, set by the shipper, so one request's lines stay in one partition and in order. A line with no request (startup, purge) is unkeyed; it has no sequence to preserve.
+6. **A dead-letter topic per consumer** — **deliberately not done.** A rejected log line is already on the producer's stdout, so nothing is lost by dropping it; and unlike a credit command, replaying it is pointless — it failed validation, so it would fail again identically. The rule's own reason ("one message can fail for one consumer and succeed for another") does not apply either, because this topic has exactly one consumer. **Jian Bing owns the rule, so this exception is his to accept or refuse** — if he refuses, the change is a `logging.lines.dlt` line in `topics.txt` and a produce call in `reject()`.
+
+Rule 6 did, however, surface a real bug, now fixed. A line the database will **never** accept — a constraint or data error, SQLSTATE class 22 or 23 — used to be rethrown, so the broker would redeliver it forever and hold every other service's logging behind it. Those are now dropped and counted like a malformed line; only a *temporary* failure (a dropped connection, a server shutting down, too many clients) is rethrown for redelivery.
+
+**[Open]** `logging.lines 3` must be added to `infra/kafka/topics.txt` — services never create topics (#75). **Jian Bing's file**, and nothing produces to the topic until a publisher is wired into the shipper, so it has not been added yet. The `x-request-id` message header must also survive republication to the retry topics and the dead-letter topic (#77, #78), and an admin **replay** needs a rule: keep the original `x-request-id` and record the replaying admin's separately, or one of the two traces is lost.
 
 ## Schema
 
@@ -84,11 +97,15 @@ _Origin: AI doc, from the plan Cole Lin approved_
 - It takes no Kafka client. A `LinePublisher` is handed in, so a service adopts `@confluentinc/kafka-javascript` (the client Credit pinned in #85) only when there is a broker to talk to.
 - **No broker configured means stdout only**, with no producer and no warnings. The Supplier Service's standalone Postman testing depends on that.
 - `emit()` returns immediately, buffers up to 1000 lines, and **drops rather than blocking** when the buffer is full or a publish fails. Dropping is acceptable because the line reaches stdout regardless, and the same `lineId` is on both, so re-reading stdout later cannot double-count.
+- Each message is **keyed by `requestId`** (Kafka rule 5), so one request's lines keep their order.
+- It writes the line itself rather than through Nest's logger, which would wrap the JSON in Nest's own timestamp, PID and context and leave a collector digging it out.
+
+**Adopted by:** the Supplier Service (`supplier-service/src/common/log.ts`), whose `access_denied`, `jwks_unavailable` and `unhandled_error` lines now go through it.
 
 ## Pending
 
 - The real Kafka consumer. `src/ingest/consumer.ts` is the seam; nothing provides it until #75. With `LOGGING_KAFKA_BROKERS` set and no consumer, startup says so and the query API still runs.
-- Services adopting the shipper: Supplier first (same PR), then User (fold into the #62 rewrite rather than retrofitting), Order (#66, no `src/` yet, so free), Credit (#85, which already has the client).
+- Services adopting the shipper: Supplier **done**. Then User (the rewrite landed in #125, so this is now a retrofit), Order (#119 landed too), Credit (#85, which already has the client). Each is its owner's to copy in; the file is ~130 lines and needs no dependency.
 - **[Open]** Nest's logger prefixes its own timestamp, PID and context, so the JSON object is the *message*, not the whole line, and a collector has to dig it out. `ConsoleLogger({ json: true })` makes it worse, nesting our JSON inside Nest's own envelope. The shipper sidesteps this by writing the line itself, which is the proposed answer for every service.
 - **[Open]** Where logs surface in the UI: a page in Zi Yi's admin dashboard, or a screen here.
 - No `location_changes` import. That table stays in the Supplier Service (root AGENTS.md open item).

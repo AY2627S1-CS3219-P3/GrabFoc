@@ -10,6 +10,18 @@ Author review: Jian Bing checked the logs locally against the AI usage-log guide
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-21 — The Logging Service, and Supplier producing lines for it (issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate and review.
+- Usage scenario: Build the Centralized Logging N2H I was assigned: the store, its ADMIN-only query API, and the shipper module every service copies to emit lines. Supplier is the first service to use it.
+- Prompts (exact):
+  - "ok now start on the logging service itself" — with my answers to the four open schema questions: an explicit `service` field written by each service; `ts` as ISO-8601 UTC (Envoy needs `"ts": "%START_TIME%"`, which is request start, while the Node gateway logs on finish); align Envoy's field names; and `x-request-id` as the Kafka header for tracing, with `eventId` staying the idempotency and dead-letter key. Plus: "flag any potential problems you see".
+  - My corrections to the first ingest proposal: Envoy cannot produce to Kafka (its access loggers are stdout/file, gRPC ALS and OpenTelemetry), so the gateway stays stdout-only and services log through Kafka; "nothing can slow a request down" is not the argument because a non-awaited HTTP POST also stays out of the request path — buffering is; the Kafka client is a real cost for every service; and at-least-once delivery means expecting duplicate rows.
+  - "finish it all first"
+- Key response: `logging-service/` with the `log_lines` table, a Kafka-ready ingest path behind an interface, the ADMIN-only `GET /logs`, a 30-day purge, and `src/client/log-shipper.ts` for other services to copy. Supplier's three log lines now go through its copy of the shipper.
+- What I changed or rejected: Rejected the first ingest design outright — it assumed Envoy could produce to Kafka, and it argued for Kafka on the wrong grounds. Chose the hybrid (services on Kafka, gateway on stdout) knowing it leaves the gateway's `request_completed` line out of the store, and had that gap written down rather than glossed. Chose a `lineId` with deduplication on insert over accepting approximate counts. Set retention to 30 days, shorter than the 90 for `location_changes`, because these rows hold a user id, a path and a timestamp together. Refused a dev-auth header fallback on the query API even though Supplier has one. Declined to add the Kafka topic to `infra/kafka/topics.txt` or to switch the services to Nest's JSON logger in this change: the first is Jian Bing's file, the second affects every service.
+- Verification: `npm test` in both services (74 logging, 177 Supplier) and `npm run build` in both. The logging integration tests (16, against a real PostgreSQL in the `logging-db` container) passed on 2026-10-16; Docker was not running on the 21st, so they and Supplier's 51 have not been re-run since the shipper change — neither touches the database layer.
+
 ### 2026-10-16 — Request-id correlation in Supplier, and the convention for every service (PR #90, issue #52)
 
 - Tool and mode: Claude Code (Claude Opus 5), generate and review.

@@ -4,11 +4,14 @@
  * Scope: Generated these unit tests for the shipper: the envelope, the shared line id, stdout
  *        always, and that a full buffer or a dead publisher drops rather than blocking.
  * Author review: pending — Cole Lin to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Updated for the requestId message key (Kafka rule 5) and added its cases.
+ * Author review: pending — Cole Lin to record what he checked.
  */
-import { LinePublisher, LogShipper } from './log-shipper';
+import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
 
 const written: string[] = [];
-const published: string[] = [];
+const published: OutboundLine[] = [];
 let ids = 0;
 
 function shipper(publisher?: LinePublisher, maxBuffer = 1000) {
@@ -21,7 +24,7 @@ function shipper(publisher?: LinePublisher, maxBuffer = 1000) {
   });
 }
 
-const collecting: LinePublisher = { publish: async (payloads) => void published.push(...payloads) };
+const collecting: LinePublisher = { publish: async (lines) => void published.push(...lines) };
 const neverSettles: LinePublisher = { publish: () => new Promise(() => undefined) };
 
 beforeEach(() => {
@@ -67,8 +70,8 @@ describe('with a broker', () => {
     const log = shipper(collecting);
     log.emit({ level: 'warn', event: 'access_denied' });
     await log.flush();
-    expect(published).toEqual(written);
-    expect(JSON.parse(published[0]).lineId).toBe('id-1');
+    expect(published.map((line) => line.value)).toEqual(written);
+    expect(JSON.parse(published[0].value).lineId).toBe('id-1');
   });
 
   it('returns before anything is published, so a request never waits on the broker', () => {
@@ -96,6 +99,22 @@ describe('with a broker', () => {
     await expect(log.flush()).resolves.toBeUndefined();
     expect(log.counts.failed).toBe(1);
     expect(written).toHaveLength(1);
+  });
+
+  // Kafka keeps order only per key, so one request's lines must share one (root AGENTS.md rule 5).
+  it('keys each line by its requestId', async () => {
+    const log = shipper(collecting);
+    log.emit({ level: 'info', event: 'request_started', requestId: 'trace-1' });
+    log.emit({ level: 'warn', event: 'access_denied', requestId: 'trace-1' });
+    await log.flush();
+    expect(published.map((line) => line.key)).toEqual(['trace-1', 'trace-1']);
+  });
+
+  it('leaves a line with no request unkeyed, since it has no sequence to keep', async () => {
+    const log = shipper(collecting);
+    log.emit({ level: 'info', event: 'service_started' });
+    await log.flush();
+    expect(published[0].key).toBeUndefined();
   });
 
   it('flushes what is left when the service shuts down', async () => {

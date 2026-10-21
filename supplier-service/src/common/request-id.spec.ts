@@ -5,6 +5,8 @@
  *        in the access_denied log.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Added the logPath cases after the PR #90 review.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Read the denial line from the shipper rather than Nest's logger (issue #52).
  * Author review (Cole Lin): Read in full; ran `npm test` (176 passed) and checked a supplied id,
  *        a minted one and a rejected one all reach the log line and the response header, and that
  *        a query string never reaches a log line.
@@ -91,10 +93,11 @@ it('gives a log site an id even when the middleware did not run', () => {
 // The guard's own outcomes are covered in auth.spec.ts; this is only about the logged id.
 describe('the requestId in the access_denied log', () => {
   const guard = new JwtAuthGuard(new Reflector());
-  let warn: jest.SpyInstance;
+  let shipped: jest.SpyInstance;
 
   beforeEach(() => {
-    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    shipped = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   });
   afterEach(() => jest.restoreAllMocks());
 
@@ -109,7 +112,7 @@ describe('the requestId in the access_denied log', () => {
         getClass: () => class {},
       } as unknown as ExecutionContext)
       .catch(() => undefined);
-    return JSON.parse(warn.mock.calls[0][0] as string);
+    return JSON.parse(shipped.mock.calls[0][0] as string);
   }
 
   it('carries the caller-supplied id through to the log line', async () => {

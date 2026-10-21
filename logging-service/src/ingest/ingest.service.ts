@@ -4,6 +4,11 @@
  * Scope: Generated the ingest path: validate a message, store it, and count stored, duplicate and
  *        rejected lines. Follows the plan Cole Lin approved on 2026-10-16.
  * Author review: pending — Cole Lin to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Split a permanently unstorable line from a temporary store failure, so a line the
+ *        database will never accept cannot be redelivered forever (the team's Kafka rules,
+ *        root AGENTS.md §3, landed while this was being written).
+ * Author review: pending — Cole Lin to record what he checked.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -14,7 +19,7 @@ import { InboundMessage, LINE_CONSUMER, LineConsumer } from './consumer';
 @Injectable()
 export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('Ingest');
-  readonly counts = { stored: 0, duplicate: 0, rejected: 0 };
+  readonly counts = { stored: 0, duplicate: 0, rejected: 0, failed: 0 };
 
   constructor(
     private readonly lines: LinesService,
@@ -72,8 +77,15 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
       if (stored) this.counts.stored += 1;
       else this.counts.duplicate += 1;
     } catch (err) {
-      // A database failure is ours, not the message's: count it and let the broker redeliver.
-      this.counts.rejected += 1;
+      const permanent = unstorable(err);
+      if (permanent) {
+        // The database will never accept this line, so redelivering it would loop on the same
+        // message forever and hold up every other service's logging behind it. Drop it instead.
+        this.reject(message, `the store rejected it (SQLSTATE ${permanent})`);
+        return;
+      }
+      // A connection failure is ours, not the message's, and it passes: let the broker redeliver.
+      this.counts.failed += 1;
       this.logger.error(
         JSON.stringify({ event: 'line_store_failed', lineId: result.data.lineId, service: result.data.service }),
         err instanceof Error ? err.message : String(err),
@@ -99,4 +111,16 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
       }),
     );
   }
+}
+
+/**
+ * The SQLSTATE of a failure the line itself caused, or undefined when the failure was ours.
+ * Class 22 is a data exception (a value too long for its column, say) and class 23 an integrity
+ * constraint violation: both mean this exact line can never be stored, however often it is
+ * redelivered. Everything else — a dropped connection, a shut-down server, too many clients — is
+ * temporary and worth retrying.
+ */
+function unstorable(err: unknown): string | undefined {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && (code.startsWith('22') || code.startsWith('23')) ? code : undefined;
 }

@@ -5,6 +5,10 @@
  *        approved on 2026-10-16: stdout always, Kafka when a publisher is wired in, a bounded
  *        buffer that drops rather than blocks, and no broker needed in order to log.
  * Author review: pending — Cole Lin to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Key each message by requestId, after the team's Kafka rule 5 landed in root
+ *        AGENTS.md §3 while this was being written.
+ * Author review: pending — Cole Lin to record what he checked.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -37,9 +41,21 @@ export interface LineInput {
   [field: string]: unknown;
 }
 
+/** One line on its way to the topic. */
+export interface OutboundLine {
+  /**
+   * The Kafka message key. Kafka keeps order only per key (root AGENTS.md §3, rule 5), so lines
+   * are keyed by `requestId`: one request's lines land in one partition, in the order they
+   * happened. A line with no request (a startup or purge line) has no key and may be interleaved,
+   * which costs nothing because there is no sequence to preserve.
+   */
+  key?: string;
+  value: string;
+}
+
 /** Whatever actually puts lines on the topic. */
 export interface LinePublisher {
-  publish(payloads: string[]): Promise<void>;
+  publish(lines: OutboundLine[]): Promise<void>;
 }
 
 export interface ShipperOptions {
@@ -57,7 +73,7 @@ export interface ShipperOptions {
 }
 
 export class LogShipper {
-  private readonly buffer: string[] = [];
+  private readonly buffer: OutboundLine[] = [];
   private readonly maxBuffer: number;
   private timer?: NodeJS.Timeout;
   private publishing = false;
@@ -98,7 +114,7 @@ export class LogShipper {
       this.counts.dropped += 1;
       return;
     }
-    this.buffer.push(payload);
+    this.buffer.push({ key: input.requestId, value: payload });
   }
 
   /** Drains the buffer. Safe to call while one is already running; one publish at a time. */

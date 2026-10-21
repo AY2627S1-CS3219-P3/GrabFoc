@@ -146,23 +146,34 @@ Postman needs a real token: log in through the User Service and put it in the co
 
 _Origin: AI doc, from the root AGENTS.md cross-cutting rule ("log unauthorised access attempts in a consistent structured format") and the correlation design approved by Cole Lin in chat on 2026-10-11. The shared log-line schema across all six services is **[Open]** and belongs to the team_
 
-Every log line this service writes about a request has a single JSON object as its message, so the
-lines can later be collected and searched by the Centralized Logging N2H.
+Every log line this service writes about a request is **one JSON object on one line**, so the lines
+can be collected and searched by the Centralized Logging service (issue #52).
 
-**That object is not the whole line.** It goes through Nest's logger, which prefixes its own
-timestamp, PID, level and context, so what reaches stdout looks like
-`[Nest] 25048 - 16/10/2026, 9:08:59 pm   WARN [Access] {"event":"access_denied",...}`. A collector
-has to pull the JSON out of that, and the stack passed with a 500 is a separate, non-JSON line.
-**[Open]** Whether services switch to a real JSON logger (Nest 11's
-`new ConsoleLogger({ json: true })`) or the logging service parses the prefix is a decision for
-every service, not this one — it is on the list in #52. The User Service's `RedactingLogger`
-extends the same `ConsoleLogger`, so whatever is chosen applies there too.
+**They go through the shipper**, `src/common/log-shipper.ts` — a copy of
+`logging-service/src/client/log-shipper.ts`, which is the canonical one; this repository has no
+shared package, so a change there has to be repeated here. `src/common/log.ts` holds this service's
+instance, with `service: 'supplier'`.
+
+The shipper writes the line itself rather than through Nest's logger, which would wrap the JSON in
+its own timestamp, PID, level and context and leave a collector digging it out. It also adds the
+three fields every line needs: `lineId` (a UUID, the store's primary key), `ts` (ISO-8601 UTC) and
+`service`.
+
+**No broker is configured**, so lines go to stdout only — nothing here depends on Kafka, and the
+service still runs and is testable on its own (`SUPPLIER_DEV_AUTH`, Postman on `:3002`). When the
+shared broker (#75) is wired up, a publisher is handed to the shipper in `log.ts` and nothing else
+in this service changes.
 
 | Event | Level | When |
 |---|---|---|
 | `access_denied` | warn | Every 401 and 403 (backlog U5.1.1) |
-| `jwks_unavailable` | error | A 503: the User Service's JWKS can't be reached. The failure message names the JWKS URL, so it goes in Nest's trace argument, not in the JSON |
-| `unhandled_error` | error | Every 500, whether or not it arrived as an `HttpException`. The stack goes in Nest's stack argument, not in the JSON: a failure message can carry whatever it touched, and a queryable log store is the last place for that |
+| `jwks_unavailable` | error | A 503: the User Service's JWKS can't be reached |
+| `unhandled_error` | error | Every 500, whether or not it arrived as an `HttpException` |
+
+**What stays out of the shipped line.** The JWKS failure message names the JWKS URL, and a 500's
+stack can carry whatever the failure touched (a connection string, say). Both still go to Nest's
+logger, which is local to the container; neither reaches the store, which is queryable by anyone
+with access to it.
 
 **Correlation.** Each of those lines carries a `requestId`, which is how a line here is matched to
 the gateway's `request_completed` line for the same request:
