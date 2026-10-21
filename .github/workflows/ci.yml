@@ -13,7 +13,7 @@
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
 # Scope: Added the logging-service entry to the unit-test matrix (issue #52), so its tests
 #   run on every pull request like every other service's.
-# Author review: pending — Cole Lin to record what he checked.
+# Author review: Cole Lin, read and approved.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Removed api-gateway from the Node matrix; the Envoy gateway has its own workflow
 #   (api-gateway.yml).
