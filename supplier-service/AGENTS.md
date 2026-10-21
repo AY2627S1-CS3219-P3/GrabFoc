@@ -142,6 +142,64 @@ Searching by a time *t* (in `HHMMhrs` format) returns the locations open at *t*.
 
 Postman needs a real token: log in through the User Service and put it in the collection's `adminToken` / `userToken` variables. The service must be usable through Postman without the UI running (D2 point 3). Keep a Postman collection in `supplier-service/postman/`. Use Postman variables (e.g. `{{token}}`, `{{baseUrl}}`) for tokens and URLs; never commit real tokens or passwords.
 
+## Logging
+
+_Origin: AI doc, from the root AGENTS.md cross-cutting rule ("log unauthorised access attempts in a consistent structured format") and the correlation design approved by Cole Lin in chat on 2026-10-11. The shared log-line schema across all six services is **[Open]** and belongs to the team_
+
+Every log line this service writes about a request is **one JSON object on one line**, so the lines
+can be collected and searched by the Centralized Logging service (issue #52).
+
+**They go through the shipper**, `src/common/log-shipper.ts` — a copy of
+`logging-service/src/client/log-shipper.ts`, which is the canonical one; this repository has no
+shared package, so a change there has to be repeated here. `src/common/log.ts` holds this service's
+instance, with `service: 'supplier'`.
+
+The shipper writes the line itself rather than through Nest's logger, which would wrap the JSON in
+its own timestamp, PID, level and context and leave a collector digging it out. It also adds the
+three fields every line needs: `lineId` (a UUID, the store's primary key), `ts` (ISO-8601 UTC) and
+`service`.
+
+**No broker is configured**, so lines go to stdout only — nothing here depends on Kafka, and the
+service still runs and is testable on its own (`SUPPLIER_DEV_AUTH`, Postman on `:3002`). When the
+shared broker (#75) is wired up, a publisher is handed to the shipper in `log.ts` and nothing else
+in this service changes.
+
+| Event | Level | When |
+|---|---|---|
+| `access_denied` | warn | Every 401 and 403 (backlog U5.1.1) |
+| `jwks_unavailable` | error | A 503: the User Service's JWKS can't be reached |
+| `unhandled_error` | error | Every 500, whether or not it arrived as an `HttpException` |
+
+**What stays out of the shipped line.** The JWKS failure message names the JWKS URL, and a 500's
+stack can carry whatever the failure touched (a connection string, say). Both still go to Nest's
+logger, which is local to the container; neither reaches the store, which is queryable by anyone
+with access to it.
+
+**Correlation.** Each of those lines carries a `requestId`, which is how a line here is matched to
+the gateway's `request_completed` line for the same request:
+
+- The API Gateway mints an id per request and forwards it as `x-request-id`
+  (`api-gateway/src/proxy.ts`). **If PR #69 lands**, the gateway becomes stock Envoy, which still
+  generates and propagates the header and still sets it in the response, but drops the Node
+  gateway's length and charset rule and can pass a caller's value straight through
+  (`api-gateway/envoy/behaviour-differences.md`). This service's own check is then the only one.
+- This service takes that header when it matches `[A-Za-z0-9._:-]{1,128}`, and otherwise **mints its
+  own** id. A malformed or missing header is replaced, never rejected: the id is diagnostic metadata,
+  so it must not turn a working request into a 400. Minting also means direct calls that skip the
+  gateway (Postman on `:3002`) still produce joinable lines.
+- The id is echoed back in the `x-request-id` response header, so a bug report can quote it.
+- **`path` is the pathname only, never the query string.** `?lat=…&lon=…` is the caller's
+  position, and a line that carries it also carries `userId` (root AGENTS.md: never log unmasked
+  personal data). The gateway drops query strings for the same reason. See `logPath()`.
+- See `src/common/request-id.ts`. Service-layer code (`locations.service.ts`) has no request object
+  and so logs no id; if that is ever needed, it takes an `AsyncLocalStorage` store.
+
+**[Open]** Service-to-service calls (Order → Supplier in D3) must forward the incoming
+`x-request-id`, or the chain breaks at the first hop. That is a team-wide convention, not this
+service's to decide alone.
+
+Never log tokens, the `Authorization` header, or unmasked personal data (root AGENTS.md).
+
 ## Query events from Order [Decided]
 
 _Origin: Team_
