@@ -8,12 +8,14 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the cases for a line the store will never accept versus a store that is
  *        temporarily down.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Added the dead-letter cases (Kafka rule 6).
  * Author review: Cole Lin, read and approved.
  */
 import { Logger } from '@nestjs/common';
 import { config } from '../config';
 import { LinesService } from '../lines/lines.service';
-import { InboundMessage, LineConsumer, MessageHandler } from './consumer';
+import { DeadLetters, InboundMessage, LineConsumer, MessageHandler } from './consumer';
 import { IngestService } from './ingest.service';
 
 // AI-generated (reviewed by Cole Lin).
@@ -46,13 +48,19 @@ const line = (overrides: Record<string, unknown> = {}) =>
 
 let lines: { insert: jest.Mock };
 let consumer: FakeConsumer;
+let parked: Array<{ message: InboundMessage; reason: string }>;
+let deadLetters: DeadLetters & { send: jest.Mock };
 let ingest: IngestService;
 let warn: jest.SpyInstance;
 
 beforeEach(() => {
   lines = { insert: jest.fn().mockResolvedValue(true) };
   consumer = new FakeConsumer();
-  ingest = new IngestService(lines as unknown as LinesService, consumer);
+  parked = [];
+  deadLetters = {
+    send: jest.fn(async (message: InboundMessage, reason: string) => void parked.push({ message, reason })),
+  };
+  ingest = new IngestService(lines as unknown as LinesService, consumer, deadLetters);
   warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
   jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
@@ -115,6 +123,44 @@ describe('handling a message', () => {
     await expect(consumer.deliver(value)).resolves.toBeUndefined();
     expect(lines.insert).not.toHaveBeenCalled();
     expect(ingest.counts.rejected).toBe(1);
+  });
+
+  /**
+   * Kafka rule 6: every consumer parks what it cannot handle in its own dead-letter topic, so a
+   * bad line can be looked at later instead of only counted.
+   */
+  it('parks a line it cannot parse in the dead-letter topic', async () => {
+    await consumer.deliver('this is not json');
+    expect(parked).toHaveLength(1);
+    expect(parked[0].reason).toContain('not valid JSON');
+    expect(ingest.counts).toMatchObject({ rejected: 1, deadLettered: 1 });
+  });
+
+  it('parks a line the store will never accept', async () => {
+    lines.insert.mockRejectedValue(Object.assign(new Error('rejected'), { code: '23514' }));
+    await consumer.deliver(line());
+    expect(parked).toHaveLength(1);
+    expect(parked[0].reason).toContain('23514');
+  });
+
+  it('does not park a line that was simply redelivered', async () => {
+    lines.insert.mockResolvedValue(false);
+    await consumer.deliver(line());
+    expect(parked).toHaveLength(0);
+  });
+
+  it('keeps going when the dead-letter topic itself fails', async () => {
+    deadLetters.send.mockRejectedValue(new Error('broker down'));
+    await expect(consumer.deliver('not json')).resolves.toBeUndefined();
+    expect(ingest.counts).toMatchObject({ rejected: 1, deadLettered: 0 });
+  });
+
+  it('still counts and logs when no dead-letter topic is wired in', async () => {
+    const alone = new IngestService(lines as unknown as LinesService, consumer);
+    await alone.onApplicationBootstrap();
+    await consumer.deliver('not json');
+    expect(alone.counts).toMatchObject({ rejected: 1, deadLettered: 0 });
+    expect(warn.mock.calls.flat().join(' ')).toContain('"deadLettered":false');
   });
 
   it('records where a rejected line was, but not what it said', async () => {

@@ -92,6 +92,9 @@ export const config = {
   // Named like Credit's topics (credit.commands, credit.user-events). It must also be listed in
   // infra/kafka/topics.txt, which #75 owns: services never create topics.
   kafkaTopic: process.env.LOGGING_KAFKA_TOPIC || 'logging.lines',
+  // Where a line this service cannot store is parked (Kafka rule 6). Listed in
+  // infra/kafka/topics.txt like every other topic.
+  kafkaDeadLetterTopic: process.env.LOGGING_KAFKA_DLT_TOPIC || 'logging.lines.dlt',
   kafkaGroupId: process.env.LOGGING_KAFKA_GROUP_ID || 'logging-service',
 
   // 30 days, deliberately shorter than the 90 the root AGENTS.md gives location_changes: these

@@ -4,6 +4,9 @@
  * Scope: Generated the consumer seam. Cole Lin's decision on 2026-10-16 was to stub the consumer
  *        until the shared broker (#75) is merged, so this file defines the interface the real
  *        Kafka consumer will implement and nothing here depends on a Kafka client.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Added the dead-letter seam, after Cole Lin decided every service should have its own
+ *        dead-letter topic as Kafka rule 6 says, rather than the exception argued before.
  * Author review: Cole Lin, read and approved.
  */
 
@@ -30,5 +33,21 @@ export interface LineConsumer {
   stop(): Promise<void>;
 }
 
-/** Injection token. Nothing provides it until #75; see IngestService for what happens then. */
+/** Injection token. Nothing provides it until a broker is wired in; see IngestService. */
 export const LINE_CONSUMER = Symbol('LINE_CONSUMER');
+
+/**
+ * Where a line this service cannot store goes, so it is parked rather than only counted
+ * (`logging.lines.dlt`, Kafka rule 6). The headers follow Credit's convention in
+ * `credit-service/src/messaging/messages.ts` — `x-source-topic`, `x-source-partition`,
+ * `x-source-offset`, `x-error`, `x-dead-lettered-at` — so one admin screen can read every
+ * service's dead letters.
+ *
+ * Note what this topic holds: messages that failed validation, so their content is by definition
+ * unchecked and may contain anything a producer sent. It is as sensitive as the store itself.
+ */
+export interface DeadLetters {
+  send(message: InboundMessage, reason: string): Promise<void>;
+}
+
+export const DEAD_LETTERS = Symbol('DEAD_LETTERS');

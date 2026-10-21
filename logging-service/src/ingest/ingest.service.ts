@@ -8,24 +8,28 @@
  * Scope: Split a permanently unstorable line from a temporary store failure, so a line the
  *        database will never accept cannot be redelivered forever (the team's Kafka rules,
  *        root AGENTS.md §3, landed while this was being written).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Send a line this service cannot store to the dead-letter topic as well as counting it
+ *        (Kafka rule 6, at Cole Lin's direction).
  * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinesService } from '../lines/lines.service';
-import { InboundMessage, LINE_CONSUMER, LineConsumer } from './consumer';
+import { DEAD_LETTERS, DeadLetters, InboundMessage, LINE_CONSUMER, LineConsumer } from './consumer';
 
 // AI-generated (reviewed by Cole Lin).
 
 @Injectable()
 export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('Ingest');
-  readonly counts = { stored: 0, duplicate: 0, rejected: 0, failed: 0 };
+  readonly counts = { stored: 0, duplicate: 0, rejected: 0, failed: 0, deadLettered: 0 };
 
   constructor(
     private readonly lines: LinesService,
     @Optional() @Inject(LINE_CONSUMER) private readonly consumer?: LineConsumer,
+    @Optional() @Inject(DEAD_LETTERS) private readonly deadLetters?: DeadLetters,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -59,13 +63,13 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
     try {
       parsed = JSON.parse(message.value);
     } catch {
-      this.reject(message, 'not valid JSON');
+      await this.reject(message, 'not valid JSON');
       return;
     }
 
     const result = inboundLineSchema.safeParse(parsed);
     if (!result.success) {
-      this.reject(
+      await this.reject(
         message,
         result.error.issues
           .map((issue) => (issue.path.length ? `${issue.path.join('.')}: ${issue.message}` : issue.message))
@@ -82,8 +86,8 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
       const permanent = unstorable(err);
       if (permanent) {
         // The database will never accept this line, so redelivering it would loop on the same
-        // message forever and hold up every other service's logging behind it. Drop it instead.
-        this.reject(message, `the store rejected it (SQLSTATE ${permanent})`);
+        // message forever and hold up every other service's logging behind it. Park it instead.
+        await this.reject(message, `the store rejected it (SQLSTATE ${permanent})`);
         return;
       }
       // A connection failure is ours, not the message's, and it passes: let the broker redeliver.
@@ -101,12 +105,28 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
    * it is exactly the thing that might carry something that should never have been sent; the
    * topic, partition and offset are enough to find it in the broker.
    */
-  private reject(message: InboundMessage, reason: string): void {
+  private async reject(message: InboundMessage, reason: string): Promise<void> {
     this.counts.rejected += 1;
+    let deadLettered = false;
+    if (this.deadLetters) {
+      try {
+        await this.deadLetters.send(message, reason);
+        this.counts.deadLettered += 1;
+        deadLettered = true;
+      } catch (err) {
+        // A dead letter that cannot be parked must not stop the consumer: the line is still on its
+        // producer's stdout, and stopping here would hold up every other service's logging.
+        this.logger.error(
+          JSON.stringify({ event: 'dead_letter_failed', topic: message.topic ?? null, offset: message.offset ?? null }),
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+    }
     this.logger.warn(
       JSON.stringify({
         event: 'line_rejected',
         reason,
+        deadLettered,
         topic: message.topic ?? null,
         partition: message.partition ?? null,
         offset: message.offset ?? null,
