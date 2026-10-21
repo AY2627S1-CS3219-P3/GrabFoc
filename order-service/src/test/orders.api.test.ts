@@ -27,6 +27,9 @@
  * Scope: Added Phase E tests: one courier accepting two orders at once, expiry racing a timing
  *        approval, and no history or event for failed transitions.
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+ * Scope: Added UserSuspended consumer tests and the 403 for a create a suspension cancelled (Phase D).
+ * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -44,6 +47,7 @@ import { KafkaProducer } from '../integrations/kafka.producer';
 import { ORDER_EVENTS_TOPIC, OrderEvent, OrderEvents } from '../integrations/order.events';
 import { runMigrations } from '../db/migrator';
 import { OrdersService } from '../orders/orders.service';
+import { USER_EVENTS_DLT, UserEvents } from '../integrations/user.events';
 import { startJwksStub, type JwksStub } from './jwks-stub';
 
 const connectionString = process.env.ORDER_TEST_DATABASE_URL;
@@ -72,6 +76,7 @@ const locations = new Map<number, object>([
   location(5, 'Frontier', { lat: 1.2966, lon: 103.7805 }),
 ]);
 let creditStatus = 201;
+let beforeCreditReply: (() => Promise<void>) | undefined; // runs while Order waits on Credit
 let creditCalls: Record<string, unknown>[] = [];
 let supplierAuthorization: string | undefined;
 const downstream = createServer(async (req, res) => {
@@ -84,20 +89,23 @@ const downstream = createServer(async (req, res) => {
   for await (const chunk of req) body += chunk;
   const action = req.url?.split('/').pop();
   creditCalls.push({ action, serviceKey: req.headers['x-service-key'], ...JSON.parse(body) });
+  await beforeCreditReply?.();
   res.writeHead(creditStatus, { 'content-type': 'application/json' }).end('{}');
 });
 
 // Records messages instead of sending them to Kafka; `kafkaDown` makes every send fail.
 let commands: CreditCommand[] = [];
 let events: { key: string; value: OrderEvent }[] = [];
+let deadLetters: { key: string; value: unknown; headers?: Record<string, string> }[] = [];
 let kafkaDown = false;
 class FakeKafkaProducer extends KafkaProducer {
   async onModuleInit() {}
   async onModuleDestroy() {}
-  async send(topic: string, key: string, value: object) {
+  async send(topic: string, key: string, value: object | string, headers?: Record<string, string>) {
     if (kafkaDown) throw new Error('broker unreachable');
     if (topic === CREDIT_COMMANDS_TOPIC) commands.push(value as CreditCommand);
     else if (topic === ORDER_EVENTS_TOPIC) events.push({ key, value: value as OrderEvent });
+    else if (topic === USER_EVENTS_DLT) deadLetters.push({ key, value, headers });
     else throw new Error(`unexpected topic ${topic}`);
   }
 }
@@ -137,9 +145,11 @@ after(async () => {
 beforeEach(async () => {
   await pool.query('TRUNCATE order_confirmations, order_history, orders');
   creditStatus = 201;
+  beforeCreditReply = undefined;
   creditCalls = [];
   commands = [];
   events = [];
+  deadLetters = [];
   kafkaDown = false;
 });
 
@@ -798,4 +808,63 @@ test('the active-order lookup counts unfinished orders as requester or courier',
   assert.equal((await active(alice)).hasActiveOrders, true);
   assert.equal((await active(bob)).hasActiveOrders, true);
   assert.equal((await active(carol)).hasActiveOrders, false);
+});
+
+// ---- UserSuspended (user.events) ----
+
+const userEvent = (type: string, userId: string) =>
+  ({ key: userId, value: JSON.stringify({ type, eventId: randomUUID(), userId, occurredAt: new Date().toISOString() }) });
+const suspend = (userId: string) => app.get(UserEvents).handle(userEvent('UserSuspended', userId));
+
+test('UserSuspended cancels every unfinished order the user is on, as requester or courier', async () => {
+  const awaiting = await insertOrder({ status: 'AWAITING_CREDIT' });
+  const pending = await insertOrder();
+  const arrived = await insertOrder({ status: 'ARRIVED', requester_id: carol, courier_id: alice });
+  const completion = await post(confirmations(arrived), alice, { kind: 'COMPLETION' });
+  const done = await insertOrder({ status: 'COMPLETED', courier_id: bob, credit_settled_at: new Date() });
+  const others = await insertOrder({ requester_id: carol });
+
+  await suspend(alice);
+
+  const statuses = async () => Promise.all([awaiting, pending, arrived, done, others].map(async (id) => (await row(id)).status));
+  assert.deepEqual(await statuses(), ['CANCELLED', 'CANCELLED', 'CANCELLED', 'COMPLETED', 'PENDING']);
+  const proposal = (await pool.query('SELECT status FROM order_confirmations WHERE id = $1', [completion.body.id])).rows[0];
+  assert.equal(proposal.status, 'SUPERSEDED');
+  const [entry] = (await history(arrived)).slice(-1);
+  assert.deepEqual([entry.actorId, entry.previousStatus, entry.changeDetails], [null, 'ARRIVED', { reason: 'USER_SUSPENDED' }]);
+
+  // A repeat changes nothing.
+  const entries = await count('order_history');
+  await suspend(alice);
+  assert.equal(await count('order_history'), entries);
+
+  await settleCredits();
+  assert.deepEqual(sent().sort(), [awaiting, pending, arrived].map((id) => ['ReleaseCredits', id]).sort());
+  // The AWAITING_CREDIT order was never visible, so nobody is told it was cancelled.
+  await publishEvents();
+  assert.deepEqual(events.map((e) => [e.value.data.orderId, e.value.data.reason]).sort(), [
+    [arrived, 'USER_SUSPENDED'],
+    [pending, 'USER_SUSPENDED'],
+  ].sort());
+});
+
+test('a create cancelled by a suspension while Credit reserves returns 403 and the hold is released', async () => {
+  beforeCreditReply = () => suspend(alice);
+  expectError(await post('/orders', alice, newOrder()), 403, 'USER_SUSPENDED');
+  const { rows } = await pool.query('SELECT id, status FROM orders');
+  assert.deepEqual(rows.map((r) => r.status), ['CANCELLED']);
+  await settleCredits();
+  assert.deepEqual(sent(), [['ReleaseCredits', rows[0].id]]);
+});
+
+test('user.events: other types are skipped, unreadable events go to the dead-letter topic', async () => {
+  const id = await insertOrder();
+  await app.get(UserEvents).handle(userEvent('UserRegistered', alice));
+  await app.get(UserEvents).handle({ key: alice, value: '{"type":"UserSuspended","userId":"not-a-uuid"}' });
+  await app.get(UserEvents).handle({ key: alice, value: 'not json' });
+  assert.equal((await row(id)).status, 'PENDING');
+  assert.deepEqual(deadLetters.map((d) => [d.key, d.value, d.headers?.['x-source-topic']]), [
+    [alice, '{"type":"UserSuspended","userId":"not-a-uuid"}', 'user.events'],
+    [alice, 'not json', 'user.events'],
+  ]);
 });

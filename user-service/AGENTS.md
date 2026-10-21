@@ -6,6 +6,9 @@ Author review: pending — Deanson to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Added UserSuspended (#72) and why per-user order still holds with two event types.
 Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+Scope: Recorded that the Order Service now consumes UserSuspended.
+Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
 -->
 
 # AGENTS.md — User Service
@@ -58,7 +61,7 @@ Sent when `POST /admin/users/:userId/suspend` commits (#72). Same topic, key and
 { "type": "UserSuspended", "eventId": "<uuid>", "userId": "<uuid>", "occurredAt": "<ISO 8601>" }
 ```
 
-Consumer: the Order Service cancels the user's ongoing orders (not built yet).
+Consumer: the Order Service cancels the user's unfinished orders (`order-service/AGENTS.md`).
 
 ### Delivery: transactional outbox
 
