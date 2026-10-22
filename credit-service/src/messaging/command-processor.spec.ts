@@ -9,6 +9,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
  * Author review: Jian Bing supplied what it states; the wording is Claude's.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+ * Scope: Renamed the HOLD_NOT_FOUND test to a transfer: a release with no hold now saves a marker
+ *        (issue #83).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -113,7 +117,7 @@ describe('CommandProcessor', () => {
     expect(next?.headers[HEADER.errorCode]).toBe(ErrorCode.ALREADY_RELEASED);
   });
 
-  it('dead-letters a release with no hold at once, as a bug (K11)', async () => {
+  it('dead-letters a transfer with no hold at once, as a bug (K11)', async () => {
     const noHold = new ProblemException(404, 'No hold.', ErrorCode.HOLD_NOT_FOUND);
     const next = await new CommandProcessor(failWith(noHold), topics).process(message(), () => NOW);
     expect(next?.topic).toBe('credit.commands.dlt');

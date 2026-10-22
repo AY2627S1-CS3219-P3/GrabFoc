@@ -36,6 +36,9 @@ Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: §8 open items: the mentor validated transfer/release as commands (PR #97 review).
 Author review: Jian Bing supplied the approval it records; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: §4.3 and K11: a release with no hold saves a RELEASED marker instead of being dead-lettered (issue #83; decided by Jian Bing).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service redesign: wallets from events, async transfer/release, balance read
@@ -126,8 +129,12 @@ store nothing.
   is retried 5 times, after 1 s, 5 s, 30 s, 2 min and 10 min, then moved to the
   dead-letter queue and logged at `error` as `credit_command_dead_lettered` with the event id and
   order id, never balances (NFR5.1).
-- **Release with no hold** also goes to the dead-letter queue: with a synchronous reserve, Order
-  never releases an order that wasn't reserved, so this is a bug.
+- ~~**Release with no hold** also goes to the dead-letter queue: with a synchronous reserve, Order
+  never releases an order that wasn't reserved, so this is a bug.~~ Superseded by #83 (2026-10-22,
+  decided by Jian Bing): Order does release after a reserve times out, and the slow reserve may land
+  afterwards. A release with no hold now saves a `RELEASED` marker (no requester or amount, no
+  balance change), and a reserve arriving later finds it, holds nothing and answers 409
+  `ALREADY_RELEASED`. A transfer with no hold is still a bug and dead-lettered.
 - A conflict that will never succeed (transfer after release, a different courier) is dead-lettered
   immediately rather than retried.
 - The message is acknowledged only after the database transaction commits, so a crash mid-way
@@ -227,7 +234,7 @@ wallet, so the order matters.
 | K8 | `user.events` keeps Kafka's **default 7-day retention**. | No requirement for replay. |
 | K9 | **All topics are created centrally** by the `infra/kafka` init container from **one topic list file**; no service creates topics. | Topics spread over many files would make configuration and tracing hard; creating topics is outside a service's scope; one permission model; maps directly onto Terraform. |
 | K10 | **Retry delays: one variable per consumer in the root `.env`** (`CREDIT_RETRY_DELAYS`). *Revised 2026-10-16 (option C):* the retry topics are **listed in `topics.txt`** like every other topic, and the consumer checks at startup that one retry topic exists per delay, refusing to start otherwise. | Central config; each consumer keeps its own timing (Claude Code pointed out Notification's 10 s target, NFR3.4). Revision: one source of truth for all topics (PR #84 review); which topics exist and how long retries wait are two facts, kept in step by the check. |
-| K11 | **Each consumer has its own DLT per source topic**; a malformed `UserRegistered` goes to `credit.user-events.dlt`. A transfer or release with no hold is a bug and is dead-lettered at once. | Not one shared DLT: a message can fail for one consumer and succeed for another. |
+| K11 | **Each consumer has its own DLT per source topic**; a malformed `UserRegistered` goes to `credit.user-events.dlt`. A transfer or release with no hold is a bug and is dead-lettered at once (release: superseded by #83, §4.3). | Not one shared DLT: a message can fail for one consumer and succeed for another. |
 | K12 | **Tolerant reader**: Credit validates only the `UserRegistered` fields it uses (`userId`), plus a contract test in CI (with #54). | Fewer messages count as malformed; breaking changes are caught before deploy. |
 | K13 | **Order → Supplier reads become plain HTTP** (proposal for the team; changes root `AGENTS.md` §3). | Order waits for the answer, so a broker adds machinery without removing the coupling, as with the synchronous reserve (D2). |
 | — | Execution: Node 24 locally (`.nvmrc`), one PR per phase. | The Kafka client has prebuilt binaries for Node 18–24 only. |
