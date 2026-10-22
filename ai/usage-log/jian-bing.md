@@ -27,12 +27,93 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 transaction history route entry from Jian Bing's prompts.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 quieter Kafka logs entry from Jian Bing's prompt.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #96).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review lines entry from Jian Bing's prompt.
+Author review: Jian Bing supplied the prompt and what he checked; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 host-side broker examples entry from Jian Bing's prompt.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Narrowed the 2026-10-22 Author review lines entry to PR #96; added "Changed or rejected" lines to the quieter Kafka logs and transaction history route entries, from what those entries record (PR #97 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+
+
+### 2026-10-22 — Codex review fix: remaining host-side broker examples (PR #96)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `.env.example`, `order-service/README.md`, `user-service/src/config/env.validation.ts`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Codex noted that the User and Order host-side broker examples still said
+`localhost:9094` after #96 made `127.0.0.1:9094` the host address.
+
+**Prompts (exact):**
+> [Image #1] help me resolve thsi convo and fix *(screenshot: the Codex comment "Update every host-side broker example" on PR #96)*
+
+**What it produced:** the four remaining examples (two in `.env.example`, the Order README, User's
+env validation comment and message) now say `127.0.0.1:9094`. The historical plan documents were left as written.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** No test asserts the changed message; the rest is comments and docs.
+
+### 2026-10-22 — Recording my review in the pending Author review lines (PR #96)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `.env.example`, `credit-service/{README,AGENTS}.md`, `infra/kafka/README.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** An unresolved review thread on #96 asked for its pending Author review lines to be
+filled before merging. I told Claude what I had checked and asked it to write the lines.
+
+**Prompts (exact):**
+> there are still unresolved voncersatiosn in #96 that are blocking my merge, but in the meantime while resolving them, coudl oyu help me edit the pending author review liens, i have tested all the filesna dran them myself to see them working as intended, i ran the docker lcoally, checked the npm test suite, ran the kafba tui to see the messages and their strucutre, as wlel as looked at the files changed on github
+
+**What it produced:** each pending "Author review" line this PR adds now states what I checked;
+each edited file records that Claude wrote the wording from my account.
+
+**Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
+
+**Verification:** All five lines this PR added as pending were replaced; other members' pending lines
+were left alone.
+
+### 2026-10-18 — Quieter Kafka logs in tests and the service
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `infra/kafka/{compose.yaml,README.md}`, `.env.example`, `credit-service/src/messaging/kafka.logger{,.spec}.ts`,
+`credit-service/src/messaging/{kafka.connection,kafka.runner}.ts`, `credit-service/src/{config,test/kafka}.ts`,
+`credit-service/{README,AGENTS}.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** `npm run test:kafka` passed but printed many console errors. Claude explained the three
+sources; I asked for the two fixes it proposed.
+
+**Prompts (exact):**
+> lets make the small fixes for the tests that u mentioned
+
+**Key responses:** Most of the noise came from `localhost` resolving to IPv6 `::1` first on macOS,
+where the broker's port isn't published; the rest was the library logging Credit's internal
+"not due yet" error on every retry wait, plus an intentional database-outage test.
+
+**What it produced:** the broker advertises `127.0.0.1:9094` (and that's the host default
+everywhere); a Kafka client logger that writes through Nest's logger and drops only the
+not-due-yet error; `NotDueYet` carries a fixed message for the filter to match.
+
+**Changed or rejected:** I took both fixes Claude proposed; the intentional database-outage test was
+left as it is, so its log output stays.
+
+**Verification:** Logger tests written first (red, then green). Unit 132/132, integration 60/60,
+Kafka 12/12; the Kafka run now prints no console errors.
 
 ### 2026-10-18 — Credit transaction history route (`GET /credits/:userId/transactions`)
 
@@ -64,6 +145,10 @@ the balance route answers. I approved the plan, including the 404.
 balance route (own id or ADMIN), newest first, `limit` 1–100 (default 20), `before` = the id of the
 last row seen; strict query validation; `{items: [{id, orderId, type, availableChange,
 reservedChange, createdAt}], nextBefore}`, with `nextBefore` null on the last page.
+
+**Changed or rejected:** I chose the route, paging and timing from Claude's options, approved its
+suggested 404 for a user with no wallet, and moved removing lazy wallet creation into a separate PR
+held until #54.
 
 **Verification:** Test-first: 10 new schema unit tests and 15 new HTTP integration tests (own
 history, paging across 3 pages, only the asked user's rows, 403, admin, 404, bad and unknown query

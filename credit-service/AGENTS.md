@@ -34,6 +34,12 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented GET /credits/:userId/transactions (route decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Host broker address is 127.0.0.1:9094 (quieter logs).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #96).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 -->
 
 # AGENTS.md — Credit Service
@@ -186,7 +192,7 @@ and neither credential opens the other's routes. The balance route never creates
 _Origin: Team (Jian Bing's decisions K1–K13 in the redesign spec §9); AI doc (details proposed by
 Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3 "Messaging (Kafka)"._
 
-- **Broker:** the shared Kafka in `infra/kafka/` (`kafka:9092` in Compose, `localhost:9094` from
+- **Broker:** the shared Kafka in `infra/kafka/` (`kafka:9092` in Compose, `127.0.0.1:9094` from
   the host). `kafka-init` creates every topic; Credit creates none.
 - **Consumer group** `credit-service`, starting from the oldest message the first time. An offset
   is stored only after its message's work is saved; a crash re-reads it, which is safe because every
