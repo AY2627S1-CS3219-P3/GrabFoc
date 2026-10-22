@@ -9,6 +9,9 @@ Author review: Pending Jie Yang's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Added POST /admin/users/:userId/suspend to the protected-route cases (#72).
 Author review: Reviewed by Zi Yi, 2026-10-21 (suspend route checked by hand through Envoy: 401 without a token, 404 from the User Service with one); the suite does not run on Zi Yi's machine; pending Jie Yang's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added an Order upstream and checks for the /orders routes (protected, forwarded unchanged; /internal/orders not routed).
+Author review: Pending review by Deanson.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
 import assert from 'node:assert/strict';
@@ -72,13 +75,14 @@ const upstream = (instance) => createServer((req, res) => {
       requestId: req.headers['x-request-id'], body: Buffer.concat(chunks).toString() }));
   });
 });
-const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2')];
+const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2'), upstream('order')];
 const containers = [];
 let ports, gateway, balanced;
 
 async function startEnvoy(overrides = {}) {
   const env = { GATEWAY_PORT: '3003', USER_SERVICE_URL: `http://host.docker.internal:${ports[0]}`,
     SUPPLIER_SERVICE_URL: `http://host.docker.internal:${ports[1]}`,
+    ORDER_SERVICE_URL: `http://host.docker.internal:${ports[3]}`,
     USER_SERVICE_JWKS_URL: `http://host.docker.internal:${ports[0]}/.well-known/jwks.json`, ...overrides };
   const args = ['run', '-d', '--entrypoint', '/bin/sh', '--label', 'foc.task=envoy-integration', '-p', '127.0.0.1::3003'];
   if (process.platform === 'linux') args.push('--add-host', 'host.docker.internal:host-gateway');
@@ -128,11 +132,32 @@ test('unknown methods, paths and internal APIs stay unavailable without a token'
   for (const url of [gateway]) {
     for (const [method, path] of [['DELETE', '/locations'], ['GET', '/auth/login'],
       ['POST', '/auth/unknown'], ['GET', '/internal/users/123'], ['GET', '/locations/12/extra'],
-      ['GET', '/users/123'], ['POST', '/admin/users']]) {
+      ['GET', '/users/123'], ['POST', '/admin/users'], ['GET', '/internal/orders/users/123/active'],
+      ['DELETE', '/orders/123'], ['POST', '/orders/123/unknown']]) {
       const res = await fetch(url + path, { method });
       assert.equal(res.status, 404, `${method} ${path}`);
       assert.deepEqual(await res.json(), { error: 'Not found' });
     }
+  }
+});
+
+// AI-generated (Claude Code, 2026-10-22; pending review by Deanson)
+test('order routes require a token and reach the Order Service unchanged', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const cases = [['GET', '/orders/available?page=2&pageSize=5'], ['GET', '/orders/mine'], ['GET', '/orders/assigned'],
+    ['POST', '/orders'], ['GET', `/orders/${id}`], ['PATCH', `/orders/${id}`],
+    ...['accept', 'cancel', 'pick-up', 'start-delivery', 'arrive'].map((step) => ['POST', `/orders/${id}/${step}`]),
+    ['GET', `/orders/${id}/confirmations`], ['POST', `/orders/${id}/confirmations`],
+    ['POST', `/orders/${id}/confirmations/${id}/respond`]];
+  for (const [method, path] of cases) {
+    assert.equal((await fetch(gateway + path, { method })).status, 401, `${method} ${path} without a token`);
+    const res = await fetch(gateway + path, { method, headers: { authorization: `Bearer ${token()}` },
+      ...(method === 'GET' ? {} : { body: '{"version":1}' }) });
+    assert.equal(res.status, 200, `${method} ${path}`);
+    const data = await res.json();
+    assert.equal(data.instance, 'order');
+    assert.equal(data.method, method);
+    assert.equal(data.path, path);
   }
 });
 
@@ -282,7 +307,7 @@ test('non-origin-form request targets cannot redirect the proxy', async () => {
 });
 
 test('round robin reaches two isolated Supplier replicas', async () => {
-  balanced = await startEnvoy({ FOC_TEST_SUPPLIER_URLS: JSON.stringify(ports.slice(1).map(
+  balanced = await startEnvoy({ FOC_TEST_SUPPLIER_URLS: JSON.stringify(ports.slice(1, 3).map(
     (port) => `http://host.docker.internal:${port}`)) });
   const instances = new Set();
   for (let n = 0; n < 16; n++) {

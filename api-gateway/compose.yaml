@@ -2,6 +2,10 @@
 # Tool: Codex (model: GPT-6), date: 2026-10-13
 # Scope: Use stock Envoy from the standard Dockerfile and pass existing infrastructure settings through Compose environment interpolation.
 # Author review: Pending Jie Yang's review and live integration check.
+# AI Assistance Disclosure update:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+# Scope: Passed ORDER_SERVICE_URL and GATEWAY_ORDERS_PREFIX through for the Order routes.
+# Author review: Pending review by Deanson.
 
 name: foc
 
@@ -23,9 +27,12 @@ services:
       GATEWAY_WORKERS: ${GATEWAY_WORKERS:-2}
       USER_SERVICE_URL: ${USER_SERVICE_URL:-http://user-service:3001}
       SUPPLIER_SERVICE_URL: ${SUPPLIER_SERVICE_URL:-http://supplier-service:3002}
+      # AI-generated (Claude Code, 2026-10-22; pending review by Deanson): Order routes in 30-order.routes.json.
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-http://order-service:3005}
       USER_SERVICE_JWKS_URL: ${USER_SERVICE_JWKS_URL:-}
       GATEWAY_AUTH_PREFIX: ${GATEWAY_AUTH_PREFIX:-/auth}
       GATEWAY_LOCATIONS_PREFIX: ${GATEWAY_LOCATIONS_PREFIX:-/locations}
+      GATEWAY_ORDERS_PREFIX: ${GATEWAY_ORDERS_PREFIX:-/orders}
       GATEWAY_JWT_ISSUER: ${GATEWAY_JWT_ISSUER:-}
       GATEWAY_JWT_AUDIENCE: ${GATEWAY_JWT_AUDIENCE:-}
       FOC_TEST_SUPPLIER_URLS: ${FOC_TEST_SUPPLIER_URLS:-}

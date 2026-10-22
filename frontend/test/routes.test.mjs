@@ -8,6 +8,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Asserted the reset-code notice in the unknown-account recovery test (issue #63).
 Author review: pending review by Zi Yi.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added a mock Order upstream and tests for the order proxy allowlist, its same-origin check, and userId in the session status.
+Author review: Pending review by Deanson.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -20,6 +25,7 @@ import { chromium } from "playwright-core";
 // AI-generated (earlier version reviewed by Jie Yang; latest tests pending review)
 const requests = [];
 const adminAccess = `header.${Buffer.from(JSON.stringify({ role: "ADMIN" })).toString("base64url")}.signature`;
+const subjectAccess = `header.${Buffer.from(JSON.stringify({ role: "USER", sub: "user-42" })).toString("base64url")}.signature`;
 const locations = [
   { id: 1, name: "COM3 Basement", type: "Food", building: "COM3", floor: -1, location_desc: "Campus pickup point", lat: 1.295, lon: 103.773, open_time: "0900hrs", close_time: "1800hrs", image_url: null, status: "ACTIVE", version: 1 },
   { id: 2, name: "UTown Print", type: "Printing", building: "UTown", floor: 1, location_desc: "Print counter", lat: 1.304, lon: 103.773, open_time: null, close_time: null, image_url: null, status: "ACTIVE", version: 1 },
@@ -95,6 +101,13 @@ const gateway = createServer(async (request, response) => {
     response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(item));
     return;
   }
+  // AI-generated (Claude Code, 2026-10-22; pending review by Deanson): echoes what the order proxy forwarded.
+  if (request.url?.startsWith("/orders")) {
+    if (!request.headers.authorization) { response.writeHead(401).end(); return; }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ method: request.method, path: request.url, body }));
+    return;
+  }
   if (request.url === "/users/me") {
     if (authorityStatus !== 200) { response.writeHead(authorityStatus).end(); return; }
     if (authorityRejectOriginal && request.headers.authorization === "Bearer test-access") { response.writeHead(401).end(); return; }
@@ -113,6 +126,7 @@ const gateway = createServer(async (request, response) => {
       return;
     }
     const accepted = request.headers.authorization === `Bearer ${adminAccess}` ||
+      request.headers.authorization === `Bearer ${subjectAccess}` ||
       request.headers.authorization === "Bearer test-access" ||
       (request.headers.authorization === "Bearer new-access" && !rejectRotatedAccess);
     response.writeHead(accepted ? 200 : 401, { "content-type": "application/json" });
@@ -1184,4 +1198,55 @@ test("JWKS-style 503 preserves existing and newly rotated sessions until recover
     authorityStatus = 200;
     assert.equal(await page.evaluate(() => fetch("/api/session/profile").then((r) => r.status)), 200);
   } finally { authorityStatus = 200; await context.close(); }
+});
+
+// AI-generated (Claude Code, 2026-10-22; pending review by Deanson)
+const orderId = "11111111-1111-4111-8111-111111111111";
+const orderHeaders = (origin) => ({ cookie: "foc_access=test-access; foc_refresh=order-proxy", "sec-fetch-site": "same-origin",
+  origin, "content-type": "application/json" });
+
+test("order proxy forwards only the allowlisted Order endpoints", async () => {
+  const allowed = [
+    ["GET", "available?page=2&pageSize=5", "/orders/available?page=2&pageSize=5"],
+    ["GET", "mine", "/orders/mine"], ["GET", "assigned?page=3", "/orders/assigned?page=3"],
+    ["POST", "", "/orders"], ["GET", `${orderId}?ignored=1`, `/orders/${orderId}`], ["PATCH", orderId, `/orders/${orderId}`],
+    ...["accept", "cancel", "pick-up", "start-delivery", "arrive"].map((step) => ["POST", `${orderId}/${step}`, `/orders/${orderId}/${step}`]),
+    ["GET", `${orderId}/confirmations`, `/orders/${orderId}/confirmations`],
+    ["POST", `${orderId}/confirmations`, `/orders/${orderId}/confirmations`],
+    ["POST", `${orderId}/confirmations/${orderId}/respond`, `/orders/${orderId}/confirmations/${orderId}/respond`],
+  ];
+  for (const [method, path, upstream] of allowed) {
+    const response = await fetch(`${baseUrl}/api/session/orders${path ? `/${path}` : ""}`, {
+      method, headers: orderHeaders(baseUrl), ...(method === "GET" ? {} : { body: '{"version":1}' }) });
+    assert.equal(response.status, 200, `${method} ${path}`);
+    const data = await response.json();
+    assert.equal(data.path, upstream);
+    assert.equal(data.method, method);
+    if (method !== "GET") assert.deepEqual(data.body, { version: 1 });
+  }
+  const denied = [["GET", ""], ["GET", "internal/orders/users/abc/active"], ["GET", "not-a-uuid"], ["PATCH", "mine"],
+    ["POST", "available"], ["GET", `${orderId}/accept`], ["POST", `${orderId}/complete`], ["PATCH", `${orderId}/confirmations`],
+    ["POST", `${orderId}/confirmations/not-a-uuid/respond`], ["POST", `${orderId}/history`]];
+  const before = requests.length;
+  for (const [method, path] of denied) {
+    const response = await fetch(`${baseUrl}/api/session/orders${path ? `/${path}` : ""}`, {
+      method, headers: orderHeaders(baseUrl), ...(method === "GET" ? {} : { body: "{}" }) });
+    assert.equal(response.status, 404, `${method} ${path}`);
+  }
+  assert.equal(requests.length, before, "denied paths never reach the gateway");
+});
+
+test("order mutations from another origin are refused before the gateway", async () => {
+  const before = requests.length;
+  const response = await fetch(`${baseUrl}/api/session/orders/${orderId}/accept`, {
+    method: "POST", headers: orderHeaders("https://example.com"), body: '{"version":1}' });
+  assert.equal(response.status, 403);
+  assert.equal(requests.length, before);
+});
+
+test("session status includes the user id from the access token", async () => {
+  const response = await fetch(`${baseUrl}/api/session/status`, {
+    headers: { cookie: `foc_access=${subjectAccess}; foc_refresh=status-user`, "sec-fetch-site": "same-origin" } });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { authenticated: true, role: "USER", userId: "user-42" });
 });
