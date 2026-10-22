@@ -5,10 +5,19 @@ Scope: §9 D2 demo checks: replaced the stale `status=INACTIVE` / `ALL` query wi
 Author review (Jian Bing): Checked the whole end-to-end flow locally.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: §3 "Messaging (Kafka)" [Proposed] (six rules and two proposed changes to [Decided] items) and three §10 open items, written from Jian Bing's walkthrough decisions (redesign spec §9, K1–K13); consumer rules 1–2 proposed by Claude Code and confirmed by him.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Rule 4: topics.txt is the single list, retry topics included; startup check (K10 revised by Jian Bing).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+Scope: §3 Communication: HTTP for reserve only; transfer and release as credit.commands (Zi Yi's direction).
+Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: §3 Communication: recorded the mentor's validation of transfer/release as Kafka commands (PR #97 review).
+Author review: Jian Bing supplied the approval it records; the wording is Claude's.
 -->
 
 # AGENTS.md — FoC (CS3219 AY26/27 S1, Project Group 3)
@@ -133,7 +142,7 @@ _Origin: Restated from the Brief (M2–M7) and Lecture; Team (API Gateway, authe
 - Services: **API Gateway**, **User**, **Supplier**, **Order**, **Credit**, **Notification** (+ Frontend; Centralized Logging is an N2H).
 - **API Gateway [Decided]:** the single entry point for the frontend. It authenticates requests (JWT middleware) and routes them to services. See §6.
 - Communication **[Decided]**:
-  - Synchronous HTTP between Order → Credit to reserve/transfer/release
+  - Synchronous HTTP from Order → Credit **only to reserve** credits. **Transfer** (on completion) and **release** (on cancellation) are commands Order sends on Kafka's `credit.commands` (`TransferCredits`, `ReleaseCredits`; shapes in `credit-service/AGENTS.md`). Changed from HTTP for all three by Zi Yi (Credit owner) on 2026-10-17; agreed by the team on 2026-10-18 and validated by the mentor (recorded 2026-10-22).
   - Order Service **publishes** query events to a message broker to query Supplier's database (e.g. all locations of type Food); **Supplier Service is the only consumer**. Order just shows loading while it waits for the response; if no response arrives, it times out and shows an error. Each query carries a timestamp, so Supplier can reject old requests (when the same user has sent a newer query).
   - Order Service **publishes** order-state events to a message broker; **Notification Service is the only consumer**. Order never waits on Notification.
 - **Database [Decided]:** PostgreSQL for User and Supplier. **[Proposed]** PostgreSQL for the rest of the other services (for simplicity)
@@ -153,8 +162,7 @@ _Origin: Team (Jian Bing, 2026-10-15: Kafka chosen with Jie Yang; topic ownershi
   4. **All topics are created centrally** by the `infra/kafka` init container from one topic list file, `infra/kafka/topics.txt`, the single source of truth for every topic, retry and dead-letter topics included (broker auto-creation is off); add a topic by adding a line there. A service never creates topics. Each consumer's retry delays are one variable in the root `.env` (e.g. `CREDIT_RETRY_DELAYS`); the consumer checks at startup that its retry topics in the list match its delays, and refuses to start if not.
   5. **Key each message by the entity whose order matters** (e.g. `orderId`, `userId`): Kafka keeps order only per key.
   6. **Each consumer has its own dead-letter topic per source topic**, never one shared by all services: `<topic>.dlt` when the consumer owns the topic (e.g. `credit.commands.dlt`), otherwise `<consumer>.<topic>.dlt` (e.g. `credit.user-events.dlt`), because one message can fail for one consumer and succeed for another.
-- Proposed changes to the [Decided] items above, pending the team (and the mentor for the first):
-  - Transfer and release become commands on `credit.commands`; reserve stays synchronous HTTP.
+- Proposed change to the [Decided] items above, pending the team (the transfer/release change is now in the Communication bullet):
   - Order → Supplier location reads become plain HTTP instead of query events: Order waits for the answer, so a broker adds machinery without removing the coupling.
 
 ### Repository layout [Decided]

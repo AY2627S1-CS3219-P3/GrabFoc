@@ -2,20 +2,35 @@
 AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
 Scope: Wrote the run and test instructions for the Credit Service.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Added reading a balance and the Postman Balance folder.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added Kafka (wallets from UserRegistered), Node 24, the Kafka tests and the two-file
 Compose command (PR #84 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added credit commands, dead letters and the Postman Dead letters folder.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Listed CREDIT_JWKS_URL in the run-outside-Docker steps (PR #73 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Host broker address localhost:9094 → 127.0.0.1:9094, so clients don't try IPv6 first (PR #96).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #96).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented the required Kafka key for a hand-sent command, and the renumbered Postman folders (PR #94 review).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #94).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 -->
 
 # Credit Service
@@ -47,6 +62,10 @@ and `{"type":"ReleaseCredits","eventId","orderId"}`. A command that can't be app
 retried through `credit.commands.retry.*`; one that keeps failing, or never can succeed, lands on
 `credit.commands.dlt`.
 
+To send one by hand: Kafka UI → Topics → `credit.commands` → **Produce Message**. Set the **key to
+the command's `orderId`** (a command keyed by anything else is dead-lettered at once) and the value
+to e.g. `{"type":"TransferCredits","eventId":"<new uuid>","orderId":"<the order's uuid>","courierId":"<courier's uuid>"}`.
+
 ### Dead letters (admins)
 
 ```bash
@@ -68,7 +87,7 @@ not route to it: only the Order Service calls it.
 To run it outside Docker, start its dependencies from the repo root (`docker compose up -d
 credit-db kafka-init user-service`; the User Service publishes the signing keys), set
 `CREDIT_DATABASE_URL`, `CREDIT_SERVICE_KEY`, `CREDIT_JWKS_URL=http://localhost:3001/.well-known/jwks.json`
-and `CREDIT_KAFKA_BROKERS=localhost:9094` (see `.env.example`), then `npm install && npm run start:dev`
+and `CREDIT_KAFKA_BROKERS=127.0.0.1:9094` (see `.env.example`), then `npm install && npm run start:dev`
 in this folder (Node 24, see `.nvmrc`).
 
 ## Try it
@@ -97,8 +116,8 @@ token against the User Service's public keys, so User Service must be running.
 
 Import `postman/credit.postman_collection.json`, set its `serviceKey` variable to your
 `CREDIT_SERVICE_KEY`, and run each folder top to bottom. Every folder starts with fresh ids, so
-you can re-run it as often as you like. For the **4. Balance** folder, also set `userToken` (an
-access token from `/auth/login`) and `userId` (that user's id). For **5. Dead letters**, also set
+you can re-run it as often as you like. For the **3. Balance** folder, also set `userToken` (an
+access token from `/auth/login`) and `userId` (that user's id). For **4. Dead letters**, also set
 `adminToken` (an ADMIN's access token).
 
 ## Test it
@@ -109,7 +128,7 @@ npm test             # unit tests: request schemas, service-key guard, message p
 docker compose up -d credit-db        # from the repo root
 npm run test:int     # integration tests against the credit_test database
 docker compose up -d kafka            # from the repo root
-npm run test:kafka   # end-to-end tests against the Compose broker (localhost:9094)
+npm run test:kafka   # end-to-end tests against the Compose broker (127.0.0.1:9094)
 ```
 
 The Kafka tests create their own uniquely named topics and consumer group, so they never touch a

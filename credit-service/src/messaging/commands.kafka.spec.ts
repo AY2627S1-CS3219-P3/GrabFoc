@@ -3,7 +3,13 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Generated end-to-end tests against a real Kafka broker and PostgreSQL for credit commands:
  *        duplicates, retries, dead letters and replay (spec §7, §9).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+ * Author review: Jian Bing supplied what it states; the wording is Claude's.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Generic envelope columns message_key / message_type.
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Tests for a transfer to a courier with no wallet, now that wallets are never created
  *        lazily (#79; decided by Jian Bing).
@@ -213,5 +219,5 @@ it('records an unreadable user event in the table, where it cannot be replayed',
   const eventId = randomUUID();
   await send(topics.userEvents, 'bad', { type: 'UserRegistered', eventId, userId: 'nope' });
   const row = await waitFor(() => deadLetterFor(eventId));
-  expect(row).toMatchObject({ source_topic: topics.userEvents, command_type: 'UserRegistered' });
+  expect(row).toMatchObject({ source_topic: topics.userEvents, message_key: 'bad', message_type: 'UserRegistered' });
 });

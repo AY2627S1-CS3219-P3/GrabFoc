@@ -11,24 +11,89 @@ Scope: Wrote the Credit Service design and implementation entry under the Jian B
 Author review: Jian Bing supplied the prompts quoted in that entry; pending his review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote the 2026-10-14 Credit Service redesign entry from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; the prompts are mine and the summaries are accurate.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Wrote the 2026-10-14/15 Kafka (redesign Phases 2–3) entry from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; the prompts are mine and the summaries are accurate.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote the 2026-10-14 CI workflow entry (issue #57, PR #74) from Jian Bing's prompts.
 Author review: Jian Bing supplied the quoted prompts and the wording of the entry's Verification line.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Restored five prompts under "Prompts (exact)" to the wording Jian Bing typed (commit 1a19851 had corrected their typos and removed one; PR #73 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; the prompts are mine and the summaries are accurate.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Codex review entries (one per PR) from Jian Bing's prompts; added the usage modes and
+"changed or rejected" lines to the two 2026-10-18 author-review entries, and Verification to the
+second (PR #97 review).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 credit_transactions entry from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 transaction history route entry from Jian Bing's prompts.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 quieter Kafka logs entry from Jian Bing's prompt.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #96).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review lines entry from Jian Bing's prompt.
+Author review: Jian Bing supplied the prompt and what he checked; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 dead-letter envelope entry from Jian Bing's prompts.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 entry on removing the HTTP transfer/release routes from Jian Bing's prompts.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added the "Changed or rejected" line to the 2026-10-18 dead-letter envelope entry, from Jian Bing's prompts (PR #95 review).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 replay-key entry from Jian Bing's prompts.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #95).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 spec removal-schedule entry from Jian Bing's prompts.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #94).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 host-side broker examples entry from Jian Bing's prompt.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Narrowed the 2026-10-22 Author review lines entry to PR #96; added "Changed or rejected" lines to the quieter Kafka logs and transaction history route entries, from what those entries record (PR #97 review).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review lines entry for PR #95 from Jian Bing's prompt (PR #97 review: one entry per PR).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added the "Changed or rejected" line to the 2026-10-18 HTTP route removal entry, from what it records (PR #97 review).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review lines entry for PR #94 from Jian Bing's prompt (PR #97 review: one entry per PR).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review lines entry for PR #97 from Jian Bing's prompt (PR #97 review: one entry per PR).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 approvals entry from Jian Bing's prompt.
+Author review: Jian Bing supplied the prompt and the approvals; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 lazy wallet creation removal entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added the "Changed or rejected" line to the lazy wallet creation removal entry, from the choices it records; noted the merge with main (Postman rebuilt on the reserve-only folders).
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -36,6 +101,422 @@ Author review: pending — Jian Bing to record what he checked.
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+
+### 2026-10-22 — Recording Zi Yi's and the mentor's approvals (PR #97)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `AGENTS.md` (§3), `credit-service/AGENTS.md`, `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Two review threads on #97 asked for recorded approval before merging: Zi Yi's for the
+dead-letter migration, and the mentor's for removing the HTTP transfer/release routes.
+
+**Prompts (exact):**
+> yes ziyi approved dead letter migratuin, and mentor has valdiated remvoing http synchronous communication
+
+**What it produced:** both approvals recorded where the threads pointed, dated as recorded on 2026-10-22.
+
+**Changed or rejected:** Nothing rejected; the approvals are as I reported them.
+
+**Verification:** Docs only.
+
+### 2026-10-22 — Codex review fix: remaining host-side broker examples (PR #96)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `.env.example`, `order-service/README.md`, `user-service/src/config/env.validation.ts`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Codex noted that the User and Order host-side broker examples still said
+`localhost:9094` after #96 made `127.0.0.1:9094` the host address.
+
+**Prompts (exact):**
+> [Image #1] help me resolve thsi convo and fix *(screenshot: the Codex comment "Update every host-side broker example" on PR #96)*
+
+**What it produced:** the four remaining examples (two in `.env.example`, the Order README, User's
+env validation comment and message) now say `127.0.0.1:9094`. The historical plan documents were left as written.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** No test asserts the changed message; the rest is comments and docs.
+
+### 2026-10-22 — Recording my review in the pending Author review lines (PR #95)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/src/dead-letters/dead-letters.service{,.int.spec}.ts`, `credit-service/AGENTS.md`, `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** The pending Author review lines on #95 had to be filled before merging. I told Claude
+what I had checked and asked it to write the lines.
+
+**Prompts (exact):**
+> there are still unresolved voncersatiosn in #96 that are blocking my merge, but in the meantime while resolving them, coudl oyu help me edit the pending author review liens, i have tested all the filesna dran them myself to see them working as intended, i ran the docker lcoally, checked the npm test suite, ran the kafba tui to see the messages and their strucutre, as wlel as looked at the files changed on github
+
+**What it produced:** each pending "Author review" line this PR adds now states what I checked;
+each edited file records that Claude wrote the wording from my account.
+
+**Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
+
+**Verification:** All eight lines this PR added as pending were replaced.
+
+### 2026-10-22 — Recording my review in the pending Author review lines (PR #94)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/{AGENTS,README}.md`, `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** The pending Author review lines on #94 had to be filled before merging. I told Claude
+what I had checked and asked it to write the lines.
+
+**Prompts (exact):**
+> there are still unresolved voncersatiosn in #96 that are blocking my merge, but in the meantime while resolving them, coudl oyu help me edit the pending author review liens, i have tested all the filesna dran them myself to see them working as intended, i ran the docker lcoally, checked the npm test suite, ran the kafba tui to see the messages and their strucutre, as wlel as looked at the files changed on github
+
+**What it produced:** each pending "Author review" line this PR adds now states what I checked;
+each edited file records that Claude wrote the wording from my account.
+
+**Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
+
+**Verification:** All seven lines this PR added as pending were replaced.
+
+### 2026-10-22 — Recording my review in the pending Author review lines (PR #97)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/AGENTS.md`, `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md` (lines from PRs #93, #97 and #98 that were still pending)
+
+**Scenario:** Seven Author review lines from PRs #93, #97 and #98 were still pending; #97 fills them so
+they reach main with the stack. I told Claude what I had checked and asked it to write the lines.
+
+**Prompts (exact):**
+> there are still unresolved voncersatiosn in #96 that are blocking my merge, but in the meantime while resolving them, coudl oyu help me edit the pending author review liens, i have tested all the filesna dran them myself to see them working as intended, i ran the docker lcoally, checked the npm test suite, ran the kafba tui to see the messages and their strucutre, as wlel as looked at the files changed on github
+
+**What it produced:** each pending "Author review" line this PR adds now states what I checked;
+each edited file records that Claude wrote the wording from my account.
+
+**Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
+
+**Verification:** All seven remaining pending lines were replaced.
+
+### 2026-10-22 — Recording my review in the pending Author review lines (PR #96)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `.env.example`, `credit-service/{README,AGENTS}.md`, `infra/kafka/README.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** An unresolved review thread on #96 asked for its pending Author review lines to be
+filled before merging. I told Claude what I had checked and asked it to write the lines.
+
+**Prompts (exact):**
+> there are still unresolved voncersatiosn in #96 that are blocking my merge, but in the meantime while resolving them, coudl oyu help me edit the pending author review liens, i have tested all the filesna dran them myself to see them working as intended, i ran the docker lcoally, checked the npm test suite, ran the kafba tui to see the messages and their strucutre, as wlel as looked at the files changed on github
+
+**What it produced:** each pending "Author review" line this PR adds now states what I checked;
+each edited file records that Claude wrote the wording from my account.
+
+**Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
+
+**Verification:** All five lines this PR added as pending were replaced; other members' pending lines
+were left alone.
+
+### 2026-10-22 — Codex review fixes, second round: spec removal schedule (PR #94)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Merging the stacked PRs was blocked by unresolved review threads; I asked Claude to
+resolve them.
+
+**Prompts (exact):**
+> there are merge conflict in the pr stack
+
+> and the conversation must be resolved
+
+**Key responses:** Claude pointed out that the spec's §4.3 and Phase 3 row still scheduled the HTTP
+route removal for after Order used the commands, contradicting §9.3; and that Zi Yi's direction
+(2026-10-17) for transfer and release as commands is now recorded on main.
+
+**What it produced:** §4.3 and the Phase 3 row say the routes are already removed.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** Docs only.
+
+### 2026-10-22 — Codex review fixes, second round: replay key case (PR #95)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `credit-service/src/dead-letters/dead-letters.service{,.int.spec}.ts`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Merging the stacked PRs was blocked by unresolved review threads; I asked Claude to
+resolve them.
+
+**Prompts (exact):**
+> there are merge conflict in the pr stack
+
+> and the conversation must be resolved
+
+**Key responses:** Claude found that a replayed command with an uppercase orderId was keyed by the
+raw uppercase value, while live commands use the lowercase id, so the replay could land on another
+partition and lose per-order ordering.
+
+**What it produced:** the replay key is the lowercase orderId; a "Changed or rejected" line on the
+2026-10-18 dead-letter envelope entry.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** Test-first: the uppercase-orderId replay test failed (uppercase key), then passed;
+unit 144/144, integration 85/85.
+
+### 2026-10-18 — Codex review fixes: transaction ledger (PR #93)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/AGENTS.md`, `credit-service/src/db/schema.ts`, `credit-service/src/credits/credits.service{,.int.spec}.ts`
+
+**Scenario:** Codex reviewed PR #93; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+My answer to Claude's question: old wallets with no history "No migration, purge data".
+
+**Key responses:** Claude flagged backfilling old wallets as a schema decision for me, and added inline AI markers to the ledger code. It answered the owner-approval and pending-review comments (merge gates) instead of resolving them.
+
+**Changed or rejected:** I chose not to backfill: nothing is deployed, so local Credit data is purged when #93 lands.
+
+**Verification:** Integration suite 66/66 on the branch.
+
+### 2026-10-18 — Codex review fixes: Kafka-only transfer and release (PR #94)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/AGENTS.md`, `credit-service/README.md`, `credit-service/postman/credit.postman_collection.json`
+
+**Scenario:** Codex reviewed PR #94; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+
+**Key responses:** Claude updated the remaining statements that still described HTTP transfer/release, and documented that a hand-sent command must be keyed by its `orderId`, with a usable payload. The owner-approval and pending-review comments were answered (merge gates).
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** Docs only; the Postman collection is still valid JSON.
+
+### 2026-10-18 — Codex review fixes: dead-letter envelope (PR #95)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** `credit-service/src/db/schema{,.int.spec}.ts`, `credit-service/src/dead-letters/dead-letters.service{,.int.spec}.ts`, `credit-service/AGENTS.md`
+
+**Scenario:** Codex reviewed PR #95; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+
+**Key responses:** Claude added a start-up migration that renames the old dead-letter columns (migrated rows get no key, since the old column held the payload's orderId), and made replay key a command by its payload's `orderId`, so one dead-lettered for a wrong key can be recovered. On Codex's next pass, Claude made a NUL in a stored Kafka key show as U+FFFD (it
+failed the insert and stalled the dead-letter topic) instead of changing the column to BYTEA, and
+fixed the order of the disclosure header's entries.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** Test-first: the migration, replay-key and NUL-key tests, each seen failing first; unit 128/128,
+integration 63/63, Kafka 12/12.
+
+### 2026-10-18 — Codex review fixes: quieter Kafka logs (PR #96)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/src/messaging/kafka.{logger,logger.spec,connection,runner}.ts`, `.env.example`, `credit-service/README.md`, `credit-service/src/config.ts`, `credit-service/src/test/kafka.ts`, `infra/kafka/README.md`
+
+**Scenario:** Codex reviewed PR #96; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+
+**Key responses:** Claude added inline AI markers to the logger code, and a 2026-10-18 disclosure to each file changed for the broker address.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** Unit suite 132/132 on the branch.
+
+### 2026-10-18 — Codex review fixes: author-review attributions (PR #97)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `ai/usage-log/jian-bing.md` and a 2026-10-18 attribution in each of the 64 files whose review line Claude wrote
+
+**Scenario:** Codex reviewed PR #97; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+
+**Key responses:** Claude added `generate` to the two author-review entries' modes, a "Changed or rejected" line to each, a Verification line to the second, its own Tool / Scope entry in every file whose review line it wrote, and split this round's log into one entry per PR.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** Every one of the 64 files has the new attribution (checked with a script); the Postman collection is still valid JSON; unit 128/128.
+
+### 2026-10-18 — Codex review fixes: transaction history route (PR #98)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/src/credits/{balance.controller,credits.service,credit.schemas}.ts`, their specs, `credit-service/AGENTS.md`
+
+**Scenario:** Codex reviewed PR #98; I asked Claude to go through every Codex comment on the day's
+PRs and resolve it.
+
+**Prompts (exact):**
+> all the prs we made today had codex pr review comments, look through every single one and resolve them accordingly
+My answer to Claude's question: the missing gateway route "Reply: tracked in #60 (Recommended)".
+
+**Key responses:** Codex asked for a gateway route for the history; Claude asked me, since the gateway is another owner's service. Claude added inline AI markers and updated the open item.
+
+**Changed or rejected:** I left the gateway route to #60 and its owner.
+
+**Verification:** Unit 140/140, integration 81/81 on the branch.
+
+### 2026-10-18 — Author review lines for the files I read, and a second manual test round
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug, explain
+**Files:** the `Author review:` lines in `AGENTS.md`, the spec, the two plans' headers, this log,
+`.env.example`, `compose.yaml`, `.dockerignore`, `.github/workflows/ci.yml`, `supplier-service/tsconfig.json`
+
+**Scenario:** I read those files and confirmed them, then pasted a manual test of reserve and a Kafka
+transfer, with an empty credit_transactions and a missing credit_dead_letters table.
+
+**Prompts (exact):**
+> okay, i jsut read through AGENTS.md in the root and for the spec, they are fine and are what i want, same with the ai usage log, the .env, compsoe.yaml, dockerignore, the ci workflow, the supplier tsconfig. and the 2 superpower plans, [Image #11] *(with pasted terminal output)*
+
+**Key responses:** The running container is built from #94, which doesn't write credit_transactions,
+so that table being empty is expected; credit_dead_letters was missing because Claude had dropped it
+locally for #95 without restarting Credit (restarted; recreated). `npm run test:kafka` must run inside
+`credit-service/`; the 401s were expired tokens. Only the plans' own headers were filled in; the
+header copies inside the plan text stay as written.
+
+**Changed or rejected:** Nothing rejected. I named which files I had read, and only those got review
+lines; I didn't edit Claude's wording.
+
+**Verification:** After Claude restarted Credit, `credit_dead_letters` existed again. My
+credit_transactions check is still to be rerun on a container built from #93's branch.
+
+### 2026-10-18 — Recording my manual testing in the Author review lines
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug, explain
+**Files:** the `Author review:` lines in `credit-service/**` and `infra/kafka/**`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** After manually testing Credit and Kafka (terminal output and Kafka UI screenshots), I
+asked Claude to write that into the review lines and to explain a 404 on my own wallet.
+
+**Prompts (exact):**
+> [Image #6] [Image #7] [Image #8]help me add this to shwo that i have manually test the kafka and credit services to all the authro comments, and also help me see why this is not returnign 200 eve nthough its my own wallet and i have already sent the userregistered event
+
+**Key responses:** My wallet was missing because the guide's clean-start TRUNCATE deleted it after
+my 16 Oct UserRegistered had already been handled; every event I produced since was for `$NEW`.
+Re-sending UserRegistered for `$ME` restores it. The review lines state only what my output showed
+I checked; docs, plans, CI and other services' files stay pending.
+
+**Changed or rejected:** Nothing rejected. The lines state only what my pasted output showed; I
+didn't edit Claude's wording.
+
+**Verification:** Unit suite and type check still pass; the Postman collection is still valid JSON.
+
+### 2026-10-18 — Transfer and release are Kafka commands only (HTTP routes removed)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `credit-service/src/credits/{credits.controller,credit.schemas,credit.schemas.spec,credits.http.int.spec,balance.http.int.spec}.ts`,
+`credit-service/postman/credit.postman_collection.json`, `credit-service/AGENTS.md`, `AGENTS.md` (§3),
+`docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`; issue #53 rewritten.
+
+**Scenario:** I got team consensus for asynchronous Order → Credit transfer and release, and decided to
+remove the HTTP routes now, since the Order Service doesn't exist yet and nothing calls them.
+
+**Prompts (exact):**
+> what the items marked proposed
+
+> actually, lets change credit service ownership to me, zi yi said it was fine, so technically i have read through everything and made the decision for the whole of th eproject
+
+> sorry undo the last prompt
+
+> alright, then elts get to work on the  Transfer and release become Kafka commands instead of synchronous HTTP; reserve stays HTTP. This changes a [Decided] team decision, so it needs the mentor as well as the team.
+>      - Order → Supplier location reads become plain HTTP instead of query events. Your proposal; it needs Jie Yang (Order) and Cole Lin (Supplier). what has been done ,and wha tneeds to be done
+
+> i think lets jsut get rid of the http transfer and reelase route, since roder ahsnt even been made, os there wont be compatibiltiy issue, als o ireceived a team consesnsus on using asych communicaiton between roder to credit to release or trasnfer, and to change the issue, but also what is wrong with the deicded tiem "Order publishes query events… Supplier is the only consumer"
+
+**Key responses:** Claude listed the [Proposed] items and who confirms each; undid an ownership change
+before any file was edited; explained that Order → Supplier query events aren't wrong, only costly
+(Order waits, so it needs request/reply that Kafka lacks, and the coupling stays).
+
+**What it produced:** `POST /internal/credits/transfer` and `/release` removed (with their schemas);
+root `AGENTS.md` §3 now records reserve over HTTP and transfer/release as Kafka commands (team
+consensus); Postman reshaped to reserve-only HTTP; issue #53 rewritten to match.
+
+**Changed or rejected:** I chose to remove the HTTP routes now rather than once Order used the
+commands, and had Claude undo my prompt changing the Credit Service's ownership before any file was edited.
+
+**Verification:** Test-first: "no longer offers transfer or release over HTTP" (404, the hold stays
+RESERVED) failed, then passed; unit 126/126, integration 60/60, Kafka 12/12; Newman 15 requests,
+19 assertions, 0 failures on the rebuilt service.
+
+### 2026-10-18 — Manual testing help, the schemas explained, and a generic dead-letter envelope
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `credit-service/src/db/schema.ts`, `credit-service/src/dead-letters/dead-letters.service{,.int.spec}.ts`,
+`credit-service/src/messaging/commands.kafka.spec.ts`, `credit-service/AGENTS.md`,
+`docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** While running the manual test guide I asked about terminal errors, the schemas and the
+dead-letter design, then chose to make the dead-letter table a generic envelope.
+
+**Prompts (exact):**
+> [Image #2] help *(screenshot: zsh `parse error near '<'` and a stuck `function>` prompt after pasting the guide's helpers)*
+
+> [Image #3] *(screenshot: TRUNCATE failing because credit_transactions references credit_accounts)*
+
+> can you show em the new schemas, and explain every field to me
+
+> why is there so muc hconsoel error *(with the pasted output of npm test, test:int and test:kafka)*
+
+> wait so credit_dead_eltters cover for BOTH credit accounts and credit hold,s or its it moreccurate to say it covers for the the transactions started upon UserRegisetred event or TrasnferCredit command
+
+> what is the point in a dead latter table, isnt a dead letter topic sufficient, also doesnt it seem abit antipattern if the schema of this dead letter tbael needs t oacocmodate for  differnet kidn of event/command with idfferent data and fiels? is there a more graceful wa yfo handling this
+
+> actually im confused as to the replay, firstly, cant we use the offset to determien if a message has been repalyed, and honreslty i dont really undersnta dthre replay endpoint, what is its prupose? c
+
+> lets rename to the generic envelope, also just to clarify, so an admin has to call replay manaully? or is there an auto run dead letter feature, also when repalying a dead eltter, the same commadn is sent again to the topic, so kafka will ahev hte same event two times?
+
+**Key responses:** Claude fixed the terminal problems (zsh doesn't treat pasted `#` as comments; a
+sourceable helper file instead; the reset needs credit_transactions too; Node 24 instead of 26, whose
+source build also breaks on the space in the folder path); explained every column of the four tables;
+explained the console noise (IPv6 `localhost` retries, an intentional outage test, retry waits logged
+by the library); explained that dead letters are failed Kafka messages, why a table is kept beside the
+DLT (7-day retention, per-message status, lookup by id), what replay is for and why an offset can't
+say "replayed"; and that replay is manual and a replayed command is a second copy that idempotency absorbs.
+
+**What it produced:** `credit_dead_letters.order_id` → `message_key` (the actual Kafka key) and
+`command_type` → `message_type`, with API fields `messageKey` / `messageType`.
+
+**Changed or rejected:** I questioned a table shaped around one kind of message, and chose to rename its
+columns to a generic envelope; after Claude's explanation I kept the table beside the dead-letter topic.
+
+**Verification:** Tests updated first (red), then green: unit 128/128, integration 60/60, Kafka 12/12.
+
+### 2026-10-18 — Quieter Kafka logs in tests and the service
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `infra/kafka/{compose.yaml,README.md}`, `.env.example`, `credit-service/src/messaging/kafka.logger{,.spec}.ts`,
+`credit-service/src/messaging/{kafka.connection,kafka.runner}.ts`, `credit-service/src/{config,test/kafka}.ts`,
+`credit-service/{README,AGENTS}.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** `npm run test:kafka` passed but printed many console errors. Claude explained the three
+sources; I asked for the two fixes it proposed.
+
+**Prompts (exact):**
+> lets make the small fixes for the tests that u mentioned
+
+**Key responses:** Most of the noise came from `localhost` resolving to IPv6 `::1` first on macOS,
+where the broker's port isn't published; the rest was the library logging Credit's internal
+"not due yet" error on every retry wait, plus an intentional database-outage test.
+
+**What it produced:** the broker advertises `127.0.0.1:9094` (and that's the host default
+everywhere); a Kafka client logger that writes through Nest's logger and drops only the
+not-due-yet error; `NotDueYet` carries a fixed message for the filter to match.
+
+**Changed or rejected:** I took both fixes Claude proposed; the intentional database-outage test was
+left as it is, so its log output stays.
+
+**Verification:** Logger tests written first (red, then green). Unit 132/132, integration 60/60,
+Kafka 12/12; the Kafka run now prints no console errors.
 
 ### 2026-10-18 — Remove lazy wallet creation (#79)
 
@@ -67,6 +548,9 @@ is retried, so it now checks the wallet only when the transfer could otherwise a
 **What it produced:** reserve and transfer check the wallet instead of creating it; only
 `createWallet` (from `UserRegistered`) creates one. Tests create their wallets first. Postman folders
 1–3 publish `UserRegistered` for their new users through Kafka UI and wait for the wallets.
+
+**Changed or rejected:** I chose to build it now but hold the merge until #54, and to retry then
+dead-letter a transfer to a courier with no wallet; nothing rejected.
 
 **Verification:** Test-first: 3 service tests (reserve with no wallet stores nothing; transfer with no
 wallet changes nothing; a transfer that can never apply keeps its own code), 1 HTTP test (409), and 2
@@ -105,6 +589,10 @@ the balance route answers. I approved the plan, including the 404.
 balance route (own id or ADMIN), newest first, `limit` 1–100 (default 20), `before` = the id of the
 last row seen; strict query validation; `{items: [{id, orderId, type, availableChange,
 reservedChange, createdAt}], nextBefore}`, with `nextBefore` null on the last page.
+
+**Changed or rejected:** I chose the route, paging and timing from Claude's options, approved its
+suggested 404 for a user with no wallet, and moved removing lazy wallet creation into a separate PR
+held until #54.
 
 **Verification:** Test-first: 10 new schema unit tests and 15 new HTTP integration tests (own
 history, paging across 3 pages, only the asked user's rows, 403, admin, 404, bad and unknown query

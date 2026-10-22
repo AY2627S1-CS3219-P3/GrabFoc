@@ -1,0 +1,74 @@
+# AI Assistance Disclosure:
+# Tool: Codex (model: GPT-6), date: 2026-10-13
+# Scope: Implemented the user-approved Order database-only plan.
+# Author review: Design and plan approved by user; implementation review pending.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
+# Scope: Phase A: order-service HTTP container, started after migrations succeed.
+# Author review (Zi Yi): Read in full; ran `npm test` (7 passed) and the `compose.test.yaml` integration tests (27 passed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
+# Scope: Phase B: Supplier and Credit Service settings for order-service.
+# Author review: Reviewed in full.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+# Scope: Phase D: Kafka broker for the credit.commands producer; waits for kafka-init.
+# Author review: Reviewed
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+# Scope: Phase D: ORDER_SERVICE_KEY for the /internal routes; order.events also needs kafka-init.
+# Author review: Reviewed
+# AI-generated; human review pending.
+name: foc
+services:
+  order-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${ORDER_DB_NAME:-orders}
+      POSTGRES_USER: ${ORDER_DB_USER:-foc}
+      POSTGRES_PASSWORD: ${ORDER_DB_PASSWORD:-change-me-in-dotenv}
+    volumes:
+      - order-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  order-migrate:
+    build: .
+    command: ["node", "dist/db/migrate-cli.js"]
+    depends_on:
+      order-db:
+        condition: service_healthy
+    environment:
+      ORDER_DB_HOST: order-db
+      ORDER_DB_PORT: 5432
+      ORDER_DB_NAME: ${ORDER_DB_NAME:-orders}
+      ORDER_DB_USER: ${ORDER_DB_USER:-foc}
+      ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:-change-me-in-dotenv}
+    restart: "no"
+  order-service:
+    build: .
+    depends_on:
+      order-migrate:
+        condition: service_completed_successfully
+      # credit.commands and order.events must exist before Order sends to them; no service creates topics. kafka-init
+      # lives in infra/kafka/compose.yaml, so without the root compose file pass both:
+      #   docker compose -f infra/kafka/compose.yaml -f order-service/compose.yaml up order-service
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      ORDER_PORT: 3005
+      ORDER_DB_HOST: order-db
+      ORDER_DB_PORT: 5432
+      ORDER_DB_NAME: ${ORDER_DB_NAME:-orders}
+      ORDER_DB_USER: ${ORDER_DB_USER:-foc}
+      ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:-change-me-in-dotenv}
+      ORDER_JWKS_URL: http://user-service:3001/.well-known/jwks.json
+      ORDER_SUPPLIER_URL: http://supplier-service:3002
+      ORDER_CREDIT_URL: http://credit-service:3004
+      # Must equal the Credit Service's CREDIT_SERVICE_KEY; set it in the root .env.
+      ORDER_CREDIT_SERVICE_KEY: ${CREDIT_SERVICE_KEY:-}
+      ORDER_KAFKA_BROKERS: kafka:9092
+      # Other services send this to Order's /internal routes; set it in the root .env.
+      ORDER_SERVICE_KEY: ${ORDER_SERVICE_KEY:-}
+    ports:
+      - "3005:3005"
+volumes:
+  order-db-data:
