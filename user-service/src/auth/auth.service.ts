@@ -8,6 +8,9 @@
  *   Later 10-16 (Deanson's decision): resetPassword keeps the code until the new password is
  *   saved, like POST /users/me/password, instead of consuming it first.
  * Author review: Constructor reviewed by Deanson, 2026-10-15. 10-16 port: successfully reviewed by Deanson, 2026-10-16.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: verify() writes a UserRegistered outbox row in the account's transaction (Deanson's design).
+ * Author review: pending — Deanson to record what he checked.
  */
 // AI-generated (reviewed by Deanson)
 import { Injectable, Logger } from '@nestjs/common';
@@ -17,10 +20,12 @@ import { AppError, otpRejected } from '../common/errors/app-error';
 import { ErrorCode } from '../common/errors/error-codes';
 import { DatabaseService } from '../infra/database/database.service';
 import { MailService } from '../infra/mail/mail.service';
+import { OutboxRepository } from '../infra/outbox/outbox.repository';
 import { OTP_TTL_SECONDS, OtpPurpose, PENDING_SIGNUP_TTL_SECONDS, otpKey } from '../infra/redis/redis.constants';
 import { RedisService } from '../infra/redis/redis.service';
 import { DUMMY_PASSWORD_HASH, OtpService } from '../security/otp.service';
 import { IssuedTokens, TokensService } from '../security/tokens.service';
+import { userRegistered } from '../users/user-events';
 import { UsersService } from '../users/users.service';
 import type { UserRecord } from '../users/users.repository';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -69,6 +74,7 @@ export class AuthService {
     private readonly redis: RedisService,
     private readonly mail: MailService,
     private readonly db: DatabaseService,
+    private readonly outbox: OutboxRepository,
   ) {}
 
   // ---------------------------------------------------------------- registration
@@ -144,6 +150,9 @@ export class AuthService {
       );
       // Claimed between register and verify: not ours to create, so no session.
       if (!user) throw this.emailTaken();
+      // Same transaction as the user row, so the event exists exactly when the account does.
+      // OutboxRelay sends it to Kafka later; this request never waits on Kafka.
+      await this.outbox.add(userRegistered(user), tx);
       return this.toAuthResponse(user, await this.tokens.issue(user, tx));
     });
   }
