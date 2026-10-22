@@ -39,6 +39,9 @@ Author review: Jian Bing supplied the prompt and what he checked; the wording is
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 host-side broker examples entry from Jian Bing's prompt.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Narrowed the 2026-10-22 Author review lines entry to PR #96; added "Changed or rejected" lines to the quieter Kafka logs and transaction history route entries, from what those entries record (PR #97 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -66,23 +69,23 @@ env validation comment and message) now say `127.0.0.1:9094`. The historical pla
 
 **Verification:** No test asserts the changed message; the rest is comments and docs.
 
-### 2026-10-22 — Recording my review in the pending Author review lines (PRs #94, #95, #96)
+### 2026-10-22 — Recording my review in the pending Author review lines (PR #96)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
-**Files:** the files in PRs #94, #95 and #96 with a pending Author review line, `ai/usage-log/jian-bing.md`
+**Files:** `.env.example`, `credit-service/{README,AGENTS}.md`, `infra/kafka/README.md`, `ai/usage-log/jian-bing.md`
 
-**Scenario:** Unresolved review threads on #94 and #96 asked for the pending Author review lines to be
+**Scenario:** An unresolved review thread on #96 asked for its pending Author review lines to be
 filled before merging. I told Claude what I had checked and asked it to write the lines.
 
 **Prompts (exact):**
 > there are still unresolved voncersatiosn in #96 that are blocking my merge, but in the meantime while resolving them, coudl oyu help me edit the pending author review liens, i have tested all the filesna dran them myself to see them working as intended, i ran the docker lcoally, checked the npm test suite, ran the kafba tui to see the messages and their strucutre, as wlel as looked at the files changed on github
 
-**What it produced:** each pending "Author review" line those PRs add now states what I checked;
+**What it produced:** each pending "Author review" line this PR adds now states what I checked;
 each edited file records that Claude wrote the wording from my account.
 
 **Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
 
-**Verification:** Every line those PRs added as pending was replaced; other members' pending lines
+**Verification:** All five lines this PR added as pending were replaced; other members' pending lines
 were left alone.
 
 ### 2026-10-18 — Quieter Kafka logs in tests and the service
@@ -105,6 +108,9 @@ where the broker's port isn't published; the rest was the library logging Credit
 **What it produced:** the broker advertises `127.0.0.1:9094` (and that's the host default
 everywhere); a Kafka client logger that writes through Nest's logger and drops only the
 not-due-yet error; `NotDueYet` carries a fixed message for the filter to match.
+
+**Changed or rejected:** I took both fixes Claude proposed; the intentional database-outage test was
+left as it is, so its log output stays.
 
 **Verification:** Logger tests written first (red, then green). Unit 132/132, integration 60/60,
 Kafka 12/12; the Kafka run now prints no console errors.
@@ -139,6 +145,10 @@ the balance route answers. I approved the plan, including the 404.
 balance route (own id or ADMIN), newest first, `limit` 1–100 (default 20), `before` = the id of the
 last row seen; strict query validation; `{items: [{id, orderId, type, availableChange,
 reservedChange, createdAt}], nextBefore}`, with `nextBefore` null on the last page.
+
+**Changed or rejected:** I chose the route, paging and timing from Claude's options, approved its
+suggested 404 for a user with no wallet, and moved removing lazy wallet creation into a separate PR
+held until #54.
 
 **Verification:** Test-first: 10 new schema unit tests and 15 new HTTP integration tests (own
 history, paging across 3 pages, only the asked user's rows, 403, admin, 404, bad and unknown query
