@@ -36,6 +36,9 @@ Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 Author review lines entry from Jian Bing's prompt.
 Author review: Jian Bing supplied the prompt and what he checked; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 host-side broker examples entry from Jian Bing's prompt.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -43,6 +46,25 @@ Author review: Jian Bing supplied the prompt and what he checked; the wording is
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+
+
+### 2026-10-22 — Codex review fix: remaining host-side broker examples (PR #96)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `.env.example`, `order-service/README.md`, `user-service/src/config/env.validation.ts`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Codex noted that the User and Order host-side broker examples still said
+`localhost:9094` after #96 made `127.0.0.1:9094` the host address.
+
+**Prompts (exact):**
+> [Image #1] help me resolve thsi convo and fix *(screenshot: the Codex comment "Update every host-side broker example" on PR #96)*
+
+**What it produced:** the four remaining examples (two in `.env.example`, the Order README, User's
+env validation comment and message) now say `127.0.0.1:9094`. The historical plan documents were left as written.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** No test asserts the changed message; the rest is comments and docs.
 
 ### 2026-10-22 — Recording my review in the pending Author review lines (PRs #94, #95, #96)
 
