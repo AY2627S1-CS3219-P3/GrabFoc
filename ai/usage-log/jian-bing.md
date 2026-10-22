@@ -95,6 +95,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added the "Changed or rejected" line to the lazy wallet creation removal entry, from the choices it records; noted the merge with main (Postman rebuilt on the reserve-only folders).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-23
+Scope: Wrote the 2026-10-23 AWS deployment design entry (issue #58) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -102,6 +105,194 @@ Author review: pending — Jian Bing to record what he checked.
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+
+### 2026-10-23 — AWS deployment design and spec (issue #58)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `docs/superpowers/specs/2026-10-23-aws-deployment-design.md`; GitHub issues #99–#114 (bodies)
+
+**Scenario:** Design how the whole stack is deployed to AWS (cloud deployment N2H). Claude ran in a learning
+mode: I made the design decisions, and Claude explained the AWS concepts, laid out options when I asked, flagged
+architecture and security trade-offs under the AI policy, created and updated the sub-issues, and wrote the spec
+from my decisions. Sessions from 2026-10-14 to 2026-10-23.
+
+**Prompts (exact, in order):**
+> alright lets move on with the Cd part
+
+> which costs more and what are the trade fofs
+
+> alright i wish to weight some tradeoffs, the firs thtat comes to ym midn is definitely testing locally vs testing on cloud.I want to do IAC, terraform so  if we do use fargate, then running docker compsoe here on my lcoal might have differnet results with the deplyoed isntnaces especially wit h.env. and another thign is the message broker, using kafka now, if i make maazon MSK, the topcis and all the config will liekly differ fro mthat on my local when i run the kafka locally right
+
+> so ecs supports reading terraform to creates its instnace?
+
+> hmm since doign deployment on cloud will definitely make it different from running locally, what abotu makign a ci/cd straight  to a preprod/staging env on a different aws account, then only when we see preprod dint break, we push to prod usiing a workflow that can only be triggered manually?
+
+> hmm im still lsot on ec2 vs fargate, woudl the cost of fargate, sinc eit sserverless be potentialyl lwoer, if lets say we only deplyo it but no one visits the website, maybe msot like 10 times a week for like 5 mins each time?
+
+> what do u mean by everythign delcard in terraform? doesnt ec2 also have it such tha tit can eb declared in terraform? and why do i need to patch a serve rmsyelf if i sue ecs to orchestrate, and restart a service when it dies
+
+> i think we have sufficient credits to do an ec2 + ec2, and i think its better for terraform iac since with ecs, terraform will knwo about all the setup for the services, the iamges and env vars and easier for ci/cd pipelining too, althought lcoal running docker compsoe will make ti differ
+
+> ecs on ec2
+
+> ec2 on ec2, since we are sill going to use oru own custom envoy load baalcning ap igateway so we need nto use the aws eco systme, same with broker, so msk cost is saved. and we can run psotgres on our own ec2 docker containers so no need ofr rds. but i dont get what u mean by patching and sizing server
+
+> what is alternative network move.for the chekcpoint  how do people usualyl get abotu doing data to make it persistent then? is it a msut to use rds then, or maybe we can store it in a s3 bcuekt and pull form there, is it cheaper that way?
+
+> i think the dat aliekly wont exceed more than 2 gb, so that saves u pto $14 if we sue EBS and S3, so we put kafka, redis and pg on the EBs, can  ialso check on how this eBS work, wha tmake sit different form S3 holding files, and how does EBS handle storing 3 differne tkind of database, for postgres, kafka and redis
+
+> i dont get how the cost is the same? break it down for me
+
+> i dont get how the cost is the same? break it down for me
+
+> what? so am i saving or nah, i thought i also said that i woudl sav emoney from having small amount of data stored since i only pay for a few dollars on EBS rather than have the fixed $15 per month from RDS that coudl handle way more data that i woudl never reach realistically? anyways i tihnk 1 ebs instance for all 3 woudl be bette rand simpler, since its a source of truth and less overhead
+
+> actually im not sure on how the redis is workign for user service, coudl you explai nto me and teach me, and tell me how to go about putting it up on the cloud?
+
+> okay so lets do ebs for storage, redis on a docker container, kafka o na contianer, and we use deploy mdoe on ec2 with ecs, is this a correct idea for our infra?
+
+> Discuss *(chosen at Claude's checkpoint: "How do you want to proceed with this infrastructure design?")*
+
+> whats the estimate cost, and will this be the cosest to runnign the set up on local as psosible? other than the ebs?
+
+> Discuss *(chosen at Claude's checkpoint: "With the cost and the differences from local laid out, how do you want to proceed with the infrastructure design?")*
+
+> how woudl i go about setting up the api gateway to connect it to aws's gateway?
+
+> does this help prevent outside calsl into our internal redis and user serivce/etc?
+
+> then is there a point to using something liek a VPC from AWS ( a concept im not the msot familair with but i hear is quite important)
+
+> use aSD STE100 to explain this to me
+
+> is the itnernet gateway the same as the ap igateway, and explain where envoy comes into play, and also a private subnet difference agaisnt a publci subent is that a publci subnet has n internet gateway? also a diagram would help me visualsie this concept alot ebtter
+
+> so a subnet has its own route table? then what does the internet gateway do? how does the mapping work if the subnet is routing from 0.0.0.0/0 to internet gatewya, but the internet gateway has already been passed through from the packet entering oru server?
+
+> new diagram please
+
+> the internet gatewya is just a nat?
+
+> a route tabel is ony for outgoign traffic? wait the for a private subnet, it means any incoming traffic is not stopped, but only outocming traffic is restricted?
+
+> so a private suben tis usually for another subnet to communicate with
+
+> shoudl we do that then? is there any problem if i want t omake a private subnet for all my microservices except ap igateway which is on a publci subnet now
+
+> does this mena extar costs to have 2 servers, and can ecs be cofngured to segregate these 2 ec2 isntance saccordingly? what is bridge mode? what is a https terminator, and what do u mean by a program should handle https?
+
+> okay lets stick to jsut one vpc, 1 public subnet and sue the scurity group with a cheap and  free inernet gateway ehlping us. then i want to use envoy for our https terminator
+
+> Discuss *(chosen at Claude's checkpoint: "How do you want to proceed with this updated infrastructure design?")*
+
+> can oyu elaborate more on this 3. Envoy becomes the front door for the website too. Today the browser reaches the frontend directly on port 3000. If Envoy terminates HTTPS, all internet traffic enters through Envoy on 443. Envoy then sends website requests to the frontend, and API requests to the services. perhaps a diagram can help me see the differenc ena dcompre tradeoff
+
+> can i ask if its possible to somehow have separate ip or soemthing, so there 2 point sofr incomign traffic similar to our current local?
+
+> im curious, is the local 22 door architecture typical in indsutry, or is it usually a case where no matter wha t client requests, the api gateway is first, become frontend, compared to our whenre u dont need an api gateway to reach the frontend, and only the requests amde by the frontend needs the api gateway
+
+> so currently we are on pattern 2, just lcoally, then we ar eproposing a change to pattern 1 if we do otpion a?
+
+> i kind of like option c to lower the lcoal-cloud parity difference, so does that mean with aprrtern c, our frontend will need a lt oof changes, or i ngenral, will there be alto of new changes
+
+> ok lets do A, but with that, it measn the changed code will allow the lcoal to follow the new plan a right, plus the https terminator? but im jsut worried abotut he prot mapping, since we sue 3003 for backend, 3000 for frontend, then does that mean firewll wil lblock when we use different domain mapping to different ports?
+
+> i really want to mimic the envoy https teminator and edge here, but i think the certificate being neede dis a huge drawback, is there a middle ground here?
+
+> lets do option 2 also all this ahs been seen and vetted by jie yang 
+>
+> <pasted_content id="b7d5">
+> [18/10/26 8:03 PM] jianbing: [ Photo ]
+>
+> r yall ok if i do this change
+> [18/10/26 8:03 PM] jianbing: esp @jyricong
+> [18/10/26 8:06 PM] Jie Yang: ic
+> [18/10/26 8:06 PM] Jie Yang: yea shld b ok
+> </pasted_content id="b7d5">
+
+> actually lets do option 3
+
+> actually lets do option 3 but make sure the mkcert -install is bmade known to my mebmers, like on a readme or agents.md
+
+> Confirm and continue *(chosen at Claude's checkpoint: "How do you want to proceed with this design?")*
+
+> what do u mean a lockout? survivng a restarT? i dont understand? for staging email, can we use real email and still use mailpit? i think staigng using real meail si better thoguh definitely to emulate real live usage 2. what are the domains i need to register. let me know
+
+> lets make the approrpaite sub issues first
+
+> Create all 15 *(chosen at Claude's checkpoint: "Create these 15 sub-issues under #58?")*
+> Yes *(chosen at Claude's checkpoint: "Also add the CI follow-ups as sub-issues of #57?")*
+
+> lets do Gmail, since it woudl mimic lcoal very easily, also turns out my free aws credits cant be sued to get a domain through route53, are there free options?[Image #54]
+
+> elaborate more on this: 
+>
+> <pasted_content id="b7d5">
+> How this affects the design: the certificate plan assumed DNS on Route 53 (certbot's DNS challenge). If the domain's DNS stays with Namecheap or DuckDNS, or Route 53 is blocked, change to one of these:
+> - HTTP challenge: Let's Encrypt fetches a file from http://<domain>/.well-known/acme-challenge/.... Envoy forwards that path on port 80 to certbot. No DNS API is needed, and it works with any DNS provider.
+> - That provider's DNS plugin: certbot and acme.sh both support Namecheap's and DuckDNS's DNS APIs.
+> </pasted_content id="b7d5">
+
+> i swear when  igot my domain for mcloudflare,  ididnt need to get this cert, why is it such that now i need it
+
+> i do not own a cloudflare domain for foc, it was for a different project
+
+> why are we suddnely using cloudflare as the edge now isntead of our envoy
+
+> what are the tradeoff with using clopudflare as the edge
+
+> explain the difference between using ebs for our fiel storage on cloudsv using our current local arhcitecutre, please use diagrams to shwo the difference explciitly
+
+> i heard from my mentor that i need not get a domai nto do deployment, when runningmy ecs, aws will giv eme a url that works, just that it will be ugly
+
+> for this build chekcpoint: . PostgreSQL in AWS: one container per service, as locally, or a single shared one? Weigh parity and isolation against memory. I thin ki want to mimic the cloud infrastructure as much as psosibler, so can each of my docker in lcoal also write to a unified ebs volume mimic, liek jsut to a directory with the same file path. then i want to ask if theres any free url we can do that lets the envoy take in https?
+
+> 1. i am okay with reseeding data, byt jie yang and colelin use windows and oinux respectively, so is there a workaround this?
+>
+> 2. how about using the donain that aws givesupon deploying an ec2 isntance? i was told by my mentor that aws will ig e a CA for a donain fir the ec2 without route 53 or a donain nmae registered so wecan still access it
+
+> i dont quit eudnersntand what yo uar egetting at, so aws domains r not using https? since aws doesnt issue a certificate? then how come the dns name is there, so i can onyl mkae http request to it?
+
+> so does that mean my google chrome wont let me see the deployed isntnac esince its on http and not https
+
+> how would cloudfornt work here? is it oen more edge proxy before our ec2 instance that has a api gateway
+
+> wait isdoesnt this mean that envoy api gateway will drop request that ar eusing http, which include request fro mcloudfront to envoy?
+
+> wait so the current envoy set u paccept shttp? so that means a person currnelty, on oru lcoal architecutre, would go to our local api 3003 and use http, but the lcoal fornteend woudl need https? then wait if we do the current proposal, wouldnt the frorntend drop all requests since they use http within the subnet?
+
+> so other then this one line of check, const unsupported = x-forwarded-proto !== "https" && !local;, ther eis no other restrictiosn for https?
+
+> alright then, jieyang has approved the gateway decision, and envoy deletes the cookie becuase the routing table changes the dest and src ip, so services will use a different new session id
+
+> it deletes x-user-role and x-user-id to ensure that the internal http calls with these headers are onyl from iwthin the servcies rather than appended from an external malicious user, while cookie is deleted since we dont need it for authentication
+
+> CloudFront default URL *(chosen at Claude's checkpoint: "Build checkpoint: which HTTPS approach for the AWS deployment? (Heads-up: this is an architecture and security trade-off under the AI policy, so it's your and the team's call.)")*
+
+> cloudfront for the better aws ecossytem, and for better convenience, since we need not renew and get a lets encrypt cert ourself, jie yang need not see this change,lets do local http for bettter latency
+
+> lets do gateway as prefix for easier reading and it makes better sense. lets keep named volumes, just ensuring that the team knows of this initial init step
+
+> yes updat ethe issues accordingly too, also lets do the /gateway on localhsot for standardisation and not having to switch our path  when using psotman collection, only the url
+
+> yes
+
+> A. for more accurate behavior of send gmail while keeping mailpit for debugging purposes
+
+**What it produced:** Explanations (ECS vs Fargate vs EC2, VPC, subnets, route tables, internet gateway,
+security groups, EBS vs S3, Redis in the User Service, TLS termination, edge proxy vs API gateway, CloudFront,
+why AWS's EC2 DNS name has no trusted certificate); 15 sub-issues under #58 and 4 under #57, later updated as
+decisions changed (#112 closed); and the spec. It records my decisions: ECS on EC2 via Terraform, one server
+per environment, one VPC and public subnet, all databases, Redis and Kafka as containers on one EBS volume,
+daily snapshots and `pg_dump` to S3, CloudFront terminating HTTPS in front of Envoy, the `/gateway` prefix (also
+locally), Gmail SMTP with Mailpit relaying in staging, staging on merge and production by manual approval.
+Claude's own proposals and calls are labelled in the spec.
+**What I changed or rejected:** Rejected Fargate, RDS, MSK and a private subnet with a NAT gateway on cost and
+local parity. Dropped Envoy terminating HTTPS with Let's Encrypt (and local mkcert) for CloudFront, since there
+is no domain to get a certificate for. Rejected local bind mounts mirroring `/data` (Windows and Linux
+teammates) and kept named volumes. Chose `/gateway` over `/api` because the frontend already uses
+`/api/session`.
+**Verification:** Pending — Jian Bing to record what he checked.
 
 ### 2026-10-22 — Recording Zi Yi's and the mentor's approvals (PR #97)
 
