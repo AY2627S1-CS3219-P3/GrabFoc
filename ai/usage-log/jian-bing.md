@@ -33,12 +33,43 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 dead-letter envelope entry from Jian Bing's prompts.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added the "Changed or rejected" line to the 2026-10-18 dead-letter envelope entry, from Jian Bing's prompts (PR #95 review).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 replay-key entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-22 — Codex review fixes, second round: replay key case (PR #95)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `credit-service/src/dead-letters/dead-letters.service{,.int.spec}.ts`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Merging the stacked PRs was blocked by unresolved review threads; I asked Claude to
+resolve them.
+
+**Prompts (exact):**
+> there are merge conflict in the pr stack
+
+> and the conversation must be resolved
+
+**Key responses:** Claude found that a replayed command with an uppercase orderId was keyed by the
+raw uppercase value, while live commands use the lowercase id, so the replay could land on another
+partition and lose per-order ordering.
+
+**What it produced:** the replay key is the lowercase orderId; a "Changed or rejected" line on the
+2026-10-18 dead-letter envelope entry.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** Test-first: the uppercase-orderId replay test failed (uppercase key), then passed;
+unit 144/144, integration 85/85.
 
 ### 2026-10-18 — Manual testing help, the schemas explained, and a generic dead-letter envelope
 
@@ -77,6 +108,9 @@ say "replayed"; and that replay is manual and a replayed command is a second cop
 
 **What it produced:** `credit_dead_letters.order_id` → `message_key` (the actual Kafka key) and
 `command_type` → `message_type`, with API fields `messageKey` / `messageType`.
+
+**Changed or rejected:** I questioned a table shaped around one kind of message, and chose to rename its
+columns to a generic envelope; after Claude's explanation I kept the table beside the dead-letter topic.
 
 **Verification:** Tests updated first (red), then green: unit 128/128, integration 60/60, Kafka 12/12.
 
