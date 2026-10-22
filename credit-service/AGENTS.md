@@ -21,6 +21,10 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: A repeated reserve returns the hold's current state (PR #48 review); only the /internal
 routes need the service key (PR #73 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
+Scope: Added the open item on releases for unknown orders, from the Order Service Phase D work; the
+Design bullet now says transfer and release are commands.
+Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented credit_transactions (PR #48 review; design decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
@@ -70,9 +74,9 @@ _Origin: Restated from the Backlog (CSFR1–4, NFR1.3, NFR1.4, NFR2.1)_
 
 _Origin: Team (Jian Bing, 2026-10-11)_
 
-- The **Order Service is the only caller** of reserve, transfer and release: reserve over
-  synchronous HTTP, transfer and release as Kafka commands on `credit.commands` (team consensus,
-  2026-10-18; see Messaging).
+- The **Order Service is the only caller** of reserve, transfer and release: reserve over synchronous
+  HTTP; transfer and release as `credit.commands` messages (see Messaging; root `AGENTS.md` §3,
+  Zi Yi, 2026-10-17).
 - **One hold per order**, unique on the order id. Its state moves `RESERVED → TRANSFERRED` or
   `RESERVED → RELEASED`; both are final.
 - **Idempotency key = order id + action.** The amount is stored data, not part of the key. A repeat
@@ -267,3 +271,11 @@ _Origin: AI doc_
 - Transaction history: readable at `GET /credits/:userId/transactions`; needs the gateway route (#60).
 - Order id format: assumed UUID, matching user ids. Confirm when the Order Service is designed.
 - Record root `AGENTS.md` §8's exception for authenticated service callers, if the team agrees.
+- **Credit owner to handle — releases for unknown orders** (raised by the Order Service, 2026-10-17). Order
+  sends `ReleaseCredits` when a reserve failed or timed out, since a timed-out reserve may still have
+  saved a hold. If Credit never saved one, the release gets `HOLD_NOT_FOUND` and is dead-lettered,
+  so admins see a dead letter for a normal outcome. And if the release arrives while a slow reserve
+  is still running, the reserve lands afterwards and the credits stay held. One fix covers both:
+  record a release for an unknown order (a `RELEASED` marker, which needs `requester_id`/`amount`
+  nullable or sent with the release) and have a later reserve for it insert nothing. Order skips the
+  release when Credit answered `INSUFFICIENT_CREDITS`, so this only follows timeouts and failures.
