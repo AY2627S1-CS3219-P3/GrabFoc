@@ -37,28 +37,59 @@ Scope: Wrote the 2026-10-18 transaction history route entry from Jian Bing's pro
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 quieter Kafka logs entry from Jian Bing's prompt.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #96).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review lines entry from Jian Bing's prompt.
+Author review: Jian Bing supplied the prompt and what he checked; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 dead-letter envelope entry from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 entry on removing the HTTP transfer/release routes from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added the "Changed or rejected" line to the 2026-10-18 dead-letter envelope entry, from Jian Bing's prompts (PR #95 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 replay-key entry from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #95).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 spec removal-schedule entry from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #94).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-22 — Recording my review in the pending Author review lines (PRs #94, #95, #96)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** the files in PRs #94, #95 and #96 with a pending Author review line, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Unresolved review threads on #94 and #96 asked for the pending Author review lines to be
+filled before merging. I told Claude what I had checked and asked it to write the lines.
+
+**Prompts (exact):**
+> there are still unresolved voncersatiosn in #96 that are blocking my merge, but in the meantime while resolving them, coudl oyu help me edit the pending author review liens, i have tested all the filesna dran them myself to see them working as intended, i ran the docker lcoally, checked the npm test suite, ran the kafba tui to see the messages and their strucutre, as wlel as looked at the files changed on github
+
+**What it produced:** each pending "Author review" line those PRs add now states what I checked;
+each edited file records that Claude wrote the wording from my account.
+
+**Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
+
+**Verification:** Every line those PRs added as pending was replaced; other members' pending lines
+were left alone.
 
 ### 2026-10-22 — Codex review fixes, second round: spec removal schedule (PR #94)
 
