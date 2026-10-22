@@ -47,7 +47,7 @@ difference is named in §9.
 ## 2. Constraints
 
 - **AWS account:** NUS-managed (`nusisb_IsbUsersPS`). Route 53 domain registration is blocked, and the credits
-  don't cover domains. Whether a second (staging) account can be created is unknown (§10).
+  don't cover domains. NUS doesn't allow a second account, so staging and production share this one (§6).
 - **Region:** `ap-southeast-1` (Singapore).
 - **Budget:** AWS credits only. Budget alerts exist before any resource does (#99).
 - **Team platforms:** macOS (Jian Bing), Windows (Jie Yang), Linux (Cole Lin). Local setup must work unchanged on
@@ -186,9 +186,14 @@ Outbound: Gmail SMTP on 587 (User Service email)
     (Jian Bing's decision, 2026-10-23: real Gmail delivery, with Mailpit kept for debugging and for the automated
     checks to read OTP codes). Mailpit's relay uses the same Gmail app password from SSM. Its web inbox is not
     published; the security group already blocks it.
-- **Accounts:** staging and production in separate AWS accounts if the NUS account allows it; otherwise
-  separate VPCs in the same account (§10).
-- Budget alerts in each account before anything else; no day-to-day root-user use.
+- **One AWS account for both environments** (NUS doesn't allow a second; confirmed by Jian Bing 2026-10-23).
+  Staging and production are kept apart by:
+  - a separate VPC, server, EBS volume, CloudFront distribution and ECS cluster per environment;
+  - an `env` tag and an `foc-staging-` / `foc-production-` name prefix on every resource;
+  - separate SSM paths (`/foc/staging/…`, `/foc/production/…`) and Terraform state files;
+  - two GitHub OIDC roles: the staging role (any run on `main`) can only touch `foc-staging-*` resources; the
+    production role is trusted only from the GitHub `production` environment.
+- Budget alerts before anything else; no day-to-day root-user use.
 
 ## 7. Infrastructure as code (#100)
 
@@ -228,9 +233,7 @@ Outbound: Gmail SMTP on 587 (User Service email)
 
 ## 10. Open items
 
-1. **Separate staging account.** Confirm with NUS IT whether a second account is possible; the fallback is a
-   separate VPC in the same account.
-2. **Team agreement.** CloudFront replaces Envoy as the HTTPS terminator, and `/gateway/*` is a new public path
+1. **Team agreement.** CloudFront replaces Envoy as the HTTPS terminator, and `/gateway/*` is a new public path
    on Jie Yang's gateway.
 
 ## 11. Left to the builder
