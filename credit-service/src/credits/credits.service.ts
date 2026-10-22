@@ -5,13 +5,16 @@
  *        per order (unique order id, state RESERVED -> TRANSFERRED | RELEASED), duplicates return
  *        the original result, mismatches are rejected, and the balance is changed with a
  *        conditional update in the same transaction as the hold.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
  * Scope: Added error codes; added getBalance (Task 3).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added createWallet (Kafka plan Task 3).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+ * Author review: Jian Bing supplied what it states; the wording is Claude's.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Record every balance change in credit_transactions, in the same transaction (design
  *        decided by Jian Bing; PR #48 review).

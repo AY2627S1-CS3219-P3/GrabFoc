@@ -2,7 +2,7 @@
   "info": {
     "name": "FoC Credit Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: pending — Jian Bing to record what he checked. 2026-10-14 (Claude Code, Claude Opus 5.5): added the Balance folder. 2026-10-15 (Claude Code, Claude Opus 5.5): added the Dead letters folder. 2026-10-18 (Claude Code, Claude Opus 5.5): added the transaction history requests to the Balance folder (route decided by Jian Bing).\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service with `docker compose up -d credit-service`.\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
+    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI. Also tested on the PR #94 branch: unit, integration and Kafka suites pass (incl. transfer/release no longer offered over HTTP); reserve over HTTP, 409 when credits are short, a TransferCredits command over Kafka pays the courier, and repeating it changes nothing. 2026-10-18 (Claude Code, Claude Opus 5.5): wrote the first Author review text above from Jian Bing's account of what he checked (PR #97); he supplied what it states. 2026-10-14 (Claude Code, Claude Opus 5.5): added the Balance folder. 2026-10-15 (Claude Code, Claude Opus 5.5): added the Dead letters folder. 2026-10-18 (Claude Code, Claude Opus 5.5): removed the HTTP transfer/release requests; they are Kafka commands now. 2026-10-18 (Claude Code, Claude Opus 5.5): folder 1 says how to send them with the orderId as the Kafka key (PR #94 review). 2026-10-18 (Claude Code, Claude Opus 5.5): added the transaction history requests to the Balance folder (route decided by Jian Bing).\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service with `docker compose up -d credit-service`.\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
   },
   "variable": [
     {
@@ -45,7 +45,7 @@
   ],
   "item": [
     {
-      "name": "1. Completed order (reserve → transfer)",
+      "name": "1. Reserve",
       "item": [
         {
           "name": "Reserve 3 credits (new order)",
@@ -202,314 +202,14 @@
           }
         },
         {
-          "name": "Transfer to courier",
+          "name": "Transfer over HTTP → 404 (now a Kafka command)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('state is TRANSFERRED', () => pm.expect(pm.response.json().state).to.eql('TRANSFERRED'));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"courierId\": \"{{courierId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/transfer",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "transfer"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Repeat the transfer (no change)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"courierId\": \"{{courierId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/transfer",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "transfer"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Release after transfer → 409",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/release",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "release"
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "2. Cancelled order (reserve → release)",
-      "item": [
-        {
-          "name": "Reserve 3 credits (new order)",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.collectionVariables.set('orderId', pm.variables.replaceIn('{{$guid}}'));",
-                  "pm.collectionVariables.set('requesterId', pm.variables.replaceIn('{{$guid}}'));",
-                  "pm.collectionVariables.set('courierId', pm.variables.replaceIn('{{$guid}}'));"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 201', () => pm.response.to.have.status(201));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"requesterId\": \"{{requesterId}}\",\n  \"amount\": 3\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/reserve",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "reserve"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Release to requester",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('state is RELEASED', () => pm.expect(pm.response.json().state).to.eql('RELEASED'));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/release",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "release"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Repeat the release (no change)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/release",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "release"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Transfer after release → 409",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
+                  "pm.test('status [404]', () => pm.expect(pm.response.code).to.be.oneOf([404]));"
                 ]
               }
             }
@@ -548,10 +248,11 @@
             }
           }
         }
-      ]
+      ],
+      "description": "Reserve, repeat it (no change), and a conflicting repeat. Transfer and release are Kafka commands on credit.commands (team consensus, 2026-10-18), not HTTP routes. To send one after the reserve: Kafka UI (http://localhost:8085) → Topics → credit.commands → Produce Message, with the KEY set to this folder's orderId (any other key is dead-lettered at once) and the VALUE {\"type\":\"TransferCredits\",\"eventId\":\"<new uuid>\",\"orderId\":\"<orderId>\",\"courierId\":\"<another user's id>\"} or {\"type\":\"ReleaseCredits\",\"eventId\":\"<new uuid>\",\"orderId\":\"<orderId>\"}. The current orderId is in the collection variables."
     },
     {
-      "name": "3. Errors",
+      "name": "2. Errors",
       "item": [
         {
           "name": "Insufficient credits (11 of 10) → 409",
@@ -606,158 +307,6 @@
                 "internal",
                 "credits",
                 "reserve"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Reserve 3 credits (for the next request)",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.collectionVariables.set('orderId', pm.variables.replaceIn('{{$guid}}'));",
-                  "pm.collectionVariables.set('requesterId', pm.variables.replaceIn('{{$guid}}'));",
-                  "pm.collectionVariables.set('courierId', pm.variables.replaceIn('{{$guid}}'));"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 201', () => pm.response.to.have.status(201));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"requesterId\": \"{{requesterId}}\",\n  \"amount\": 3\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/reserve",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "reserve"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Courier is the requester → 409",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"courierId\": \"{{requesterId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/transfer",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "transfer"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Unknown order → 404",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 404', () => pm.response.to.have.status(404));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{$guid}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/release",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "release"
               ]
             }
           }
@@ -902,7 +451,7 @@
       ]
     },
     {
-      "name": "4. Balance",
+      "name": "3. Balance",
       "description": "Set userToken to an access token from POST /auth/login (User Service or gateway) and userId to that user's id (the token's sub). balanceUrl is the Credit Service itself until the gateway route lands; then set it to http://localhost:3003.",
       "item": [
         {
@@ -1154,8 +703,8 @@
       ]
     },
     {
-      "name": "5. Dead letters",
-      "description": "Admin-only routes for Credit's dead letters (redesign spec §9.2). Set adminToken to an ADMIN's access token from POST /auth/login, and userToken as in folder 4.",
+      "name": "4. Dead letters",
+      "description": "Admin-only routes for Credit's dead letters (redesign spec §9.2). Set adminToken to an ADMIN's access token from POST /auth/login, and userToken as in folder 3.",
       "item": [
         {
           "name": "List open dead letters (ADMIN) → 200",
