@@ -26,6 +26,9 @@
  * Scope: A NUL in a Kafka key is stored as U+FFFD, so it can't block the dead-letter topic (PR #95
  *        review).
  * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+ * Scope: The replay key is the lowercase orderId, as live commands use (PR #95 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
@@ -92,7 +95,8 @@ const WHERE: Record<DeadLetterStatus, string> = {
 function replayKey(row: DeadLetterRow): string | null {
   try {
     const { orderId } = JSON.parse(row.payload.toString('utf8')) as { orderId?: unknown };
-    if (typeof orderId === 'string') return orderId;
+    // Lowercase, as the command schema normalizes it, so the replay shares the order's partition.
+    if (typeof orderId === 'string') return orderId.toLowerCase();
   } catch {
     // Not JSON: replay it as it came; the command processor dead-letters it again.
   }
