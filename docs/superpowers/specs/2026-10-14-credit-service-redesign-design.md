@@ -18,6 +18,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Recorded the team consensus on transfer/release as commands and the removal of their HTTP routes.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: §4.3 and the Phase 3 row now say the HTTP routes are already removed (PR #94 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Credit Service redesign: wallets from events, async transfer/release, balance read
@@ -101,7 +104,7 @@ store nothing.
 ### 4.3 Transfer and release as commands (D2, D8)
 
 - A consumer on `credit.commands` calls the **same** transfer/release logic as today. The HTTP
-  routes for transfer and release are removed once Order uses the commands.
+  routes for transfer and release were removed on 2026-10-18, before Order existed (§9.3).
 - **Duplicates** are already harmless: the per-order state check (`WHERE state = 'RESERVED'`)
   makes a repeat a no-op. `eventId` is for tracing, not deduplication.
 - **Retry policy (Proposed, AI):** a command that can't be applied *yet* (courier wallet missing)
@@ -158,7 +161,7 @@ wallet, so the order matters.
 |---|---|---|
 | 1 (D3, Credit only) | Balance read endpoint with JWT auth; error codes; gateway route | Gateway owner for the route |
 | 2 | Broker in compose; `UserRegistered` consumer; then remove lazy creation; purge local data | Team's broker choice; User Service outbox |
-| 3 | Transfer/release consumers with retries and DLQ; remove the HTTP transfer/release routes | Order Service outbox and credit client |
+| 3 | Transfer/release consumers with retries and DLQ; remove the HTTP transfer/release routes (done early, §9.3) | Order Service outbox and credit client (not for the removal) |
 
 ## 7. Testing
 

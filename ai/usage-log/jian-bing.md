@@ -42,12 +42,38 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 replay-key entry from Jian Bing's prompts.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 spec removal-schedule entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-22 — Codex review fixes, second round: spec removal schedule (PR #94)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Merging the stacked PRs was blocked by unresolved review threads; I asked Claude to
+resolve them.
+
+**Prompts (exact):**
+> there are merge conflict in the pr stack
+
+> and the conversation must be resolved
+
+**Key responses:** Claude pointed out that the spec's §4.3 and Phase 3 row still scheduled the HTTP
+route removal for after Order used the commands, contradicting §9.3; and that Zi Yi's direction
+(2026-10-17) for transfer and release as commands is now recorded on main.
+
+**What it produced:** §4.3 and the Phase 3 row say the routes are already removed.
+
+**Changed or rejected:** Nothing rejected.
+
+**Verification:** Docs only.
 
 ### 2026-10-22 — Codex review fixes, second round: replay key case (PR #95)
 
