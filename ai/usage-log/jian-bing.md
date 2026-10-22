@@ -28,13 +28,16 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 Codex review entries (one per PR) from Jian Bing's prompts; added the usage modes and
 "changed or rejected" lines to the two 2026-10-18 author-review entries, and Verification to the
 second (PR #97 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 credit_transactions entry from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 transaction history route entry from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 quieter Kafka logs entry from Jian Bing's prompt.
 Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
