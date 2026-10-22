@@ -83,6 +83,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 Author review lines entry for PR #94 from Jian Bing's prompt (PR #97 review: one entry per PR).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review lines entry for PR #97 from Jian Bing's prompt (PR #97 review: one entry per PR).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -143,6 +146,24 @@ each edited file records that Claude wrote the wording from my account.
 **Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
 
 **Verification:** All seven lines this PR added as pending were replaced.
+
+### 2026-10-22 — Recording my review in the pending Author review lines (PR #97)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/AGENTS.md`, `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md` (lines from PRs #93, #97 and #98 that were still pending)
+
+**Scenario:** Seven Author review lines from PRs #93, #97 and #98 were still pending; #97 fills them so
+they reach main with the stack. I told Claude what I had checked and asked it to write the lines.
+
+**Prompts (exact):**
+> there are still unresolved voncersatiosn in #96 that are blocking my merge, but in the meantime while resolving them, coudl oyu help me edit the pending author review liens, i have tested all the filesna dran them myself to see them working as intended, i ran the docker lcoally, checked the npm test suite, ran the kafba tui to see the messages and their strucutre, as wlel as looked at the files changed on github
+
+**What it produced:** each pending "Author review" line this PR adds now states what I checked;
+each edited file records that Claude wrote the wording from my account.
+
+**Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
+
+**Verification:** All seven remaining pending lines were replaced.
 
 ### 2026-10-22 — Recording my review in the pending Author review lines (PR #96)
 
