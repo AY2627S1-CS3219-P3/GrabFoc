@@ -71,6 +71,18 @@ Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 host-side broker examples entry from Jian Bing's prompt.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Narrowed the 2026-10-22 Author review lines entry to PR #96; added "Changed or rejected" lines to the quieter Kafka logs and transaction history route entries, from what those entries record (PR #97 review).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review lines entry for PR #95 from Jian Bing's prompt (PR #97 review: one entry per PR).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added the "Changed or rejected" line to the 2026-10-18 HTTP route removal entry, from what it records (PR #97 review).
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review lines entry for PR #94 from Jian Bing's prompt (PR #97 review: one entry per PR).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -96,23 +108,59 @@ env validation comment and message) now say `127.0.0.1:9094`. The historical pla
 
 **Verification:** No test asserts the changed message; the rest is comments and docs.
 
-### 2026-10-22 — Recording my review in the pending Author review lines (PRs #94, #95, #96)
+### 2026-10-22 — Recording my review in the pending Author review lines (PR #95)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
-**Files:** the files in PRs #94, #95 and #96 with a pending Author review line, `ai/usage-log/jian-bing.md`
+**Files:** `credit-service/src/dead-letters/dead-letters.service{,.int.spec}.ts`, `credit-service/AGENTS.md`, `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
 
-**Scenario:** Unresolved review threads on #94 and #96 asked for the pending Author review lines to be
+**Scenario:** The pending Author review lines on #95 had to be filled before merging. I told Claude
+what I had checked and asked it to write the lines.
+
+**Prompts (exact):**
+> there are still unresolved voncersatiosn in #96 that are blocking my merge, but in the meantime while resolving them, coudl oyu help me edit the pending author review liens, i have tested all the filesna dran them myself to see them working as intended, i ran the docker lcoally, checked the npm test suite, ran the kafba tui to see the messages and their strucutre, as wlel as looked at the files changed on github
+
+**What it produced:** each pending "Author review" line this PR adds now states what I checked;
+each edited file records that Claude wrote the wording from my account.
+
+**Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
+
+**Verification:** All eight lines this PR added as pending were replaced.
+
+### 2026-10-22 — Recording my review in the pending Author review lines (PR #94)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `credit-service/{AGENTS,README}.md`, `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** The pending Author review lines on #94 had to be filled before merging. I told Claude
+what I had checked and asked it to write the lines.
+
+**Prompts (exact):**
+> there are still unresolved voncersatiosn in #96 that are blocking my merge, but in the meantime while resolving them, coudl oyu help me edit the pending author review liens, i have tested all the filesna dran them myself to see them working as intended, i ran the docker lcoally, checked the npm test suite, ran the kafba tui to see the messages and their strucutre, as wlel as looked at the files changed on github
+
+**What it produced:** each pending "Author review" line this PR adds now states what I checked;
+each edited file records that Claude wrote the wording from my account.
+
+**Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
+
+**Verification:** All seven lines this PR added as pending were replaced.
+
+### 2026-10-22 — Recording my review in the pending Author review lines (PR #96)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `.env.example`, `credit-service/{README,AGENTS}.md`, `infra/kafka/README.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** An unresolved review thread on #96 asked for its pending Author review lines to be
 filled before merging. I told Claude what I had checked and asked it to write the lines.
 
 **Prompts (exact):**
 > there are still unresolved voncersatiosn in #96 that are blocking my merge, but in the meantime while resolving them, coudl oyu help me edit the pending author review liens, i have tested all the filesna dran them myself to see them working as intended, i ran the docker lcoally, checked the npm test suite, ran the kafba tui to see the messages and their strucutre, as wlel as looked at the files changed on github
 
-**What it produced:** each pending "Author review" line those PRs add now states what I checked;
+**What it produced:** each pending "Author review" line this PR adds now states what I checked;
 each edited file records that Claude wrote the wording from my account.
 
 **Changed or rejected:** Nothing rejected; the statement of what I checked is mine.
 
-**Verification:** Every line those PRs added as pending was replaced; other members' pending lines
+**Verification:** All five lines this PR added as pending were replaced; other members' pending lines
 were left alone.
 
 ### 2026-10-22 — Codex review fixes, second round: spec removal schedule (PR #94)
@@ -345,6 +393,9 @@ before any file was edited; explained that Order → Supplier query events aren'
 root `AGENTS.md` §3 now records reserve over HTTP and transfer/release as Kafka commands (team
 consensus); Postman reshaped to reserve-only HTTP; issue #53 rewritten to match.
 
+**Changed or rejected:** I chose to remove the HTTP routes now rather than once Order used the
+commands, and had Claude undo my prompt changing the Credit Service's ownership before any file was edited.
+
 **Verification:** Test-first: "no longer offers transfer or release over HTTP" (404, the hold stays
 RESERVED) failed, then passed; unit 126/126, integration 60/60, Kafka 12/12; Newman 15 requests,
 19 assertions, 0 failures on the rebuilt service.
@@ -413,6 +464,9 @@ where the broker's port isn't published; the rest was the library logging Credit
 everywhere); a Kafka client logger that writes through Nest's logger and drops only the
 not-due-yet error; `NotDueYet` carries a fixed message for the filter to match.
 
+**Changed or rejected:** I took both fixes Claude proposed; the intentional database-outage test was
+left as it is, so its log output stays.
+
 **Verification:** Logger tests written first (red, then green). Unit 132/132, integration 60/60,
 Kafka 12/12; the Kafka run now prints no console errors.
 
@@ -446,6 +500,10 @@ the balance route answers. I approved the plan, including the 404.
 balance route (own id or ADMIN), newest first, `limit` 1–100 (default 20), `before` = the id of the
 last row seen; strict query validation; `{items: [{id, orderId, type, availableChange,
 reservedChange, createdAt}], nextBefore}`, with `nextBefore` null on the last page.
+
+**Changed or rejected:** I chose the route, paging and timing from Claude's options, approved its
+suggested 404 for a user with no wallet, and moved removing lazy wallet creation into a separate PR
+held until #54.
 
 **Verification:** Test-first: 10 new schema unit tests and 15 new HTTP integration tests (own
 history, paging across 3 pages, only the asked user's rows, 403, admin, 404, bad and unknown query
