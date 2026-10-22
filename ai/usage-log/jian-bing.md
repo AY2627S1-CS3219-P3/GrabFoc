@@ -27,12 +27,42 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 transaction history route entry from Jian Bing's prompts.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 SoCLaaS timeout entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-22 — Why the SoCLaaS review keeps failing, and a timeout fix
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** The SoCLaaS review check kept failing on the stacked credit PRs with "SoCLaaS could not
+be reached". I asked Claude to diagnose it, then to fix it.
+
+**Prompts (exact):**
+> help me diagnose why the soclass pr review keeps fialing
+
+> alright do it
+
+**Key responses:** From the run logs: the failures end about 120 s after the request starts, the
+script's per-request timeout, so the model was slow, not unreachable; the script reported timeouts
+with the network-failure message. Each push to the stack started six reviews at once (PRs based on
+another stack branch run twice), which queued on SoCLaaS. The check is not required for merging.
+
+**What it produced:** a timeout now says "did not answer within N s; it may be busy"; the review
+request gets 240 s and one retry after a timeout or a 503; stdlib tests against a stalling local server.
+
+**Changed or rejected:** I chose the clearer message and the longer timeout with a retry; reviewing
+only PRs that target main was offered and not taken.
+
+**Verification:** Test-first: the timeout test failed with "could not be reached", then the four
+tests passed (`python3 -I -m unittest discover -s .github/scripts`).
 
 ### 2026-10-18 — Credit transaction history route (`GET /credits/:userId/transactions`)
 
