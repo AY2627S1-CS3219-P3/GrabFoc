@@ -179,7 +179,7 @@ Outbound: Gmail SMTP on 587 (User Service email)
 ## 6. URL, email and accounts (#99, #114)
 
 - **URL:** the CloudFront `dxxxx.cloudfront.net` name for each environment. No domain.
-- **Email: Gmail SMTP** (app password, port 587; AWS blocks port 25), the same code path as local (learner's
+- **Email: Gmail SMTP** (app password, port 587; AWS blocks port 25), the same code path as local (Jian Bing's
   decision). The User Service's existing `USER_SMTP_*` variables choose where mail goes:
   - **Production:** straight to Gmail.
   - **Staging:** to Mailpit in **relay mode**, which keeps a copy of every email and forwards it to Gmail
