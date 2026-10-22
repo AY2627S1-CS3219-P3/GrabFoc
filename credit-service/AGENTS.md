@@ -64,6 +64,11 @@ Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm t
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #94).
 Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Release with no hold saves a RELEASED marker, and a later reserve answers 409 ALREADY_RELEASED
+(issue #83; schema change and 409 decided by Jian Bing): Design, Schema, API, Messaging, Concurrency
+and Open items.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AGENTS.md — Credit Service
@@ -99,6 +104,10 @@ _Origin: Team (Jian Bing, 2026-10-11)_
   without special handling.
 - A repeat whose amount or requester differs is **rejected**, never overwritten: Order can't
   legitimately change a credit offer (O1.3.3), so a mismatch means a bug.
+- **A release with no hold leaves a marker** (#83; decided by Jian Bing, 2026-10-22): a `RELEASED`
+  row with no requester or amount, and no balance change. Order releases when its reserve times
+  out, and the slow reserve may still land afterwards; it then finds the marker, holds nothing and
+  answers 409 `ALREADY_RELEASED`. So credits are never left held for a cancelled order.
 - **PostgreSQL enforces all of it** (unique constraint, conditional updates, one transaction per
   operation), chosen over in-memory, Redis or queue-based approaches, because "this operation
   happened" and "the balance changed" must commit together.
@@ -124,11 +133,13 @@ credit_accounts (
 )
 credit_holds (
     order_id      UUID PRIMARY KEY,                 -- the idempotency key
-    requester_id  UUID NOT NULL REFERENCES credit_accounts,
+    requester_id  UUID REFERENCES credit_accounts,  -- null only on a marker
     courier_id    UUID REFERENCES credit_accounts,  -- set exactly when TRANSFERRED
-    amount        INTEGER NOT NULL CHECK (amount > 0),
+    amount        INTEGER CHECK (amount > 0),       -- null only on a marker
     state         TEXT NOT NULL  -- RESERVED | TRANSFERRED | RELEASED
-    created_at, updated_at TIMESTAMPTZ
+    created_at, updated_at TIMESTAMPTZ,
+    -- credit_holds_marker: requester_id and amount are both null or both set, and both null
+    -- only when RELEASED (a release that found no hold, #83)
 )
 credit_transactions (                           -- every balance change, append-only
     id                BIGSERIAL PRIMARY KEY,
@@ -193,7 +204,7 @@ Details (`application/problem+json`), as in the Supplier Service.
 
 | Route | Body | Success | Errors |
 |---|---|---|---|
-| `POST /internal/credits/reserve` | `{orderId, requesterId, amount}` | **201** new hold; **200** for a repeat, with the hold as it is now (its `state` may have moved on to `TRANSFERRED` or `RELEASED`) | 409 insufficient credits (nothing kept); 409 same order with a different requester or amount |
+| `POST /internal/credits/reserve` | `{orderId, requesterId, amount}` | **201** new hold; **200** for a repeat, with the hold as it is now (its `state` may have moved on to `TRANSFERRED` or `RELEASED`) | 409 insufficient credits (nothing kept); 409 same order with a different requester or amount; 409 `ALREADY_RELEASED` when the order was released before this reserve arrived (nothing held) |
 | any, wrong or missing key | | | 401, logged as `access_denied` without the key |
 | `GET /credits/:userId` (user JWT; through the gateway once PR #69's Envoy route is added) | — | **200** `{userId, available, reserved}` | 400 path id not a UUID; 401 no/invalid token; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
 | `GET /credits/:userId/transactions?limit=&before=` (user JWT) | — | **200** `{items: [{id, orderId, type, availableChange, reservedChange, createdAt}], nextBefore}`, newest first; `limit` 1–100 (default 20); `before` is the `nextBefore` from the previous page; `nextBefore` is `null` on the last page | 400 path id not a UUID, a bad `limit`/`before`, or an unknown parameter; 401; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
@@ -248,7 +259,7 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
     listed in `infra/kafka/topics.txt`; Credit refuses to start if they don't match the delays.
     Retire a delay only after its topic is drained (`infra/kafka/README.md`). A not-yet-due retry
     pauses its partition until due; each retry topic has one delay, so this delays nothing behind it.
-  - **Permanent** failures (any other error code, including `HOLD_NOT_FOUND`, which is a bug, K11;
+  - **Permanent** failures (any other error code, including `HOLD_NOT_FOUND` for a transfer, which is a bug, K11;
     or an invalid message), and retries that run out, go to **`credit.commands.dlt`** with
     `x-error`, `x-error-code`, `x-source-topic`, `x-dead-lettered-at`, logged at `error` as
     `credit_command_dead_lettered` (ids only).
@@ -270,6 +281,10 @@ _Origin: AI doc_
   transaction, then inserts nothing and returns the existing hold.
 - Transfer and release racing on one order: both update `WHERE state = 'RESERVED'`; the second
   waits for the first's row lock, re-checks, and updates nothing.
+- Reserve and release racing on one order (#83): release first inserts its marker `ON CONFLICT
+  DO NOTHING`. If the reserve's hold is saved but not committed, that insert waits for it, then
+  finds the hold and releases it; if the marker commits first, the reserve finds it and holds
+  nothing. Either way no `RESERVED` hold is left.
 - Transfer updates two accounts in user-id order, so opposite transfers can't deadlock.
 - All of these are covered by `src/credits/credits.service.int.spec.ts`.
 
@@ -286,11 +301,5 @@ _Origin: AI doc_
 - Transaction history: readable at `GET /credits/:userId/transactions`; needs the gateway route (#60).
 - Order id format: assumed UUID, matching user ids. Confirm when the Order Service is designed.
 - Record root `AGENTS.md` §8's exception for authenticated service callers, if the team agrees.
-- **Credit owner to handle — releases for unknown orders** (raised by the Order Service, 2026-10-17). Order
-  sends `ReleaseCredits` when a reserve failed or timed out, since a timed-out reserve may still have
-  saved a hold. If Credit never saved one, the release gets `HOLD_NOT_FOUND` and is dead-lettered,
-  so admins see a dead letter for a normal outcome. And if the release arrives while a slow reserve
-  is still running, the reserve lands afterwards and the credits stay held. One fix covers both:
-  record a release for an unknown order (a `RELEASED` marker, which needs `requester_id`/`amount`
-  nullable or sent with the release) and have a later reserve for it insert nothing. Order skips the
-  release when Credit answered `INSUFFICIENT_CREDITS`, so this only follows timeouts and failures.
+- Releases for unknown orders (raised by the Order Service, 2026-10-17): done in #83, a release with
+  no hold leaves a `RELEASED` marker (Design above).
