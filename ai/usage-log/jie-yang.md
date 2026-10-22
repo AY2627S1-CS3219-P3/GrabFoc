@@ -1479,3 +1479,14 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Stage Order service files, root Compose/environment examples and the shared usage log; exclude unrelated api-gateway/.build artifacts. Commit message: feat(order): implement PostgreSQL database foundation. No push requested or performed.
 - Verification: Existing implementation checks passed: TypeScript build, root Compose configuration, 14 Docker PostgreSQL integration tests, production migration and schema persistence after container replacement. Pre-commit git diff --check passed.
 - Author review: User explicitly requested commit; human implementation review remains required before merge.
+
+## 2026-10-22 — Restart policy for every long-running container
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate, 2026-10-22 (Asia/Singapore).
+- Exact user prompt: “add the restart policy for all the services and db”.
+- Context: Earlier in the session the assistant explained the D3 report questions on startup dependencies and found that no application or database container had a restart policy, so a crashed service stayed down until the next `docker compose up`.
+- Scope/usage scenario: Containerisation config (M7) on branch chore/compose-restart-policy, from origin/main 06e3842.
+- Key response: Added `restart: unless-stopped` to user-db, user-redis, mailpit, user-service, supplier-db, supplier-service, credit-db, credit-service, order-db, order-service, kafka, kafka-ui, api-gateway and frontend. Left kafka-init and order-migrate on `restart: "no"`, since they are one-shot init containers that must exit. Added a disclosure line to each changed compose file's header.
+- Files: user-service/compose.yaml, supplier-service/compose.yaml, credit-service/compose.yaml, order-service/compose.yaml, infra/kafka/compose.yaml, api-gateway/compose.yaml, frontend/compose.yaml, ai/usage-log/jie-yang.md.
+- Verification: `docker compose config --quiet` passed; the resolved config shows unless-stopped on the 14 long-running containers and "no" on kafka-init and order-migrate. The stack was not started.
+- Author review: pending — Jie Yang to record the review.
