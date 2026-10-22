@@ -65,6 +65,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #94).
 Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Recorded Zi Yi's approval of the dead-letter migration and the mentor's validation of the route removal (PR #97 review).
+Author review: Jian Bing supplied the approval it records; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Release with no hold saves a RELEASED marker, and a later reserve answers 409 ALREADY_RELEASED
 (issue #83; schema change and 409 decided by Jian Bing): Design, Schema, API, Messaging, Concurrency
 and Open items.
@@ -76,7 +79,10 @@ Author review: pending — Jian Bing to record what he checked.
 Read the root `AGENTS.md` first. This file holds Credit-specific rules only.
 
 **Owner:** Zi Yi (Gantt). This first version was designed and built by Jian Bing, so everything
-below is **[Proposed]** until Zi Yi confirms it.
+below is **[Proposed]** until Zi Yi confirms it. Confirmed so far: the generic dead-letter envelope
+and its start-up migration (`message_key` / `message_type`), approved by Zi Yi (recorded 2026-10-22);
+reserve over HTTP with transfer and release as Kafka commands (Zi Yi, 2026-10-17; validated by the
+mentor, recorded 2026-10-22).
 
 ## What it does
 
