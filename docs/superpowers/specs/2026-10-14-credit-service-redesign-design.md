@@ -33,6 +33,9 @@ Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm t
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #94).
 Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: §8 open items: the mentor validated transfer/release as commands (PR #97 review).
+Author review: Jian Bing supplied the approval it records; the wording is Claude's.
 -->
 
 # Credit Service redesign: wallets from events, async transfer/release, balance read
@@ -191,7 +194,7 @@ wallet, so the order matters.
 - Broker choice: **Kafka**, chosen by Jian Bing and Jie Yang (§9). Confirm with the rest of the team,
   then record it in root `AGENTS.md` §3.
 - Transfer/release via the broker: **agreed by the team on 2026-10-18** and recorded in root `AGENTS.md` §3.
-  Still worth telling the mentor, since it changed a [Decided] item. (Originally: confirm with the mentor that moving transfer/release to the broker changes the [Decided]
+  Validated by the mentor (recorded 2026-10-22). (Originally: confirm with the mentor that moving transfer/release to the broker changes the [Decided]
   "synchronous HTTP between Order → Credit" in root `AGENTS.md` §3, and update that section.)
 - Backfill wallets for existing users before any cloud deployment (D10 covers local data only).
   `user.events` keeps 7 days (K8), so this needs a one-off script or the User Service re-publishing,

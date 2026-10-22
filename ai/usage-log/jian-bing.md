@@ -86,12 +86,33 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 Author review lines entry for PR #97 from Jian Bing's prompt (PR #97 review: one entry per PR).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 approvals entry from Jian Bing's prompt.
+Author review: Jian Bing supplied the prompt and the approvals; the wording is Claude's.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+
+### 2026-10-22 — Recording Zi Yi's and the mentor's approvals (PR #97)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `AGENTS.md` (§3), `credit-service/AGENTS.md`, `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Two review threads on #97 asked for recorded approval before merging: Zi Yi's for the
+dead-letter migration, and the mentor's for removing the HTTP transfer/release routes.
+
+**Prompts (exact):**
+> yes ziyi approved dead letter migratuin, and mentor has valdiated remvoing http synchronous communication
+
+**What it produced:** both approvals recorded where the threads pointed, dated as recorded on 2026-10-22.
+
+**Changed or rejected:** Nothing rejected; the approvals are as I reported them.
+
+**Verification:** Docs only.
 
 ### 2026-10-22 — Codex review fix: remaining host-side broker examples (PR #96)
 
