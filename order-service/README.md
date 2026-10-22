@@ -30,6 +30,9 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 Scope: Updated the test count after the Phase E tests, and added the Postman section.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Host-side broker example localhost:9094 → 127.0.0.1:9094, matching the shared broker (PR #96 review).
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # Order Service
@@ -358,7 +361,7 @@ unknown order (a `RELEASED` marker). Recorded in `credit-service/AGENTS.md` open
 
 Run locally (after `npm ci` in `order-service/`) with the five `ORDER_DB_*` settings,
 `ORDER_JWKS_URL`, `ORDER_SUPPLIER_URL`, `ORDER_CREDIT_URL`, `ORDER_CREDIT_SERVICE_KEY`,
-`ORDER_KAFKA_BROKERS` (e.g. `localhost:9094`, the shared broker in `infra/kafka/`) and
+`ORDER_KAFKA_BROKERS` (e.g. `127.0.0.1:9094`, the shared broker in `infra/kafka/`) and
 `ORDER_SERVICE_KEY` (≥ 32 characters) set:
 
 ```powershell
