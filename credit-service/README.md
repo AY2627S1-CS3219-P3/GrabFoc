@@ -24,7 +24,10 @@ Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of
 Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented the required Kafka key for a hand-sent command, and the renumbered Postman folders (PR #94 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #94).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 -->
 
 # Credit Service

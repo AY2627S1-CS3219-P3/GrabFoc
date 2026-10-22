@@ -20,10 +20,13 @@ Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of
 Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Recorded the team consensus on transfer/release as commands and the removal of their HTTP routes.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: §4.3 and the Phase 3 row now say the HTTP routes are already removed (PR #94 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #94).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 -->
 
 # Credit Service redesign: wallets from events, async transfer/release, balance read
