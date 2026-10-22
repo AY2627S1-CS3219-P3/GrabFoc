@@ -187,7 +187,7 @@ Outbound: Gmail SMTP on 587 (User Service email)
     checks to read OTP codes). Mailpit's relay uses the same Gmail app password from SSM. Its web inbox is not
     published; the security group already blocks it.
 - **One AWS account for both environments** (NUS doesn't allow a second; confirmed by Jian Bing 2026-10-23).
-  Staging and production are kept apart by:
+  Staging and production are kept apart by (Claude's call):
   - a separate VPC, server, EBS volume, CloudFront distribution and ECS cluster per environment;
   - an `env` tag and an `foc-staging-` / `foc-production-` name prefix on every resource;
   - separate SSM paths (`/foc/staging/…`, `/foc/production/…`) and Terraform state files;
