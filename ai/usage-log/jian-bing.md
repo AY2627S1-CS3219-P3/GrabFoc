@@ -86,12 +86,50 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 Author review lines entry for PR #97 from Jian Bing's prompt (PR #97 review: one entry per PR).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 issue #83 release-marker entry from Jian Bing's prompts.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-22 — Release with no hold saves a RELEASED marker (issue #83)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `credit-service/src/credits/credits.service{,.int.spec}.ts`, `credit-service/src/db/schema{,.int.spec}.ts`,
+`credit-service/src/messaging/{commands.kafka,command-processor}.spec.ts`, `credit-service/AGENTS.md`,
+`docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** Zi Yi asked me to take issue #83, needed for the credit reservation. I had Claude check it
+against the current code, then chose the fix's schema change, response code and branch.
+
+**Prompts (exact):**
+> @yimyamyum you have time to work on https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/83? its needed for the credit reservation
+
+> help me clean up the ofrks, then start a new chat session workig on this @yimyamyum you have time to work on https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/83? its needed for the credit reservation
+
+> alright then lets proceed with the fix ofr issue 83, the decisions wise, i am okay with the schema change, and using 409 as the response code and stack it on pr 97
+
+**Key responses:** The issue predates the Kafka move, but the race remains: Order sends `ReleaseCredits`
+after a reserve timeout; if it arrives before the slow reserve saves its hold, release failed with
+`HOLD_NOT_FOUND` (dead-lettered) and the late hold stayed reserved on a cancelled order. Claude flagged
+that `ReleaseCredits` carries only the order id, so a marker row needs `requester_id`/`amount` nullable
+(a schema decision for me), and proposed inserting the marker first so the insert waits for an
+in-flight reserve.
+
+**What it produced:** release inserts a `RELEASED` marker (`ON CONFLICT DO NOTHING`) before its usual
+logic; reserve answers 409 `ALREADY_RELEASED` on a marker; `credit_holds.requester_id`/`amount`
+nullable for markers only (`credit_holds_marker` check, with a start-up migration); docs updated.
+
+**Changed or rejected:** I chose the nullable columns over a separate marker table, 409 `ALREADY_RELEASED`
+for a reserve after a marker, and stacking the branch on PR #97.
+
+**Verification:** Test-first: the five marker tests failed (four with `HOLD_NOT_FOUND`, the race test
+with a hold left `RESERVED`), and the migration test failed on the `NOT NULL` column; then unit
+142/142, integration 91/91 (race test also passed 5 more runs of 30 rounds), Kafka 13/13.
 
 ### 2026-10-22 — Codex review fix: remaining host-side broker examples (PR #96)
 
