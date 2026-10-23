@@ -11,6 +11,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Added order.events (Order's state-change events for Notification) at Zi Yi's direction.
 # Author review: Reviewed
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+# Scope: Added logging.lines and its dead-letter topic for the Logging Service (issue #52), at
+#   Cole Lin's direction: every service gets its own dead letter, as rule 6 says.
+# Author review: Reviewed for jian bings part
 #
 # Every Kafka topic in the system, and the only list of them: kafka-init creates exactly these
 # (root AGENTS.md §3 Messaging, rule 4). Add a topic by adding a line: <name> <partitions>.
@@ -23,6 +27,9 @@ order.events 3
 
 # Commands, written to the receiver's topic
 credit.commands 3
+# Log lines, written to the receiver's topic. Keyed by requestId, so one request's lines stay
+# in one partition and in order.
+logging.lines 3
 
 # Credit's retries: one per entry in CREDIT_RETRY_DELAYS (default 1s,5s,30s,2m,10m), in order.
 # Change both together; the Credit Service refuses to start if they don't match.
@@ -35,3 +42,4 @@ credit.commands.retry.4 1
 # Dead-letter topics, one per consumer and source topic (rule 6)
 credit.commands.dlt 1
 credit.user-events.dlt 1
+logging.lines.dlt 1
