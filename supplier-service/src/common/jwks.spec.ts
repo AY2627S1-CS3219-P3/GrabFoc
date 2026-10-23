@@ -156,6 +156,12 @@ describe('when the JWKS cannot be used', () => {
     await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);
   });
 
+  it('keeps working when a key set holds one good key beside a junk entry', async () => {
+    stub.respond = () => ({ status: 200, body: JSON.stringify({ keys: [{}, rsa.jwk] }) });
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.not.toBeNull();
+    stub.respond = undefined;
+  });
+
   it('throws JwksUnavailableError when the server is unreachable', async () => {
     config.jwksUrl = 'http://127.0.0.1:9/.well-known/jwks.json';
     await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);

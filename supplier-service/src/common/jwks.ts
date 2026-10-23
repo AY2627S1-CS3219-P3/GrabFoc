@@ -61,7 +61,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
  * and then a valid caller's kid was never found, so they got 401 instead of the 503 that says the
  * key service is unusable (PR #145 review).
  */
-function isUsableKey(value: unknown): boolean {
+function isUsableKey(value: unknown): value is Record<string, unknown> {
   if (!isObject(value)) return false;
   const { kid, kty } = value as { kid?: unknown; kty?: unknown };
   return typeof kid === 'string' && kid !== '' && typeof kty === 'string' && kty !== '';
@@ -96,10 +96,15 @@ async function fetchKeys(): Promise<Jwk[]> {
   // and it matches the gateway (api-gateway/envoy/behaviour-differences.md). Found by the PR #129
   // review of the Logging Service's copy of this file.
   // AI-generated (reviewed by Cole Lin).
-  if (!body.keys.length || !body.keys.every(isUsableKey)) {
+  // Filtered, not rejected: a key set with one good key and one junk entry should keep
+  // working. Same approach as credit-service/src/common/jwks.ts, which got here first. A 200
+  // with nothing usable in it is as unusable as an error, so 503 rather than blaming a valid
+  // caller's token with a 401 (PR #145 review).
+  const usable = body.keys.filter(isUsableKey);
+  if (!usable.length) {
     throw new JwksUnavailableError(`${url} returned no usable keys`);
   }
-  cachedKeys = body.keys as Jwk[];
+  cachedKeys = usable as Jwk[];
   cachedAt = Date.now();
   return cachedKeys;
 }
