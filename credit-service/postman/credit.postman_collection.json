@@ -2,7 +2,7 @@
   "info": {
     "name": "FoC Credit Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: pending — Jian Bing to record what he checked. 2026-10-14 (Claude Code, Claude Opus 5.5): added the Balance folder. 2026-10-15 (Claude Code, Claude Opus 5.5): added the Dead letters folder. 2026-10-18 (Claude Code, Claude Opus 5.5): added the transaction history requests to the Balance folder (route decided by Jian Bing).\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service with `docker compose up -d credit-service`.\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
+    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11. Scope: generated this collection from the routes and error codes in credit-service/AGENTS.md. Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI. Also tested on the PR #94 branch: unit, integration and Kafka suites pass (incl. transfer/release no longer offered over HTTP); reserve over HTTP, 409 when credits are short, a TransferCredits command over Kafka pays the courier, and repeating it changes nothing. 2026-10-18 (Claude Code, Claude Opus 5.5): wrote the first Author review text above from Jian Bing's account of what he checked (PR #97); he supplied what it states. 2026-10-14 (Claude Code, Claude Opus 5.5): added the Balance folder. 2026-10-15 (Claude Code, Claude Opus 5.5): added the Dead letters folder. 2026-10-18 (Claude Code, Claude Opus 5.5): removed the HTTP transfer/release requests; they are Kafka commands now. 2026-10-18 (Claude Code, Claude Opus 5.5): folder 1 says how to send them with the orderId as the Kafka key (PR #94 review). 2026-10-18 (Claude Code, Claude Opus 5.5): added the transaction history requests to the Balance folder (route decided by Jian Bing). 2026-10-18 (Claude Code, Claude Opus 5.5): folders 1–3 create their users' wallets through UserRegistered, and a reserve with no wallet answers 409 (#79; decided by Jian Bing). 2026-10-22 (Claude Code, Claude Opus 5.5): re-applied those changes on top of the reserve-only folders (merge with main).\n\nRequests for the Credit Service's internal routes, which only the Order Service calls. They go straight to the service on port 3004, not through the gateway.\n\nSETUP: set the serviceKey collection variable to CREDIT_SERVICE_KEY from your .env, and start the service and Kafka UI with `docker compose up -d credit-service kafka-ui`.\n\nWallets come only from UserRegistered (#79), so folders 1–3 first publish one for each new user through Kafka UI (kafkaUiUrl, local only).\n\nRUN each folder top to bottom (or with the Collection Runner). The first request of each folder makes fresh ids, so folders can be re-run any number of times. A new user starts with 10 credits."
   },
   "variable": [
     {
@@ -41,14 +41,23 @@
       "key": "adminToken",
       "value": "",
       "description": "An ADMIN's access token from POST /auth/login (folder 5)."
+    },
+    {
+      "key": "kafkaUiUrl",
+      "value": "http://localhost:8085",
+      "description": "Kafka UI, used to publish UserRegistered so the test users get wallets (#79)."
+    },
+    {
+      "key": "walletWaits",
+      "value": "0"
     }
   ],
   "item": [
     {
-      "name": "1. Completed order (reserve → transfer)",
+      "name": "1. Reserve",
       "item": [
         {
-          "name": "Reserve 3 credits (new order)",
+          "name": "New users with wallets (UserRegistered via Kafka UI)",
           "event": [
             {
               "listen": "prerequest",
@@ -57,7 +66,15 @@
                 "exec": [
                   "pm.collectionVariables.set('orderId', pm.variables.replaceIn('{{$guid}}'));",
                   "pm.collectionVariables.set('requesterId', pm.variables.replaceIn('{{$guid}}'));",
-                  "pm.collectionVariables.set('courierId', pm.variables.replaceIn('{{$guid}}'));"
+                  "pm.collectionVariables.set('courierId', pm.variables.replaceIn('{{$guid}}'));",
+                  "// This request creates the requester's wallet; this sends the courier's.",
+                  "const courierId = pm.collectionVariables.get('courierId');",
+                  "pm.sendRequest({",
+                  "  url: pm.variables.replaceIn('{{kafkaUiUrl}}/api/clusters/foc/topics/user.events/messages'),",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ partition: 0, key: courierId, value: JSON.stringify({ type: 'UserRegistered', userId: courierId }), keySerde: 'String', valueSerde: 'String' }) },",
+                  "}, (err, res) => pm.test('courier UserRegistered published', () => pm.expect(err || res.code).to.eql(200)));"
                 ]
               }
             },
@@ -66,8 +83,65 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 201', () => pm.response.to.have.status(201));",
-                  "pm.test('state is RESERVED', () => pm.expect(pm.response.json().state).to.eql('RESERVED'));"
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"partition\": 0,\n  \"key\": \"{{requesterId}}\",\n  \"value\": \"{\\\"type\\\": \\\"UserRegistered\\\", \\\"userId\\\": \\\"{{requesterId}}\\\"}\",\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{kafkaUiUrl}}/api/clusters/foc/topics/user.events/messages",
+              "host": [
+                "{{kafkaUiUrl}}"
+              ],
+              "path": [
+                "api",
+                "clusters",
+                "foc",
+                "topics",
+                "user.events",
+                "messages"
+              ]
+            },
+            "description": "Wallets come only from UserRegistered (#79). Kafka UI publishes it for us, as the User Service will on sign-up; Credit reads it a moment later, so the next request waits for the wallet."
+          }
+        },
+        {
+          "name": "Reserve 3 credits (new order)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Credit reads UserRegistered from Kafka a moment after it is published: wait for the wallet.",
+                  "const waits = Number(pm.collectionVariables.get('walletWaits'));",
+                  "const noWalletYet = pm.response.code === 409 && pm.response.json().code === 'WALLET_NOT_FOUND';",
+                  "if (noWalletYet && waits < 20) {",
+                  "  pm.collectionVariables.set('walletWaits', waits + 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestId);",
+                  "  setTimeout(() => {}, 250);",
+                  "} else {",
+                  "  pm.collectionVariables.set('walletWaits', 0);",
+                  "  pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "  pm.test('state is RESERVED', () => pm.expect(pm.response.json().state).to.eql('RESERVED'));",
+                  "}"
                 ]
               }
             }
@@ -202,15 +276,14 @@
           }
         },
         {
-          "name": "Transfer to courier",
+          "name": "Transfer over HTTP → 404 (now a Kafka command)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('state is TRANSFERRED', () => pm.expect(pm.response.json().state).to.eql('TRANSFERRED'));"
+                  "pm.test('status [404]', () => pm.expect(pm.response.code).to.be.oneOf([404]));"
                 ]
               }
             }
@@ -245,111 +318,18 @@
                 "internal",
                 "credits",
                 "transfer"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Repeat the transfer (no change)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"courierId\": \"{{courierId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/transfer",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "transfer"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Release after transfer → 409",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/release",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "release"
               ]
             }
           }
         }
-      ]
+      ],
+      "description": "Reserve, repeat it (no change), and a conflicting repeat. Transfer and release are Kafka commands on credit.commands (team consensus, 2026-10-18), not HTTP routes. To send one after the reserve: Kafka UI (http://localhost:8085) → Topics → credit.commands → Produce Message, with the KEY set to this folder's orderId (any other key is dead-lettered at once) and the VALUE {\"type\":\"TransferCredits\",\"eventId\":\"<new uuid>\",\"orderId\":\"<orderId>\",\"courierId\":\"<another user's id>\"} or {\"type\":\"ReleaseCredits\",\"eventId\":\"<new uuid>\",\"orderId\":\"<orderId>\"}. The current orderId is in the collection variables."
     },
     {
-      "name": "2. Cancelled order (reserve → release)",
+      "name": "2. Errors",
       "item": [
         {
-          "name": "Reserve 3 credits (new order)",
+          "name": "New user with a wallet (UserRegistered via Kafka UI)",
           "event": [
             {
               "listen": "prerequest",
@@ -367,101 +347,6 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 201', () => pm.response.to.have.status(201));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"requesterId\": \"{{requesterId}}\",\n  \"amount\": 3\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/reserve",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "reserve"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Release to requester",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('state is RELEASED', () => pm.expect(pm.response.json().state).to.eql('RELEASED'));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/release",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "release"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Repeat the release (no change)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
                   "pm.test('status 200', () => pm.response.to.have.status(200));"
                 ]
               }
@@ -473,15 +358,11 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\"\n}",
+              "raw": "{\n  \"partition\": 0,\n  \"key\": \"{{requesterId}}\",\n  \"value\": \"{\\\"type\\\": \\\"UserRegistered\\\", \\\"userId\\\": \\\"{{requesterId}}\\\"}\",\n  \"keySerde\": \"String\",\n  \"valueSerde\": \"String\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -489,89 +370,42 @@
               }
             },
             "url": {
-              "raw": "{{baseUrl}}/internal/credits/release",
+              "raw": "{{kafkaUiUrl}}/api/clusters/foc/topics/user.events/messages",
               "host": [
-                "{{baseUrl}}"
+                "{{kafkaUiUrl}}"
               ],
               "path": [
-                "internal",
-                "credits",
-                "release"
+                "api",
+                "clusters",
+                "foc",
+                "topics",
+                "user.events",
+                "messages"
               ]
-            }
+            },
+            "description": "Wallets come only from UserRegistered (#79). Kafka UI publishes it for us, as the User Service will on sign-up; Credit reads it a moment later, so the next request waits for the wallet."
           }
         },
-        {
-          "name": "Transfer after release → 409",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"courierId\": \"{{courierId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/transfer",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "transfer"
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "3. Errors",
-      "item": [
         {
           "name": "Insufficient credits (11 of 10) → 409",
           "event": [
             {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.collectionVariables.set('orderId', pm.variables.replaceIn('{{$guid}}'));",
-                  "pm.collectionVariables.set('requesterId', pm.variables.replaceIn('{{$guid}}'));"
-                ]
-              }
-            },
-            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
+                  "// Credit reads UserRegistered from Kafka a moment after it is published: wait for the wallet.",
+                  "const waits = Number(pm.collectionVariables.get('walletWaits'));",
+                  "const noWalletYet = pm.response.code === 409 && pm.response.json().code === 'WALLET_NOT_FOUND';",
+                  "if (noWalletYet && waits < 20) {",
+                  "  pm.collectionVariables.set('walletWaits', waits + 1);",
+                  "  pm.execution.setNextRequest(pm.info.requestId);",
+                  "  setTimeout(() => {}, 250);",
+                  "} else {",
+                  "  pm.collectionVariables.set('walletWaits', 0);",
+                  "  pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "  pm.test('code INSUFFICIENT_CREDITS', () => pm.expect(pm.response.json().code).to.eql('INSUFFICIENT_CREDITS'));",
+                  "}"
                 ]
               }
             }
@@ -611,25 +445,15 @@
           }
         },
         {
-          "name": "Reserve 3 credits (for the next request)",
+          "name": "Requester with no wallet → 409 WALLET_NOT_FOUND",
           "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.collectionVariables.set('orderId', pm.variables.replaceIn('{{$guid}}'));",
-                  "pm.collectionVariables.set('requesterId', pm.variables.replaceIn('{{$guid}}'));",
-                  "pm.collectionVariables.set('courierId', pm.variables.replaceIn('{{$guid}}'));"
-                ]
-              }
-            },
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 201', () => pm.response.to.have.status(201));"
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "pm.test('code WALLET_NOT_FOUND', () => pm.expect(pm.response.json().code).to.eql('WALLET_NOT_FOUND'));"
                 ]
               }
             }
@@ -648,7 +472,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"requesterId\": \"{{requesterId}}\",\n  \"amount\": 3\n}",
+              "raw": "{\n  \"orderId\": \"{{$guid}}\",\n  \"requesterId\": \"{{$guid}}\",\n  \"amount\": 3\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -664,100 +488,6 @@
                 "internal",
                 "credits",
                 "reserve"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Courier is the requester → 409",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 409', () => pm.response.to.have.status(409));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"courierId\": \"{{requesterId}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/transfer",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "transfer"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Unknown order → 404",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 404', () => pm.response.to.have.status(404));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "X-Service-Key",
-                "value": "{{serviceKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"orderId\": \"{{$guid}}\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/internal/credits/release",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "credits",
-                "release"
               ]
             }
           }
@@ -902,11 +632,11 @@
       ]
     },
     {
-      "name": "4. Balance",
+      "name": "3. Balance",
       "description": "Set userToken to an access token from POST /auth/login (User Service or gateway) and userId to that user's id (the token's sub). balanceUrl is the Credit Service itself until the gateway route lands; then set it to http://localhost:3003.",
       "item": [
         {
-          "name": "Own balance → 200, or 404 WALLET_NOT_FOUND before the first order",
+          "name": "Own balance → 200, or 404 WALLET_NOT_FOUND before UserRegistered",
           "event": [
             {
               "listen": "test",
@@ -1154,8 +884,8 @@
       ]
     },
     {
-      "name": "5. Dead letters",
-      "description": "Admin-only routes for Credit's dead letters (redesign spec §9.2). Set adminToken to an ADMIN's access token from POST /auth/login, and userToken as in folder 4.",
+      "name": "4. Dead letters",
+      "description": "Admin-only routes for Credit's dead letters (redesign spec §9.2). Set adminToken to an ADMIN's access token from POST /auth/login, and userToken as in folder 3.",
       "item": [
         {
           "name": "List open dead letters (ADMIN) → 200",

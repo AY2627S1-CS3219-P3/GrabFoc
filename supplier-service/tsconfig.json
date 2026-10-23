@@ -1,7 +1,10 @@
 // AI Assistance Disclosure:
 // Tool: Claude Code (model: Claude Opus 5), date: 2026-09-22
 // Scope: Generated TypeScript compiler settings for the NestJS service.
-// Author review: pending — to be completed by the reviewing team member.
+// Author review: reviewed by Jian Bing, 2026-10-18 — read and checked; it is what we want.
+// Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+// Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+// Author review: Jian Bing supplied what it states; the wording is Claude's.
 {
   "compilerOptions": {
     "module": "commonjs",

@@ -2,10 +2,16 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Generated helpers for the Kafka tests.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Longer topic create/delete timeouts and readable creation errors (flaky setup fix).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+ * Author review: Jian Bing supplied what it states; the wording is Claude's.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Host broker address localhost:9094 → 127.0.0.1:9094, so clients don't try IPv6 first (PR #96).
+ * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { randomUUID } from 'crypto';
@@ -14,7 +20,7 @@ import { setting } from './database';
 
 /** The broker the Kafka tests use: CREDIT_TEST_KAFKA_BROKERS, else the Compose broker's host port. */
 export function testKafkaBrokers(): string {
-  return setting('CREDIT_TEST_KAFKA_BROKERS') || 'localhost:9094';
+  return setting('CREDIT_TEST_KAFKA_BROKERS') || '127.0.0.1:9094';
 }
 
 /** Polls `check` every 100 ms until it returns something truthy, or fails after `timeoutMs`. */

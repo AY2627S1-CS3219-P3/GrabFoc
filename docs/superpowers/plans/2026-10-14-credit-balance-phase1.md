@@ -2,7 +2,10 @@
 AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote this implementation plan for Phase 1 of the approved Credit Service redesign spec.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 -->
 
 # Credit Service Phase 1 (balance read, error codes, gateway route) Implementation Plan
