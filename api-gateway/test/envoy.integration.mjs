@@ -9,6 +9,9 @@ Author review: Pending Jie Yang's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Added POST /admin/users/:userId/suspend to the protected-route cases (#72).
 Author review: Reviewed by Zi Yi, 2026-10-21 (suspend route checked by hand through Envoy: 401 without a token, 404 from the User Service with one); the suite does not run on Zi Yi's machine; pending Jie Yang's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added a Credit upstream and a test that only Credit's balance and history reads are routed (#61).
+Author review: pending — Jie Yang to record the review.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
 import assert from 'node:assert/strict';
@@ -72,13 +75,14 @@ const upstream = (instance) => createServer((req, res) => {
       requestId: req.headers['x-request-id'], body: Buffer.concat(chunks).toString() }));
   });
 });
-const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2')];
+const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2'), upstream('credit')];
 const containers = [];
 let ports, gateway, balanced;
 
 async function startEnvoy(overrides = {}) {
   const env = { GATEWAY_PORT: '3003', USER_SERVICE_URL: `http://host.docker.internal:${ports[0]}`,
     SUPPLIER_SERVICE_URL: `http://host.docker.internal:${ports[1]}`,
+    CREDIT_SERVICE_URL: `http://host.docker.internal:${ports[3]}`,
     USER_SERVICE_JWKS_URL: `http://host.docker.internal:${ports[0]}/.well-known/jwks.json`, ...overrides };
   const args = ['run', '-d', '--entrypoint', '/bin/sh', '--label', 'foc.task=envoy-integration', '-p', '127.0.0.1::3003'];
   if (process.platform === 'linux') args.push('--add-host', 'host.docker.internal:host-gateway');
@@ -128,11 +132,23 @@ test('unknown methods, paths and internal APIs stay unavailable without a token'
   for (const url of [gateway]) {
     for (const [method, path] of [['DELETE', '/locations'], ['GET', '/auth/login'],
       ['POST', '/auth/unknown'], ['GET', '/internal/users/123'], ['GET', '/locations/12/extra'],
-      ['GET', '/users/123'], ['POST', '/admin/users']]) {
+      ['GET', '/users/123'], ['POST', '/admin/users'], ['POST', '/internal/credits/reserve'],
+      ['GET', '/admin/credits/dead-letters'], ['POST', '/credits/123'], ['GET', '/credits']]) {
       const res = await fetch(url + path, { method });
       assert.equal(res.status, 404, `${method} ${path}`);
       assert.deepEqual(await res.json(), { error: 'Not found' });
     }
+  }
+});
+
+test('Credit balance and history reads need a token and reach the Credit Service', async () => {
+  for (const path of ['/credits/123', '/credits/123/transactions?limit=20&before=7']) {
+    assert.equal((await fetch(gateway + path)).status, 401, `${path} without a token`);
+    const res = await fetch(gateway + path, { headers: { authorization: `Bearer ${token()}` } });
+    assert.equal(res.status, 200, path);
+    const data = await res.json();
+    assert.equal(data.instance, 'credit');
+    assert.equal(data.path, path);
   }
 });
 
@@ -282,7 +298,7 @@ test('non-origin-form request targets cannot redirect the proxy', async () => {
 });
 
 test('round robin reaches two isolated Supplier replicas', async () => {
-  balanced = await startEnvoy({ FOC_TEST_SUPPLIER_URLS: JSON.stringify(ports.slice(1).map(
+  balanced = await startEnvoy({ FOC_TEST_SUPPLIER_URLS: JSON.stringify(ports.slice(1, 3).map(
     (port) => `http://host.docker.internal:${port}`)) });
   const instances = new Set();
   for (let n = 0; n < 16; n++) {

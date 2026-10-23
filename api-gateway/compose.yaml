@@ -4,6 +4,7 @@
 # Author review: Pending Jie Yang's review and live integration check.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 # Scope: restart: unless-stopped on every long-running container (one-shot init containers excluded).
+# Scope: Passed CREDIT_SERVICE_URL and GATEWAY_CREDITS_PREFIX through for the Credit routes (#61).
 # Author review: pending — Jie Yang to record the review.
 
 name: foc
@@ -28,9 +29,12 @@ services:
       GATEWAY_WORKERS: ${GATEWAY_WORKERS:-2}
       USER_SERVICE_URL: ${USER_SERVICE_URL:-http://user-service:3001}
       SUPPLIER_SERVICE_URL: ${SUPPLIER_SERVICE_URL:-http://supplier-service:3002}
+      # Credit routes in 40-credit.routes.json (balance and history only).
+      CREDIT_SERVICE_URL: ${CREDIT_SERVICE_URL:-http://credit-service:3004}
       USER_SERVICE_JWKS_URL: ${USER_SERVICE_JWKS_URL:-}
       GATEWAY_AUTH_PREFIX: ${GATEWAY_AUTH_PREFIX:-/auth}
       GATEWAY_LOCATIONS_PREFIX: ${GATEWAY_LOCATIONS_PREFIX:-/locations}
+      GATEWAY_CREDITS_PREFIX: ${GATEWAY_CREDITS_PREFIX:-/credits}
       GATEWAY_JWT_ISSUER: ${GATEWAY_JWT_ISSUER:-}
       GATEWAY_JWT_AUDIENCE: ${GATEWAY_JWT_AUDIENCE:-}
       FOC_TEST_SUPPLIER_URLS: ${FOC_TEST_SUPPLIER_URLS:-}
