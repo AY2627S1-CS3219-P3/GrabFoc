@@ -16,6 +16,9 @@
  *        reviews.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Added the throwing-getter and Proxy cases (PR #129 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Added the TOP-LEVEL hostile cases, which the earlier ones missed, and the check that an
+ *        exception's message never reaches a line.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the compound-name and unserialisable-value cases (third review round, PR #129).
  * Author review: Cole Lin, read and approved.
@@ -236,6 +239,62 @@ describe('metadata that fights back', () => {
     const log = shipper();
     expect(() => log.emit({ level: 'warn', event: 'proxied', hostile })).not.toThrow();
     expect(written).toHaveLength(1);
+  });
+
+  /**
+   * The earlier cases put the hostile object in a *field value*, so `redactFields` hit it inside
+   * the guard. Destructuring `input` itself runs a top-level getter before any of that, which is
+   * the hole the PR #145 review found - and these tests had not covered it.
+   */
+  it('does not let a throwing getter on the input itself escape emit', () => {
+    const input: Record<string, unknown> = { level: 'warn', event: 'hostile' };
+    Object.defineProperty(input, 'boom', {
+      enumerable: true,
+      get() {
+        throw new Error('getter exploded');
+      },
+    });
+    const log = shipper();
+    expect(() => log.emit(input as never)).not.toThrow();
+    expect(written).toHaveLength(1);
+    expect(JSON.parse(written[0])).toMatchObject({ event: 'line_unserialisable', originalEvent: 'hostile' });
+  });
+
+  it('does not let a hostile Proxy input escape emit', () => {
+    const input = new Proxy(
+      { level: 'warn', event: 'proxied' },
+      {
+        ownKeys() {
+          throw new Error('trap exploded');
+        },
+      },
+    );
+    const log = shipper();
+    expect(() => log.emit(input as never)).not.toThrow();
+    expect(written).toHaveLength(1);
+  });
+
+  // The exception came from the caller's own code, so its message is caller-controlled text.
+  it('never puts the exception message in the line', () => {
+    const input: Record<string, unknown> = { level: 'warn', event: 'hostile' };
+    Object.defineProperty(input, 'boom', {
+      enumerable: true,
+      get() {
+        throw new Error('password=hunter2');
+      },
+    });
+    shipper().emit(input as never);
+    expect(written[0]).not.toContain('hunter2');
+    expect(JSON.parse(written[0]).reason).toBe('the line could not be built');
+  });
+
+  it('publishes no Kafka key when the line could not be built', async () => {
+    const input: Record<string, unknown> = { level: 'warn', event: 'hostile', requestId: 'trace-9' };
+    Object.defineProperty(input, 'boom', { enumerable: true, get() { throw new Error('nope'); } });
+    const log = shipper(collecting);
+    log.emit(input as never);
+    await log.flush();
+    expect(published[0].key).toBeUndefined();
   });
 
   it('still records the envelope when the body could not be built', () => {

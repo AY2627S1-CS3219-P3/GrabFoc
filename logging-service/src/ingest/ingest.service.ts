@@ -15,6 +15,10 @@
  * Scope: After the PR #129 reviews: redact a dead-letter body instead of parking raw bytes, and
  *        let a failed park be redelivered rather than committing the offset anyway.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Build a rejection reason from the field and the rule that failed, never from Zod's
+ *        message, which quotes the value it received (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -78,7 +82,10 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
       await this.reject(
         message,
         result.error.issues
-          .map((issue) => (issue.path.length ? `${issue.path.join('.')}: ${issue.message}` : issue.message))
+          // The field and the rule it broke, not Zod's message: that quotes the value it saw, so
+          // `role: "Bearer eyJ..."` would put a token in the rejection line and in the dead-letter
+          // header, both of which sit outside the body's redaction (PR #129 review).
+          .map((issue) => `${issue.path.length ? issue.path.join('.') : '(root)'}: ${issue.code}`)
           .join('; '),
         // It parsed, so it can be redacted field by field. A line that failed validation has not
         // been near `toRow`, so without this a malformed line holding a password would sit in the

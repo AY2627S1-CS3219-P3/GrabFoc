@@ -29,6 +29,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Guard the redaction walk as well as the serialisation, so a throwing getter or Proxy
  *        trap cannot escape emit() (PR #129 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Read the caller's input inside that guard too, and never put an exception's message in
+ *        a line — both from the PR #129 and #145 reviews.
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -209,23 +212,11 @@ export class LogShipper {
    * lossy.
    */
   emit(input: LineInput): void {
-    const { level, event, path, ...rest } = input;
-    const envelope = {
-      // One id, shared by the stdout line and the Kafka message, so reading stdout later cannot
-      // double-count what the store already has.
-      lineId: (this.options.newId ?? randomUUID)(),
-      ts: new Date().toISOString(),
-      service: this.options.service,
-      level,
-      event,
-      // Stripped here, at the one point every service shares, rather than relying on each copy of
-      // this file to remember: `?lat=…&lon=…` is the caller's position, and this line carries
-      // their userId (root AGENTS.md: never log unmasked personal data).
-      ...(path === undefined ? {} : { path: path.split('?')[0] }),
-    };
-    // The caller's own fields go in FIRST, so the envelope always wins: a line claiming
-    // `service: "gateway"` or its own `ts` would make the store unreadable.
-    const payload = this.serialise(envelope, rest);
+    const { payload, key } = this.build(
+      (this.options.newId ?? randomUUID)(),
+      new Date().toISOString(),
+      input,
+    );
     this.counts.emitted += 1;
     (this.options.write ?? console.log)(payload);
 
@@ -234,29 +225,61 @@ export class LogShipper {
       this.counts.dropped += 1;
       return;
     }
-    this.buffer.push({ key: input.requestId, value: payload });
+    this.buffer.push({ key, value: payload });
   }
 
   /**
    * JSON for one line, or a line saying it could not be built. Nothing a caller passes may turn a
    * log call into an exception on the path being logged.
    */
-  private serialise(envelope: Record<string, unknown>, extra: Record<string, unknown>): string {
+  private build(lineId: string, ts: string, input: LineInput): { payload: string; key?: string } {
+    // Read once, defensively, so the fallback line can still say which event failed.
+    let originalEvent: string | null = null;
     try {
-      // Redaction is inside the guard, not before it: reading `extra` can itself throw, because an
-      // enumerable getter or a Proxy trap runs during Object.entries (PR #129 review). emit() must
-      // never turn a log call into an exception on the path being logged.
-      return JSON.stringify({ ...(redactFields(extra) as Record<string, unknown>), ...envelope });
-    } catch (err) {
-      return JSON.stringify({
-        lineId: envelope.lineId,
-        ts: envelope.ts,
-        service: envelope.service,
-        level: 'error',
-        event: 'line_unserialisable',
-        reason: err instanceof Error ? err.message : 'unknown',
-        originalEvent: typeof envelope.event === 'string' ? envelope.event : null,
+      originalEvent = typeof input.event === 'string' ? input.event : null;
+    } catch {
+      originalEvent = null;
+    }
+
+    try {
+      // **Everything** that reads the caller's input happens in here. Destructuring it runs an
+      // enumerable getter, and a Proxy trap runs on enumeration, so doing it outside meant a
+      // hostile top-level field could still throw out of emit() — which the earlier guard claimed
+      // to prevent and did not (PR #145 review).
+      const { level, event, path, ...rest } = input;
+      const safeRest = redactFields(rest) as Record<string, unknown>;
+      const payload = JSON.stringify({
+        // The caller's own fields go in FIRST, so the envelope always wins: a line claiming
+        // `service: "gateway"` or its own `ts` would make the store unreadable.
+        ...safeRest,
+        lineId,
+        ts,
+        service: this.options.service,
+        level,
+        event,
+        // Stripped here, at the one point every service shares, rather than relying on each copy of
+        // this file to remember: `?lat=…&lon=…` is the caller's position, and this line carries
+        // their userId (root AGENTS.md: never log unmasked personal data).
+        ...(path === undefined ? {} : { path: `${path}`.split('?')[0] }),
       });
+      // From the redacted copy, so the Kafka key cannot be a value redaction removed.
+      const key = typeof safeRest.requestId === 'string' ? safeRest.requestId : undefined;
+      return { payload, key };
+    } catch {
+      // A fixed reason, never the exception's message: the exception came from the caller's own
+      // getter, so its message is caller-controlled text and could carry the very secret the
+      // field-name redaction exists to remove (PR #129 review).
+      return {
+        payload: JSON.stringify({
+          lineId,
+          ts,
+          service: this.options.service,
+          level: 'error',
+          event: 'line_unserialisable',
+          reason: 'the line could not be built',
+          originalEvent,
+        }),
+      };
     }
   }
 

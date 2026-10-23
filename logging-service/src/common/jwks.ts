@@ -7,6 +7,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Treat an empty or malformed key set as unavailable (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: A key has to carry the fields this service reads, not merely be an object
+ *        (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
 import { config } from '../config';
@@ -41,6 +45,18 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+/**
+ * A key this service can actually use: looked up by `kid` and imported by `createPublicKey`, which
+ * needs `kty`. `{}` satisfies isObject, so an object-shaped but empty key set used to be cached —
+ * and then a valid caller's kid was never found, so they got 401 instead of the 503 that says the
+ * key service is unusable (PR #145 review).
+ */
+function isUsableKey(value: unknown): boolean {
+  if (!isObject(value)) return false;
+  const { kid, kty } = value as { kid?: unknown; kty?: unknown };
+  return typeof kid === 'string' && kid !== '' && typeof kty === 'string' && kty !== '';
+}
+
 async function fetchKeys(): Promise<Jwk[]> {
   const url = config.jwksUrl;
   // Unset only in dev-auth mode, where a bearer token still can't be accepted unverified.
@@ -68,7 +84,7 @@ async function fetchKeys(): Promise<Jwk[]> {
   // the truth is that we cannot check it - and leaves the cache empty, so every later request
   // refetches. A non-object entry is worse: reading it produces a 500. 503 is the honest answer,
   // and it matches the gateway (api-gateway/envoy/behaviour-differences.md). PR #129 review.
-  if (!body.keys.length || !body.keys.every(isObject)) {
+  if (!body.keys.length || !body.keys.every(isUsableKey)) {
     throw new JwksUnavailableError(`${url} returned no usable keys`);
   }
   cachedKeys = body.keys as Jwk[];

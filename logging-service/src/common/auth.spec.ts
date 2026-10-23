@@ -5,6 +5,8 @@
  *        that the Supplier Service's dev-auth headers buy nothing here.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Added the unusable-key-set cases (PR #129 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Added the object-shaped-but-unusable key cases (PR #145 review).
  * Author review: Cole Lin, read and approved.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
@@ -101,6 +103,9 @@ describe('reading the log store', () => {
     ['an empty key set', '{"keys":[]}'],
     ['a key set holding null', '{"keys":[null]}'],
     ['a key set holding a string', '{"keys":["not-a-key"]}'],
+    ['a key set holding an empty object', '{"keys":[{}]}'],
+    ['a key with no kid', '{"keys":[{"kty":"RSA"}]}'],
+    ['a key with no kty', '{"keys":[{"kid":"k1"}]}'],
   ])('answers 503 for %s', async (_why, body) => {
     stub.respond = () => ({ status: 200, body });
     resetJwksCache();

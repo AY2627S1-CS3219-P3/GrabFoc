@@ -164,6 +164,27 @@ describe('handling a message', () => {
     expect(ingest.counts).toMatchObject({ rejected: 1, deadLettered: 0, deadLetterFailed: 1 });
   });
 
+  /**
+   * Zod's own message quotes the value it received, so an enum field carrying a token would put it
+   * in the rejection line and in the dead-letter header - outside the body's redaction entirely
+   * (PR #129 review).
+   */
+  it('names the field and the rule, never the value it saw', async () => {
+    await consumer.deliver(
+      JSON.stringify({
+        lineId: '3f1c8e9a-5b2d-4e7f-9a1b-2c3d4e5f6a7b',
+        ts: '2026-10-23T08:00:00.000Z',
+        service: 'supplier',
+        level: 'warn',
+        event: 'access_denied',
+        role: 'Bearer eyJhbGciOiJSUzI1NiJ9.must-not-appear',
+      }),
+    );
+    expect(parked[0].reason).toContain('role');
+    expect(parked[0].reason).not.toContain('must-not-appear');
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('must-not-appear');
+  });
+
   // A line that failed validation has not been near toRow, so this is the only redaction it gets.
   it('redacts a dead-letter body rather than parking it verbatim', async () => {
     await consumer.deliver(JSON.stringify({ lineId: 'not-a-uuid', password: 'must-not-appear' }));
