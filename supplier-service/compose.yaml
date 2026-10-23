@@ -3,6 +3,9 @@
 # Scope: Generated this file, following user-service/compose.yaml: the Supplier Service and
 #        its own PostgreSQL container, included from the root compose.yaml.
 # Author review (Jian Bing): Asked for this file and supplied Jie Yang's draft; kept its separate
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+# Scope: restart: unless-stopped on every long-running container (one-shot init containers excluded).
+# Author review: pending — Jie Yang to record the review.
 #        SUPPLIER_POSTGRES_PASSWORD and host port 5434. Checked the results of Claude Code's test run
 #        on 2026-09-29: standalone, 21 locations seeded, 401 without a token, 503 with one, data kept
 #        across down/up; whole stack, User Service tokens accepted and forged ones rejected, and only
@@ -25,6 +28,8 @@ name: foc
 
 services:
   supplier-db:
+    # Restarted after a crash or a Docker restart; `docker compose stop` still stops it.
+    restart: unless-stopped
     image: postgres:17-alpine
     environment:
       # Supplied by the git-ignored .env so no working credential lives in the repository.
@@ -46,6 +51,7 @@ services:
       retries: 10
 
   supplier-service:
+    restart: unless-stopped
     build:
       # The repository root, because the image copies the seed CSV from data/ (see the Dockerfile).
       context: ..
