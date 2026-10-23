@@ -12,6 +12,8 @@ Author review: Reviewed by Zi Yi, 2026-10-21 (suspend route checked by hand thro
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added an Order upstream and checks for the /orders routes (protected, forwarded unchanged; /internal/orders not routed).
 Author review: Pending review by Deanson.
+Scope: Added a Credit upstream and a test that only Credit's balance and history reads are routed (#61).
+Author review: pending — Jie Yang to record the review.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
 import assert from 'node:assert/strict';
@@ -75,7 +77,7 @@ const upstream = (instance) => createServer((req, res) => {
       requestId: req.headers['x-request-id'], body: Buffer.concat(chunks).toString() }));
   });
 });
-const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2'), upstream('order')];
+const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2'), upstream('order'), upstream('credit')];
 const containers = [];
 let ports, gateway, balanced;
 
@@ -83,6 +85,7 @@ async function startEnvoy(overrides = {}) {
   const env = { GATEWAY_PORT: '3003', USER_SERVICE_URL: `http://host.docker.internal:${ports[0]}`,
     SUPPLIER_SERVICE_URL: `http://host.docker.internal:${ports[1]}`,
     ORDER_SERVICE_URL: `http://host.docker.internal:${ports[3]}`,
+    CREDIT_SERVICE_URL: `http://host.docker.internal:${ports[4]}`,
     USER_SERVICE_JWKS_URL: `http://host.docker.internal:${ports[0]}/.well-known/jwks.json`, ...overrides };
   const args = ['run', '-d', '--entrypoint', '/bin/sh', '--label', 'foc.task=envoy-integration', '-p', '127.0.0.1::3003'];
   if (process.platform === 'linux') args.push('--add-host', 'host.docker.internal:host-gateway');
@@ -133,7 +136,8 @@ test('unknown methods, paths and internal APIs stay unavailable without a token'
     for (const [method, path] of [['DELETE', '/locations'], ['GET', '/auth/login'],
       ['POST', '/auth/unknown'], ['GET', '/internal/users/123'], ['GET', '/locations/12/extra'],
       ['GET', '/users/123'], ['POST', '/admin/users'], ['GET', '/internal/orders/users/123/active'],
-      ['DELETE', '/orders/123'], ['POST', '/orders/123/unknown']]) {
+      ['DELETE', '/orders/123'], ['POST', '/orders/123/unknown'], ['POST', '/internal/credits/reserve'],
+      ['GET', '/admin/credits/dead-letters'], ['POST', '/credits/123'], ['GET', '/credits']]) {
       const res = await fetch(url + path, { method });
       assert.equal(res.status, 404, `${method} ${path}`);
       assert.deepEqual(await res.json(), { error: 'Not found' });
@@ -157,6 +161,17 @@ test('order routes require a token and reach the Order Service unchanged', async
     const data = await res.json();
     assert.equal(data.instance, 'order');
     assert.equal(data.method, method);
+    assert.equal(data.path, path);
+  }
+});
+
+test('Credit balance and history reads need a token and reach the Credit Service', async () => {
+  for (const path of ['/credits/123', '/credits/123/transactions?limit=20&before=7']) {
+    assert.equal((await fetch(gateway + path)).status, 401, `${path} without a token`);
+    const res = await fetch(gateway + path, { headers: { authorization: `Bearer ${token()}` } });
+    assert.equal(res.status, 200, path);
+    const data = await res.json();
+    assert.equal(data.instance, 'credit');
     assert.equal(data.path, path);
   }
 });

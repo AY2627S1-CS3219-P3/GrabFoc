@@ -2,22 +2,22 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
  * Scope: Generated unit tests for the request schemas.
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
  * Scope: Added the upper-case id test (PR #48 review).
- * Author review: pending — Jian Bing to record what he checked.
+ * Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+ * Author review: Jian Bing supplied what it states; the wording is Claude's.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added tests for the transaction history query (route decided by Jian Bing).
  * Author review: Jian Bing, 2026-10-19 — manually tested on this branch; it works as described.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+ * Scope: Removed the transfer/release schema tests with the schemas.
+ * Author review: Jian Bing, 2026-10-18 — manually tested on this branch: unit, integration and Kafka suites pass (incl. transfer/release no longer offered over HTTP); reserve over HTTP, 409 when credits are short, a TransferCredits command over Kafka pays the courier, and repeating it changes nothing.
  */
 import { ProblemException } from '../common/problem';
-import {
-  parseOr400,
-  releaseSchema,
-  reserveSchema,
-  transactionsQuerySchema,
-  transferSchema,
-} from './credit.schemas';
+import { parseOr400, reserveSchema, transactionsQuerySchema } from './credit.schemas';
 
 const ORDER = '11111111-1111-4111-8111-111111111111';
 const USER = '22222222-2222-4222-8222-222222222222';
@@ -45,22 +45,10 @@ describe('reserveSchema', () => {
   });
 });
 
-describe('transferSchema and releaseSchema', () => {
-  it('accept valid requests', () => {
-    expect(transferSchema.safeParse({ orderId: ORDER, courierId: USER }).success).toBe(true);
-    expect(releaseSchema.safeParse({ orderId: ORDER }).success).toBe(true);
-  });
-
-  it('reject unknown fields, so a caller cannot slip in an amount', () => {
-    expect(transferSchema.safeParse({ orderId: ORDER, courierId: USER, amount: 99 }).success).toBe(false);
-    expect(releaseSchema.safeParse({ orderId: ORDER, requesterId: USER }).success).toBe(false);
-  });
-});
-
 describe('parseOr400', () => {
   it('throws a 400 naming the bad field', () => {
     try {
-      parseOr400(releaseSchema, { orderId: 'nope' }, 'release request');
+      parseOr400(reserveSchema, { orderId: 'nope', requesterId: USER, amount: 3 }, 'reserve request');
       throw new Error('expected a ProblemException');
     } catch (err) {
       expect(err).toBeInstanceOf(ProblemException);
@@ -81,11 +69,6 @@ describe('ids in upper case', () => {
       requesterId: USER,
       amount: 3,
     });
-    expect(transferSchema.parse({ orderId: ORDER.toUpperCase(), courierId: USER.toUpperCase() })).toEqual({
-      orderId: ORDER,
-      courierId: USER,
-    });
-    expect(releaseSchema.parse({ orderId: ORDER.toUpperCase() })).toEqual({ orderId: ORDER });
   });
 });
 

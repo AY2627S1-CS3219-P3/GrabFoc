@@ -6,6 +6,8 @@ Author review: User approved stock defaults; generated changes review pending.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Listed the Order route file.
 Author review: Pending review by Deanson.
+Scope: Listed the Credit route file (#61).
+Author review: pending — Jie Yang to record the review.
 -->
 
 # Stock Envoy gateway
@@ -29,8 +31,10 @@ layer. Editing the renderer, route files or Lua header filter only copies those 
 ## Route files
 
 `render.py` reads `routes/*.routes.json` in filename order. The User routes live in
-`10-user.routes.json`, Supplier routes in `20-supplier.routes.json`, and Order routes
-(approved by Jie Yang, 2026-10-22; never `/internal/**`) in `30-order.routes.json`.
+`10-user.routes.json`, Supplier routes in `20-supplier.routes.json`, Order routes
+(approved by Jie Yang, 2026-10-22; never `/internal/**`) in `30-order.routes.json`, and
+Credit's balance and history reads in `40-credit.routes.json` (Credit's `/internal` and
+`/admin` routes are not routed).
 Each file declares a `service` (upstream cluster name), `urlEnv` (the service URL's
 environment variable), and a `routes` array. JSON files carry their AI disclosure
 in the first `_disclosure` field because JSON does not support comments.

@@ -6,11 +6,17 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 # Scope: Passed ORDER_SERVICE_URL and GATEWAY_ORDERS_PREFIX through for the Order routes.
 # Author review: Pending review by Deanson.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+# Scope: restart: unless-stopped on every long-running container (one-shot init containers excluded).
+# Scope: Passed CREDIT_SERVICE_URL and GATEWAY_CREDITS_PREFIX through for the Credit routes (#61).
+# Author review: pending — Jie Yang to record the review.
 
 name: foc
 
 services:
   api-gateway:
+    # Restarted after a crash or a Docker restart; `docker compose stop` still stops it.
+    restart: unless-stopped
     # AI-generated; official precompiled Envoy, no custom native build.
     image: foc-envoy:local
     build:
@@ -29,10 +35,13 @@ services:
       SUPPLIER_SERVICE_URL: ${SUPPLIER_SERVICE_URL:-http://supplier-service:3002}
       # AI-generated (Claude Code, 2026-10-22; pending review by Deanson): Order routes in 30-order.routes.json.
       ORDER_SERVICE_URL: ${ORDER_SERVICE_URL:-http://order-service:3005}
+      # Credit routes in 40-credit.routes.json (balance and history only).
+      CREDIT_SERVICE_URL: ${CREDIT_SERVICE_URL:-http://credit-service:3004}
       USER_SERVICE_JWKS_URL: ${USER_SERVICE_JWKS_URL:-}
       GATEWAY_AUTH_PREFIX: ${GATEWAY_AUTH_PREFIX:-/auth}
       GATEWAY_LOCATIONS_PREFIX: ${GATEWAY_LOCATIONS_PREFIX:-/locations}
       GATEWAY_ORDERS_PREFIX: ${GATEWAY_ORDERS_PREFIX:-/orders}
+      GATEWAY_CREDITS_PREFIX: ${GATEWAY_CREDITS_PREFIX:-/credits}
       GATEWAY_JWT_ISSUER: ${GATEWAY_JWT_ISSUER:-}
       GATEWAY_JWT_AUDIENCE: ${GATEWAY_JWT_AUDIENCE:-}
       FOC_TEST_SUPPLIER_URLS: ${FOC_TEST_SUPPLIER_URLS:-}

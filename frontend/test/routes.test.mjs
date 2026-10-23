@@ -13,6 +13,8 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added a mock Order upstream and tests for the order proxy allowlist, its same-origin check, and userId in the session status.
 Author review: Pending review by Deanson.
+Scope: Gave the test profile a UUID, stubbed Credit's balance and history routes, and tested the profile balance, history paging, the no-wallet state and the Credit route allowlist (#61).
+Author review: pending — Jie Yang to record the review.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -43,6 +45,13 @@ let failTypes = false;
 let supplier401 = false;
 let authorityStatus = 200;
 let authorityRejectOriginal = false;
+let noWallet = false;
+const profileUserId = "3f0c2a9e-1b7d-4c55-9a51-0d6c1e2b7f10";
+const creditHistory = [
+  { id: 3, orderId: "9b1d2c3e-0000-4000-8000-000000000001", type: "RESERVE", availableChange: -3, reservedChange: 3, createdAt: "2026-10-22T05:00:00.000Z" },
+  { id: 2, orderId: null, type: "TRANSFER_IN", availableChange: 2, reservedChange: 0, createdAt: "2026-10-21T05:00:00.000Z" },
+  { id: 1, orderId: null, type: "GRANT", availableChange: 10, reservedChange: 0, createdAt: "2026-10-20T05:00:00.000Z" },
+];
 const stalledResponses = new Set();
 const consumedRefreshTokens = new Set();
 let loginCount = 0;
@@ -108,6 +117,31 @@ const gateway = createServer(async (request, response) => {
     response.end(JSON.stringify({ method: request.method, path: request.url, body }));
     return;
   }
+  if (request.url?.startsWith("/credits/")) {
+    if (!request.headers.authorization) { response.writeHead(401).end(); return; }
+    const url = new URL(request.url, "http://gateway.local");
+    if (noWallet) {
+      response.writeHead(404, { "content-type": "application/problem+json" });
+      response.end(JSON.stringify({ detail: "No wallet for this user.", code: "WALLET_NOT_FOUND" }));
+      return;
+    }
+    if (url.pathname === `/credits/${profileUserId}`) {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ userId: profileUserId, available: 7, reserved: 3 }));
+      return;
+    }
+    if (url.pathname === `/credits/${profileUserId}/transactions`) {
+      // Two rows on the first page, the rest after `before`, as Credit pages newest first.
+      const before = url.searchParams.get("before");
+      const items = before ? creditHistory.filter((item) => item.id < Number(before)) : creditHistory.slice(0, 2);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ items, nextBefore: before ? null : 2 }));
+      return;
+    }
+    response.writeHead(403, { "content-type": "application/problem+json" });
+    response.end(JSON.stringify({ detail: "You can only view your own credit balance." }));
+    return;
+  }
   if (request.url === "/users/me") {
     if (authorityStatus !== 200) { response.writeHead(authorityStatus).end(); return; }
     if (authorityRejectOriginal && request.headers.authorization === "Bearer test-access") { response.writeHead(401).end(); return; }
@@ -130,7 +164,7 @@ const gateway = createServer(async (request, response) => {
       request.headers.authorization === "Bearer test-access" ||
       (request.headers.authorization === "Bearer new-access" && !rejectRotatedAccess);
     response.writeHead(accepted ? 200 : 401, { "content-type": "application/json" });
-    response.end(JSON.stringify({ userId: "user-1", displayName: "Alex Tan", email: "alex@u.nus.edu", countryCode: "+65", mobileNumber: "91234567" }));
+    response.end(JSON.stringify({ userId: profileUserId, displayName: "Alex Tan", email: "alex@u.nus.edu", countryCode: "+65", mobileNumber: "91234567" }));
     return;
   }
   if (request.url === "/auth/login" && body.email === "wrong@u.nus.edu") {
@@ -1249,4 +1283,54 @@ test("session status includes the user id from the access token", async () => {
     headers: { cookie: `foc_access=${subjectAccess}; foc_refresh=status-user`, "sec-fetch-site": "same-origin" } });
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { authenticated: true, role: "USER", userId: "user-42" });
+});
+
+// AI-generated (review pending)
+test("profile shows the Credit balance and the history page loads more transactions", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/home");
+    await page.goto(`${baseUrl}/profile`);
+    await page.locator(".credit-available", { hasText: "7" }).waitFor();
+    assert.equal(await page.locator(".credit-reserved").textContent(), "3");
+    assert.equal(requests.find((request) => request.path === `/credits/${profileUserId}`)?.authorization, "Bearer test-access");
+    await page.getByRole("link", { name: "View transaction history →" }).click();
+    await page.waitForURL("**/credits/history");
+    await page.getByText("Reserved for an order").waitFor();
+    await page.getByText("Earned as a courier").waitFor();
+    assert.equal(await page.getByText("Starting credits").count(), 0);
+    await page.getByRole("button", { name: "Load more" }).click();
+    await page.getByText("Starting credits").waitFor();
+    assert.equal(await page.getByRole("button", { name: "Load more" }).count(), 0);
+    assert.ok(requests.some((request) => request.path === `/credits/${profileUserId}/transactions?limit=20&before=2`));
+  } finally { await page.close(); }
+});
+
+// AI-generated (review pending)
+test("a missing wallet is explained and only Credit's two read routes are forwarded", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/signin`);
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/home");
+    noWallet = true;
+    await page.goto(`${baseUrl}/profile`);
+    await page.getByText("No credit wallet yet.", { exact: false }).waitFor();
+    assert.equal(await page.getByRole("link", { name: "View transaction history →" }).count(), 0);
+    noWallet = false;
+    const forwardedBefore = requests.length;
+    for (const path of ["not-a-uuid", `${profileUserId}/reserve`, `${profileUserId}/transactions/extra`]) {
+      const status = await page.evaluate((target) => fetch(`/api/session/credits/${target}`).then((r) => r.status), path);
+      assert.equal(status, 404, path);
+    }
+    const post = await page.evaluate((target) => fetch(`/api/session/credits/${target}`, { method: "POST" }).then((r) => r.status), profileUserId);
+    assert.equal(post, 405);
+    assert.equal(requests.length, forwardedBefore, "refused paths never reach the gateway");
+  } finally { noWallet = false; await page.close(); }
 });
