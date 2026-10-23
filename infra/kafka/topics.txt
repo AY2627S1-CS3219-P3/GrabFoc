@@ -11,6 +11,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Added order.events (Order's state-change events for Notification) at Zi Yi's direction.
 # Author review: Reviewed
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+# Scope: Added supplier.events (issue #120).
+# Author review: pending — Jie Yang to record what he checked.
 #
 # Every Kafka topic in the system, and the only list of them: kafka-init creates exactly these
 # (root AGENTS.md §3 Messaging, rule 4). Add a topic by adding a line: <name> <partitions>.
@@ -20,6 +23,7 @@
 # Events, written by their owner
 user.events 3
 order.events 3
+supplier.events 3
 
 # Commands, written to the receiver's topic
 credit.commands 3

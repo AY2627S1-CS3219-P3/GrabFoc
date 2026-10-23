@@ -4,6 +4,9 @@
  * Scope: Generated this Jest setup, following user-service/src/test/env.setup.ts.
  * Author review (Jian Bing): Used by every test; ran `npm test` (157 passed) and `npm run test:int`
  *        (51 passed) on 2026-10-01 and verified the test cases by hand.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: Pinned the Kafka and outbox variables (issue #120).
+ * Author review: pending — Jie Yang to record what he checked.
  */
 
 /**
@@ -22,4 +25,7 @@ process.env.SUPPLIER_JWT_ISSUER = '';
 process.env.SUPPLIER_JWT_AUDIENCE = '';
 process.env.SUPPLIER_DEV_AUTH = '';
 process.env.SUPPLIER_PORT = '';
+// Tests drive the outbox relay with a fake publisher, never a real broker.
+process.env.SUPPLIER_KAFKA_BROKERS = '';
+process.env.SUPPLIER_OUTBOX_POLL_MS = '';
 process.env.SUPPLIER_SEED_CSV = path.resolve(__dirname, '../../../data/csv/supplier-seed-data.csv');
