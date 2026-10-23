@@ -10,7 +10,9 @@
  *        temporarily down.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the dead-letter cases (Kafka rule 6).
- * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Added the cases for a redacted dead-letter body and a park failure being redelivered.
+ * Author review: pending — Cole Lin to record what he checked.
  */
 import { Logger } from '@nestjs/common';
 import { config } from '../config';
@@ -48,7 +50,7 @@ const line = (overrides: Record<string, unknown> = {}) =>
 
 let lines: { insert: jest.Mock };
 let consumer: FakeConsumer;
-let parked: Array<{ message: InboundMessage; reason: string }>;
+let parked: Array<{ message: InboundMessage; reason: string; body: string | null }>;
 let deadLetters: DeadLetters & { send: jest.Mock };
 let ingest: IngestService;
 let warn: jest.SpyInstance;
@@ -58,7 +60,10 @@ beforeEach(() => {
   consumer = new FakeConsumer();
   parked = [];
   deadLetters = {
-    send: jest.fn(async (message: InboundMessage, reason: string) => void parked.push({ message, reason })),
+    send: jest.fn(
+      async (message: InboundMessage, reason: string, body: string | null) =>
+        void parked.push({ message, reason, body }),
+    ),
   };
   ingest = new IngestService(lines as unknown as LinesService, consumer, deadLetters);
   warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
@@ -149,18 +154,51 @@ describe('handling a message', () => {
     expect(parked).toHaveLength(0);
   });
 
-  it('keeps going when the dead-letter topic itself fails', async () => {
+  /**
+   * Swallowing this would let the consumer commit the offset with the line neither stored nor
+   * parked — the one outcome worth avoiding (PR #129 review).
+   */
+  it('rethrows when the dead-letter topic fails, so the line comes back', async () => {
     deadLetters.send.mockRejectedValue(new Error('broker down'));
-    await expect(consumer.deliver('not json')).resolves.toBeUndefined();
-    expect(ingest.counts).toMatchObject({ rejected: 1, deadLettered: 0 });
+    await expect(consumer.deliver('not json')).rejects.toThrow('broker down');
+    expect(ingest.counts).toMatchObject({ rejected: 1, deadLettered: 0, deadLetterFailed: 1 });
   });
 
+  // A line that failed validation has not been near toRow, so this is the only redaction it gets.
+  it('redacts a dead-letter body rather than parking it verbatim', async () => {
+    await consumer.deliver(JSON.stringify({ lineId: 'not-a-uuid', password: 'must-not-appear' }));
+    expect(parked[0].body).not.toContain('must-not-appear');
+    expect(parked[0].body).toContain('[REDACTED]');
+  });
+
+  it('redacts a nested secret in a dead-letter body too', async () => {
+    await consumer.deliver(JSON.stringify({ lineId: 'nope', req: { headers: { authorization: 'must-not-appear' } } }));
+    expect(parked[0].body).not.toContain('must-not-appear');
+  });
+
+  // Bytes that are not JSON cannot be inspected field by field, so nothing is parked with them.
+  it('parks no body at all when the message was not JSON', async () => {
+    await consumer.deliver('this is not json at all');
+    expect(parked[0].body).toBeNull();
+    expect(parked[0].reason).toContain('not valid JSON');
+  });
+
+  /**
+   * The rejection is logged before the park is attempted, so the line always appears even if the
+   * park then fails; `parked` says whether there is a dead-letter topic at all, and a failure to
+   * reach it gets its own `dead_letter_failed` line.
+   */
   it('still counts and logs when no dead-letter topic is wired in', async () => {
     const alone = new IngestService(lines as unknown as LinesService, consumer);
     await alone.onApplicationBootstrap();
     await consumer.deliver('not json');
     expect(alone.counts).toMatchObject({ rejected: 1, deadLettered: 0 });
-    expect(warn.mock.calls.flat().join(' ')).toContain('"deadLettered":false');
+    expect(warn.mock.calls.flat().join(' ')).toContain('"parked":false');
+  });
+
+  it('says the line was parked when a dead-letter topic is wired in', async () => {
+    await consumer.deliver('not json');
+    expect(warn.mock.calls.flat().join(' ')).toContain('"parked":true');
   });
 
   it('records where a rejected line was, but not what it said', async () => {

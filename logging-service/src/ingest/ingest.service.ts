@@ -11,11 +11,14 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Send a line this service cannot store to the dead-letter topic as well as counting it
  *        (Kafka rule 6, at Cole Lin's direction).
- * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: After the PR #129 reviews: redact a dead-letter body instead of parking raw bytes, and
+ *        let a failed park be redelivered rather than committing the offset anyway.
+ * Author review: pending — Cole Lin to record what he checked.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
-import { inboundLineSchema, toRow } from '../lines/line.schema';
+import { inboundLineSchema, redactDeep, toRow } from '../lines/line.schema';
 import { LinesService } from '../lines/lines.service';
 import { DEAD_LETTERS, DeadLetters, InboundMessage, LINE_CONSUMER, LineConsumer } from './consumer';
 
@@ -24,7 +27,7 @@ import { DEAD_LETTERS, DeadLetters, InboundMessage, LINE_CONSUMER, LineConsumer 
 @Injectable()
 export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('Ingest');
-  readonly counts = { stored: 0, duplicate: 0, rejected: 0, failed: 0, deadLettered: 0 };
+  readonly counts = { stored: 0, duplicate: 0, rejected: 0, failed: 0, deadLettered: 0, deadLetterFailed: 0 };
 
   constructor(
     private readonly lines: LinesService,
@@ -63,7 +66,10 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
     try {
       parsed = JSON.parse(message.value);
     } catch {
-      await this.reject(message, 'not valid JSON');
+      // No body: bytes that are not JSON cannot be inspected field by field, so there is no way to
+      // know whether they hold a password. The raw message stays in the source topic for Kafka's
+      // retention, which is where to look if the headers are not enough (PR #129 review).
+      await this.reject(message, 'not valid JSON', null);
       return;
     }
 
@@ -74,6 +80,10 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
         result.error.issues
           .map((issue) => (issue.path.length ? `${issue.path.join('.')}: ${issue.message}` : issue.message))
           .join('; '),
+        // It parsed, so it can be redacted field by field. A line that failed validation has not
+        // been near `toRow`, so without this a malformed line holding a password would sit in the
+        // dead-letter topic verbatim (PR #129 review).
+        safeBody(parsed),
       );
       return;
     }
@@ -87,7 +97,7 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
       if (permanent) {
         // The database will never accept this line, so redelivering it would loop on the same
         // message forever and hold up every other service's logging behind it. Park it instead.
-        await this.reject(message, `the store rejected it (SQLSTATE ${permanent})`);
+        await this.reject(message, `the store rejected it (SQLSTATE ${permanent})`, safeBody(result.data));
         return;
       }
       // A connection failure is ours, not the message's, and it passes: let the broker redeliver.
@@ -105,33 +115,34 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
    * it is exactly the thing that might carry something that should never have been sent; the
    * topic, partition and offset are enough to find it in the broker.
    */
-  private async reject(message: InboundMessage, reason: string): Promise<void> {
+  private async reject(message: InboundMessage, reason: string, body: string | null): Promise<void> {
     this.counts.rejected += 1;
-    let deadLettered = false;
-    if (this.deadLetters) {
-      try {
-        await this.deadLetters.send(message, reason);
-        this.counts.deadLettered += 1;
-        deadLettered = true;
-      } catch (err) {
-        // A dead letter that cannot be parked must not stop the consumer: the line is still on its
-        // producer's stdout, and stopping here would hold up every other service's logging.
-        this.logger.error(
-          JSON.stringify({ event: 'dead_letter_failed', topic: message.topic ?? null, offset: message.offset ?? null }),
-          err instanceof Error ? err.message : String(err),
-        );
-      }
-    }
     this.logger.warn(
       JSON.stringify({
         event: 'line_rejected',
         reason,
-        deadLettered,
+        parked: Boolean(this.deadLetters),
         topic: message.topic ?? null,
         partition: message.partition ?? null,
         offset: message.offset ?? null,
       }),
     );
+    if (!this.deadLetters) return;
+    try {
+      await this.deadLetters.send(message, reason, body);
+      this.counts.deadLettered += 1;
+    } catch (err) {
+      // Rethrown, so the offset is not committed and the broker redelivers: swallowing this would
+      // leave the line neither stored nor parked, which is the one outcome worth avoiding
+      // (PR #129 review). A park fails because the broker is unreachable, and then the consumer is
+      // not making progress anyway.
+      this.counts.deadLetterFailed += 1;
+      this.logger.error(
+        JSON.stringify({ event: 'dead_letter_failed', topic: message.topic ?? null, offset: message.offset ?? null }),
+        err instanceof Error ? err.message : String(err),
+      );
+      throw err;
+    }
   }
 }
 
@@ -145,4 +156,17 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
 function unstorable(err: unknown): string | undefined {
   const code = (err as { code?: unknown } | null)?.code;
   return typeof code === 'string' && (code.startsWith('22') || code.startsWith('23')) ? code : undefined;
+}
+
+/**
+ * A dead-letter body with sensitive field names replaced, or null when it cannot be built. Parked
+ * messages are as readable as the store itself, so the same redaction applies; `JSON.stringify`
+ * can still fail on a value JSON refuses, and a dead letter is not worth an exception.
+ */
+function safeBody(parsed: unknown): string | null {
+  try {
+    return JSON.stringify(redactDeep(parsed));
+  } catch {
+    return null;
+  }
 }

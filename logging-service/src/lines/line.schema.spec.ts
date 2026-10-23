@@ -54,7 +54,7 @@ describe('the inbound line envelope', () => {
   );
 
   it.each([
-    ['a control character', 'traceone'],
+    ['a control character', 'trace\u0007one'],
     ['over 200 characters', 'x'.repeat(201)],
   ])('still rejects a requestId with %s', (_why, requestId) => {
     expect(parse({ ...valid, requestId }).success).toBe(false);

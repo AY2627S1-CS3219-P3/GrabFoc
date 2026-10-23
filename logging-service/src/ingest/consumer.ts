@@ -7,7 +7,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the dead-letter seam, after Cole Lin decided every service should have its own
  *        dead-letter topic as Kafka rule 6 says, rather than the exception argued before.
- * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: After the PR #129 reviews: carry the inbound Kafka headers through the seam, and have
+ *        the dead-letter sink take the body to park rather than reading the raw message.
+ * Author review: pending — Cole Lin to record what he checked.
  */
 
 /** One message as it arrives, with just enough to say where a rejected line came from. */
@@ -16,6 +19,13 @@ export interface InboundMessage {
   topic?: string;
   partition?: number;
   offset?: string;
+  /**
+   * The message's own Kafka headers. Carried through the seam so a dead letter can keep the
+   * original `x-request-id`: a republished message that loses it cannot be tied back to the
+   * request that caused it, which is the one thing this service exists to make possible
+   * (#77, #78 rely on the same header surviving Credit's retries).
+   */
+  headers?: Record<string, string>;
 }
 
 export type MessageHandler = (message: InboundMessage) => Promise<void>;
@@ -47,7 +57,17 @@ export const LINE_CONSUMER = Symbol('LINE_CONSUMER');
  * unchecked and may contain anything a producer sent. It is as sensitive as the store itself.
  */
 export interface DeadLetters {
-  send(message: InboundMessage, reason: string): Promise<void>;
+  /**
+   * Parks a message this service will not store.
+   *
+   * `body` is what to publish, and it is **not** the raw message: a rejected line has not been
+   * through redaction, so the caller passes a redacted copy, or `null` when the bytes could not be
+   * parsed and so cannot be inspected safely. The raw message is still in the source topic for
+   * Kafka's retention, which is where to look if the redacted copy is not enough.
+   *
+   * The implementation must copy the inbound `x-request-id` header onto the dead letter.
+   */
+  send(message: InboundMessage, reason: string, body: string | null): Promise<void>;
 }
 
 export const DEAD_LETTERS = Symbol('DEAD_LETTERS');
