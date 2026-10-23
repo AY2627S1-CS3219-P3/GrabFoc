@@ -3,6 +3,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-23
+Scope: Drafted the entries dated 2026-10-16, 2026-10-21 and 2026-10-23 from the prompts and work
+  in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
+  verified; the wording is Claude's, written to the template in ai/usage-log.md.
+Author review: Cole Lin, read and approved.
 -->
 
 # AI Usage Log — Cole Lin
@@ -10,6 +15,33 @@ Author review: Jian Bing checked the logs locally against the AI usage-log guide
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-23 — Supplier: log every request, and the route template (PR #145, issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate and review.
+- Usage scenario: The Logging Service could say who had been refused, but nothing about what anyone actually did, and had no durations — so the store answered half of what observability is being asked to mean at D3.
+- Prompts (exact):
+  - "ok I need you to help me understand logging service. I wanted all logs to be recorded, even POST and stuff. Based on my understanding you only logged failures. Is this good? why did we do this"
+  - "so this would allow me to log everything and show it for the demo just like the failures"
+  - "yes build it on a new branch"
+  - "if its refused, why is there a request completed"
+  - "fix it again."
+- Key response: `request_completed` on every request, carrying method, route, status, `durationMs` and the caller. Built as middleware rather than a Nest interceptor, because guards run before interceptors — an interceptor would never see a refused request, so it would have missed every 401 and 403, which is most of what anyone looks up.
+- What I changed or rejected: Asked why only failures were logged rather than accepting it, which is what turned up the gap. Kept both `request_completed` and `access_denied` on a refused request rather than folding them together, because the backlog asks for unauthorised attempts by name (U5.1.1) — and had the consequence written down, that any "how many denials" query has to pick one event. Queried the event name, since "completed" reads like success for a 403; kept it because the gateway already emits that exact name and two names for one concept across services is worse. Took the review's finding that a caller can put a token in a URL path and had the logged path changed to the **route template** (`/locations/:locationId`), which carries no caller data at all.
+- Verification: `npm test` (200 passed). The route-template behaviour was checked against Express directly with a throwaway probe rather than assumed: a matched request exposes the template, an unmatched one exposes nothing, which is why a 404 logs a placeholder instead of the invented path.
+
+### 2026-10-21 — The Logging Service (issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate and review.
+- Usage scenario: Build the Centralized Logging N2H I was assigned: a store for the structured log lines every service already writes, an ADMIN-only way to query them, and the module other services copy to produce them.
+- Prompts (exact):
+  - "I want to start work on the logging service. Ask any questions you need, and if these questions require other services input, let me know as well as I need to coordinate with my team on when they are doing these parts. You can start with a quick excerpt on what you think the logging service is."
+  - "ok ask me again what do I need to decide" — then chose: stub the consumer until the shared broker is merged; a line id with deduplication on insert; 30-day retention; and one PR covering the service, the shipper and Supplier adopting it.
+  - My answers on the line format: an explicit `service` field written by each service; `ts` as ISO-8601 UTC; align Envoy's field names; `x-request-id` as the Kafka header for tracing, with `eventId` staying the idempotency and dead-letter key.
+  - My corrections to the first ingest proposal: Envoy cannot produce to Kafka (its access loggers are stdout/file, gRPC ALS and OpenTelemetry), so the gateway stays stdout-only and services log through Kafka; "nothing can slow a request down" is not the argument, because a non-awaited HTTP POST also stays out of the request path — buffering is; the Kafka client is a real cost for every service; and at-least-once delivery means expecting duplicate rows.
+  - "finish it all first" / "do 1 to 4 and split the PRs"
+- Key response: `logging-service/` with the `log_lines` table, ingest behind an interface so the service works before the broker exists, the ADMIN-only `GET /logs`, a 30-day purge, and `src/client/log-shipper.ts` for other services to copy.
+- What I changed or rejected: Rejected the first ingest design — it assumed Envoy could produce to Kafka and argued for Kafka on the wrong grounds. Took the hybrid (services on Kafka, gateway on stdout) knowing it leaves the gateway's own line out of the store, and had that gap written down rather than glossed over. Chose deduplication on a line id over accepting approximate counts. Set retention to 30 days, shorter than the 90 for `location_changes`, because these rows hold a user id, a path and a timestamp together. Refused a dev-auth header fallback on the query API even though Supplier has one. Had an exception to the dead-letter rule argued for first, then **overruled it on 2026-10-21**: every service should behave as its own microservice, and one consistent rule across five services is worth more than saving a topic. `logging.lines` and `logging.lines.dlt` are now in `infra/kafka/topics.txt` with the same dead-letter headers Credit uses, so one admin screen can read every service's dead letters. Both the argument and the decision are recorded in `logging-service/AGENTS.md`.
+- Verification: Read the service in full. `npm test` (78 passed) and `npm run test:int` against the `logging-db` container (16 passed: insert, a redelivered line deduplicated, every filter, paging and the purge), plus `npm run build`. Added the service to the CI matrix so its tests run on every pull request, and checked `docker compose config` still validates the whole stack with it included.
 ### 2026-10-21 — Supplier: correlation ids, and producing log lines for the Logging Service (issue #52)
 
 - Tool and mode: Claude Code (Claude Opus 5), generate, debug and review.

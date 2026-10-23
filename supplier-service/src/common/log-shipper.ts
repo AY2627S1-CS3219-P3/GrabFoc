@@ -1,13 +1,11 @@
 /*
  * AI Assistance Disclosure:
- * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
- * Scope: Copied from logging-service/src/client/log-shipper.ts, which is the canonical copy.
- *        This repository has no shared package, so common code is copied, not imported: a change
- *        there has to be repeated here. Re-copied after the reviews of PR #129 and #130, which
- *        added recursive redaction, substring matching of sensitive names, envelope precedence,
- *        truncation past the depth limit, dropped function values, a publish guard cleared by
- *        identity, a stop() that waits for a publish in flight, and an emit() that cannot throw
- *        on a value JSON refuses to serialise.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Copied from logging-service/src/client/log-shipper.ts, the canonical copy. This
+ *        repository has no shared package, so common code is copied, not imported: a change there
+ *        has to be repeated here. This copy brings the fixes from the #129 and #145 reviews - all
+ *        reads of the caller's input inside the serialisation guard, and a fixed reason instead of
+ *        an exception message in the fallback line.
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -137,7 +135,10 @@ export function redactFields(value: unknown, depth = 0): unknown {
   // nested deeper than this verbatim, and would let a cycle through to JSON.stringify, which
   // throws — crashing the caller over a log line (PR #130 review).
   if (depth > MAX_DEPTH) return TRUNCATED;
-  if (value instanceof Date) return value;
+  // An ISO string, not the object. JSON.stringify would call the Date's toJSON — and a Date with
+  // its own toJSON, or a subclass overriding it, could return anything at all, after redaction
+  // has finished (PR #129 review). This is what an honest Date serialised to anyway.
+  if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map((item) => serialisable(redactFields(item, depth + 1)));
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
@@ -185,23 +186,11 @@ export class LogShipper {
    * lossy.
    */
   emit(input: LineInput): void {
-    const { level, event, path, ...rest } = input;
-    const payload = this.serialise({
-      // The caller's own fields go in FIRST, so the envelope below always wins: a line claiming
-      // `service: "gateway"` or its own `ts` would make the store unreadable.
-      ...(redactFields(rest) as Record<string, unknown>),
-      // One id, shared by the stdout line and the Kafka message, so reading stdout later cannot
-      // double-count what the store already has.
-      lineId: (this.options.newId ?? randomUUID)(),
-      ts: new Date().toISOString(),
-      service: this.options.service,
-      level,
-      event,
-      // Stripped here, at the one point every service shares, rather than relying on each copy of
-      // this file to remember: `?lat=…&lon=…` is the caller's position, and this line carries
-      // their userId (root AGENTS.md: never log unmasked personal data).
-      ...(path === undefined ? {} : { path: path.split('?')[0] }),
-    });
+    const { payload, key } = this.build(
+      (this.options.newId ?? randomUUID)(),
+      new Date().toISOString(),
+      input,
+    );
     this.counts.emitted += 1;
     (this.options.write ?? console.log)(payload);
 
@@ -210,26 +199,61 @@ export class LogShipper {
       this.counts.dropped += 1;
       return;
     }
-    this.buffer.push({ key: input.requestId, value: payload });
+    this.buffer.push({ key, value: payload });
   }
 
   /**
    * JSON for one line, or a line saying it could not be built. Nothing a caller passes may turn a
    * log call into an exception on the path being logged.
    */
-  private serialise(line: Record<string, unknown>): string {
+  private build(lineId: string, ts: string, input: LineInput): { payload: string; key?: string } {
+    // Read once, defensively, so the fallback line can still say which event failed.
+    let originalEvent: string | null = null;
     try {
-      return JSON.stringify(line);
-    } catch (err) {
-      return JSON.stringify({
-        lineId: line.lineId,
-        ts: line.ts,
-        service: line.service,
-        level: 'error',
-        event: 'line_unserialisable',
-        reason: err instanceof Error ? err.message : 'unknown',
-        originalEvent: typeof line.event === 'string' ? line.event : null,
+      originalEvent = typeof input.event === 'string' ? input.event : null;
+    } catch {
+      originalEvent = null;
+    }
+
+    try {
+      // **Everything** that reads the caller's input happens in here. Destructuring it runs an
+      // enumerable getter, and a Proxy trap runs on enumeration, so doing it outside meant a
+      // hostile top-level field could still throw out of emit() — which the earlier guard claimed
+      // to prevent and did not (PR #145 review).
+      const { level, event, path, ...rest } = input;
+      const safeRest = redactFields(rest) as Record<string, unknown>;
+      const payload = JSON.stringify({
+        // The caller's own fields go in FIRST, so the envelope always wins: a line claiming
+        // `service: "gateway"` or its own `ts` would make the store unreadable.
+        ...safeRest,
+        lineId,
+        ts,
+        service: this.options.service,
+        level,
+        event,
+        // Stripped here, at the one point every service shares, rather than relying on each copy of
+        // this file to remember: `?lat=…&lon=…` is the caller's position, and this line carries
+        // their userId (root AGENTS.md: never log unmasked personal data).
+        ...(path === undefined ? {} : { path: `${path}`.split('?')[0] }),
       });
+      // From the redacted copy, so the Kafka key cannot be a value redaction removed.
+      const key = typeof safeRest.requestId === 'string' ? safeRest.requestId : undefined;
+      return { payload, key };
+    } catch {
+      // A fixed reason, never the exception's message: the exception came from the caller's own
+      // getter, so its message is caller-controlled text and could carry the very secret the
+      // field-name redaction exists to remove (PR #129 review).
+      return {
+        payload: JSON.stringify({
+          lineId,
+          ts,
+          service: this.options.service,
+          level: 'error',
+          event: 'line_unserialisable',
+          reason: 'the line could not be built',
+          originalEvent,
+        }),
+      };
     }
   }
 
