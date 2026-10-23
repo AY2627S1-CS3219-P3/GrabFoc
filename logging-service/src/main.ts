@@ -4,6 +4,9 @@
  * Scope: Generated the application entry point, following supplier-service/src/main.ts.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Handle a failed bootstrap instead of leaving an unhandled rejection (PR #129 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Exit on a failed bootstrap rather than setting exitCode, which an open pool keeps the
+ *        process alive past (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 import 'reflect-metadata';
@@ -32,5 +35,8 @@ void bootstrap().catch((err: unknown) => {
     JSON.stringify({ event: 'startup_failed' }),
     err instanceof Error ? (err.stack ?? err.message) : String(err),
   );
-  process.exitCode = 1;
+  // exitCode alone does not end the process: the database pool holds referenced sockets, so Node
+  // would stay alive with nothing listening, and a container runtime never sees it fail or restarts
+  // it (PR #129 review).
+  process.exit(1);
 });

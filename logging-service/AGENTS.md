@@ -75,7 +75,7 @@ Rule 6 did, however, surface a real bug, now fixed. A line the database will **n
 
 _Origin: AI doc, from the table Cole Lin approved on 2026-10-16_
 
-See [`src/db/schema.ts`](src/db/schema.ts), created at startup like the Supplier Service's. One table, `log_lines`, plus `received_at` — when this store got the line, so the gap is broker lag and a negative gap is clock skew. Indexes: `request_id`, `ts DESC`, `(service, event, ts DESC)`, `(user_id, ts DESC)`.
+See [`src/db/schema.ts`](src/db/schema.ts), created at startup like the Supplier Service's. One table, `log_lines`, plus `received_at` — when this store got the line, so the gap is broker lag and a negative gap is clock skew. Indexes: `request_id`, `ts DESC`, `(service, event, ts DESC)`, `(user_id, ts DESC)`, and `received_at` — the purge filters on arrival, so without that one the hourly run scans the whole table.
 
 Retention: **30 days** (`LOGGING_RETENTION_DAYS`), purged hourly, measured by **`received_at`** rather than the producer's `ts`: a producer can put any timestamp on a line, and purging on `ts` kept a line dated a year ahead for thirteen months. Deliberately shorter than the 90 days the root AGENTS.md gives `location_changes`, because these rows put a user id, a path and a timestamp in one place.
 
@@ -116,6 +116,7 @@ _Origin: AI doc, from the plan Cole Lin approved_
   `ts` and `service` always win — a line claiming another service's name would make the store
   unreadable.
 - It writes the line itself rather than through Nest's logger, which would wrap the JSON in Nest's own timestamp, PID and context and leave a collector digging it out.
+- **`emit()` cannot throw.** Redaction and serialisation both sit inside one guard, because reading a caller's fields can itself throw — an enumerable getter or a Proxy trap runs during `Object.entries`. If the body cannot be built, a `line_unserialisable` line is written with the envelope and the original event name, so the failure is visible rather than silent.
 
 **Adopted by:** the Supplier Service (`supplier-service/src/common/log.ts`), whose `access_denied`, `jwks_unavailable` and `unhandled_error` lines now go through it.
 

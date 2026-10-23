@@ -14,6 +14,8 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the depth-limit, toJSON and synchronous-throw cases after the PR #130
  *        reviews.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Added the throwing-getter and Proxy cases (PR #129 review).
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the compound-name and unserialisable-value cases (third review round, PR #129).
  * Author review: Cole Lin, read and approved.
@@ -203,6 +205,45 @@ describe('a value JSON cannot serialise', () => {
     const log = shipper();
     expect(() => log.emit({ level: 'info', event: 'odd', value })).not.toThrow();
     expect(written).toHaveLength(1);
+  });
+});
+
+describe('metadata that fights back', () => {
+  // Object.entries runs the getter, and that happens during redaction - before serialisation -
+  // so the guard has to cover the whole payload build, not just JSON.stringify (PR #129 review).
+  it('does not let a throwing getter escape emit', () => {
+    const hostile: Record<string, unknown> = {};
+    Object.defineProperty(hostile, 'boom', {
+      enumerable: true,
+      get() {
+        throw new Error('getter exploded');
+      },
+    });
+    const log = shipper();
+    expect(() => log.emit({ level: 'warn', event: 'hostile', hostile })).not.toThrow();
+    expect(written).toHaveLength(1);
+  });
+
+  it('does not let a hostile Proxy escape emit', () => {
+    const hostile = new Proxy(
+      {},
+      {
+        ownKeys() {
+          throw new Error('trap exploded');
+        },
+      },
+    );
+    const log = shipper();
+    expect(() => log.emit({ level: 'warn', event: 'proxied', hostile })).not.toThrow();
+    expect(written).toHaveLength(1);
+  });
+
+  it('still records the envelope when the body could not be built', () => {
+    const hostile = new Proxy({}, { ownKeys() { throw new Error('nope'); } });
+    shipper().emit({ level: 'warn', event: 'access_denied', hostile });
+    const line = JSON.parse(written[0]);
+    expect(line).toMatchObject({ service: 'supplier', event: 'line_unserialisable', originalEvent: 'access_denied' });
+    expect(line.lineId).toBe('id-1');
   });
 });
 

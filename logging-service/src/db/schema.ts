@@ -3,7 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Generated the schema SQL from the table Cole Lin approved in chat on 2026-10-16, run at
  *        startup like supplier-service/src/db/schema.ts.
- * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Index received_at, which the retention purge filters on (PR #129 review).
+ * Author review: pending — Cole Lin to record what he checked.
  */
 
 // AI-generated (reviewed by Cole Lin).
@@ -36,6 +38,9 @@ CREATE TABLE IF NOT EXISTS log_lines (
 -- Following one request across services is the whole point, so this is the index that matters.
 CREATE INDEX IF NOT EXISTS ix_log_lines_request ON log_lines (request_id) WHERE request_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_log_lines_ts ON log_lines (ts DESC);
+-- The purge deletes by arrival, not by the producer's ts, so without this the hourly run scans
+-- the whole table to find the slice that just crossed the retention boundary (PR #129 review).
+CREATE INDEX IF NOT EXISTS ix_log_lines_received ON log_lines (received_at);
 CREATE INDEX IF NOT EXISTS ix_log_lines_service_event ON log_lines (service, event, ts DESC);
 CREATE INDEX IF NOT EXISTS ix_log_lines_user ON log_lines (user_id, ts DESC) WHERE user_id IS NOT NULL;
 `;

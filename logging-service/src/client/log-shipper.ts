@@ -26,6 +26,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Convert a Date to an ISO string rather than passing the object through, so a
  *        caller-controlled toJSON cannot run during serialisation (PR #129 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Guard the redaction walk as well as the serialisation, so a throwing getter or Proxy
+ *        trap cannot escape emit() (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -207,10 +210,7 @@ export class LogShipper {
    */
   emit(input: LineInput): void {
     const { level, event, path, ...rest } = input;
-    const payload = this.serialise({
-      // The caller's own fields go in FIRST, so the envelope below always wins: a line claiming
-      // `service: "gateway"` or its own `ts` would make the store unreadable.
-      ...(redactFields(rest) as Record<string, unknown>),
+    const envelope = {
       // One id, shared by the stdout line and the Kafka message, so reading stdout later cannot
       // double-count what the store already has.
       lineId: (this.options.newId ?? randomUUID)(),
@@ -222,7 +222,10 @@ export class LogShipper {
       // this file to remember: `?lat=…&lon=…` is the caller's position, and this line carries
       // their userId (root AGENTS.md: never log unmasked personal data).
       ...(path === undefined ? {} : { path: path.split('?')[0] }),
-    });
+    };
+    // The caller's own fields go in FIRST, so the envelope always wins: a line claiming
+    // `service: "gateway"` or its own `ts` would make the store unreadable.
+    const payload = this.serialise(envelope, rest);
     this.counts.emitted += 1;
     (this.options.write ?? console.log)(payload);
 
@@ -238,18 +241,21 @@ export class LogShipper {
    * JSON for one line, or a line saying it could not be built. Nothing a caller passes may turn a
    * log call into an exception on the path being logged.
    */
-  private serialise(line: Record<string, unknown>): string {
+  private serialise(envelope: Record<string, unknown>, extra: Record<string, unknown>): string {
     try {
-      return JSON.stringify(line);
+      // Redaction is inside the guard, not before it: reading `extra` can itself throw, because an
+      // enumerable getter or a Proxy trap runs during Object.entries (PR #129 review). emit() must
+      // never turn a log call into an exception on the path being logged.
+      return JSON.stringify({ ...(redactFields(extra) as Record<string, unknown>), ...envelope });
     } catch (err) {
       return JSON.stringify({
-        lineId: line.lineId,
-        ts: line.ts,
-        service: line.service,
+        lineId: envelope.lineId,
+        ts: envelope.ts,
+        service: envelope.service,
         level: 'error',
         event: 'line_unserialisable',
         reason: err instanceof Error ? err.message : 'unknown',
-        originalEvent: typeof line.event === 'string' ? line.event : null,
+        originalEvent: typeof envelope.event === 'string' ? envelope.event : null,
       });
     }
   }
