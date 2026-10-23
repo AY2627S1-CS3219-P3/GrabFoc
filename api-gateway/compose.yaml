@@ -2,11 +2,16 @@
 # Tool: Codex (model: GPT-6), date: 2026-10-13
 # Scope: Use stock Envoy from the standard Dockerfile and pass existing infrastructure settings through Compose environment interpolation.
 # Author review: Pending Jie Yang's review and live integration check.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+# Scope: restart: unless-stopped on every long-running container (one-shot init containers excluded).
+# Author review: pending — Jie Yang to record the review.
 
 name: foc
 
 services:
   api-gateway:
+    # Restarted after a crash or a Docker restart; `docker compose stop` still stops it.
+    restart: unless-stopped
     # AI-generated; official precompiled Envoy, no custom native build.
     image: foc-envoy:local
     build:
