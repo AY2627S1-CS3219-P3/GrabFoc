@@ -23,6 +23,9 @@
  * Scope: After the third review round on PR #129: match sensitive names as substrings so
  *        adminToken and customerEmail are caught, and make emit() unable to throw on a value
  *        JSON cannot serialise.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Convert a Date to an ISO string rather than passing the object through, so a
+ *        caller-controlled toJSON cannot run during serialisation (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -152,7 +155,10 @@ export function redactFields(value: unknown, depth = 0): unknown {
   // nested deeper than this verbatim, and would let a cycle through to JSON.stringify, which
   // throws — crashing the caller over a log line (PR #130 review).
   if (depth > MAX_DEPTH) return TRUNCATED;
-  if (value instanceof Date) return value;
+  // An ISO string, not the object. JSON.stringify would call the Date's toJSON — and a Date with
+  // its own toJSON, or a subclass overriding it, could return anything at all, after redaction
+  // has finished (PR #129 review). This is what an honest Date serialised to anyway.
+  if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map((item) => serialisable(redactFields(item, depth + 1)));
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
