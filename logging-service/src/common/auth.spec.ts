@@ -116,6 +116,17 @@ describe('reading the log store', () => {
     }
   });
 
+  // Filtering, not rejecting: one junk entry must not take the usable keys down with it.
+  it('lets an ADMIN in when a junk entry sits beside a good key', async () => {
+    stub.respond = () => ({ status: 200, body: JSON.stringify({ keys: [{}, key.jwk] }) });
+    resetJwksCache();
+    try {
+      expect(await outcome(request(bearer({ sub: 'u-1', role: 'ADMIN' })))).toBe('allowed');
+    } finally {
+      stub.respond = undefined;
+    }
+  });
+
   it('answers 503, not 401, when the JWKS cannot be reached', async () => {
     await stub.stop();
     resetJwksCache();
