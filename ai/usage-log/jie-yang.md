@@ -1490,3 +1490,14 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Files: user-service/compose.yaml, supplier-service/compose.yaml, credit-service/compose.yaml, order-service/compose.yaml, infra/kafka/compose.yaml, api-gateway/compose.yaml, frontend/compose.yaml, ai/usage-log/jie-yang.md.
 - Verification: `docker compose config --quiet` passed; the resolved config shows unless-stopped on the 14 long-running containers and "no" on kafka-init and order-migrate. The stack was not started.
 - Author review: pending — Jie Yang to record the review.
+
+## 2026-10-22 — Pool 'error' listener for User, Supplier and Order (#137)
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate and debug, 2026-10-22 (Asia/Singapore).
+- Exact user prompts: “Still open: the PR notes that User, Supplier and Order can still crash when their database restarts, because they lack Credit's connection-error listener. With this PR they now restart on their own instead of staying down. You can create a separate PR and Issue for this and implement the fix there”, then “Plan approved: implement the #137 fix on a new branch off origin/main, test it, and open a PR that closes #137.”
+- Approval context: The change touches three services, so the assistant presented a plan first (files, steps, tests, no design input needed) under root AGENTS.md. The user approved it as written; Credit's connection and query timeouts were offered as a separate option and not taken.
+- Scope/usage scenario: Opened issue #137. Branch fix/pg-pool-error-listener from origin/main 06e3842.
+- Key response: Added an exported createPool to user-service/src/infra/database/pg-pool.provider.ts, supplier-service/src/db/database.ts and order-service/src/db/database.module.ts. It registers pool.on('error') and logs only the error message, as credit-service/src/db/database.ts does. Each service's pool provider now uses it. Added one unit test per service that emits 'error' on the pool and checks it is logged and does not throw.
+- Files: the three files above; user-service/src/infra/database/pg-pool.provider.spec.ts; supplier-service/src/db/database.spec.ts; order-service/src/db/database.module.spec.ts; ai/usage-log/jie-yang.md.
+- Verification: npm ci, npm test and the build passed in each service. User: 25 passed, 3 skipped (the integration file needs a database). Supplier: 178 passed. Order: 13 passed. Each new test also passed when run on its own; Supplier's ran cleanly with --detectOpenHandles. Live check: with supplier-db and supplier-service running in Docker, `docker compose restart supplier-db` produced "Idle database connection lost: terminating connection due to administrator command", and supplier-service stayed running with 0 restarts. Not checked live for User and Order.
+- Author review: pending — Jie Yang to record the review.
