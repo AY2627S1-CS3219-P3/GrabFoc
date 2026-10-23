@@ -3,14 +3,41 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote this spec from Jian Bing's design decisions (made in a learning-mode brainstorming
        session) and the additions Claude Code proposed and he confirmed as proposals.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Added §9 (Kafka design for Phases 2–3) from Jian Bing's decisions in a learning-mode
        session, with Claude Code's proposals labelled. 2026-10-15: updated §3, §8 and §9 with his
        walkthrough decisions (K5–K13). 2026-10-16: K10 revised (retry topics listed in topics.txt).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Added the transaction history route to §3 and §4.4 (route, paging and limits decided by Jian Bing).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Dead-letter table columns renamed to a generic envelope (message_key, message_type).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #95).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Recorded the team consensus on transfer/release as commands and the removal of their HTTP routes.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: §4.3 and the Phase 3 row now say the HTTP routes are already removed (PR #94 review).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #94).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: §8 open items: the mentor validated transfer/release as commands (PR #97 review).
+Author review: Jian Bing supplied the approval it records; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Recorded that lazy wallet creation is removed (#79), waiting on #54.
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -95,7 +122,7 @@ store nothing.
 ### 4.3 Transfer and release as commands (D2, D8)
 
 - A consumer on `credit.commands` calls the **same** transfer/release logic as today. The HTTP
-  routes for transfer and release are removed once Order uses the commands.
+  routes for transfer and release were removed on 2026-10-18, before Order existed (§9.3).
 - **Duplicates** are already harmless: the per-order state check (`WHERE state = 'RESERVED'`)
   makes a repeat a no-op. `eventId` is for tracing, not deduplication.
 - **Retry policy (Proposed, AI):** a command that can't be applied *yet* (courier wallet missing)
@@ -152,7 +179,7 @@ wallet, so the order matters.
 |---|---|---|
 | 1 (D3, Credit only) | Balance read endpoint with JWT auth; error codes; gateway route | Gateway owner for the route |
 | 2 | Broker in compose; `UserRegistered` consumer; then remove lazy creation; purge local data | Team's broker choice; User Service outbox |
-| 3 | Transfer/release consumers with retries and DLQ; remove the HTTP transfer/release routes | Order Service outbox and credit client |
+| 3 | Transfer/release consumers with retries and DLQ; remove the HTTP transfer/release routes (done early, §9.3) | Order Service outbox and credit client (not for the removal) |
 
 ## 7. Testing
 
@@ -169,8 +196,9 @@ wallet, so the order matters.
 
 - Broker choice: **Kafka**, chosen by Jian Bing and Jie Yang (§9). Confirm with the rest of the team,
   then record it in root `AGENTS.md` §3.
-- Confirm with the mentor that moving transfer/release to the broker changes the [Decided]
-  "synchronous HTTP between Order → Credit" in root `AGENTS.md` §3, and update that section.
+- Transfer/release via the broker: **agreed by the team on 2026-10-18** and recorded in root `AGENTS.md` §3.
+  Validated by the mentor (recorded 2026-10-22). (Originally: confirm with the mentor that moving transfer/release to the broker changes the [Decided]
+  "synchronous HTTP between Order → Credit" in root `AGENTS.md` §3, and update that section.)
 - Backfill wallets for existing users before any cloud deployment (D10 covers local data only).
   `user.events` keeps 7 days (K8), so this needs a one-off script or the User Service re-publishing,
   not a replay.
@@ -244,7 +272,7 @@ wallet, so the order matters.
   `source_partition`, `source_offset` (where the original message sat; a dead letter without an event
   id is recognised on redelivery by them plus a hash of its payload, since Kafka offsets restart if
   its volume is reset — PR #85 and security reviews, 2026-10-16),
-  `order_id`, `source_topic`, `command_type` (the message `type`), `payload`, `error`, `error_code`,
+  `message_key` (the Kafka key; `order_id` before 2026-10-18), `source_topic`, `message_type` (the message `type`; `command_type` before 2026-10-18), `payload`, `error`, `error_code`,
   `attempts`, `dead_lettered_at`, `replay_claimed_at`, `replayed_at`. Second PR #85 review (2026-10-16):
   `payload` is `BYTEA` (exact bytes; TEXT can't hold NUL); a replay claims the row, sends, then sets
   `replayed_at`, and a claim left by a crash is retaken after 6 minutes; a command keyed by anything
@@ -266,8 +294,9 @@ wallet, so the order matters.
 
 ### 9.3 Not in this step
 
-- Removing lazy wallet creation and adding reserve's 409 `WALLET_NOT_FOUND` (§4.1, §4.2): waits
-  for the User Service to publish `UserRegistered`. Until then a transfer never hits a missing
-  wallet, so the retry path is exercised by tests rather than by real traffic.
-- Removing the HTTP transfer/release routes (§4.3): waits for the Order Service to send commands.
+- ~~Removing lazy wallet creation and adding reserve's 409 `WALLET_NOT_FOUND` (§4.1, §4.2)~~: done
+  in #79, merged after the User Service began publishing `UserRegistered` (#54). A transfer reports
+  `WALLET_NOT_FOUND` (retried) only when it could otherwise apply.
+- ~~Removing the HTTP transfer/release routes (§4.3)~~: done 2026-10-18, by team consensus, since the
+  Order Service doesn't exist yet and nothing called them.
 - Gateway routes for `/admin/credits/**`: added with the balance route once PR #69 merges.
