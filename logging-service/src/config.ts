@@ -60,12 +60,17 @@ function databaseUrl(): string {
   return value;
 }
 
-function positive(name: string, fallback: number): number {
+/**
+ * `max` is not decoration: `Number.isInteger(1e20)` is true, and a retention of 1e20 days makes the
+ * purge fail on every run while `runOnce` catches the error and the service goes on looking
+ * healthy — so nothing is ever deleted and nobody finds out (PR #129 review).
+ */
+function positive(name: string, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
   const raw = process.env[name];
   if (!raw) return fallback;
   const value = Number(raw);
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive whole number, got "${raw}"`);
+  if (!Number.isInteger(value) || value <= 0 || value > max) {
+    throw new Error(`${name} must be a whole number between 1 and ${max}, got "${raw}"`);
   }
   return value;
 }
@@ -99,6 +104,9 @@ export const config = {
 
   // 30 days, deliberately shorter than the 90 the root AGENTS.md gives location_changes: these
   // rows carry a user id, a path and a timestamp together.
-  retentionDays: positive('LOGGING_RETENTION_DAYS', 30),
-  purgeIntervalMinutes: positive('LOGGING_PURGE_INTERVAL_MINUTES', 60),
+  // Ten years, which is far longer than this project will run and well inside what PostgreSQL
+  // can express as an interval.
+  retentionDays: positive('LOGGING_RETENTION_DAYS', 30, 3650),
+  // Capped at the setInterval limit in minutes; PurgeService clamps as well and says so.
+  purgeIntervalMinutes: positive('LOGGING_PURGE_INTERVAL_MINUTES', 60, 35791),
 };

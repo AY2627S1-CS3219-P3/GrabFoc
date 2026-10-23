@@ -103,7 +103,10 @@ export const inboundLineSchema = z
     method: z.string().min(1).max(10).optional(),
     path: z.string().max(400).optional(),
     status: z.number().int().min(100).max(599).optional(),
-    durationMs: z.number().int().min(0).optional(),
+    // The column is INTEGER, so a larger value passed validation and then failed the insert with
+    // SQLSTATE 22003 - which ingest reads as permanently unstorable and dead-letters, for a line
+    // this schema had just called valid (PR #129 review).
+    durationMs: z.number().int().min(0).max(2147483647).optional(),
   })
   .passthrough();
 

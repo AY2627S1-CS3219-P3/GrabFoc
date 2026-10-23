@@ -5,6 +5,8 @@
  *        supplier-service/src/config.spec.ts.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the database-URL cases after the PR #129 review.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Added the unrepresentable-interval cases (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 
@@ -65,7 +67,24 @@ it.each([
   ['LOGGING_RETENTION_DAYS', 'thirty'],
   ['LOGGING_PURGE_INTERVAL_MINUTES', '1.5'],
 ])('refuses %s=%s rather than silently using the default', (name, value) => {
-  expect(loadConfig({ ...base, [name]: value })).toContain(`${name} must be a positive whole number`);
+  expect(loadConfig({ ...base, [name]: value })).toContain(`${name} must be a whole number`);
+});
+
+/**
+ * Number.isInteger(1e20) is true, and a retention of 1e20 days makes the purge fail on every run
+ * while runOnce catches it and the service looks healthy - so nothing is deleted and nobody finds
+ * out (PR #129 review).
+ */
+it.each([
+  ['LOGGING_RETENTION_DAYS', '1e20'],
+  ['LOGGING_RETENTION_DAYS', '3651'],
+  ['LOGGING_PURGE_INTERVAL_MINUTES', '1e20'],
+])('refuses %s=%s, which no interval can express', (name, value) => {
+  expect(loadConfig({ ...base, [name]: value })).toContain(`${name} must be a whole number between`);
+});
+
+it('still accepts the longest retention it allows', () => {
+  expect(loadConfig({ ...base, LOGGING_RETENTION_DAYS: '3650' })).toBe('ok');
 });
 
 it('defaults retention to 30 days and the topic to logging.lines', () => {

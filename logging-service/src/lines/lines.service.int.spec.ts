@@ -5,6 +5,8 @@
  *        logging-db container): insert, deduplication, the query filters, paging and the purge.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the future-timestamp retention case (PR #129 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Added the cases for the total coming from the page query (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 import { Pool } from 'pg';
@@ -134,6 +136,37 @@ describe('querying', () => {
     expect(first.lines.map((l) => l.ts)).toEqual(['2026-10-16T00:00:00.000Z', '2026-10-15T00:00:00.000Z']);
     expect(second.lines.map((l) => l.ts)).toEqual(['2026-10-14T00:00:00.000Z']);
     expect(first.total).toBe(3);
+  });
+
+  /**
+   * The total now comes from `count(*) OVER ()` in the page query rather than a separate count, so
+   * it describes the rows actually returned. These are the cases that would have caught a mistake
+   * in that rewrite (PR #129 review).
+   */
+  it('reports the filtered total, not the page size', async () => {
+    for (let i = 0; i < 5; i += 1) await lines.insert(line());
+    const { lines: rows, total } = await lines.query({ page: 1, pageSize: 2 });
+    expect(rows).toHaveLength(2);
+    expect(total).toBe(5);
+  });
+
+  it('reports the total of the filter, not of the table', async () => {
+    await lines.insert(line({ service: 'supplier' }));
+    await lines.insert(line({ service: 'supplier' }));
+    await lines.insert(line({ service: 'credit' }));
+    expect((await lines.query({ service: 'supplier', page: 1, pageSize: 50 })).total).toBe(2);
+  });
+
+  it('reports zero for a page past the end', async () => {
+    await lines.insert(line());
+    const { lines: rows, total } = await lines.query({ page: 9, pageSize: 50 });
+    expect(rows).toHaveLength(0);
+    expect(total).toBe(0);
+  });
+
+  it('reports zero when nothing matches', async () => {
+    await lines.insert(line());
+    expect((await lines.query({ requestId: 'no-such-trace', page: 1, pageSize: 50 })).total).toBe(0);
   });
 
   it('orders lines sharing a timestamp consistently, so a page boundary is stable', async () => {

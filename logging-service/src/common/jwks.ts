@@ -46,15 +46,24 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * A key this service can actually use: looked up by `kid` and imported by `createPublicKey`, which
- * needs `kty`. `{}` satisfies isObject, so an object-shaped but empty key set used to be cached —
- * and then a valid caller's kid was never found, so they got 401 instead of the 503 that says the
- * key service is unusable (PR #145 review).
+ * A key this service can actually use: it must have a `kid` to be found by, and it must **import**.
+ *
+ * Checking the identifiers is not enough. `{ "kid": "active", "kty": "RSA" }` has no `n` or `e`, so
+ * it passes any shape test, gets cached, and then fails in `createPublicKey` at verify time — which
+ * returns null, so the guard says 401 and blames a valid caller's token for a broken key service
+ * (PR #129 review). Importing here, once per fetch and behind a five-minute cache, is the only
+ * check that means anything.
  */
 function isUsableKey(value: unknown): value is Record<string, unknown> {
   if (!isObject(value)) return false;
-  const { kid, kty } = value as { kid?: unknown; kty?: unknown };
-  return typeof kid === 'string' && kid !== '' && typeof kty === 'string' && kty !== '';
+  const { kid } = value as { kid?: unknown };
+  if (typeof kid !== 'string' || kid === '') return false;
+  try {
+    createPublicKey({ key: value as JsonWebKey, format: 'jwk' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function fetchKeys(): Promise<Jwk[]> {

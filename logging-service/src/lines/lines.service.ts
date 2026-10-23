@@ -5,6 +5,8 @@
  *        supplier-service/src/locations/locations.service.ts.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Purge on arrival time rather than the producer's timestamp (PR #129 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Count and page in one query, so the total describes the rows returned (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable } from '@nestjs/common';
@@ -77,17 +79,17 @@ export class LinesService {
     if (q.to) filter('ts <= $?', q.to);
 
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const counted = await this.pool.query<{ total: string }>(
-      `SELECT count(*) AS total FROM log_lines ${clause}`,
-      params,
-    );
 
-    // Newest first, with line_id breaking ties so a page boundary is stable when two lines share
-    // a timestamp — which they do, because one request writes several lines in the same
-    // millisecond.
+    // One query, so the total and the rows come from the same snapshot. As two statements, a line
+    // inserted between them could be returned while the total still said zero, and a purge running
+    // between them produced the opposite — pagination that did not describe its own page
+    // (PR #129 review). count(*) OVER () counts the filtered set before LIMIT.
+    //
+    // Newest first, with line_id breaking ties so a page boundary is stable when two lines share a
+    // timestamp — which they do, because one request writes several lines in the same millisecond.
     const page = await this.pool.query(
       `SELECT line_id, ts, received_at, service, level, event, request_id, user_id, role,
-              method, path, status, duration_ms, extra
+              method, path, status, duration_ms, extra, count(*) OVER () AS total
          FROM log_lines ${clause}
         ORDER BY ts DESC, line_id DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
@@ -113,7 +115,10 @@ export class LinesService {
       })),
       page: q.page,
       pageSize: q.pageSize,
-      total: Number(counted.rows[0].total),
+      // No rows means nothing matched, or the page is past the end; either way the window
+      // function had nothing to report, so a count query would have to run separately to tell
+      // them apart - and for a log viewer, zero is the useful answer to both.
+      total: page.rows.length ? Number(page.rows[0].total) : 0,
     };
   }
 

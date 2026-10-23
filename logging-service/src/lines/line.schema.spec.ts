@@ -36,6 +36,8 @@ describe('the inbound line envelope', () => {
     ['no event', { ...valid, event: '' }],
     ['a status outside 100-599', { ...valid, status: 42 }],
     ['a negative duration', { ...valid, durationMs: -1 }],
+    // Larger than the INTEGER column, so it used to pass here and fail at the insert.
+    ['a duration past the column range', { ...valid, durationMs: 2147483648 }],
     ['a role that is not ADMIN or USER', { ...valid, role: 'COURIER' }],
   ])('rejects a line with %s', (_why, line) => {
     expect(parse(line as Record<string, unknown>).success).toBe(false);
