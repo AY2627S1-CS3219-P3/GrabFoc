@@ -48,12 +48,55 @@ Author review: Reviewed by Zi Yi, 2026-10-20.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Added the merge-of-main entry for the User Service order-support branch.
 Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+Scope: Added the Order Service UserSuspended consumer entry.
+Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-21 — Order Service: `UserSuspended` consumer (Phase D)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, explain
+**Files:** `order-service/src/integrations/{user.events,kafka.producer,order.events}.ts`,
+`src/orders/orders.{service,repository}.ts`, `src/common/errors.ts`, `src/{app.module,main}.ts`,
+`src/test/orders.api.test.ts`, `AGENTS.md`; `infra/kafka/topics.txt`; `user-service/AGENTS.md`;
+`docs/order-service-plan.md`
+
+**Scenario:** build the users half of plan §8 Phase D step 4 on branch
+`feat/order-user-suspension`: consume the User Service's `UserSuspended` and cancel the user's
+unfinished orders.
+
+**Prompts:**
+> from main, create a new branch for order service to handle user suspension scenario, its part of phase D in /Users/chenziyi/Documents/Y4Sem2/cs3219/project/GrabFoc/docs/order-service-plan.md
+
+> what is the dlt for?
+
+> what happens if credit is reserving credits for an order but the requester is suddenly suspended
+
+> we need to let suspension cancel awaiting credit orders. handle the misleading error, by rechecking status and returning a clearer error. dont implement yet, when a user is suspended, can we make their access token invalid?
+
+> if we implement order to keep its own list of suspended users, what do we need to change in our code? i want to gauge the workload
+
+> nevermind, for now lets just let suspension cancel awaiting credit orders. handle the misleading error, by rechecking status and returning a clearer error.
+
+**Key responses:** gave a plan first, with design inputs flagged under the AI policy: consumer
+group `order-service` from the beginning, a dead-letter topic `order.user-events.dlt` for events
+that can never succeed, and retry-in-place for anything else. Noted that the User Service's real
+payload is flat (`type`, `userId`), not plan §5's `data.userId`, so Order adapts. Explained the
+DLT (a bad message would otherwise block its partition forever). Traced a suspension racing a
+create: the guarded `AWAITING_CREDIT → PENDING` update fails and `settleCredits` releases the hold,
+but the requester got a misleading 503. Explained that access tokens can't be revoked without a
+check (refresh tokens already are; access tokens live ≤15 min) and costed four options; Zi Yi
+chose none for now. **Decided by Zi Yi:** suspension cancels `AWAITING_CREDIT` orders too; a create
+a suspension cancelled returns 403 `USER_SUSPENDED`.
+
+**Verification:** `npm test` passed; `compose.test.yaml` integration tests 67 passed, 0 failed.
+The first run failed once because the new test's `COMPLETED` fixture was not marked settled, so
+the job paid it; fixed the fixture.
 
 ### 2026-10-20 — User Service: merge main into `feat/user-service-order-support`
 

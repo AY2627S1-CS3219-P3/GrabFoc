@@ -4,6 +4,9 @@
  * Scope: Moved the Kafka producer out of credit.commands.ts so credit.commands and order.events
  *        share one connection (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+ * Scope: send() also takes a raw string and headers, for dead letters (Phase D).
+ * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
@@ -27,8 +30,9 @@ export class KafkaProducer implements OnModuleInit, OnModuleDestroy {
     await this.producer?.disconnect();
   }
 
-  /** Resolves once Kafka has stored the message. Kafka keeps order only per key. */
-  async send(topic: string, key: string, value: object): Promise<void> {
-    await this.producer!.send({ topic, messages: [{ key, value: JSON.stringify(value) }] });
+  /** Resolves once Kafka has stored the message. Kafka keeps order only per key. A string is sent as is. */
+  async send(topic: string, key: string, value: object | string, headers?: Record<string, string>): Promise<void> {
+    const body = typeof value === 'string' ? value : JSON.stringify(value);
+    await this.producer!.send({ topic, messages: [{ key, value: body, headers }] });
   }
 }
