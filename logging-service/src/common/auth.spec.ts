@@ -3,6 +3,8 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Generated these unit tests for the guard: 401/403/503 outcomes, the ADMIN-only rule, and
  *        that the Supplier Service's dev-auth headers buy nothing here.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Added the unusable-key-set cases (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
@@ -88,6 +90,25 @@ describe('reading the log store', () => {
     ['a token with a role we do not issue', { Authorization: `Bearer ${signToken(key, { role: 'COURIER' })}` }],
   ])('answers 401 for %s', async (_why, headers) => {
     expect(await outcome(request(headers))).toBe(401);
+  });
+
+  /**
+   * A key set this service cannot use is not the caller's fault. Answering 401 would tell a valid
+   * administrator their token is bad when the truth is that we cannot check it, and it would leave
+   * the cache empty so every later request refetched (PR #129 review).
+   */
+  it.each([
+    ['an empty key set', '{"keys":[]}'],
+    ['a key set holding null', '{"keys":[null]}'],
+    ['a key set holding a string', '{"keys":["not-a-key"]}'],
+  ])('answers 503 for %s', async (_why, body) => {
+    stub.respond = () => ({ status: 200, body });
+    resetJwksCache();
+    try {
+      expect(await outcome(request(bearer({ sub: 'u-1', role: 'ADMIN' })))).toBe(503);
+    } finally {
+      stub.respond = undefined;
+    }
   });
 
   it('answers 503, not 401, when the JWKS cannot be reached', async () => {

@@ -97,7 +97,8 @@ _Origin: AI doc, following the Supplier Service's conventions_
   sending a strange header would want. Control characters and anything over 200 characters are
   still refused.
 - `pageSize` is capped at 200. Newest first, with `line_id` breaking ties so a page boundary is stable when several lines share a millisecond.
-- Errors are Problem Details (RFC 9457), the same shape as every other service. 401, 403 and 503 match the Supplier Service exactly, including 503 when the JWKS cannot be reached.
+- Errors are Problem Details (RFC 9457), the same shape as every other service. 401, 403 and 503 match the Supplier Service exactly, including 503 when the JWKS cannot be reached **or returns a key set this service cannot use** — an empty array, or one holding a non-object. Answering 401 there would tell a valid administrator their token is bad when the truth is that we cannot check it, and would leave the cache empty so every later request refetched.
+- The database pool listens for its own `error` event. Without that, a routine PostgreSQL restart ends an idle connection, Node treats the event as uncaught and the service exits — taking ingest and the query API with it, and this Compose setup has no restart policy to bring it back.
 
 ## The shipper every service copies
 
