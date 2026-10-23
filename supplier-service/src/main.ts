@@ -7,6 +7,9 @@
  * Author review (Cole Lin): Read in full; confirmed the service starts, logs the dev-auth warning when the flag is on, and shuts down cleanly.
  * Author review (Cole Lin): Read in full; ran `npm test` (171 passed) and checked a supplied id,
  *        a minted one and a rejected one all reach the log line and the response header.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Registered the per-request log middleware (issue #52).
+ * Author review: pending — Cole Lin to record what he checked.
  */
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
@@ -14,12 +17,16 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ProblemDetailsFilter } from './common/problem';
 import { requestIdMiddleware } from './common/request-id';
+import { requestLogMiddleware } from './common/request-log';
 import { config } from './config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   // AI-generated (reviewed by Cole Lin).
   app.use(requestIdMiddleware);
+  // After the id middleware, so every line it writes carries the request's id.
+  // AI-generated (reviewed by Cole Lin).
+  app.use(requestLogMiddleware);
   app.useGlobalFilters(new ProblemDetailsFilter());
   app.enableShutdownHooks();
   if (config.devAuth) {

@@ -166,9 +166,28 @@ in this service changes.
 
 | Event | Level | When |
 |---|---|---|
+| `request_completed` | info / warn / error | **Every request**, whatever the outcome. `info` under 400, `warn` for 4xx, `error` for 5xx |
 | `access_denied` | warn | Every 401 and 403 (backlog U5.1.1) |
 | `jwks_unavailable` | error | A 503: the User Service's JWKS can't be reached |
 | `unhandled_error` | error | Every 500, whether or not it arrived as an `HttpException` |
+
+**Every request, not only the failures** _(Origin: Team — Cole Lin, 2026-10-23)_. Until then this
+service logged nothing on a success, so the store could say who was refused but not what anyone
+actually did, and had no durations to compare. `request_completed` carries the method, the path, the
+status, `durationMs` and the caller.
+
+It is **middleware**, not a Nest interceptor — `src/common/request-log.ts`. Guards run *before*
+interceptors, so an interceptor never sees a request `JwtAuthGuard` refused: it would miss every 401
+and 403, and 404s for unrouted paths. A `finish` listener catches all of them, including a response
+written by the exception filter. It also listens for `close`, so a request the client gave up on
+still produces a line, marked `aborted`.
+
+**A refused request therefore produces two lines from this service** — `request_completed` and
+`access_denied` — sharing a `requestId`. They answer different questions: the first is the uniform
+per-request record, the second is the one the backlog asks for by name (U5.1.1) and carries the
+reason. The consequence worth writing down: **any "how many denials" query has to pick one event and
+stay with it**, or two counts will disagree. Add the gateway's own lines for the same request and
+there are four records in two places.
 
 **What stays out of the shipped line.** The JWKS failure message names the JWKS URL, and a 500's
 stack can carry whatever the failure touched (a connection string, say). Both still go to Nest's
