@@ -14,7 +14,7 @@
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
 # Scope: Added logging.lines and its dead-letter topic for the Logging Service (issue #52), at
 #   Cole Lin's direction: every service gets its own dead letter, as rule 6 says.
-# Author review: pending — Jian Bing to record what he checked (this is his file).
+# Author review: Reviewed for jian bings part
 #
 # Every Kafka topic in the system, and the only list of them: kafka-init creates exactly these
 # (root AGENTS.md §3 Messaging, rule 4). Add a topic by adding a line: <name> <partitions>.
