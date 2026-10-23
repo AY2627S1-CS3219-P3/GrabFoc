@@ -3,7 +3,7 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Generated this middleware, from Cole Lin's decision on 2026-10-23 that every request
  *        should be logged rather than only the failures (issue #52).
- * Author review: pending — Cole Lin to record what he checked.
+ * Author review: Cole Lin, read and approved.
  */
 import type { NextFunction, Request, Response } from 'express';
 import type { AuthedRequest } from './auth';

@@ -9,7 +9,7 @@
  *        a minted one and a rejected one all reach the log line and the response header.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Registered the per-request log middleware (issue #52).
- * Author review: pending — Cole Lin to record what he checked.
+ * Author review: Cole Lin, read and approved.
  */
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';

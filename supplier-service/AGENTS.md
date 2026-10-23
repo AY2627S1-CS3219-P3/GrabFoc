@@ -1,3 +1,11 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+Scope: Added the "every request, not only the failures" section and the request_completed row to
+  the event table, from Cole Lin's decision of the same day (issue #52). Earlier AI-assisted
+  changes to this file are recorded per section in its _Origin:_ lines.
+Author review: Cole Lin, read and approved.
+-->
 # AGENTS.md — Supplier (Location) Service
 
 Service-specific context for `supplier-service/`. Read the root [`AGENTS.md`](../AGENTS.md) first: it has the product, terminology, roles, the auth model, cross-cutting rules, the plan-first rule and the **AI-agent rules** (warn before breaking them).

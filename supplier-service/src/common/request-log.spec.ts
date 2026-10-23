@@ -2,7 +2,7 @@
  * AI Assistance Disclosure:
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Generated these unit tests for the per-request log line.
- * Author review: pending — Cole Lin to record what he checked.
+ * Author review: Cole Lin, read and approved.
  */
 import { EventEmitter } from 'node:events';
 import type { NextFunction, Request, Response } from 'express';
@@ -46,6 +46,8 @@ function run(
   const req = {
     method: 'POST',
     originalUrl: '/locations',
+    baseUrl: '',
+    route: { path: '/locations' },
     headers: { 'x-request-id': 'trace-1' },
     ...overrides,
   } as unknown as AuthedRequest;
@@ -110,11 +112,24 @@ describe('a completed request', () => {
     expect(lines()[0].level).toBe(level);
   });
 
-  it('logs the pathname only, never the query string', () => {
-    const { res, lines } = run({ originalUrl: '/locations?lat=1.2966&lon=103.7764' } as Partial<Request>);
-    res.finish(200);
-    expect(lines()[0].path).toBe('/locations');
-    expect(JSON.stringify(lines()[0])).not.toContain('103.7764');
+  it('logs the route template, never the caller URL', () => {
+    const { res, lines } = run({
+      originalUrl: '/locations/eyJhbGciOiJSUzI1NiJ9.secret?lat=1.2966&lon=103.7764',
+      route: { path: '/locations/:locationId' },
+    } as Partial<Request>);
+    res.finish(400);
+    expect(lines()[0].path).toBe('/locations/:locationId');
+    const line = JSON.stringify(lines()[0]);
+    expect(line).not.toContain('103.7764');
+    expect(line).not.toContain('secret');
+  });
+
+  // A 404 for a path somebody invented is the one case with no safe template.
+  it('says unrouted when nothing matched', () => {
+    const { res, lines } = run({ originalUrl: '/reset/abc123token', route: undefined } as Partial<Request>);
+    res.finish(404);
+    expect(lines()[0].path).toBe('/<unrouted>');
+    expect(JSON.stringify(lines()[0])).not.toContain('abc123token');
   });
 
   it('mints an id when the request arrived without one', () => {
