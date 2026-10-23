@@ -17,6 +17,10 @@
  * Scope: Refuse an empty or malformed JWKS key set as unavailable, after the PR #129 review
  *        found it in the Logging Service's copy of this file.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: A key has to carry the fields this service reads, not merely be an object
+ *        (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
 import { config } from '../config';
@@ -51,6 +55,18 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+/**
+ * A key this service can actually use: looked up by `kid` and imported by `createPublicKey`, which
+ * needs `kty`. `{}` satisfies isObject, so an object-shaped but empty key set used to be cached -
+ * and then a valid caller's kid was never found, so they got 401 instead of the 503 that says the
+ * key service is unusable (PR #145 review).
+ */
+function isUsableKey(value: unknown): boolean {
+  if (!isObject(value)) return false;
+  const { kid, kty } = value as { kid?: unknown; kty?: unknown };
+  return typeof kid === 'string' && kid !== '' && typeof kty === 'string' && kty !== '';
+}
+
 async function fetchKeys(): Promise<Jwk[]> {
   const url = config.jwksUrl;
   // Unset only in dev-auth mode, where a bearer token still can't be accepted unverified.
@@ -80,7 +96,7 @@ async function fetchKeys(): Promise<Jwk[]> {
   // and it matches the gateway (api-gateway/envoy/behaviour-differences.md). Found by the PR #129
   // review of the Logging Service's copy of this file.
   // AI-generated (reviewed by Cole Lin).
-  if (!body.keys.length || !body.keys.every(isObject)) {
+  if (!body.keys.length || !body.keys.every(isUsableKey)) {
     throw new JwksUnavailableError(`${url} returned no usable keys`);
   }
   cachedKeys = body.keys as Jwk[];

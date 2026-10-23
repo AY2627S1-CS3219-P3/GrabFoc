@@ -148,6 +148,9 @@ describe('when the JWKS cannot be used', () => {
     ['an empty key set', { status: 200, body: '{"keys":[]}' }],
     ['a key set holding null', { status: 200, body: '{"keys":[null]}' }],
     ['a key set holding a string', { status: 200, body: '{"keys":["not-a-key"]}' }],
+    ['a key set holding an empty object', { status: 200, body: '{"keys":[{}]}' }],
+    ['a key with no kid', { status: 200, body: '{"keys":[{"kty":"RSA"}]}' }],
+    ['a key with no kty', { status: 200, body: '{"keys":[{"kid":"k1"}]}' }],
   ])('throws JwksUnavailableError on %s', async (_label, reply) => {
     stub.respond = () => reply;
     await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);

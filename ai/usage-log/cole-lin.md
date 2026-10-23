@@ -3,6 +3,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-23
+Scope: Drafted the entries dated 2026-10-16, 2026-10-21 and 2026-10-23 from the prompts and work
+  in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
+  verified; the wording is Claude's, written to the template in ai/usage-log.md.
+Author review: Cole Lin, read and approved.
 -->
 
 # AI Usage Log — Cole Lin
