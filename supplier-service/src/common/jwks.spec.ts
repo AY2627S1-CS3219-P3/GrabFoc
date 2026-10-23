@@ -4,6 +4,9 @@
  * Scope: Generated these unit tests for bearer-token verification against a stub JWKS server.
  * Author review (Jian Bing): Ran `npm test` on 2026-10-01 (157 passed) and verified each test
  *        case in this file by hand.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Added the empty and malformed key-set rows (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { config } from '../config';
 import { JwksStub, makeKey, signToken } from '../test/jwks-stub';
@@ -142,6 +145,9 @@ describe('when the JWKS cannot be used', () => {
     ['invalid JSON', { status: 200, body: '<html>not json' }],
     ['a null body', { status: 200, body: 'null' }],
     ['no keys array', { status: 200, body: '{"keys":"nope"}' }],
+    ['an empty key set', { status: 200, body: '{"keys":[]}' }],
+    ['a key set holding null', { status: 200, body: '{"keys":[null]}' }],
+    ['a key set holding a string', { status: 200, body: '{"keys":["not-a-key"]}' }],
   ])('throws JwksUnavailableError on %s', async (_label, reply) => {
     stub.respond = () => reply;
     await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);

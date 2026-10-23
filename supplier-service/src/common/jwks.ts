@@ -13,6 +13,10 @@
  *        threads were resolved and CI passed before approving and merging PR #30. The fixes were
  *        tested by Claude Code against a stub JWKS server (invalid and null bodies, 20 concurrent
  *        requests making one fetch).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Refuse an empty or malformed JWKS key set as unavailable, after the PR #129 review
+ *        found it in the Logging Service's copy of this file.
+ * Author review: Cole Lin, read and approved.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
 import { config } from '../config';
@@ -68,6 +72,16 @@ async function fetchKeys(): Promise<Jwk[]> {
   }
   if (!isObject(body) || !Array.isArray(body.keys)) {
     throw new JwksUnavailableError('JWKS response has no keys array');
+  }
+  // An empty array, or one holding anything that is not an object, is a key set this service
+  // cannot use. Accepting it answers 401 to a valid caller - saying their token is bad when the
+  // truth is that we cannot check it - and leaves the cache empty, so every later request
+  // refetches. A non-object entry is worse: reading it produces a 500. 503 is the honest answer,
+  // and it matches the gateway (api-gateway/envoy/behaviour-differences.md). Found by the PR #129
+  // review of the Logging Service's copy of this file.
+  // AI-generated (reviewed by Cole Lin).
+  if (!body.keys.length || !body.keys.every(isObject)) {
+    throw new JwksUnavailableError(`${url} returned no usable keys`);
   }
   cachedKeys = body.keys as Jwk[];
   cachedAt = Date.now();

@@ -1,13 +1,12 @@
 /*
  * AI Assistance Disclosure:
- * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
- * Scope: Copied from logging-service/src/client/log-shipper.ts, which is the canonical copy.
- *        This repository has no shared package, so common code is copied, not imported: a change
- *        there has to be repeated here. Re-copied after the reviews of PR #129 and #130, which
- *        added recursive redaction, substring matching of sensitive names, envelope precedence,
- *        truncation past the depth limit, dropped function values, a publish guard cleared by
- *        identity, a stop() that waits for a publish in flight, and an emit() that cannot throw
- *        on a value JSON refuses to serialise.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Copied from logging-service/src/client/log-shipper.ts, the canonical copy. This
+ *        repository has no shared package, so common code is copied, not imported: a change
+ *        there has to be repeated here, and the PR #129 reviews found this copy had fallen
+ *        behind on three fixes - a Date passed through so a caller-controlled toJSON could still
+ *        run, sensitive names matched exactly rather than as substrings, and a redaction walk
+ *        outside the guard that let a throwing getter escape emit().
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -137,7 +136,10 @@ export function redactFields(value: unknown, depth = 0): unknown {
   // nested deeper than this verbatim, and would let a cycle through to JSON.stringify, which
   // throws — crashing the caller over a log line (PR #130 review).
   if (depth > MAX_DEPTH) return TRUNCATED;
-  if (value instanceof Date) return value;
+  // An ISO string, not the object. JSON.stringify would call the Date's toJSON — and a Date with
+  // its own toJSON, or a subclass overriding it, could return anything at all, after redaction
+  // has finished (PR #129 review). This is what an honest Date serialised to anyway.
+  if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map((item) => serialisable(redactFields(item, depth + 1)));
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
@@ -186,10 +188,7 @@ export class LogShipper {
    */
   emit(input: LineInput): void {
     const { level, event, path, ...rest } = input;
-    const payload = this.serialise({
-      // The caller's own fields go in FIRST, so the envelope below always wins: a line claiming
-      // `service: "gateway"` or its own `ts` would make the store unreadable.
-      ...(redactFields(rest) as Record<string, unknown>),
+    const envelope = {
       // One id, shared by the stdout line and the Kafka message, so reading stdout later cannot
       // double-count what the store already has.
       lineId: (this.options.newId ?? randomUUID)(),
@@ -201,7 +200,10 @@ export class LogShipper {
       // this file to remember: `?lat=…&lon=…` is the caller's position, and this line carries
       // their userId (root AGENTS.md: never log unmasked personal data).
       ...(path === undefined ? {} : { path: path.split('?')[0] }),
-    });
+    };
+    // The caller's own fields go in FIRST, so the envelope always wins: a line claiming
+    // `service: "gateway"` or its own `ts` would make the store unreadable.
+    const payload = this.serialise(envelope, rest);
     this.counts.emitted += 1;
     (this.options.write ?? console.log)(payload);
 
@@ -217,18 +219,21 @@ export class LogShipper {
    * JSON for one line, or a line saying it could not be built. Nothing a caller passes may turn a
    * log call into an exception on the path being logged.
    */
-  private serialise(line: Record<string, unknown>): string {
+  private serialise(envelope: Record<string, unknown>, extra: Record<string, unknown>): string {
     try {
-      return JSON.stringify(line);
+      // Redaction is inside the guard, not before it: reading `extra` can itself throw, because an
+      // enumerable getter or a Proxy trap runs during Object.entries (PR #129 review). emit() must
+      // never turn a log call into an exception on the path being logged.
+      return JSON.stringify({ ...(redactFields(extra) as Record<string, unknown>), ...envelope });
     } catch (err) {
       return JSON.stringify({
-        lineId: line.lineId,
-        ts: line.ts,
-        service: line.service,
+        lineId: envelope.lineId,
+        ts: envelope.ts,
+        service: envelope.service,
         level: 'error',
         event: 'line_unserialisable',
         reason: err instanceof Error ? err.message : 'unknown',
-        originalEvent: typeof line.event === 'string' ? line.event : null,
+        originalEvent: typeof envelope.event === 'string' ? envelope.event : null,
       });
     }
   }
