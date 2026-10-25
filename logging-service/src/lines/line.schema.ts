@@ -189,15 +189,30 @@ export function toRow(line: InboundLine): LineRow {
 // Bounded, so (page - 1) * pageSize cannot exceed PostgreSQL's OFFSET range: page=1e20 passes an
 // unbounded integer check and then fails in the database as a 500 (PR #129 review).
 const MAX_PAGE = 1_000_000;
+/**
+ * PostgreSQL cannot represent a NUL in a TEXT parameter, so `?service=%00` reached the query and
+ * came back as a 500 for input that should have been a 400 (PR #129 review). Written as a loop
+ * rather than a regex so the escape sequences cannot be mangled by an editing tool.
+ */
+function hasControlChars(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+const plainText = (max: number) =>
+  z.string().min(1).max(max).refine((v) => !hasControlChars(v), 'must not contain control characters');
 const positiveInt = z.coerce.number().int().positive();
 
 /** Query parameters for GET /logs. Strict: an unknown filter is a typo, not a wildcard. */
 export const logQuerySchema = z
   .object({
     requestId: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional(),
-    service: z.string().min(1).max(40).optional(),
-    event: z.string().min(1).max(60).optional(),
-    userId: z.string().min(1).max(100).optional(),
+    service: plainText(40).optional(),
+    event: plainText(60).optional(),
+    userId: plainText(100).optional(),
     level: z.enum(['debug', 'info', 'warn', 'error']).optional(),
     status: z.coerce.number().int().min(100).max(599).optional(),
     from: z.string().datetime().optional(),

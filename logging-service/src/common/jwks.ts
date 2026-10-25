@@ -30,6 +30,10 @@ const MIN_REFETCH_MS = 30 * 1000; // don't hammer the User Service when a kid is
 
 let cachedKeys: Jwk[] = [];
 let cachedAt = 0;
+// When an unknown kid last triggered a refetch. Separate from cachedAt: a rotation seconds after
+// an ordinary fetch would otherwise be blocked by the rate limit and answer 401 until it expired
+// (PR #129 review).
+let lastMissAt = 0;
 // The fetch in progress, shared so concurrent requests trigger one JWKS request, not one each.
 let inflight: Promise<Jwk[]> | undefined;
 
@@ -56,8 +60,14 @@ function isObject(value: unknown): value is Record<string, unknown> {
  */
 function isUsableKey(value: unknown): value is Record<string, unknown> {
   if (!isObject(value)) return false;
-  const { kid } = value as { kid?: unknown };
+  const { kid, use, alg } = value as { kid?: unknown; use?: unknown; alg?: unknown };
   if (typeof kid !== 'string' || kid === '') return false;
+  // The same restrictions verifyToken applies when it picks a key. Without them a set holding only
+  // an encryption key, or one for an algorithm we do not accept, counted as "usable" - so the
+  // service started happily and then answered 401 to a cryptographically valid admin token, which
+  // is the opposite of what the 503 is for (PR #129 review).
+  if (use !== undefined && use !== 'sig') return false;
+  if (alg !== undefined && alg !== 'RS256' && alg !== 'ES256') return false;
   try {
     createPublicKey({ key: value as JsonWebKey, format: 'jwk' });
     return true;
@@ -120,7 +130,8 @@ async function keysFor(kid: string): Promise<Jwk | undefined> {
 
   let key = cachedKeys.find((k) => k.kid === kid);
   // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
-  if (!key && Date.now() - cachedAt > MIN_REFETCH_MS) {
+  if (!key && Date.now() - lastMissAt > MIN_REFETCH_MS) {
+    lastMissAt = Date.now();
     await refreshKeys();
     key = cachedKeys.find((k) => k.kid === kid);
   }
@@ -185,5 +196,6 @@ export async function verifyToken(authorization: string | undefined): Promise<To
 export function resetJwksCache(): void {
   cachedKeys = [];
   cachedAt = 0;
+  lastMissAt = 0;
   inflight = undefined;
 }

@@ -171,6 +171,10 @@ function unstorable(err: unknown): string | undefined {
  * can still fail on a value JSON refuses, and a dead letter is not worth an exception.
  */
 function safeBody(parsed: unknown): string | null {
+  // Valid JSON need not be an object: `"Bearer eyJ..."` and `["Bearer eyJ..."]` both parse, and
+  // redaction works on field *names*, so a bare string has nothing to redact and would be copied
+  // into the dead-letter topic verbatim. No field names, no body (PR #129 review).
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
   try {
     return JSON.stringify(redactDeep(parsed));
   } catch {

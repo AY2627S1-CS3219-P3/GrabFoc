@@ -167,6 +167,15 @@ describe('redaction cannot be worked around', () => {
 
   // TypeScript refuses an overridden toJSON in typed code, so this is the path it could take:
   // a subclass whose prototype is patched at runtime, or anything arriving through `any`.
+  // toISOString itself was still a virtual call, so an override ran after redaction.
+  it('ignores a toISOString override on a Date', () => {
+    const when = new Date('2026-10-25T00:00:00.000Z');
+    (when as unknown as { toISOString: () => string }).toISOString = () => 'token must-not-appear';
+    shipper().emit({ level: 'info', event: 'dated', when });
+    expect(written[0]).not.toContain('must-not-appear');
+    expect(JSON.parse(written[0]).when).toBe('2026-10-25T00:00:00.000Z');
+  });
+
   it('ignores a toJSON inherited from a Date subclass', () => {
     const Sneaky = class extends Date {};
     (Sneaky.prototype as unknown as { toJSON: () => unknown }).toJSON = () => ({ token: 'must-not-appear' });

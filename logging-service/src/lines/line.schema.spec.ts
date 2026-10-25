@@ -138,6 +138,11 @@ describe('the query parameters', () => {
     expect(logQuerySchema.parse({})).toMatchObject({ page: 1, pageSize: 50 });
   });
 
+  // PostgreSQL cannot hold a NUL in a TEXT parameter, so this used to reach the query and 500.
+  it.each(['service', 'event', 'userId'])('rejects a NUL byte in the %s filter', (field) => {
+    expect(logQuerySchema.safeParse({ [field]: `a${String.fromCharCode(0)}b` }).success).toBe(false);
+  });
+
   it('rejects an unknown filter rather than ignoring it', () => {
     expect(logQuerySchema.safeParse({ serivce: 'supplier' }).success).toBe(false);
   });

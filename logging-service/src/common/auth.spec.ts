@@ -106,6 +106,10 @@ describe('reading the log store', () => {
     ['a key set holding an empty object', '{"keys":[{}]}'],
     ['a key with no kid', '{"keys":[{"kty":"RSA"}]}'],
     ['a key with no kty', '{"keys":[{"kid":"k1"}]}'],
+    // The same restrictions verifyToken applies: an encryption-only key, or one for an
+    // algorithm we do not accept, is not a key this service can verify with.
+    ['a key set with only an encryption key', '{"keys":[{"kid":"k1","kty":"RSA","use":"enc"}]}'],
+    ['a key set with only an unaccepted alg', '{"keys":[{"kid":"k1","kty":"RSA","alg":"HS256"}]}'],
   ])('answers 503 for %s', async (_why, body) => {
     stub.respond = () => ({ status: 200, body });
     resetJwksCache();

@@ -56,6 +56,15 @@ it('refuses a database URL that does not parse', () => {
     .toContain('percent-encode');
 });
 
+// A scheme-less JWKS url passed a non-empty check and then every auth attempt looked like a
+// transient 503 forever, instead of the service refusing to start (PR #129 review).
+it.each(['localhost:3001/.well-known/jwks.json', 'not a url', 'ftp://host/keys'])(
+  'refuses the JWKS url %s',
+  (url) => {
+    expect(loadConfig({ ...base, LOGGING_JWKS_URL: url })).toContain('LOGGING_JWKS_URL must be');
+  },
+);
+
 it('refuses a database URL that is not postgres', () => {
   expect(loadConfig({ ...base, LOGGING_DATABASE_URL: 'mysql://foc:pass@localhost:3306/logging' }))
     .toContain('must be a postgres:// URL');

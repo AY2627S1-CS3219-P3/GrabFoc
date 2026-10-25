@@ -65,6 +65,26 @@ function databaseUrl(): string {
  * purge fail on every run while `runOnce` catches the error and the service goes on looking
  * healthy — so nothing is ever deleted and nobody finds out (PR #129 review).
  */
+/**
+ * A required setting that has to be a URL we can fetch. `localhost:3001/...` with no scheme passes
+ * a non-empty check, and then every authentication attempt fails in fetch() and is reported as a
+ * 503 - so a deployment typo looks like an outage at the User Service, indefinitely (PR #129
+ * review). Fail at startup instead.
+ */
+function httpUrl(name: string): string {
+  const value = required(name);
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${name} must be a full http(s) URL, got "${value}"`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`${name} must be http or https, got "${parsed.protocol}"`);
+  }
+  return value;
+}
+
 function positive(name: string, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -83,7 +103,7 @@ export const config = {
   // row per request across every service, so a USER's id, the paths they called and when sit in
   // one queryable place; an unauthenticated header that can claim ADMIN has no business near it.
   // Every caller needs a real token from the User Service.
-  jwksUrl: required('LOGGING_JWKS_URL'),
+  jwksUrl: httpUrl('LOGGING_JWKS_URL'),
   jwtIssuer: process.env.LOGGING_JWT_ISSUER || undefined,
   jwtAudience: process.env.LOGGING_JWT_AUDIENCE || undefined,
 

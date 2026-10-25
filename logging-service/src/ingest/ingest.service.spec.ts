@@ -197,6 +197,20 @@ describe('handling a message', () => {
     expect(parked[0].body).not.toContain('must-not-appear');
   });
 
+  /**
+   * Valid JSON need not be an object. A bare string has no field names, so redaction has nothing
+   * to work on and the value would be copied into the dead-letter topic as-is (PR #129 review).
+   */
+  it.each([
+    ['a bare string', JSON.stringify('Bearer must-not-appear')],
+    ['an array of strings', JSON.stringify(['Bearer must-not-appear'])],
+    ['a number', JSON.stringify(42)],
+  ])('parks no body for %s', async (_why, payload) => {
+    await consumer.deliver(payload);
+    // The body is what gets published; `message` is the fixture's record of what arrived.
+    expect(parked[0].body).toBeNull();
+  });
+
   // Bytes that are not JSON cannot be inspected field by field, so nothing is parked with them.
   it('parks no body at all when the message was not JSON', async () => {
     await consumer.deliver('this is not json at all');
