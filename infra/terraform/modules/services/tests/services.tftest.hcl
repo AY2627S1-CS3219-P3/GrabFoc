@@ -112,6 +112,13 @@ run "staging" {
     error_message = "One copy of each service; ECS keeps restarting a service until its dependencies are up."
   }
   assert {
+    condition = [
+      for x in jsondecode(aws_ecs_task_definition.service["api-gateway"].container_definitions)[0].secrets : x.valueFrom
+      if x.name == "GATEWAY_ORIGIN_KEY"
+    ] == ["arn:aws:ssm:ap-southeast-1:111122223333:parameter/foc/staging/CLOUDFRONT_ORIGIN_KEY"]
+    error_message = "The gateway gets CloudFront's origin key from SSM."
+  }
+  assert {
     condition = (
       contains(keys(aws_ecs_service.service), "mailpit") &&
       [for e in jsondecode(aws_ecs_task_definition.service["user-service"].container_definitions)[0].environment : e.value if e.name == "USER_SMTP_HOST"][0] == "mailpit"

@@ -36,8 +36,22 @@ module "services" {
   mailpit_relay          = var.env == "staging" # staging relays through Mailpit; production sends to Gmail
 }
 
+# The secret CloudFront adds to every request (X-Origin-Key) and Envoy checks, so the server answers
+# only this distribution, not any CloudFront. Generated here; the gateway reads it from SSM.
+resource "random_password" "origin_key" {
+  length  = 48
+  special = false
+}
+
+resource "aws_ssm_parameter" "origin_key" {
+  name  = "/foc/${var.env}/CLOUDFRONT_ORIGIN_KEY"
+  type  = "SecureString"
+  value = random_password.origin_key.result
+}
+
 module "edge" {
   source        = "../../modules/edge"
   env           = var.env
   origin_domain = module.server.public_dns
+  origin_key    = random_password.origin_key.result
 }

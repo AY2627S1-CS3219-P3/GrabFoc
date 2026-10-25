@@ -8,6 +8,12 @@ variable "env" {
   type        = string
 }
 
+variable "origin_key" {
+  description = "Secret CloudFront sends as X-Origin-Key, so Envoy can reject requests that didn't come through this distribution."
+  type        = string
+  sensitive   = true
+}
+
 variable "origin_domain" {
   description = "The ECS server's public DNS name (its Elastic IP's)."
   type        = string

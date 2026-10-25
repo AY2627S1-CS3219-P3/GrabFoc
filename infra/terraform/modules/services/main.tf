@@ -159,7 +159,8 @@ locals {
         ORDER_SERVICE_URL    = "http://order-service:3005"
         CREDIT_SERVICE_URL   = "http://credit-service:3004"
       }
-      secrets = {}
+      # CloudFront's X-Origin-Key value; Envoy rejects port-80 requests without it (deploy part 1).
+      secrets = { GATEWAY_ORIGIN_KEY = "CLOUDFRONT_ORIGIN_KEY" }
     }
     "frontend" = {
       image   = local.image["frontend"]

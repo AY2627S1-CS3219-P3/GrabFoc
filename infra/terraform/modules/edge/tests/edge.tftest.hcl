@@ -12,6 +12,7 @@ mock_provider "aws" {
 variables {
   env           = "staging"
   origin_domain = "ec2-1-2-3-4.ap-southeast-1.compute.amazonaws.com"
+  origin_key    = "test-origin-key"
 }
 
 run "edge" {
@@ -50,5 +51,14 @@ run "edge" {
   assert {
     condition     = output.url == "https://d1abcdef.cloudfront.net"
     error_message = "The environment's URL is its CloudFront domain over HTTPS."
+  }
+
+  # Jian Bing, 2026-10-25: like X-Service-Key, CloudFront proves the request came through OUR
+  # distribution; Envoy checks it (deploy part 1).
+  assert {
+    condition = [
+      for h in one(aws_cloudfront_distribution.this.origin).custom_header : h.value if h.name == "X-Origin-Key"
+    ] == ["test-origin-key"]
+    error_message = "CloudFront must send X-Origin-Key with the environment's key."
   }
 }

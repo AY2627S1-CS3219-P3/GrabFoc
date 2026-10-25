@@ -18,6 +18,10 @@ resource "aws_cloudfront_distribution" "this" {
   origin {
     origin_id   = "envoy"
     domain_name = var.origin_domain
+    custom_header {
+      name  = "X-Origin-Key" # checked by Envoy (deploy part 1), like X-Service-Key between services
+      value = var.origin_key
+    }
     custom_origin_config {
       origin_protocol_policy = "http-only"
       http_port              = 80
