@@ -7,6 +7,8 @@
  * Scope: Added the unusable-key-set cases (PR #129 review).
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Added the object-shaped-but-unusable key cases (PR #145 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-25
+ * Scope: Added the case for an unknown kid whose first refetch fails (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
@@ -129,6 +131,27 @@ describe('reading the log store', () => {
     } finally {
       stub.respond = undefined;
     }
+  });
+
+  /**
+   * A rotation whose first refetch fails. The miss used to be recorded before the fetch, so for
+   * the next MIN_REFETCH_MS every request for the new kid skipped the endpoint and answered 401
+   * from the stale cache - telling an administrator their valid token was bad (PR #129 review).
+   */
+  it('retries an unknown kid once the endpoint recovers from a failed refresh', async () => {
+    const rotated = makeKey('k-rotated');
+    const token = { Authorization: `Bearer ${signToken(rotated, { sub: 'u-1', role: 'ADMIN' })}` };
+
+    // Fill the cache with the old key, the way ordinary traffic would.
+    expect(await outcome(request(bearer({ sub: 'u-1', role: 'ADMIN' })))).toBe('allowed');
+
+    stub.respond = () => ({ status: 500, body: '{}' });
+    expect(await outcome(request(token))).toBe(503);
+
+    // The endpoint comes back straight away, well inside the rate-limit window.
+    stub.respond = undefined;
+    stub.keys = [key, rotated];
+    expect(await outcome(request(token))).toBe('allowed');
   });
 
   it('answers 503, not 401, when the JWKS cannot be reached', async () => {

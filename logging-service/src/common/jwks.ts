@@ -131,8 +131,13 @@ async function keysFor(kid: string): Promise<Jwk | undefined> {
   let key = cachedKeys.find((k) => k.kid === kid);
   // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
   if (!key && Date.now() - lastMissAt > MIN_REFETCH_MS) {
-    lastMissAt = Date.now();
     await refreshKeys();
+    // Recorded only once the endpoint has answered. Set before the call, one failed refresh
+    // turned into 401s from the stale cache for the next MIN_REFETCH_MS even after the
+    // endpoint came back - and a 401 says the administrator's token is bad, which is a lie.
+    // A refresh that throws propagates as 503 instead, and concurrent requests share one
+    // in-flight fetch, so not recording the miss here cannot become a storm (PR #129 review).
+    lastMissAt = Date.now();
     key = cachedKeys.find((k) => k.kid === kid);
   }
   return key;
