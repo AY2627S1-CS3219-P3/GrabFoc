@@ -41,7 +41,8 @@ stacks use. Keep that file safe, or import the resources again if it's lost.
 
 ## 2. Secrets for an environment
 
-Fill `infra/secrets/staging.env` (names in `infra/secrets/README.md`), then:
+Create `infra/secrets/staging.env` with `infra/scripts/new-secrets.sh staging`, fill in its four
+Gmail/admin lines (see `infra/secrets/README.md`), then:
 
 ```bash
 infra/scripts/put-secrets.sh staging

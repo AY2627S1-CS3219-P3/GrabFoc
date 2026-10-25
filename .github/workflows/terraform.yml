@@ -33,4 +33,6 @@ jobs:
       - name: fmt, validate and test every stack and module
         run: infra/terraform/check.sh
       - name: test the deployment scripts
-        run: infra/scripts/test/put-secrets.test.sh
+        run: |
+          infra/scripts/test/put-secrets.test.sh
+          infra/scripts/test/new-secrets.test.sh

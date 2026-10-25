@@ -8,7 +8,13 @@ Author review: Pending Jian Bing's review.
 # Deployment secrets (never committed)
 
 Everything in this folder except this README is git-ignored. Create one file per environment,
-`staging.env` and `production.env`, in `.env` syntax (`NAME=value`), then load it into AWS:
+`staging.env` and `production.env`, in `.env` syntax (`NAME=value`). The quickest way:
+
+```bash
+infra/scripts/new-secrets.sh staging   # fresh random passwords and keys; prints no values
+```
+
+then fill in the four Gmail and admin lines it leaves empty, and load the file into AWS:
 
 ```bash
 infra/scripts/put-secrets.sh staging
