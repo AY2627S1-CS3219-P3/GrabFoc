@@ -10,3 +10,11 @@ module "network" {
   env    = var.env
   cidr   = "10.30.0.0/16"
 }
+
+module "server" {
+  source            = "../../modules/server"
+  env               = var.env
+  subnet_id         = module.network.subnet_id
+  security_group_id = module.network.security_group_id
+  instance_type     = var.instance_type
+}
