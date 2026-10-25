@@ -4,3 +4,9 @@
 # Author review: Pending Jian Bing's review.
 # The staging environment: one VPC, one ECS-on-EC2 server, every container as an ECS service, and
 # CloudFront in front (spec §3). Module calls are added by later tasks.
+
+module "network" {
+  source = "../../modules/network"
+  env    = var.env
+  cidr   = "10.20.0.0/16"
+}
