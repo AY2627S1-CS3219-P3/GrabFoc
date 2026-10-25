@@ -24,3 +24,8 @@ variable "edge_container_port" {
   type        = number
   default     = 3003
 }
+
+variable "alert_emails" {
+  description = "Addresses emailed when an alarm fires (each confirms its subscription once)."
+  type        = list(string)
+}

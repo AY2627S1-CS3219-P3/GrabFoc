@@ -168,6 +168,17 @@ resource "aws_ecs_cluster_capacity_providers" "this" {
 
 # --- Disk alarm ------------------------------------------------------------------------------------
 
+resource "aws_sns_topic" "alerts" {
+  name = "${local.name}-alerts"
+}
+
+resource "aws_sns_topic_subscription" "alerts" {
+  for_each  = toset(var.alert_emails)
+  topic_arn = aws_sns_topic.alerts.arn
+  protocol  = "email" # each address confirms once, from the email AWS sends
+  endpoint  = each.value
+}
+
 resource "aws_cloudwatch_metric_alarm" "disk" {
   alarm_name          = "${local.name}-data-disk-80"
   alarm_description   = "The /data volume is more than 80% full"
@@ -179,4 +190,6 @@ resource "aws_cloudwatch_metric_alarm" "disk" {
   evaluation_periods  = 1
   comparison_operator = "GreaterThanThreshold"
   threshold           = 80
+  treat_missing_data  = "breaching" # no data means the agent stopped reporting: worth an email too
+  alarm_actions       = [aws_sns_topic.alerts.arn]
 }

@@ -17,6 +17,7 @@ module "server" {
   subnet_id         = module.network.subnet_id
   security_group_id = module.network.security_group_id
   instance_type     = var.instance_type
+  alert_emails      = var.alert_emails
 }
 
 data "aws_ecr_repository" "image" {

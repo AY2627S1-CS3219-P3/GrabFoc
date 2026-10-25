@@ -29,6 +29,7 @@ override_resource {
 }
 
 variables {
+  alert_emails      = ["team@example.com"]
   env               = "staging"
   subnet_id         = "subnet-0abc"
   security_group_id = "sg-0abc"
@@ -89,5 +90,31 @@ run "server" {
       aws_cloudwatch_metric_alarm.disk.threshold == 80
     )
     error_message = "Alarm when /data passes 80% full."
+  }
+
+  # Final review (2026-10-25), Critical 2: a server whose start-up fails must never join the cluster.
+  assert {
+    condition = (
+      strcontains(local.user_data, "dnf install -y awscli-2") &&
+      strcontains(local.user_data, "trap 'shutdown -h now' ERR") &&
+      strcontains(local.user_data, "mountpoint -q /data") &&
+      !strcontains(local.user_data, "exit 1") &&
+      length(split("mountpoint -q /data", local.user_data)[0]) < length(split("ECS_CLUSTER=", local.user_data)[0])
+    )
+    error_message = "Install the AWS CLI, shut down on any error, and join the cluster only once /data is mounted."
+  }
+  # Final review, Important 8: the disk alarm must reach a person, and a silent agent counts as a problem.
+  assert {
+    condition = (
+      length(aws_cloudwatch_metric_alarm.disk.alarm_actions) == 1 &&
+      aws_cloudwatch_metric_alarm.disk.treat_missing_data == "breaching" &&
+      aws_sns_topic_subscription.alerts["team@example.com"].protocol == "email"
+    )
+    error_message = "The disk alarm emails the team, and missing data raises it."
+  }
+  # Final review, Important 4: services may use the capacity provider only once it's attached to the cluster.
+  assert {
+    condition     = output.capacity_provider_name == "foc-staging"
+    error_message = "capacity_provider_name comes from the cluster association."
   }
 }

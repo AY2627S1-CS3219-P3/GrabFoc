@@ -7,10 +7,13 @@
 # Runs once when the ECS server boots: joins the cluster, takes the Elastic IP, attaches and mounts
 # the persistent data volume, and prepares a folder per data store.
 set -euo pipefail
+# Any failure shuts the server down, so the auto scaling group replaces it. It must never join the
+# cluster without /data mounted: the databases would start empty on the root disk.
+trap 'shutdown -h now' ERR
 export AWS_DEFAULT_REGION="${region}"
 
-# 1. Join the environment's ECS cluster.
-echo "ECS_CLUSTER=${cluster}" >> /etc/ecs/ecs.config
+# 1. The ECS-optimised AMI is minimal and has no AWS CLI.
+dnf install -y awscli-2
 
 TOKEN=$(curl -sS -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
 INSTANCE_ID=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
@@ -25,7 +28,7 @@ for _ in $(seq 60); do
 done
 DEVICE="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${volume_id_nodash}"
 for _ in $(seq 60); do [ -e "$DEVICE" ] && break; sleep 5; done
-[ -e "$DEVICE" ] || { echo "data volume ${volume_id} never appeared" >&2; exit 1; }
+[ -e "$DEVICE" ] || { echo "data volume ${volume_id} never appeared" >&2; false; } # false fires the ERR trap
 
 # 4. Format only a brand-new, empty volume; never one that already holds data.
 if ! blkid "$DEVICE" >/dev/null 2>&1; then
@@ -34,13 +37,17 @@ fi
 mkdir -p /data
 echo "$DEVICE /data xfs defaults,nofail 0 2" >> /etc/fstab
 mount /data
+mountpoint -q /data
 
 # 5. One folder per data store. PostgreSQL and Redis fix their own folder owners; Kafka runs as
 #    appuser (uid 1000) and can't write to a root-owned folder.
 mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/redis /data/kafka
 chown 1000:1000 /data/kafka
 
-# 6. Report how full /data is, for the 80% alarm.
+# 6. Only now join the environment's ECS cluster: the data stores can start.
+echo "ECS_CLUSTER=${cluster}" >> /etc/ecs/ecs.config
+
+# 7. Report how full /data is, for the 80% alarm.
 dnf install -y amazon-cloudwatch-agent
 cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'JSON'
 {

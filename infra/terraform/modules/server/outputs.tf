@@ -12,7 +12,8 @@ output "cluster_arn" {
 }
 
 output "capacity_provider_name" {
-  value = aws_ecs_capacity_provider.server.name
+  # Read from the cluster association, so services are created only after it exists.
+  value = tolist(aws_ecs_cluster_capacity_providers.this.capacity_providers)[0]
 }
 
 output "public_dns" {

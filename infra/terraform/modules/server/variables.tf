@@ -35,3 +35,8 @@ variable "data_volume_gb" {
   type        = number
   default     = 20
 }
+
+variable "alert_emails" {
+  description = "Addresses emailed when an alarm fires (each confirms its subscription once)."
+  type        = list(string)
+}
