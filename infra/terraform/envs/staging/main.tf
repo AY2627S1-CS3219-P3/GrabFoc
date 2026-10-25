@@ -18,3 +18,19 @@ module "server" {
   security_group_id = module.network.security_group_id
   instance_type     = var.instance_type
 }
+
+data "aws_ecr_repository" "image" {
+  for_each = toset(["user-service", "supplier-service", "credit-service", "order-service", "api-gateway", "frontend", "kafka-init"])
+  name     = "foc/${each.key}"
+}
+
+module "services" {
+  source                 = "../../modules/services"
+  env                    = var.env
+  cluster_arn            = module.server.cluster_arn
+  capacity_provider_name = module.server.capacity_provider_name
+  ecr_repository_urls    = { for name, r in data.aws_ecr_repository.image : name => r.repository_url }
+  image_tag              = var.image_tag
+  edge_container_port    = var.edge_container_port
+  mailpit_relay          = var.env == "staging" # staging relays through Mailpit; production sends to Gmail
+}
