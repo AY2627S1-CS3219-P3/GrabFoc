@@ -60,7 +60,8 @@ infra/scripts/push-images.sh "$(git rev-parse --short HEAD)"
 ```bash
 cd infra/terraform/envs/staging
 terraform init -backend-config="bucket=<state_bucket>"
-terraform apply -var-file=staging.tfvars -var image_tag=<the tag you pushed>
+terraform apply -var-file=staging.tfvars -var image_tag=<the tag you pushed> \
+  -var 'alert_emails=["you@u.nus.edu"]'   # disk alarms; confirm the email AWS sends
 terraform output url                    # https://d….cloudfront.net
 ```
 
