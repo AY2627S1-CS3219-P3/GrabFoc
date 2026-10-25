@@ -3,8 +3,8 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-23
-Scope: Drafted the entries dated 2026-10-16, 2026-10-21 and 2026-10-23 from the prompts and work
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-25
+Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23 and 2026-10-25 from the prompts and work
   in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
   verified; the wording is Claude's, written to the template in ai/usage-log.md.
 Author review: Cole Lin, read and approved.
@@ -14,6 +14,17 @@ Author review: Cole Lin, read and approved.
 
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-25 — Clearing the review findings on both logging PRs (PRs #129 and #145, issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), review and debug.
+- Usage scenario: Both open logging PRs had unresolved review conversations blocking the merge, and the two branches share a copied file, so a fix in one has to be mirrored in the other.
+- Prompts (exact):
+  - "make 129 and 145 not have merge conflicts with each other"
+  - "fix 129 and 145"
+- Key response: Six fixes. The JWKS key filter now rejects a key whose `use` or `alg` the verifier would refuse anyway, and an unknown `kid` gets its own refetch clock, so a key rotation seconds after an ordinary fetch is not answered with 401 for the rest of the cache window. The `service`, `event` and `userId` query filters reject control bytes, so `?service=%00` is a 400 instead of a PostgreSQL error. `LOGGING_JWKS_URL` is parsed at startup, so a scheme-less URL fails to boot rather than looking like a transient outage later. A dead letter whose payload is valid JSON but not an object carries no body, so a bare `"Bearer eyJ…"` string is never copied into the dead-letter topic. The Date serialiser calls `Date.prototype.toISOString` rather than the value's own, so an override cannot run after redaction has already decided the field is safe.
+- What I changed or rejected: Took the finding that the two branches would conflict on the usage log and had the file made byte-identical on both, rather than resolving the same conflict twice at merge time. Rejected rewriting the file's older disclosure entries while fixing one that had been inserted in the wrong place; only the misplaced block moved.
+- Verification: `npm test` in the logging service (169 passed) and in the Supplier Service, with a test added for each of the five code fixes — an unusable key set, a NUL in each text filter, three malformed JWKS URLs, a non-object dead-letter payload and a Date carrying an own `toISOString`. Both merge orders checked for conflicts with `git merge-tree`. Integration tests not re-run: Docker Desktop is not up on this machine and no SQL changed.
 
 ### 2026-10-23 — Supplier: log every request, and the route template (PR #145, issue #52)
 

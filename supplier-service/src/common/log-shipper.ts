@@ -6,6 +6,9 @@
  *        has to be repeated here. This copy brings the fixes from the #129 and #145 reviews - all
  *        reads of the caller's input inside the serialisation guard, and a fixed reason instead of
  *        an exception message in the fallback line.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-25
+ * Scope: Call Date.prototype.toISOString rather than the value's own, so an override cannot
+ *        run after redaction (PR #145 review).
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -138,7 +141,10 @@ export function redactFields(value: unknown, depth = 0): unknown {
   // An ISO string, not the object. JSON.stringify would call the Date's toJSON — and a Date with
   // its own toJSON, or a subclass overriding it, could return anything at all, after redaction
   // has finished (PR #129 review). This is what an honest Date serialised to anyway.
-  if (value instanceof Date) return value.toISOString();
+  // Date.prototype.toISOString, not value.toISOString(): a subclass or an own override would
+  // otherwise run after redaction has decided this field is safe, and could return a token from
+  // an innocent-looking field (PR #145 review).
+  if (value instanceof Date) return Date.prototype.toISOString.call(value);
   if (Array.isArray(value)) return value.map((item) => serialisable(redactFields(item, depth + 1)));
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {

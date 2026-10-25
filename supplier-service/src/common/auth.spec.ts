@@ -10,11 +10,11 @@
  *        that field; no other change. The field itself is tested in request-id.spec.ts.
  * Author review (Cole Lin): Checked the change is only the added field.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
- * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
- * Scope: The fake request carries a route, since the logged path is now the route template.
- * Author review: Cole Lin, read and approved.
  * Scope: The denial line now goes through the shipper rather than Nest's logger, so these
  *        read the shipped line and assert the fields it adds (issue #52).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: The fake request carries a route, since the logged path is now the route template.
  * Author review: Cole Lin, read and approved.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
