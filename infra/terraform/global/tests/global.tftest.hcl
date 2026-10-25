@@ -108,7 +108,10 @@ run "least_privilege" {
   assert {
     condition = anytrue([
       for s in jsondecode(aws_iam_role_policy.plan_state_lock.policy).Statement :
-      s.Effect == "Deny" && contains(s.Action, "ssm:GetParameter") && contains(s.Action, "kms:Decrypt")
+      s.Effect == "Deny" && contains(s.Action, "ssm:GetParameter")
+      ]) && anytrue([
+      for s in jsondecode(aws_iam_role_policy.plan_state_lock.policy).Statement :
+      s.Effect == "Deny" && contains(s.Action, "kms:Decrypt")
     ])
     error_message = "The pull-request plan role must be denied secret values."
   }
@@ -121,5 +124,18 @@ run "least_privilege" {
       ])
     ])
     error_message = "The plan role may write only the two environments' lock files."
+  }
+}
+
+# Final review, Important 7: the Deny must not block the public ECS AMI parameter that plan reads.
+run "plan_can_read_public_parameters" {
+  command = apply
+
+  assert {
+    condition = alltrue([
+      for st in jsondecode(aws_iam_role_policy.plan_state_lock.policy).Statement :
+      st.Effect != "Deny" || !contains(st.Action, "ssm:GetParameter") || st.Resource == "arn:aws:ssm:*:111122223333:parameter/foc/*"
+    ])
+    error_message = "Deny SSM reads only under /foc/, not on every parameter."
   }
 }

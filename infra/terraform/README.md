@@ -64,16 +64,10 @@ terraform apply -var-file=staging.tfvars -var image_tag=<the tag you pushed>
 terraform output url                    # https://d….cloudfront.net
 ```
 
-The first apply starts the server; give it a few minutes to join the cluster. Then run the one-off
-tasks once, in order (they're also in `terraform output oneoff_task_families`):
-
-```bash
-aws ecs run-task --cluster foc-staging --task-definition foc-staging-kafka-init
-aws ecs run-task --cluster foc-staging --task-definition foc-staging-order-migrate
-```
-
-Services that started before Kafka's topics or Order's tables existed restart on their own until
-they come up.
+The first apply starts the server; give it a few minutes to join the cluster. Nothing else to run:
+the one-shot `kafka-init` (topics) and `order-migrate` (Order's tables) run inside the Credit and
+Order service tasks, which start only after they succeed. Services that start before their database
+or Kafka is ready fail their health check or exit, and ECS restarts them until they come up.
 
 ## 5. Check it
 

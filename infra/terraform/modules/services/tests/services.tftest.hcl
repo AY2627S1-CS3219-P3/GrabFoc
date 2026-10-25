@@ -85,10 +85,11 @@ run "staging" {
   }
   assert {
     condition = (
-      jsondecode(aws_ecs_task_definition.service["kafka"].container_definitions)[0].hostname == "kafka" &&
+      try(jsondecode(aws_ecs_task_definition.service["kafka"].container_definitions)[0].hostname, null) == null &&
+      [for e in jsondecode(aws_ecs_task_definition.service["kafka"].container_definitions)[0].environment : e.value if e.name == "KAFKA_CONTROLLER_QUORUM_VOTERS"][0] == "1@localhost:9093" &&
       !strcontains([for e in jsondecode(aws_ecs_task_definition.service["kafka"].container_definitions)[0].environment : e.value if e.name == "KAFKA_LISTENERS"][0], "EXTERNAL")
     )
-    error_message = "Kafka resolves itself as kafka and has no host-only EXTERNAL listener."
+    error_message = "Kafka reaches its own controller on localhost (Service Connect owns the name kafka) and has no host-only EXTERNAL listener."
   }
   assert {
     condition = alltrue([
@@ -134,12 +135,31 @@ run "staging" {
   assert {
     condition = alltrue([
       for name, g in aws_cloudwatch_log_group.service : g.name == "/foc/staging/${name}" && g.retention_in_days == 14
-    ]) && length(aws_cloudwatch_log_group.service) == length(aws_ecs_task_definition.service) + length(aws_ecs_task_definition.oneoff)
+    ]) && length(aws_cloudwatch_log_group.service) == length(aws_ecs_task_definition.service) + 2
     error_message = "One log group per container, /foc/<env>/<name>, kept 14 days."
   }
+  # Final review, Critical 1: a standalone run-task gets no Service Connect names, so the one-shot
+  # containers run inside the service tasks that need them, before the app container starts.
   assert {
-    condition     = toset(keys(aws_ecs_task_definition.oneoff)) == toset(["kafka-init", "order-migrate"])
-    error_message = "kafka-init and order-migrate are one-off tasks, not services."
+    condition = (
+      toset([for c in jsondecode(aws_ecs_task_definition.service["order-service"].container_definitions) : c.name if !c.essential]) == toset(["kafka-init", "order-migrate"]) &&
+      toset([for c in jsondecode(aws_ecs_task_definition.service["credit-service"].container_definitions) : c.name if !c.essential]) == toset(["kafka-init"])
+    )
+    error_message = "order-service runs kafka-init and order-migrate first; credit-service runs kafka-init first."
+  }
+  assert {
+    condition = toset([
+      for d in [for c in jsondecode(aws_ecs_task_definition.service["order-service"].container_definitions) : c if c.name == "order-service"][0].dependsOn : "${d.containerName}:${d.condition}"
+    ]) == toset(["kafka-init:SUCCESS", "order-migrate:SUCCESS"])
+    error_message = "The Order Service starts only after topics and migrations succeed."
+  }
+  # Final review, Important 5: a container that hangs on start-up is restarted, not left "running".
+  assert {
+    condition = alltrue([
+      for name, t in aws_ecs_task_definition.service :
+      name == "api-gateway" || can(jsondecode(t.container_definitions)[0].healthCheck.command[0])
+    ])
+    error_message = "Every service except Envoy has a container health check."
   }
 }
 
@@ -158,5 +178,21 @@ run "production" {
       [for e in jsondecode(aws_ecs_task_definition.service["user-service"].container_definitions)[0].environment : e.value if e.name == "USER_SMTP_PORT"][0] == "587"
     )
     error_message = "Production sends straight to Gmail on 587, with no Mailpit."
+  }
+}
+
+# Final review, Important 6: once Envoy's edge listener exists, internal calls keep using 3003.
+run "edge_listener" {
+  command = apply
+  variables {
+    edge_container_port = 80
+  }
+
+  assert {
+    condition = toset([
+      for p in jsondecode(aws_ecs_task_definition.service["api-gateway"].container_definitions)[0].portMappings :
+      "${p.name}:${p.containerPort}:${try(p.hostPort, 0)}"
+    ]) == toset(["api-gateway:3003:0", "edge:80:80"])
+    error_message = "Service Connect keeps api-gateway:3003; host port 80 maps to the edge listener."
   }
 }

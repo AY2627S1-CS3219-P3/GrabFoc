@@ -30,6 +30,7 @@ locals {
       folder   = "/data/${name}"
       mount_to = "/var/lib/postgresql/data"
       env      = { POSTGRES_USER = "foc", POSTGRES_DB = cfg.db }
+      health   = ["CMD-SHELL", "pg_isready -U foc -d ${cfg.db}"]
       secrets  = { POSTGRES_PASSWORD = cfg.password }
     }
   }
@@ -44,6 +45,7 @@ locals {
       folder   = "/data/redis"
       mount_to = "/data"
       command  = ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+      health   = ["CMD", "redis-cli", "ping"]
       env      = {}
       secrets  = {}
     }
@@ -53,7 +55,7 @@ locals {
       memory   = 768
       folder   = "/data/kafka"
       mount_to = "/var/lib/kafka/data"
-      hostname = "kafka" # the controller quorum (1@kafka:9093) is this container itself
+      health   = ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
       env = {
         KAFKA_NODE_ID                                  = "1"
         KAFKA_PROCESS_ROLES                            = "broker,controller"
@@ -61,7 +63,7 @@ locals {
         KAFKA_ADVERTISED_LISTENERS                     = "PLAINTEXT://kafka:9092"
         KAFKA_LISTENER_SECURITY_PROTOCOL_MAP           = "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
         KAFKA_CONTROLLER_LISTENER_NAMES                = "CONTROLLER"
-        KAFKA_CONTROLLER_QUORUM_VOTERS                 = "1@kafka:9093"
+        KAFKA_CONTROLLER_QUORUM_VOTERS                 = "1@localhost:9093" # Service Connect owns the name kafka (its proxy, 9092 only)
         KAFKA_INTER_BROKER_LISTENER_NAME               = "PLAINTEXT"
         KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR         = "1"
         KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR = "1"
@@ -78,6 +80,7 @@ locals {
     "user-service" = {
       image  = local.image["user-service"]
       port   = 3001
+      health = local.listening[3001]
       memory = 192
       env = {
         USER_PORT          = "3001"
@@ -104,6 +107,7 @@ locals {
     "supplier-service" = {
       image  = local.image["supplier-service"]
       port   = 3002
+      health = local.listening[3002]
       memory = 192
       env = {
         SUPPLIER_PORT     = "3002"
@@ -114,6 +118,7 @@ locals {
     "credit-service" = {
       image  = local.image["credit-service"]
       port   = 3004
+      health = local.listening[3004]
       memory = 192
       env = {
         CREDIT_PORT          = "3004"
@@ -127,6 +132,7 @@ locals {
     "order-service" = {
       image  = local.image["order-service"]
       port   = 3005
+      health = local.listening[3005]
       memory = 192
       env = merge(local.order_db_env, {
         ORDER_PORT          = "3005"
@@ -158,6 +164,7 @@ locals {
     "frontend" = {
       image   = local.image["frontend"]
       port    = 3000
+      health  = local.listening[3000]
       memory  = 384
       env     = { FRONTEND_GATEWAY_URL = "http://api-gateway:3003" }
       secrets = {}
@@ -165,6 +172,7 @@ locals {
     }, var.mailpit_relay ? {
     "mailpit" = {
       image  = "axllent/mailpit:v1.31.2"
+      health = ["CMD", "/mailpit", "readyz"]
       port   = 1025
       memory = 48
       env = {
@@ -185,9 +193,19 @@ locals {
     }
   } : {})
 
+  # Node services: healthy once something listens on the port (catches a start-up that hangs).
+  listening = {
+    for port in [3000, 3001, 3002, 3004, 3005] : port => [
+      "CMD", "node", "-e",
+      "require('net').connect(${port},'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+    ]
+  }
+
   order_db_env = { ORDER_DB_HOST = "order-db", ORDER_DB_PORT = "5432", ORDER_DB_NAME = "orders", ORDER_DB_USER = "foc" }
 
-  # One-shot containers: run by the deploy workflow before the services that need them.
+  # One-shot containers. A standalone run-task gets no Service Connect names (kafka, order-db), so
+  # they run inside the service tasks that need them, and the app container waits for them to
+  # succeed. Both are idempotent: topics use --if-not-exists, migrations are versioned.
   oneoffs = {
     "kafka-init"    = { image = local.image["kafka-init"], memory = 256, command = null, env = {}, secrets = {} }
     "order-migrate" = { image = local.image["order-service"], memory = 128, command = ["node", "dist/db/migrate-cli.js"], env = local.order_db_env, secrets = { ORDER_DB_PASSWORD = "ORDER_DB_PASSWORD" } }
@@ -195,6 +213,11 @@ locals {
 
   # Environment variable names that carry secrets, and the SSM names they come from.
   secret_names = distinct(flatten([for c in merge(local.containers, local.oneoffs) : concat(keys(c.secrets), values(c.secrets))]))
+
+  init_containers = {
+    "order-service"  = ["kafka-init", "order-migrate"]
+    "credit-service" = ["kafka-init"]
+  }
 
   stops_before_replacing = toset(["user-db", "supplier-db", "credit-db", "order-db", "user-redis", "kafka", "api-gateway"])
 }
@@ -256,14 +279,27 @@ locals {
         }
       },
       try(c.port, null) == null ? {} : {
-        portMappings = [merge(
-          { name = name, containerPort = c.port, protocol = "tcp" },
-          try(c.host_port, null) == null ? {} : { hostPort = c.host_port, containerPort = var.edge_container_port },
-        )]
+        portMappings = concat(
+          # The internal port: Service Connect's name:port (for Envoy, the frontend's api-gateway:3003).
+          [merge(
+            { name = name, containerPort = c.port, protocol = "tcp" },
+            # Until Envoy's edge listener exists, the public port 80 maps to this same port.
+            try(c.host_port, null) != null && var.edge_container_port == c.port ? { hostPort = c.host_port } : {},
+          )],
+          try(c.host_port, null) != null && var.edge_container_port != c.port ? [
+            { name = "edge", containerPort = var.edge_container_port, hostPort = c.host_port, protocol = "tcp" }
+          ] : [],
+        )
       },
       try(c.folder, null) == null ? {} : { mountPoints = [{ sourceVolume = "data", containerPath = c.mount_to }] },
       try(c.command, null) == null ? {} : { command = c.command },
-      try(c.hostname, null) == null ? {} : { hostname = c.hostname },
+      try(c.health, null) == null ? {} : {
+        healthCheck = { command = c.health, interval = 15, timeout = 5, retries = 5, startPeriod = name == "kafka" ? 120 : 60 }
+      },
+      contains(keys(local.oneoffs), name) ? { essential = false } : {},
+      length(lookup(local.init_containers, name, [])) == 0 ? {} : {
+        dependsOn = [for i in local.init_containers[name] : { containerName = i, condition = "SUCCESS" }]
+      },
     )
   }
 }
@@ -274,7 +310,10 @@ resource "aws_ecs_task_definition" "service" {
   network_mode             = "bridge"
   requires_compatibilities = ["EC2"]
   execution_role_arn       = aws_iam_role.execution.arn
-  container_definitions    = jsonencode([local.container_definition[each.key]])
+  container_definitions = jsonencode(concat(
+    [local.container_definition[each.key]],
+    [for i in lookup(local.init_containers, each.key, []) : local.container_definition[i]],
+  ))
 
   dynamic "volume" {
     for_each = try(each.value.folder, null) == null ? [] : [each.value.folder]
@@ -283,15 +322,6 @@ resource "aws_ecs_task_definition" "service" {
       host_path = volume.value
     }
   }
-}
-
-resource "aws_ecs_task_definition" "oneoff" {
-  for_each                 = local.oneoffs
-  family                   = "foc-${var.env}-${each.key}"
-  network_mode             = "bridge"
-  requires_compatibilities = ["EC2"]
-  execution_role_arn       = aws_iam_role.execution.arn
-  container_definitions    = jsonencode([local.container_definition[each.key]])
 }
 
 # --- Services ----------------------------------------------------------------------------------------

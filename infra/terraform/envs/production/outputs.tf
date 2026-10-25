@@ -12,7 +12,3 @@ output "cluster_name" {
   value = module.server.cluster_name
 }
 
-output "oneoff_task_families" {
-  description = "Run once per deploy before the services: kafka-init, then order-migrate."
-  value       = module.services.oneoff_task_families
-}

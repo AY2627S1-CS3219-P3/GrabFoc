@@ -106,14 +106,13 @@ resource "aws_iam_role_policy" "plan_state_lock" {
         Resource = [for env in ["staging", "production"] : "${aws_s3_bucket.state.arn}/${env}/terraform.tfstate.tflock"]
       },
       {
-        # ReadOnlyAccess would otherwise let a pull request read SSM SecureStrings.
-        Effect = "Deny"
-        Action = [
-          "ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath", "ssm:GetParameterHistory",
-          "secretsmanager:GetSecretValue", "kms:Decrypt",
-        ]
-        Resource = "*"
+        # ReadOnlyAccess would otherwise let a pull request read our SecureStrings. Only /foc/ is
+        # denied: plan still reads AWS's public parameters (the ECS-optimised AMI ID).
+        Effect   = "Deny"
+        Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath", "ssm:GetParameterHistory"]
+        Resource = "arn:aws:ssm:*:${local.account_id}:parameter/foc/*"
       },
+      { Effect = "Deny", Action = ["secretsmanager:GetSecretValue", "kms:Decrypt"], Resource = "*" },
     ]
   })
 }

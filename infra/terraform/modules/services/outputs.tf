@@ -11,7 +11,3 @@ output "task_definition_arns" {
   value = { for name, t in aws_ecs_task_definition.service : name => t.arn }
 }
 
-output "oneoff_task_families" {
-  description = "Run these once per deploy, before updating the services (kafka-init, then order-migrate)."
-  value       = { for name, t in aws_ecs_task_definition.oneoff : name => t.family }
-}
