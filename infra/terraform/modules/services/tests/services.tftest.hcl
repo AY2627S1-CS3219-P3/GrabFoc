@@ -118,6 +118,13 @@ run "staging" {
     error_message = "Staging sends mail through Mailpit."
   }
   assert {
+    condition = (
+      !contains([for e in jsondecode(aws_ecs_task_definition.service["mailpit"].container_definitions)[0].environment : e.name], "MP_SMTP_AUTH_ACCEPT_ANY") &&
+      contains([for s in jsondecode(aws_ecs_task_definition.service["mailpit"].container_definitions)[0].secrets : s.name], "MP_SMTP_AUTH")
+    )
+    error_message = "Mailpit must require the User Service's login, not accept anyone (no open relay to Gmail)."
+  }
+  assert {
     condition = alltrue([
       for s in jsondecode(aws_iam_role_policy.execution_secrets.policy).Statement :
       s.Resource == "arn:aws:ssm:ap-southeast-1:111122223333:parameter/foc/staging/*"

@@ -168,15 +168,20 @@ locals {
       port   = 1025
       memory = 48
       env = {
-        MP_SMTP_AUTH_ACCEPT_ANY     = "true" # the User Service logs in with its Gmail credentials
-        MP_SMTP_AUTH_ALLOW_INSECURE = "true"
+        MP_SMTP_AUTH_ALLOW_INSECURE = "true" # plain login over the server's internal network
         MP_SMTP_RELAY_HOST          = "smtp.gmail.com"
         MP_SMTP_RELAY_PORT          = "587"
         MP_SMTP_RELAY_STARTTLS      = "true"
         MP_SMTP_RELAY_AUTH          = "login"
         MP_SMTP_RELAY_ALL           = "true"
       }
-      secrets = { MP_SMTP_RELAY_USERNAME = "USER_SMTP_USER", MP_SMTP_RELAY_PASSWORD = "USER_SMTP_PASS" }
+      secrets = {
+        # Only the User Service knows this login ("<USER_SMTP_USER>:<USER_SMTP_PASS>", the credentials
+        # it already sends), so no other container can relay mail through the Gmail account.
+        MP_SMTP_AUTH           = "MAILPIT_SMTP_AUTH"
+        MP_SMTP_RELAY_USERNAME = "USER_SMTP_USER"
+        MP_SMTP_RELAY_PASSWORD = "USER_SMTP_PASS"
+      }
     }
   } : {})
 
