@@ -2,7 +2,7 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 2).
 # Author review: Pending Jian Bing's review.
-# Terraform checks on pull requests that touch the infrastructure (issue #100). "terraform plan"
+# Terraform and deployment-script checks on pull requests that touch the infrastructure (issue #100). "terraform plan"
 # against AWS is added with the deploy workflows (part 3, #143), once the OIDC roles exist.
 
 name: Terraform
@@ -11,6 +11,7 @@ on:
   pull_request:
     paths:
       - "infra/terraform/**"
+      - "infra/scripts/**"
       - ".github/workflows/terraform.yml"
 
 permissions:
@@ -31,3 +32,5 @@ jobs:
           terraform_wrapper: false
       - name: fmt, validate and test every stack and module
         run: infra/terraform/check.sh
+      - name: test the deployment scripts
+        run: infra/scripts/test/put-secrets.test.sh

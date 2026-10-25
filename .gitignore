@@ -37,4 +37,5 @@ Thumbs.db
 infra/terraform/**/.terraform/
 *.tfstate
 *.tfstate.*
-infra/secrets/
+infra/secrets/*
+!infra/secrets/README.md
