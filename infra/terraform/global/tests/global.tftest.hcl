@@ -73,3 +73,53 @@ run "global" {
     error_message = "Monthly budget must alert at 50/80/100 % of var.monthly_budget_usd."
   }
 }
+
+# Security review (2026-10-25): each role holds only what its environment needs.
+run "least_privilege" {
+  command = apply
+
+  assert {
+    condition = alltrue([
+      for env in ["staging", "production"] : alltrue([
+        for s in jsondecode(aws_iam_role_policy.deploy["deploy-${env}"].policy).Statement :
+        contains(flatten([s.Action]), "ecs:UpdateService") ? s.Resource == "arn:aws:ecs:ap-southeast-1:111122223333:service/foc-${env}/*" : true
+      ])
+    ])
+    error_message = "A deploy role may update only its own environment's ECS services."
+  }
+  assert {
+    condition = alltrue([
+      for env in ["staging", "production"] : anytrue([
+        for s in jsondecode(aws_iam_role_policy.deploy["deploy-${env}"].policy).Statement :
+        contains(flatten([s.Action]), "ecs:RunTask") && try(s.Condition.ArnEquals["ecs:cluster"], "") == "arn:aws:ecs:ap-southeast-1:111122223333:cluster/foc-${env}"
+      ])
+    ])
+    error_message = "A deploy role may run tasks only on its own environment's cluster."
+  }
+  assert {
+    condition = alltrue([
+      for env in ["staging", "production"] : anytrue([
+        for s in jsondecode(aws_iam_role_policy.deploy["deploy-${env}"].policy).Statement :
+        s.Action == "iam:PassRole" && try(s.Condition.StringEquals["iam:PassedToService"], "") == "ecs-tasks.amazonaws.com"
+      ])
+    ])
+    error_message = "PassRole must be limited to ECS tasks."
+  }
+  assert {
+    condition = anytrue([
+      for s in jsondecode(aws_iam_role_policy.plan_state_lock.policy).Statement :
+      s.Effect == "Deny" && contains(s.Action, "ssm:GetParameter") && contains(s.Action, "kms:Decrypt")
+    ])
+    error_message = "The pull-request plan role must be denied secret values."
+  }
+  assert {
+    condition = anytrue([
+      for s in jsondecode(aws_iam_role_policy.plan_state_lock.policy).Statement :
+      s.Effect == "Allow" && toset(flatten([s.Resource])) == toset([
+        "${aws_s3_bucket.state.arn}/staging/terraform.tfstate.tflock",
+        "${aws_s3_bucket.state.arn}/production/terraform.tfstate.tflock",
+      ])
+    ])
+    error_message = "The plan role may write only the two environments' lock files."
+  }
+}

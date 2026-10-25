@@ -87,7 +87,8 @@ resource "aws_iam_role" "github" {
   })
 }
 
-# Pull requests only run "terraform plan": read everything, write nothing but the state lock file.
+# Pull requests only run "terraform plan": read infrastructure, never secret values, and write
+# nothing but the two environments' state lock files. (Fork pull requests get no OIDC token.)
 resource "aws_iam_role_policy_attachment" "plan_read_only" {
   role       = aws_iam_role.github["plan"].name
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
@@ -98,16 +99,27 @@ resource "aws_iam_role_policy" "plan_state_lock" {
   role = aws_iam_role.github["plan"].id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["s3:PutObject", "s3:DeleteObject"]
-      Resource = "${aws_s3_bucket.state.arn}/*.tflock"
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:DeleteObject"]
+        Resource = [for env in ["staging", "production"] : "${aws_s3_bucket.state.arn}/${env}/terraform.tfstate.tflock"]
+      },
+      {
+        # ReadOnlyAccess would otherwise let a pull request read SSM SecureStrings.
+        Effect = "Deny"
+        Action = [
+          "ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath", "ssm:GetParameterHistory",
+          "secretsmanager:GetSecretValue", "kms:Decrypt",
+        ]
+        Resource = "*"
+      },
+    ]
   })
 }
 
 # Deploy roles push images and roll ECS services; they never change infrastructure (humans run
-# "terraform apply"). Each may pass only its own environment's task roles.
+# "terraform apply"). Each touches only its own environment's cluster, services and task roles.
 resource "aws_iam_role_policy" "deploy" {
   for_each = { for k in ["deploy-staging", "deploy-production"] : k => trimprefix(k, "deploy-") }
   name     = "deploy"
@@ -125,15 +137,24 @@ resource "aws_iam_role_policy" "deploy" {
         ]
         Resource = [for r in aws_ecr_repository.service : r.arn]
       },
+      # Read-only calls and RegisterTaskDefinition don't support resource-level permissions.
+      { Effect = "Allow", Action = ["ecs:Describe*", "ecs:List*", "ecs:RegisterTaskDefinition"], Resource = "*" },
       {
         Effect   = "Allow"
-        Action   = ["ecs:RegisterTaskDefinition", "ecs:Describe*", "ecs:List*", "ecs:UpdateService", "ecs:RunTask"]
-        Resource = "*"
+        Action   = "ecs:UpdateService"
+        Resource = "arn:aws:ecs:ap-southeast-1:${local.account_id}:service/foc-${each.value}/*"
       },
       {
-        Effect   = "Allow"
-        Action   = "iam:PassRole"
-        Resource = "arn:aws:iam::${local.account_id}:role/foc-${each.value}-*"
+        Effect    = "Allow"
+        Action    = "ecs:RunTask"
+        Resource  = "arn:aws:ecs:ap-southeast-1:${local.account_id}:task-definition/foc-${each.value}-*:*"
+        Condition = { ArnEquals = { "ecs:cluster" = "arn:aws:ecs:ap-southeast-1:${local.account_id}:cluster/foc-${each.value}" } }
+      },
+      {
+        Effect    = "Allow"
+        Action    = "iam:PassRole"
+        Resource  = "arn:aws:iam::${local.account_id}:role/foc-${each.value}-*"
+        Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
     ]
   })
