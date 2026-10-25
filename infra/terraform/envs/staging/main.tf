@@ -34,3 +34,9 @@ module "services" {
   edge_container_port    = var.edge_container_port
   mailpit_relay          = var.env == "staging" # staging relays through Mailpit; production sends to Gmail
 }
+
+module "edge" {
+  source        = "../../modules/edge"
+  env           = var.env
+  origin_domain = module.server.public_dns
+}
