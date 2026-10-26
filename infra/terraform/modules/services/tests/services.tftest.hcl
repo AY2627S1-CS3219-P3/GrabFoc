@@ -101,13 +101,23 @@ run "staging" {
   assert {
     condition = alltrue([
       for name in ["user-db", "supplier-db", "credit-db", "order-db", "user-redis", "kafka", "api-gateway"] :
-      aws_ecs_service.service[name].deployment_minimum_healthy_percent == 0 && aws_ecs_service.service[name].deployment_maximum_percent == 100
+      local.ecs_services[name].deployment_minimum_healthy_percent == 0 && local.ecs_services[name].deployment_maximum_percent == 100
     ])
     error_message = "Data stores and the gateway are stopped before being replaced: two copies must never share a folder or port 80."
   }
+  # First live apply (2026-10-26): a Service Connect client only learns names that existed when its
+  # deployment was created, so services are created in layers: data → apps → edge.
+  assert {
+    condition = (
+      toset(keys(aws_ecs_service.data)) == toset(["user-db", "supplier-db", "credit-db", "order-db", "user-redis", "kafka", "mailpit"]) &&
+      toset(keys(aws_ecs_service.app)) == toset(["user-service", "supplier-service", "credit-service", "order-service"]) &&
+      toset(keys(aws_ecs_service.edge)) == toset(["api-gateway", "frontend"])
+    )
+    error_message = "Services are created in three layers: data stores, then apps, then the edge."
+  }
   assert {
     condition = alltrue([
-      for s in aws_ecs_service.service : s.desired_count == 1 && !one(s.deployment_circuit_breaker).enable
+      for s in local.ecs_services : s.desired_count == 1 && !one(s.deployment_circuit_breaker).enable
     ])
     error_message = "One copy of each service; ECS keeps restarting a service until its dependencies are up."
   }
@@ -120,7 +130,7 @@ run "staging" {
   }
   assert {
     condition = (
-      contains(keys(aws_ecs_service.service), "mailpit") &&
+      contains(keys(local.ecs_services), "mailpit") &&
       [for e in jsondecode(aws_ecs_task_definition.service["user-service"].container_definitions)[0].environment : e.value if e.name == "USER_SMTP_HOST"][0] == "mailpit"
     )
     error_message = "Staging sends mail through Mailpit."
@@ -180,7 +190,7 @@ run "production" {
 
   assert {
     condition = (
-      !contains(keys(aws_ecs_service.service), "mailpit") &&
+      !contains(keys(local.ecs_services), "mailpit") &&
       [for e in jsondecode(aws_ecs_task_definition.service["user-service"].container_definitions)[0].environment : e.value if e.name == "USER_SMTP_HOST"][0] == "smtp.gmail.com" &&
       [for e in jsondecode(aws_ecs_task_definition.service["user-service"].container_definitions)[0].environment : e.value if e.name == "USER_SMTP_PORT"][0] == "587"
     )

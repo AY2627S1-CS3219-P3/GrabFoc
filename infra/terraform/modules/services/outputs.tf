@@ -4,7 +4,7 @@
 # Author review: Pending Jian Bing's review.
 
 output "service_names" {
-  value = keys(aws_ecs_service.service)
+  value = keys(local.ecs_services)
 }
 
 output "task_definition_arns" {

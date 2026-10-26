@@ -327,8 +327,25 @@ resource "aws_ecs_task_definition" "service" {
 
 # --- Services ----------------------------------------------------------------------------------------
 
-resource "aws_ecs_service" "service" {
-  for_each        = local.containers
+# Created in three layers: a Service Connect client only learns the names that already existed when
+# its deployment was created (first live apply, 2026-10-26). Data stores first, then the apps that
+# use them, then Envoy and the frontend that call the apps.
+#
+# ECS has no depends_on between running services: a service whose database or Kafka isn't up yet
+# exits (or fails its health check) and is restarted until it is. A circuit breaker would stop
+# those restarts, so it stays off. Data stores (one folder each) and the gateway (host port 80)
+# stop before their replacement starts; the rest roll with a brief overlap.
+locals {
+  layer = {
+    data = toset(["user-db", "supplier-db", "credit-db", "order-db", "user-redis", "kafka", "mailpit"])
+    app  = toset(["user-service", "supplier-service", "credit-service", "order-service"])
+    edge = toset(["api-gateway", "frontend"])
+  }
+  ecs_services = merge(aws_ecs_service.data, aws_ecs_service.app, aws_ecs_service.edge)
+}
+
+resource "aws_ecs_service" "data" {
+  for_each        = { for k, v in local.containers : k => v if contains(local.layer.data, k) }
   name            = each.key
   cluster         = var.cluster_arn
   task_definition = aws_ecs_task_definition.service[each.key].arn
@@ -339,15 +356,11 @@ resource "aws_ecs_service" "service" {
     weight            = 1
   }
 
-  # ECS has no depends_on between services: a service whose database or Kafka isn't up yet exits
-  # and is restarted until it is. A circuit breaker would stop those restarts, so it stays off.
   deployment_circuit_breaker {
     enable   = false
     rollback = false
   }
 
-  # Data stores (one folder each) and the gateway (host port 80) must stop before their
-  # replacement starts; the rest roll with a brief overlap.
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
 
@@ -364,3 +377,142 @@ resource "aws_ecs_service" "service" {
     }
   }
 }
+
+resource "aws_ecs_service" "app" {
+  for_each        = { for k, v in local.containers : k => v if contains(local.layer.app, k) }
+  name            = each.key
+  cluster         = var.cluster_arn
+  task_definition = aws_ecs_task_definition.service[each.key].arn
+  desired_count   = 1
+
+  depends_on = [aws_ecs_service.data]
+
+  capacity_provider_strategy {
+    capacity_provider = var.capacity_provider_name
+    weight            = 1
+  }
+
+  deployment_circuit_breaker {
+    enable   = false
+    rollback = false
+  }
+
+  deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
+  deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
+
+  service_connect_configuration {
+    enabled   = true
+    namespace = aws_service_discovery_http_namespace.this.arn
+    service {
+      port_name      = each.key
+      discovery_name = each.key
+      client_alias {
+        dns_name = each.key
+        port     = each.value.port
+      }
+    }
+  }
+}
+
+resource "aws_ecs_service" "edge" {
+  for_each        = { for k, v in local.containers : k => v if contains(local.layer.edge, k) }
+  name            = each.key
+  cluster         = var.cluster_arn
+  task_definition = aws_ecs_task_definition.service[each.key].arn
+  desired_count   = 1
+
+  depends_on = [aws_ecs_service.app]
+
+  capacity_provider_strategy {
+    capacity_provider = var.capacity_provider_name
+    weight            = 1
+  }
+
+  deployment_circuit_breaker {
+    enable   = false
+    rollback = false
+  }
+
+  deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
+  deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
+
+  service_connect_configuration {
+    enabled   = true
+    namespace = aws_service_discovery_http_namespace.this.arn
+    service {
+      port_name      = each.key
+      discovery_name = each.key
+      client_alias {
+        dns_name = each.key
+        port     = each.value.port
+      }
+    }
+  }
+}
+
+# Services created before the layers existed keep running: same services, new addresses.
+moved {
+  from = aws_ecs_service.service["user-db"]
+  to   = aws_ecs_service.data["user-db"]
+}
+
+moved {
+  from = aws_ecs_service.service["supplier-db"]
+  to   = aws_ecs_service.data["supplier-db"]
+}
+
+moved {
+  from = aws_ecs_service.service["credit-db"]
+  to   = aws_ecs_service.data["credit-db"]
+}
+
+moved {
+  from = aws_ecs_service.service["order-db"]
+  to   = aws_ecs_service.data["order-db"]
+}
+
+moved {
+  from = aws_ecs_service.service["user-redis"]
+  to   = aws_ecs_service.data["user-redis"]
+}
+
+moved {
+  from = aws_ecs_service.service["kafka"]
+  to   = aws_ecs_service.data["kafka"]
+}
+
+moved {
+  from = aws_ecs_service.service["mailpit"]
+  to   = aws_ecs_service.data["mailpit"]
+}
+
+moved {
+  from = aws_ecs_service.service["user-service"]
+  to   = aws_ecs_service.app["user-service"]
+}
+
+moved {
+  from = aws_ecs_service.service["supplier-service"]
+  to   = aws_ecs_service.app["supplier-service"]
+}
+
+moved {
+  from = aws_ecs_service.service["credit-service"]
+  to   = aws_ecs_service.app["credit-service"]
+}
+
+moved {
+  from = aws_ecs_service.service["order-service"]
+  to   = aws_ecs_service.app["order-service"]
+}
+
+moved {
+  from = aws_ecs_service.service["api-gateway"]
+  to   = aws_ecs_service.edge["api-gateway"]
+}
+
+moved {
+  from = aws_ecs_service.service["frontend"]
+  to   = aws_ecs_service.edge["frontend"]
+}
+
