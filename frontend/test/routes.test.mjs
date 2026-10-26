@@ -15,10 +15,16 @@ Scope: Added a mock Order upstream and tests for the order proxy allowlist, its 
 Author review: Pending review by Deanson.
 Scope: Gave the test profile a UUID, stubbed Credit's balance and history routes, and tested the profile balance, history paging, the no-wallet state and the Credit route allowlist (#61).
 Author review: pending — Jie Yang to record the review.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Tests for the not-found page and Secure session cookies behind the proxy (#141, #113); the
+browser channel can be overridden with FOC_TEST_BROWSER_CHANNEL (default still msedge).
+Author review: Pending review.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { createServer } from "node:http";
+import { createServer, request as rawRequest } from "node:http";
 import net from "node:net";
 import { after, before, test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
@@ -309,7 +315,8 @@ before(async () => {
     if (attempt === 59) throw new Error(`Next.js did not start within 30 seconds: ${appOutput}`);
     await delay(500);
   }
-  browser = await chromium.launch({ channel: "msedge", headless: true });
+  // Edge by default; FOC_TEST_BROWSER_CHANNEL=chrome where Edge isn't installed (Claude Code, 2026-10-27).
+  browser = await chromium.launch({ channel: process.env.FOC_TEST_BROWSER_CHANNEL ?? "msedge", headless: true });
 });
 
 after(async () => {
@@ -570,6 +577,38 @@ test("upstream login 401 and 403 are logged without credentials", async () => {
   }
   assert.equal(emitted.includes("secret-for-log-test"), false);
   assert.equal(emitted.includes("forbidden@u.nus.edu"), false);
+});
+
+// AI-generated (Claude Code, 2026-10-27; pending review): deploy part 1 (#141, #113).
+test("unknown pages show the not-found page with a way home", async () => {
+  const page = await browser.newPage();
+  try {
+    const response = await page.goto(`${baseUrl}/no-such-page`);
+    assert.equal(response.status(), 404);
+    assert.equal(await page.getByRole("heading", { name: "Page not found" }).count(), 1);
+    assert.equal(await page.getByRole("link", { name: "Back to Home" }).getAttribute("href"), "/");
+  } finally { await page.close(); }
+});
+
+// Behind CloudFront and Envoy, Next.js receives plain HTTP with Host = the public name and
+// X-Forwarded-Proto: https (set by Envoy from CloudFront's header only).
+test("proxy-https: login behind the proxy sets Secure cookies and passes the origin check", async () => {
+  const url = new URL(baseUrl);
+  const body = JSON.stringify({ email: "student@u.nus.edu", password: "correct-password" });
+  const response = await new Promise((resolve, reject) => {
+    const req = rawRequest({ host: url.hostname, port: url.port, path: "/api/session/login", method: "POST",
+      headers: { host: "foc.example", origin: "https://foc.example", "x-forwarded-proto": "https",
+        "content-type": "application/json", "content-length": Buffer.byteLength(body) } }, (res) => {
+      res.resume();
+      res.on("end", () => resolve(res));
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+  assert.equal(response.statusCode, 200);
+  const cookies = response.headers["set-cookie"] ?? [];
+  assert.ok(cookies.length >= 2);
+  for (const cookie of cookies) assert.match(cookie, /;\s*Secure/i);
 });
 
 test("malformed token response does not create a browser session", async () => {
