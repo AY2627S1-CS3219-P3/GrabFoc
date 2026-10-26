@@ -2,6 +2,9 @@
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Render route files, expose JWT failure metadata, and read existing Envoy infrastructure settings from environment variables.
 Author review: Pending human review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-26
+Scope: Upstream clusters prefer IPv4 (dns_lookup_family V4_PREFERRED), found on the first AWS staging deploy.
+Author review: Pending Jie Yang's review.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
 import json
@@ -82,7 +85,10 @@ def cluster(name, urls, settings):
     for url in parsed:
         endpoints.append({"endpoint": {"address": {"socket_address": {
             "address": url.hostname, "port_value": url.port or (443 if url.scheme == "https" else 80)}}}})
-    result = {"name": name, "type": "STRICT_DNS", "connect_timeout": settings["GATEWAY_CONNECT_TIMEOUT"],
+    # AI-generated (Claude Code, 2026-10-26; pending review by Jie Yang): prefer IPv4. On ECS, Service
+    # Connect lists an IPv6 address next to each name, which nothing serves; Envoy's default prefers it.
+    result = {"name": name, "type": "STRICT_DNS", "dns_lookup_family": "V4_PREFERRED",
+              "connect_timeout": settings["GATEWAY_CONNECT_TIMEOUT"],
               "lb_policy": settings["lb_policy"], "load_assignment": {
                   "cluster_name": name, "endpoints": [{"lb_endpoints": endpoints}]}}
     if parsed[0].scheme == "https":

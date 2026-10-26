@@ -2,6 +2,9 @@
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Verify route-file discovery, malformed authentication configuration, and environment-configurable Envoy settings.
 Author review: Pending human review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-26
+Scope: Added test_upstreams_prefer_ipv4 (first AWS staging deploy).
+Author review: Pending Jie Yang's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added ORDER_SERVICE_URL to the base environment and a check that the Order routes render as protected routes to the order cluster.
 Author review: Pending review by Deanson.
@@ -70,6 +73,18 @@ class RouteFilesTest(unittest.TestCase):
         self.assertEqual(route["route"]["cluster"], "extra")
         self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"], "user_token")
         self.assertEqual(routes[-1]["direct_response"]["status"], 404)
+
+    # AI-generated (Claude Code, 2026-10-26; pending review by Jie Yang). On ECS, Service Connect lists
+    # an IPv6 address next to each service's IPv4 one; Envoy's default lookup prefers IPv6, which
+    # nothing serves there, so every upstream call failed (first staging deploy, deploy part 2).
+    def test_upstreams_prefer_ipv4(self):
+        config = self.renderer.configuration(self.env)
+        clusters = config["static_resources"]["clusters"]
+        dns = [c for c in clusters if c.get("type") in ("STRICT_DNS", "LOGICAL_DNS")]
+        self.assertTrue(dns)
+        for cluster in dns:
+            with self.subTest(cluster=cluster["name"]):
+                self.assertEqual(cluster.get("dns_lookup_family"), "V4_PREFERRED")
 
     # AI-generated (Claude Code, 2026-10-22; pending review by Deanson)
     def test_order_routes_are_protected_and_never_internal(self):
