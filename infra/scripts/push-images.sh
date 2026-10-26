@@ -30,6 +30,9 @@ for entry in "${images[@]}"; do
   IFS='|' read -r name context dockerfile <<< "$entry"
   image="$registry/foc/$name:$tag"
   echo "== $image"
-  docker build --platform linux/amd64 -t "$image" -f "$root/$dockerfile" "$root/$context"
+  # One plain image per tag: Docker Desktop's default attestations push an extra manifest first,
+  # which takes the tag and makes ECR (immutable tags) reject the real image.
+  docker build --platform linux/amd64 --provenance=false --sbom=false \
+    -t "$image" -f "$root/$dockerfile" "$root/$context"
   docker push "$image"
 done
