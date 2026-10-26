@@ -14,6 +14,8 @@ Author review: pending — Jie Yang to record the review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Tests that the internal listener accepts /gateway/* and never routes /gateway/internal; the Order
 and Credit count tests now count unprefixed routes (#141).
+Scope: Tests for the edge listener: off by default, startup validation, origin-key match on every route,
+frontend catch-all without host rewrite (#141).
 Author review: Pending Jie Yang's review.
 """
 # AI-generated; review pending.
@@ -35,6 +37,7 @@ class RouteFilesTest(unittest.TestCase):
         shutil.copytree(source / "routes", self.root / "routes")
         shutil.copy(source / "render.py", self.root)
         shutil.copy(source / "compatibility.lua", self.root)
+        shutil.copy(source / "frontend.lua", self.root)
         spec = importlib.util.spec_from_file_location("isolated_renderer", self.root / "render.py")
         self.renderer = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.renderer)
@@ -62,6 +65,49 @@ class RouteFilesTest(unittest.TestCase):
         self.assertEqual(len(jwks), 1)
         self.assertEqual(jwks[0]["route"]["regex_rewrite"]["substitution"], "")
         self.assertTrue(any(r["match"].get("path") == "/.well-known/jwks.json" for r in routes))
+
+    @property
+    def edge_env(self):
+        return {**self.env, "GATEWAY_EDGE_PORT": "8080", "GATEWAY_ORIGIN_KEY": "k" * 32,
+                "FRONTEND_URL": "http://frontend:3000"}
+
+    def test_no_edge_listener_without_edge_port(self):
+        config = self.renderer.configuration(self.env)
+        self.assertEqual(len(config["static_resources"]["listeners"]), 1)
+        self.assertNotIn("frontend", [c["name"] for c in config["static_resources"]["clusters"]])
+
+    def test_edge_listener_requires_origin_key_and_frontend(self):
+        for missing in ("GATEWAY_ORIGIN_KEY", "FRONTEND_URL"):
+            env = dict(self.edge_env)
+            del env[missing]
+            with self.subTest(missing=missing), self.assertRaises(ValueError):
+                self.renderer.configuration(env)
+        for bad in ({"GATEWAY_ORIGIN_KEY": "short"}, {"GATEWAY_EDGE_PORT": "3003"},
+                    {"GATEWAY_EDGE_PORT": "0"}, {"FRONTEND_URL": "http://frontend:3000/app"}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                self.renderer.configuration({**self.edge_env, **bad})
+
+    def test_edge_page_paths_reach_frontend(self):
+        config = self.renderer.configuration(self.edge_env)
+        listener = config["static_resources"]["listeners"][1]
+        self.assertEqual(listener["address"]["socket_address"]["port_value"], 8080)
+        routes = self.routes(config, listener=1)
+        frontend = [r for r in routes if r.get("route", {}).get("cluster") == "frontend"]
+        self.assertEqual(len(frontend), 1)
+        self.assertNotIn("auto_host_rewrite", frontend[0]["route"])
+        self.assertEqual(frontend[0]["match"]["prefix"], "/")
+        self.assertIn("frontend", [c["name"] for c in config["static_resources"]["clusters"]])
+        paths = [r["match"].get("path") for r in routes]
+        self.assertNotIn("/orders", paths)  # API routes exist only under /gateway
+        self.assertNotIn("/health", paths)
+        self.assertIn("/gateway/orders", paths)
+        self.assertEqual(routes[-1]["direct_response"]["status"], 403)
+        for route in routes[:-1]:
+            with self.subTest(route=route["match"]):
+                self.assertIn({"name": "x-origin-key", "string_match": {"exact": "k" * 32}},
+                              route["match"]["headers"])
+        hcm = listener["filter_chains"][0]["filters"][0]["typed_config"]
+        self.assertEqual(hcm["route_config"]["request_headers_to_remove"], ["x-origin-key"])
 
     def test_gateway_prefix_never_routes_internal_paths(self):
         routes = self.routes(self.renderer.configuration(self.env))

@@ -16,6 +16,8 @@ Scope: Added a Credit upstream and a test that only Credit's balance and history
 Author review: pending — Jie Yang to record the review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Added a test that /gateway/* reaches the services with the prefix removed (#141).
+Scope: Added a stub frontend and edge-listener tests: origin key, /gateway vs frontend routing, and which
+headers each route keeps (#141).
 Author review: Pending Jie Yang's review.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
@@ -76,11 +78,19 @@ const upstream = (instance) => createServer((req, res) => {
     res.writeHead(instance === 'user' ? 201 : 200);
     res.end(JSON.stringify({ instance, method: req.method, path: req.url,
       authorization: req.headers.authorization, userId: req.headers['x-user-id'],
-      userRole: req.headers['x-user-role'], cookie: req.headers.cookie,
+      userRole: req.headers['x-user-role'], cookie: req.headers.cookie, originKey: req.headers['x-origin-key'],
       requestId: req.headers['x-request-id'], body: Buffer.concat(chunks).toString() }));
   });
 });
-const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2'), upstream('order'), upstream('credit')];
+// AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang): a stand-in for the Next.js frontend.
+let frontendHits = 0;
+const frontend = createServer((req, res) => {
+  frontendHits++;
+  res.setHeader('content-type', 'application/json');
+  res.end(JSON.stringify({ instance: 'frontend', path: req.url, host: req.headers.host, cookie: req.headers.cookie,
+    proto: req.headers['x-forwarded-proto'], userId: req.headers['x-user-id'], originKey: req.headers['x-origin-key'] }));
+});
+const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2'), upstream('order'), upstream('credit'), frontend];
 const containers = [];
 let ports, gateway, balanced;
 
@@ -90,7 +100,8 @@ async function startEnvoy(overrides = {}) {
     ORDER_SERVICE_URL: `http://host.docker.internal:${ports[3]}`,
     CREDIT_SERVICE_URL: `http://host.docker.internal:${ports[4]}`,
     USER_SERVICE_JWKS_URL: `http://host.docker.internal:${ports[0]}/.well-known/jwks.json`, ...overrides };
-  const args = ['run', '-d', '--entrypoint', '/bin/sh', '--label', 'foc.task=envoy-integration', '-p', '127.0.0.1::3003'];
+  const args = ['run', '-d', '--entrypoint', '/bin/sh', '--label', 'foc.task=envoy-integration', '-p', '127.0.0.1::3003',
+    '-p', '127.0.0.1::8080'];
   if (process.platform === 'linux') args.push('--add-host', 'host.docker.internal:host-gateway');
   for (const [name, value] of Object.entries(env)) args.push('-e', `${name}=${value}`);
   // One worker makes cache tests deterministic; production retains two workers.
@@ -192,6 +203,92 @@ test('internal listener serves /gateway paths with the prefix removed', async ()
     const missing = await fetch(gateway + path, { method: 'POST' });
     assert.equal(missing.status, 404, path);
   }
+});
+
+// AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang): the edge listener (deploy part 1, #141).
+const originKey = 'test-origin-key-0123456789abcdefghij';
+let edgeUrl;
+async function edge() {
+  if (edgeUrl) return edgeUrl;
+  await startEnvoy({ GATEWAY_EDGE_PORT: '8080', GATEWAY_ORIGIN_KEY: originKey,
+    FRONTEND_URL: `http://host.docker.internal:${ports[5]}` });
+  edgeUrl = `http://${docker('port', containers.at(-1), '8080/tcp').split('\n')[0]}`;
+  return edgeUrl;
+}
+// fetch() can't set Host, so the edge tests send raw requests.
+function send(base, path, headers = {}, method = 'GET') {
+  const url = new URL(base);
+  return new Promise((resolve, reject) => {
+    const req = rawRequest({ host: url.hostname, port: url.port, path, method, headers }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString();
+        let body = text;
+        try { body = JSON.parse(text); } catch {}
+        resolve({ status: res.statusCode, body });
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+test('edge rejects a missing or wrong origin key', async () => {
+  const url = await edge();
+  const before = frontendHits;
+  for (const key of [undefined, 'wrong', originKey + 'x']) {
+    for (const path of ['/', '/health', '/orders', '/gateway/.well-known/jwks.json', '/gateway/auth/login']) {
+      const res = await send(url, path, key ? { 'x-origin-key': key } : {});
+      assert.equal(res.status, 403, `${path} with key ${key}`);
+      assert.deepEqual(res.body, { error: 'Forbidden' });
+    }
+  }
+  assert.equal(frontendHits, before, 'the frontend saw no request');
+});
+
+test('edge sends /gateway to the API and everything else to the frontend', async () => {
+  const url = await edge();
+  const key = { 'x-origin-key': originKey };
+  const keys = await send(url, '/gateway/.well-known/jwks.json', key);
+  assert.equal(keys.status, 200);
+  assert.ok(Array.isArray(keys.body.keys));
+  assert.equal((await send(url, '/gateway/orders/available', key)).status, 401);
+  const order = await send(url, '/gateway/orders/mine', { ...key, authorization: `Bearer ${token()}` });
+  assert.equal(order.body.instance, 'order');
+  assert.equal(order.body.path, '/orders/mine');
+  for (const path of ['/gateway/internal/credits/reserve', '/gateway', '/gateway/nothing']) {
+    const res = await send(url, path, key);
+    assert.equal(res.status, 404, path);
+    assert.deepEqual(res.body, { error: 'Not found' });
+  }
+  for (const path of ['/', '/orders', '/credits/history', '/admin/locations', '/api/session/status', '/gatewayx']) {
+    const res = await send(url, path, key);
+    assert.equal(res.status, 200, path);
+    assert.equal(res.body.instance, 'frontend', path);
+    assert.equal(res.body.path, path);
+  }
+});
+
+test('frontend route keeps cookies and host; API route strips them', async () => {
+  const url = await edge();
+  const headers = { host: 'foc.example', cookie: 'foc_access=x', 'x-forwarded-proto': 'https',
+    'cloudfront-forwarded-proto': 'http', 'x-user-id': 'evil', 'x-origin-key': originKey };
+  const page = (await send(url, '/profile', headers)).body;
+  assert.equal(page.host, 'foc.example');
+  assert.equal(page.cookie, 'foc_access=x');
+  assert.equal(page.proto, 'http', "only CloudFront's header sets the protocol");
+  assert.equal(page.userId, undefined);
+  assert.equal(page.originKey, undefined);
+  assert.equal((await send(url, '/profile', { ...headers, 'cloudfront-forwarded-proto': 'https' })).body.proto, 'https');
+  const { 'cloudfront-forwarded-proto': _, ...plain } = headers;
+  assert.equal((await send(url, '/profile', plain)).body.proto, undefined);
+  const api = await send(url, '/gateway/locations', { ...headers, authorization: `Bearer ${token()}` });
+  assert.equal(api.status, 200);
+  assert.equal(api.body.instance.startsWith('supplier'), true);
+  assert.equal(api.body.cookie, undefined);
+  assert.equal(api.body.userId, undefined);
+  assert.equal(api.body.originKey, undefined);
 });
 
 test('stock JWT rejects malformed, modified, long-expired and missing-expiry tokens', async () => {

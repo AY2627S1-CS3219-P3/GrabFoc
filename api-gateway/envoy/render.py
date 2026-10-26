@@ -7,6 +7,7 @@ Scope: Upstream clusters prefer IPv4 (dns_lookup_family V4_PREFERRED), found on 
 Author review: Pending Jie Yang's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: /gateway/* copies of every API route with the prefix removed (deploy part 1, #141).
+Scope: Edge listener for CloudFront: X-Origin-Key check, /gateway/* API routes, frontend catch-all (#141).
 Author review: Pending Jie Yang's review.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
@@ -197,12 +198,64 @@ def api_routes(services, prefixes, settings, public_prefix=""):
     return routes
 
 
+# AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang): the edge listener is CloudFront's
+# origin on AWS (deploy spec §3.3). It is off unless GATEWAY_EDGE_PORT is set, so local Compose keeps
+# one listener.
+def edge_settings(env, port):
+    """(edge port, origin key, frontend URL), or None when the edge listener is off."""
+    value = env.get("GATEWAY_EDGE_PORT", "")
+    if not value:
+        return None
+    if not re.fullmatch(r"[1-9][0-9]*", value) or not 1 <= int(value) <= 65535 or int(value) == port:
+        raise ValueError("GATEWAY_EDGE_PORT must be a port other than GATEWAY_PORT")
+    key = env.get("GATEWAY_ORIGIN_KEY", "")
+    if len(key) < 32 or not re.fullmatch(r"[\x21-\x7e]+", key):
+        raise ValueError("GATEWAY_ORIGIN_KEY must be at least 32 printable characters")
+    if not env.get("FRONTEND_URL"):
+        raise ValueError("FRONTEND_URL is required with GATEWAY_EDGE_PORT")
+    origin(env["FRONTEND_URL"])
+    return int(value), key, env["FRONTEND_URL"]
+
+def json_response(match, status, body):
+    return {"match": match, "direct_response": {"status": status, "body": {"inline_string": body}},
+        "response_headers_to_add": [{"header": {"key": "content-type", "value": "application/json"}}],
+        "typed_per_filter_config": {JWT: {"@type": TYPE +
+            "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig", "disabled": True}}}
+
+def edge_routes(services, prefixes, settings, key):
+    """/gateway/* to the API, everything else to the frontend; all of it only with the origin key."""
+    routes = api_routes(services, prefixes, settings, GATEWAY_PREFIX)
+    routes.append(json_response({"prefix": GATEWAY_PREFIX + "/"}, 404, '{"error":"Not found"}'))
+    routes.append(json_response({"path": GATEWAY_PREFIX}, 404, '{"error":"Not found"}'))
+    # No auto_host_rewrite: the frontend compares the browser's Origin with the Host it receives.
+    routes.append({"match": {"prefix": "/"}, "route": {"cluster": "frontend",
+        "timeout": settings["GATEWAY_ROUTE_TIMEOUT"], "idle_timeout": settings["GATEWAY_ROUTE_IDLE_TIMEOUT"]},
+        "typed_per_filter_config": {
+            JWT: {"@type": TYPE + "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig",
+                  "disabled": True},
+            "envoy.filters.http.lua": {"@type": TYPE + "envoy.extensions.filters.http.lua.v3.LuaPerRoute",
+                "source_code": {"inline_string": Path(__file__).with_name("frontend.lua").read_text()}}}})
+    for route in routes:
+        route["match"]["headers"] = route["match"].get("headers", []) + [
+            {"name": "x-origin-key", "string_match": {"exact": key}}]
+    routes.append(json_response({"prefix": "/"}, 403, '{"error":"Forbidden"}'))
+    return routes
+
+def listener(name, port, hcm):
+    return {"name": name, "address": {"socket_address": {"address": "0.0.0.0", "port_value": port}},
+        "filter_chains": [{"filters": [{"name": "envoy.filters.network.http_connection_manager",
+                                        "typed_config": hcm}]}]}
+
+
 def configuration(env):
     settings = infrastructure_settings(env)
     port = int(env.get("GATEWAY_PORT", "3003"))
     if not 1 <= port <= 65535:
         raise ValueError("GATEWAY_PORT must be between 1 and 65535")
     services, prefixes = load_routes(env)
+    edge = edge_settings(env, port)
+    if edge and "frontend" in [item["service"] for item in services]:
+        raise ValueError("The service name frontend is reserved for the edge listener")
     user = next(env[item["urlEnv"]] for item in services if item["service"] == "user")
     jwks = env.get("USER_SERVICE_JWKS_URL") or urljoin(user, "/.well-known/jwks.json")
     key_url = urlsplit(jwks)
@@ -219,11 +272,7 @@ def configuration(env):
             "header": {"key": "content-type", "value": "application/json"}}],
         "typed_per_filter_config": {JWT: {"@type": TYPE +
             "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig", "disabled": True}}})
-    routes.append({"match": {"prefix": "/"}, "direct_response": {"status": 404,
-        "body": {"inline_string": '{"error":"Not found"}'}},
-        "response_headers_to_add": [{"header": {"key": "content-type", "value": "application/json"}}],
-        "typed_per_filter_config": {JWT: {"@type": TYPE +
-            "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig", "disabled": True}}})
+    routes.append(json_response({"prefix": "/"}, 404, '{"error":"Not found"}'))
     provider = {"from_headers": [{"name": "Authorization", "value_prefix": "Bearer "}],
                 "forward": True, "require_expiration": True,
                 "failed_status_in_metadata": "verification_failure",
@@ -269,10 +318,16 @@ def configuration(env):
         if definition["service"] == "supplier":
             urls = json.loads(env.get("FOC_TEST_SUPPLIER_URLS") or "null") or urls
         upstreams.append(cluster(definition["service"], urls, settings))
-    return {"static_resources": {"listeners": [{"name": "gateway", "address": {
-        "socket_address": {"address": "0.0.0.0", "port_value": port}}, "filter_chains": [{
-            "filters": [{"name": "envoy.filters.network.http_connection_manager", "typed_config": hcm}]}]}],
-        "clusters": upstreams + [cluster("jwks", [key_origin], settings)]}}
+    listeners = [listener("gateway", port, hcm)]
+    clusters = upstreams + [cluster("jwks", [key_origin], settings)]
+    if edge:
+        edge_port, key, frontend = edge
+        listeners.append(listener("edge", edge_port, {**hcm, "stat_prefix": "foc_edge", "route_config": {
+            "name": "foc_edge_routes", "request_headers_to_remove": ["x-origin-key"],
+            "virtual_hosts": [{"name": "foc_edge", "domains": ["*"],
+                               "routes": edge_routes(services, prefixes, settings, key)}]}}))
+        clusters.append(cluster("frontend", [frontend], settings))
+    return {"static_resources": {"listeners": listeners, "clusters": clusters}}
 
 if __name__ == "__main__":
     try:
