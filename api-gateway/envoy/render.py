@@ -5,6 +5,9 @@ Author review: Pending human review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-26
 Scope: Upstream clusters prefer IPv4 (dns_lookup_family V4_PREFERRED), found on the first AWS staging deploy.
 Author review: Pending Jie Yang's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: /gateway/* copies of every API route with the prefix removed (deploy part 1, #141).
+Author review: Pending Jie Yang's review.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
 import json
@@ -163,6 +166,37 @@ def load_routes(env):
     return services, prefixes
 
 
+# AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang): the public API prefix (deploy
+# spec §3.3). A prefixed copy of each route matches "/gateway" + path and removes the prefix before
+# forwarding, so route files and services never see it.
+GATEWAY_PREFIX = "/gateway"
+
+def api_routes(services, prefixes, settings, public_prefix=""):
+    """One Envoy route per route-file entry, optionally under public_prefix."""
+    routes = []
+    for definition in services:
+        for entry in definition["routes"]:
+            regex = "regex" in entry
+            path = entry["regex" if regex else "path"]
+            values = {key: re.escape(value) if regex else value
+                      for key, value in prefixes.items()}
+            path = re.sub(r"\{([a-z][a-z0-9_]*)\}", lambda m: values[m[1]], path)
+            path = (re.escape(public_prefix) if regex else public_prefix) + path
+            match = {"headers": [{"name": ":method", "string_match": {"exact": entry["method"]}}]}
+            match["safe_regex" if regex else "path"] = {"regex": path} if regex else path
+            forward = {"cluster": definition["service"], "timeout": settings["GATEWAY_ROUTE_TIMEOUT"],
+                       "idle_timeout": settings["GATEWAY_ROUTE_IDLE_TIMEOUT"], "auto_host_rewrite": True}
+            if public_prefix:
+                forward["regex_rewrite"] = {"pattern": {"regex": "^" + re.escape(public_prefix)},
+                                            "substitution": ""}
+            routes.append({"match": match, "route": forward,
+                "typed_per_filter_config": {JWT: {"@type": TYPE +
+                    "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig",
+                    **({"disabled": True} if entry.get("public", False)
+                       else {"requirement_name": "user_token"})}}})
+    return routes
+
+
 def configuration(env):
     settings = infrastructure_settings(env)
     port = int(env.get("GATEWAY_PORT", "3003"))
@@ -177,25 +211,8 @@ def configuration(env):
     if key_url.fragment:
         raise ValueError("JWKS URL cannot contain a fragment")
 
-    routes = []
-    def route(method, path, service, public=False, regex=False):
-        match = {"headers": [{"name": ":method", "string_match": {"exact": method}}]}
-        match["safe_regex" if regex else "path"] = {"regex": path} if regex else path
-        routes.append({"match": match, "route": {"cluster": service,
-            "timeout": settings["GATEWAY_ROUTE_TIMEOUT"],
-            "idle_timeout": settings["GATEWAY_ROUTE_IDLE_TIMEOUT"], "auto_host_rewrite": True},
-            "typed_per_filter_config": {JWT: {"@type": TYPE +
-                "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig",
-                **({"disabled": True} if public else {"requirement_name": "user_token"})}}})
-    for definition in services:
-        for entry in definition["routes"]:
-            regex = "regex" in entry
-            path = entry["regex" if regex else "path"]
-            values = {key: re.escape(value) if regex else value
-                      for key, value in prefixes.items()}
-            path = re.sub(r"\{([a-z][a-z0-9_]*)\}", lambda m: values[m[1]], path)
-            route(entry["method"], path, definition["service"],
-                  public=entry.get("public", False), regex=regex)
+    routes = (api_routes(services, prefixes, settings) +
+              api_routes(services, prefixes, settings, GATEWAY_PREFIX))
     routes.insert(0, {"match": {"path": "/health", "headers": [{"name": ":method",
         "string_match": {"exact": "GET"}}]}, "direct_response": {"status": 200,
         "body": {"inline_string": '{"status":"ok"}'}}, "response_headers_to_add": [{

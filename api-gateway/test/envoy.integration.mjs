@@ -14,6 +14,9 @@ Scope: Added an Order upstream and checks for the /orders routes (protected, for
 Author review: Pending review by Deanson.
 Scope: Added a Credit upstream and a test that only Credit's balance and history reads are routed (#61).
 Author review: pending — Jie Yang to record the review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Added a test that /gateway/* reaches the services with the prefix removed (#141).
+Author review: Pending Jie Yang's review.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
 import assert from 'node:assert/strict';
@@ -173,6 +176,21 @@ test('Credit balance and history reads need a token and reach the Credit Service
     const data = await res.json();
     assert.equal(data.instance, 'credit');
     assert.equal(data.path, path);
+  }
+});
+
+// AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang): deploy part 1 (#141).
+test('internal listener serves /gateway paths with the prefix removed', async () => {
+  const keys = await fetch(gateway + '/gateway/.well-known/jwks.json');
+  assert.equal(keys.status, 200);
+  assert.ok(Array.isArray((await keys.json()).keys), 'the User upstream saw /.well-known/jwks.json');
+  assert.equal((await fetch(gateway + '/gateway/locations')).status, 401);
+  const res = await fetch(gateway + '/gateway/orders/mine?page=2', { headers: { authorization: `Bearer ${token()}` } });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).path, '/orders/mine?page=2');
+  for (const path of ['/gateway/internal/credits/reserve', '/gateway', '/gatewayorders/mine']) {
+    const missing = await fetch(gateway + path, { method: 'POST' });
+    assert.equal(missing.status, 404, path);
   }
 });
 

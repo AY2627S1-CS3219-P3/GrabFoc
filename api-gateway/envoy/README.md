@@ -8,6 +8,9 @@ Scope: Listed the Order route file.
 Author review: Pending review by Deanson.
 Scope: Listed the Credit route file (#61).
 Author review: pending — Jie Yang to record the review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Documented the /gateway prefix (#141).
+Author review: Pending Jie Yang's review.
 -->
 
 # Stock Envoy gateway
@@ -45,6 +48,11 @@ regex matching does not rewrite them. Declared `prefixes` support placeholders s
 as `{auth}`, `{locations}` and `{orders}` using an environment variable and a default value.
 The renderer escapes substituted prefixes in regex routes. Health and the final
 404 response remain shared renderer configuration.
+
+Every route is also served under `/gateway` (for example `/gateway/locations`), with the prefix
+removed before forwarding. That is the public API path on AWS, and Postman uses it locally too, so
+only `baseUrl` differs. Unprefixed paths stay for the frontend's server-side calls. `/internal/**`
+is not routed under either form.
 
 For an additional service with team-approved endpoints, add another `*.routes.json`
 file and set its `urlEnv` variable in the gateway Compose environment and
