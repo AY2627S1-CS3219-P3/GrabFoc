@@ -13,7 +13,11 @@ terraform fmt -check -recursive
 for dir in global modules/* envs/*; do
   [ -d "$dir" ] || continue
   echo "== $dir"
-  terraform -chdir="$dir" init -backend=false -input=false >/dev/null
-  terraform -chdir="$dir" validate -no-color
-  if [ -d "$dir/tests" ]; then terraform -chdir="$dir" test -no-color; fi
+  # A throwaway working folder, so checks never touch a stack already initialised against real
+  # state (and need no AWS login), even on a machine that has deployed.
+  data_dir=$(mktemp -d)
+  TF_DATA_DIR="$data_dir" terraform -chdir="$dir" init -backend=false -input=false >/dev/null
+  TF_DATA_DIR="$data_dir" terraform -chdir="$dir" validate -no-color
+  if [ -d "$dir/tests" ]; then TF_DATA_DIR="$data_dir" terraform -chdir="$dir" test -no-color; fi
+  rm -rf "$data_dir"
 done

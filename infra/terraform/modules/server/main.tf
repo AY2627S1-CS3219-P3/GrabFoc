@@ -133,6 +133,9 @@ resource "aws_autoscaling_group" "server" {
   max_size            = 1
   desired_capacity    = 1
   vpc_zone_identifier = [var.subnet_id]
+  # A brand-new instance profile can take a minute to work, so the first launch may fail; the group
+  # retries by itself. Don't make Terraform wait for (and fail on) that first attempt.
+  wait_for_capacity_timeout = "0"
 
   launch_template {
     id      = aws_launch_template.server.id

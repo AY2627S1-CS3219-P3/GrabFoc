@@ -117,4 +117,12 @@ run "server" {
     condition     = output.capacity_provider_name == "foc-staging"
     error_message = "capacity_provider_name comes from the cluster association."
   }
+
+  # First live apply (2026-10-26): the first launch failed while the new instance profile was still
+  # propagating ("Authentication Failure"); the group retried and succeeded, but Terraform had
+  # already failed and marked it for replacement. Terraform must not wait on the first launch.
+  assert {
+    condition     = aws_autoscaling_group.server.wait_for_capacity_timeout == "0"
+    error_message = "Terraform must not fail on the group's first launch attempt; the group retries by itself."
+  }
 }
