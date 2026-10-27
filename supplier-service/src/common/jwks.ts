@@ -25,7 +25,7 @@
  *        unknown-kid refetch its own clock, recorded only after the endpoint answers.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: Do not fetch the same key set twice in one request when the cache was cold and the kid is
- *        unknown (PR #157 review).
+ *        unknown, and let that one fetch spend the unknown-kid allowance (PR #157 review).
  * Author review: Cole Lin, read and approved.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
@@ -154,15 +154,24 @@ async function keysFor(kid: string): Promise<Jwk | undefined> {
   }
 
   let key = cachedKeys.find((k) => k.kid === kid);
-  // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
-  if (!key && !justRefreshed && Date.now() - lastMissAt > MIN_REFETCH_MS) {
-    await refreshKeys();
-    // Recorded only once the endpoint has answered. Recorded before the call, one failed refresh
-    // answered 401 from the stale cache for the next MIN_REFETCH_MS even after the endpoint came
-    // back. A refresh that throws propagates as 503 instead, and refreshKeys() already shares one
-    // in-flight fetch between concurrent callers, so this cannot become a storm.
-    lastMissAt = Date.now();
-    key = cachedKeys.find((k) => k.kid === kid);
+  if (!key) {
+    if (justRefreshed) {
+      // The fetch above is the endpoint's own answer about this kid, so it spends the allowance
+      // too. Skipping the branch without recording the miss left the gate open on the *next*
+      // request: a cold cache plus an unknown kid meant one JWKS request per incoming request for
+      // as long as the invalid tokens kept arriving - the opposite of the limit this constant
+      // documents (PR #157 review).
+      lastMissAt = Date.now();
+    } else if (Date.now() - lastMissAt > MIN_REFETCH_MS) {
+      // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
+      await refreshKeys();
+      // Recorded only once the endpoint has answered. Recorded before the call, one failed refresh
+      // answered 401 from the stale cache for the next MIN_REFETCH_MS even after the endpoint came
+      // back. A refresh that throws propagates as 503 instead, and refreshKeys() already shares one
+      // in-flight fetch between concurrent callers, so this cannot become a storm.
+      lastMissAt = Date.now();
+      key = cachedKeys.find((k) => k.kid === kid);
+    }
   }
   return key;
 }

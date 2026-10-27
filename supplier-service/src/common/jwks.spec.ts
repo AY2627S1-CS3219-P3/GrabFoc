@@ -11,6 +11,9 @@
  *        replaced the unknown-kid timing cases, which pinned the behaviour the PR #129 review
  *        found wrong: the first miss refetches immediately, and only repeats are rate-limited.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Added the case where the cold-cache fetch is itself the miss (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { config } from '../config';
 import { JwksStub, makeKey, signToken } from '../test/jwks-stub';
@@ -260,6 +263,27 @@ describe('key caching', () => {
     jest.spyOn(Date, 'now').mockReturnValue(start + 31 * 1000);
     await expect(verifyToken(bearer(signToken(rotated)))).resolves.toEqual({ sub: 'user-1', role: 'USER' });
     expect(stub.fetches).toBe(3);
+  });
+
+  /**
+   * The cold-cache fetch is itself the endpoint's answer about that kid, so it has to spend the
+   * allowance. It did not, so the gate was still open on the *next* request: while invalid tokens
+   * kept arriving, every one of them went to the endpoint, instead of one per 30 seconds
+   * (PR #157 review).
+   */
+  it('spends the allowance when the cold-cache fetch is itself the miss', async () => {
+    await expect(verifyToken(bearer(signToken(makeKey('gone-1'))))).resolves.toBeNull();
+    expect(stub.fetches).toBe(1);
+
+    await expect(verifyToken(bearer(signToken(makeKey('gone-2'))))).resolves.toBeNull();
+    expect(stub.fetches).toBe(1);
+
+    // Still a rate limit and not a lockout: a rotation is picked up once the window is over.
+    const rotated = makeKey('rsa-2');
+    stub.keys = [rsa, ec, rotated];
+    jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 31 * 1000);
+    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toEqual({ sub: 'user-1', role: 'USER' });
+    expect(stub.fetches).toBe(2);
   });
 
   it('retries an unknown kid once the endpoint recovers from a failed refresh', async () => {

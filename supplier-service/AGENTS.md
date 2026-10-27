@@ -207,6 +207,15 @@ stack can carry whatever the failure touched (a connection string, say). Both st
 logger, which is local to the container; neither reaches the store, which is queryable by anyone
 with access to it.
 
+Within a line, the shipper redacts **by field name, as a substring, at any depth, and on both sides
+of a pair** — a name is as caller-controlled as a value, so `{ recipients: { 'alice@nus.edu.sg':
+true } }` is caught as well as `{ email: ... }`. The set covers credentials *and* personal data,
+including `phone` and display or given names, which identify a student on sight (PR #129 review).
+Two consequences to know about when reading a line: a field whose name is not a plain identifier
+appears as its position and length rather than its name, and a field named `__proto__` survives
+only because the redacted copy has a null prototype — on an ordinary object that assignment runs
+the prototype setter, and the field disappears with its neighbours intact.
+
 **Correlation.** Each of those lines carries a `requestId`, which is how a line here is matched to
 the gateway's `request_completed` line for the same request:
 
