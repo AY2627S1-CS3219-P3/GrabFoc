@@ -3,8 +3,8 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-25
-Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23 and 2026-10-25 from the prompts and work
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-27
+Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23, 2026-10-25 and 2026-10-27 from the prompts and work
   in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
   verified; the wording is Claude's, written to the template in ai/usage-log.md.
 Author review: Cole Lin, read and approved.
@@ -14,6 +14,16 @@ Author review: Cole Lin, read and approved.
 
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-27 — Third review round on the logging PR (PR #129, issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), review and debug.
+- Usage scenario: Three more findings on PR #129, all of them on code added two days earlier.
+- Prompts (exact):
+  - "fix 129"
+- Key response: Field *names* in a dead-letter body are now sanitised, not just the values: a key is as caller-controlled as a value, and `{ "Bearer eyJ...": "x" }` carried the token into the body as a field name. A name that could not be a real field name is replaced whole by its position and length, because showing the first 40 characters of a token is no better than showing all of it. The paginated total survives an empty page, so it describes the filter rather than the page that was asked for. And the standalone Compose run can point `LOGGING_JWKS_URL` at a reachable User Service, which it previously could not — the hostname it defaults to does not exist on that project network, and this service deliberately has no dev-header fallback, so reading the store was impossible in that mode.
+- What I changed or rejected: Rejected truncating an unsafe field name, and rejected redacting it by the sensitive-name list, since the problem is the name itself rather than what it is called. On the empty-page total, I had written a comment in the previous round arguing that zero was the useful answer for a log viewer; the review was right that it makes the total depend on the page asked for, and Supplier already behaves the other way, so the comment was wrong and is gone. Chose a second count query on the empty page only, rather than two queries always, so the ordinary path still reads its rows and its total from one snapshot. Also added the logging service's integration tests to CI, mirroring the Credit Service's job: the pagination change is SQL, Docker was not running on this machine, and nothing in CI would otherwise have run those tests at all.
+- Verification: `npm test` (174 passed). The new unit test was run against the unfixed code first and fails there. The two new integration tests could not be run locally — no Docker — so the CI job added in this commit is what proves them, and I read its result rather than assuming it.
 
 ### 2026-10-25 — Clearing the review findings on both logging PRs (PRs #129 and #145, issue #52)
 
