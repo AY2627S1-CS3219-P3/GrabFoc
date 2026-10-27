@@ -5,6 +5,10 @@ Scope: Added the "every request, not only the failures" section and the request_
   the event table, from Cole Lin's decision of the same day (issue #52). Earlier AI-assisted
   changes to this file are recorded per section in its _Origin:_ lines.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+Scope: Recorded the JWKS filtering and the bounded list filters in the Auth section
+  (swept from the PR #129 review).
+Author review: Cole Lin, read and approved.
 -->
 # AGENTS.md — Supplier (Location) Service
 
@@ -17,7 +21,8 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 **Implementation [Decided]** · _Origin: Team_
 - NestJS (TypeScript, Node.js), PostgreSQL through `pg` with plain parameterized SQL, strict Zod validation.
 - JSON field names are the same as the columns (`id`, `name`, `type`, `building`, `floor`, `location_desc`, `lat`, `lon`, `image_url`, `status`, `version`), except the hours: `open_time` / `close_time`, as `HHMMhrs` strings (stored as minutes in `open_min` / `close_min`).
-- **Auth [Decided]:** every request carries a bearer token issued by the User Service. The gateway verifies it and forwards it unchanged; **this service verifies it again** against the User Service's JWKS (`SUPPLIER_JWKS_URL`) rather than trusting the network, then takes the caller from the `sub` and `role` claims. RS256/ES256 only, `exp` and `nbf` enforced, `iss`/`aud` checked only when configured (same as the gateway). Keys are cached for 5 minutes and refetched when a `kid` is unknown (at most every 30 s). Missing or invalid token → **401**; wrong role → **403**; JWKS unreachable → **503**.
+- **Auth [Decided]:** every request carries a bearer token issued by the User Service. The gateway verifies it and forwards it unchanged; **this service verifies it again** against the User Service's JWKS (`SUPPLIER_JWKS_URL`) rather than trusting the network, then takes the caller from the `sub` and `role` claims. RS256/ES256 only, `exp` and `nbf` enforced, `iss`/`aud` checked only when configured (same as the gateway). Keys are cached for 5 minutes and refetched on the **first** unknown `kid`, with repeat misses rate-limited to one refetch per 30 s — the miss is recorded only once the endpoint answers, so a failed refetch does not hold off the retry. A key the service could not verify with (no `kid` or `kty`, `use` other than `sig`, an alg outside RS256/ES256, or one `crypto` cannot import) is **filtered out when the set is fetched**; a set with nothing usable left is treated as unreachable. Missing or invalid token → **401**; wrong role → **403**; JWKS unreachable, or holding nothing verifiable → **503**, because 401 would tell a valid administrator their token was bad.
+- **Text list filters are bounded and reject control bytes.** `?name=`, `?type=` and `?building=` are capped at the column's own 100 characters, and a NUL or other control byte is a **400**: PostgreSQL cannot carry a NUL in a TEXT parameter, so it used to reach the query and come back as a 500.
 - **Local testing only:** with `SUPPLIER_DEV_AUTH=true` the service falls back to `X-User-Id` / `X-User-Role` headers **when no bearer token is sent**, so it can be tested without the User Service. A real token is always verified, so the headers can never override or downgrade one. The flag is off by default, startup refuses it when `NODE_ENV=production` (which the Dockerfile sets), and it logs a warning at startup when on.
 - Run and test instructions: `README.md`. Postman collection: `postman/supplier.postman_collection.json`.
 

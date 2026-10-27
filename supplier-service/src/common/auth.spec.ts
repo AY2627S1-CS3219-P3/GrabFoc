@@ -12,6 +12,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: The denial line now goes through the shipper rather than Nest's logger, so these
  *        read the shipped line and assert the fields it adds (issue #52).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Added the unusable-key-set cases and the rotation-after-a-failed-refresh case,
+ *        swept from the PR #129 review.
  * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: The fake request carries a route, since the logged path is now the route template.
@@ -117,6 +120,53 @@ describe('with a bearer token', () => {
   it('answers 503 when the JWKS cannot be fetched, rather than 401', async () => {
     stub.respond = () => ({ status: 500, body: 'down' });
     expect(await outcome(request(bearer({ role: 'USER' })))).toBe(503);
+  });
+
+  /**
+   * A 200 holding nothing this service can verify with is as unusable as an error. Answering 401
+   * tells a valid caller their token is bad, and a non-object entry produced a 500 when a token
+   * later arrived. Swept from the PR #129 review of the Logging Service's copy of jwks.ts.
+   */
+  it.each([
+    ['an empty key set', '{"keys":[]}'],
+    ['a key set holding null', '{"keys":[null]}'],
+    ['a key set holding a string', '{"keys":["not-a-key"]}'],
+    ['a key with no kid', '{"keys":[{"kty":"RSA"}]}'],
+    ['a key with no kty', '{"keys":[{"kid":"k1"}]}'],
+    ['only an encryption key', '{"keys":[{"kid":"k1","kty":"RSA","use":"enc"}]}'],
+    ['only an unaccepted alg', '{"keys":[{"kid":"k1","kty":"RSA","alg":"HS256"}]}'],
+  ])('answers 503 for %s', async (_why, body) => {
+    stub.respond = () => ({ status: 200, body });
+    resetJwksCache();
+    expect(await outcome(request(bearer({ role: 'USER' })))).toBe(503);
+  });
+
+  // Filtering, not rejecting: one junk entry must not take the usable keys down with it.
+  it('lets a caller in when a junk entry sits beside a good key', async () => {
+    stub.respond = () => ({ status: 200, body: JSON.stringify({ keys: [{}, key.jwk] }) });
+    resetJwksCache();
+    expect(await outcome(request(bearer({ role: 'USER' })))).toBe('allowed');
+  });
+
+  /**
+   * A rotation whose first refetch fails. The gate used the *ordinary* cache timestamp, and the
+   * miss was recorded before the fetch, so a valid token bearing the new kid was answered with
+   * 401 from the stale cache - telling an administrator their token was bad (PR #129 review).
+   */
+  it('retries an unknown kid once the endpoint recovers from a failed refresh', async () => {
+    const rotated = makeKey('k-rotated');
+    const token = { Authorization: `Bearer ${signToken(rotated, { role: 'USER' })}` };
+
+    // Fill the cache with the old key, the way ordinary traffic would.
+    expect(await outcome(request(bearer({ role: 'USER' })))).toBe('allowed');
+
+    stub.respond = () => ({ status: 500, body: '{}' });
+    expect(await outcome(request(token))).toBe(503);
+
+    // Recovers straight away, well inside the 30-second rate-limit window.
+    stub.respond = undefined;
+    stub.keys = [key, rotated];
+    expect(await outcome(request(token))).toBe('allowed');
   });
 });
 

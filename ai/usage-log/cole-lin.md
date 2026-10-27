@@ -16,6 +16,16 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-27 — Sweeping the Supplier Service for the classes found on PR #129
+
+- Tool and mode: Claude Code (Claude Opus 5), review and debug.
+- Usage scenario: Four review rounds on the Logging Service had each found the same *kinds* of bug. Rather than wait for a reviewer to find them again elsewhere, Cole Lin asked for the whole repository to be swept for those classes.
+- Prompts (exact):
+  - "ok so can you fix the class, and relevant issues everywhere?"
+- Key response: Audited every service for the classes — redaction that reads values but not keys, a serialiser that calls a caller-controlled method, a bound expressed in items rather than bytes, a query filter stricter than what the store accepts, and a key set judged at verify time rather than at fetch time. Fixed what this service owns: the JWKS key-set filter now applies the same `use` and `alg` restrictions `verifyToken` applies and tries the import, so the filter and the verifier cannot disagree about a key; the unknown-kid refetch has its own clock, recorded only after the endpoint answers; and the `name`, `type` and `building` list filters reject control bytes and are length-bound, because a NUL reached PostgreSQL and came back as a 500.
+- What I changed or rejected: Three existing tests failed on the JWKS change, and that mattered more than the fix: they pinned the behaviour the review had called wrong (no refetch on the first unknown kid, and 401 for a key set with nothing usable). I rewrote them to cover both layers — a degenerate set is 503, while an unusable key *beside* a good one is filtered and its token is an ordinary 401 — rather than weakening the fix to keep them green. Decided not to touch the two findings in other members' services (the User Service's `redact` and the Credit Service's JWKS clock) and to report them to their owners instead. Checked the Credit Service's dead-letter table, which stores raw payloads, and did **not** treat it as the same bug: a replay needs the original bytes, so it is a deliberate trade there.
+- Verification: `npm test` in the Supplier Service (199 passed), build clean. Every fix was reverted together and the suite re-run first: 16 tests fail against the unfixed code. **Three findings of mine were withdrawn on checking**, all from the same mistake — the audit read `main`, so it missed what my own open PRs had already fixed: the pool error handler (done in #137), the JWKS usable-key filter and this file's disclosure header (both already on the PR #145 branch). The sweep is stacked on that branch now, so what is left is only what is genuinely new.
+
 ### 2026-10-27 — Fourth review round, and fixing the class rather than the instance (PR #129, issue #52)
 
 - Tool and mode: Claude Code (Claude Opus 5), review and debug.

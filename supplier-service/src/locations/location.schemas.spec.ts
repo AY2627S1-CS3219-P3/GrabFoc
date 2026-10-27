@@ -144,6 +144,32 @@ describe('listQuerySchema', () => {
     expect(accepts(listQuerySchema, { page })).toBe(false);
   });
 
+  /**
+   * PostgreSQL cannot hold a NUL in a TEXT parameter, so `?name=%00` passed validation, reached
+   * the query and came back as a 500 rather than a 400 - the same gap the PR #129 review found in
+   * the Logging Service's filters.
+   */
+  it.each(['name', 'type', 'building'])('rejects a NUL byte in the %s filter', (field) => {
+    expect(accepts(listQuerySchema, { [field]: `a${String.fromCharCode(0)}b` })).toBe(false);
+  });
+
+  it.each(['name', 'type', 'building'])('rejects another control byte in the %s filter', (field) => {
+    expect(accepts(listQuerySchema, { [field]: `a${String.fromCharCode(31)}b` })).toBe(false);
+  });
+
+  // 100 is the name column's own limit, so nothing storable becomes unsearchable.
+  it('accepts a filter at the column length and rejects one past it', () => {
+    expect(accepts(listQuerySchema, { name: 'a'.repeat(100) })).toBe(true);
+    expect(accepts(listQuerySchema, { name: 'a'.repeat(101) })).toBe(false);
+  });
+
+  it('still accepts the ordinary filters', () => {
+    expect(listQuerySchema.parse({ name: 'Starbucks@UTown', building: 'COM3' })).toMatchObject({
+      name: 'Starbucks@UTown',
+      building: 'COM3',
+    });
+  });
+
   it('turns lat and lon text into numbers', () => {
     expect(listQuerySchema.parse({ lat: '1.2966', lon: '103.7764' })).toMatchObject({ lat: 1.2966, lon: 103.7764 });
   });

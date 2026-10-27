@@ -4,6 +4,10 @@
  * Scope: Generated strict Zod schemas for request bodies and query parameters, following the
  *        field, validation and error decisions in supplier-service/AGENTS.md.
  * Author review (Cole Lin): Read in full; ran it with Postman and checked the 400 cases: missing fields, unknown fields and bad query parameters.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: The name, type and building list filters reject control bytes and are length-bound,
+ *        a class of bug the PR #129 review found in the Logging Service's filters.
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -11,6 +15,27 @@ import { HHMM_RE } from './hours';
 
 const hhmm = z.string().regex(HHMM_RE, 'must be in HHMMhrs format, e.g. 0900hrs');
 const nonBlank = z.string().refine((s) => s.trim().length > 0, 'must not be empty');
+
+// Written as a loop rather than a regex: a control-character class is easy to get subtly wrong,
+// and this reads the same to anyone checking it.
+function hasControlChars(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/**
+ * A text filter that reaches the database. PostgreSQL cannot hold a NUL in a TEXT parameter, so
+ * `?name=%00` used to pass validation, reach the query and come back as a 500 instead of a 400 -
+ * the same gap the PR #129 review found in the Logging Service's filters. The length bound keeps a
+ * megabyte-long `LIKE '%...%'` from being a free table scan; 100 is the column's own limit.
+ */
+const textFilter = z
+  .string()
+  .max(100, 'must be at most 100 characters')
+  .refine((v) => !hasControlChars(v), 'must not contain control characters');
 
 const locationFields = {
   name: nonBlank.pipe(z.string().max(100, 'must be at most 100 characters')),
@@ -72,9 +97,9 @@ const degrees = (min: number, max: number) =>
 
 export const listQuerySchema = z
   .object({
-    name: z.string().optional(),
-    type: z.string().optional(),
-    building: z.string().optional(),
+    name: textFilter.optional(),
+    type: textFilter.optional(),
+    building: textFilter.optional(),
     time: hhmm.optional(),
     includeInactive: z.enum(['true', 'false']).optional(),
     lat: degrees(-90, 90).optional(),
