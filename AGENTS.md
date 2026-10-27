@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-05
 Scope: §9 D2 demo checks: replaced the stale `status=INACTIVE` / `ALL` query with `includeInactive=true`, the parameter documented in supplier-service/AGENTS.md and implemented by the Supplier Service.
 Author review (Jian Bing): Checked the whole end-to-end flow locally.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
+Scope: "Where to find things": added the "Deploying to AWS" row (deploy part 2, #142).
+Author review: Pending Jian Bing's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: §3 "Messaging (Kafka)" [Proposed] (six rules and two proposed changes to [Decided] items) and three §10 open items, written from Jian Bing's walkthrough decisions (redesign spec §9, K1–K13); consumer rules 1–2 proposed by Claude Code and confirmed by him.
 Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.
@@ -65,6 +68,7 @@ This file holds **project-wide** context only. Service-specific rules, schemas, 
 | Notification Service | §7 below |
 | Seed data | `data/csv/supplier-seed-data.csv`, `data/images/` |
 | Anything spanning several services | this file: §5 roles, §6 auth, §8 cross-cutting rules |
+| Deploying to AWS (Terraform, secrets, first deploy) | `infra/terraform/README.md`; design in `docs/superpowers/specs/2026-10-23-aws-deployment-design.md` |
 
 - Keep this file lean. New service-specific detail goes in that service's `AGENTS.md`; only project-wide decisions belong here.
 - When the `api-gateway/` or `notification-service/` folder is created, give it its own `AGENTS.md` and move its section there.

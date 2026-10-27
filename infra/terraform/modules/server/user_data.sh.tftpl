@@ -1,0 +1,66 @@
+#!/bin/bash
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
+# Scope: Generated from the deployment plan (Task 4): server start-up (spec §4).
+#        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
+# Author review: Pending Jian Bing's review.
+#
+# Runs once when the ECS server boots: joins the cluster, takes the Elastic IP, attaches and mounts
+# the persistent data volume, and prepares a folder per data store.
+set -euo pipefail
+# Any failure shuts the server down, so the auto scaling group replaces it. It must never join the
+# cluster without /data mounted: the databases would start empty on the root disk.
+trap 'shutdown -h now' ERR
+export AWS_DEFAULT_REGION="${region}"
+
+# 1. The ECS-optimised AMI is minimal and has no AWS CLI.
+dnf install -y awscli-2
+
+TOKEN=$(curl -sS -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+INSTANCE_ID=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+
+# 2. Keep the same public address (and so the same DNS name CloudFront uses as its origin).
+aws ec2 associate-address --allocation-id "${eip_allocation_id}" --instance-id "$INSTANCE_ID" --allow-reassociation
+
+# 3. Attach the data volume. A replaced server may still hold it for a while: retry for 10 minutes.
+for _ in $(seq 60); do
+  if aws ec2 attach-volume --volume-id "${volume_id}" --instance-id "$INSTANCE_ID" --device /dev/xvdf; then break; fi
+  sleep 10
+done
+DEVICE="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_${volume_id_nodash}"
+for _ in $(seq 60); do [ -e "$DEVICE" ] && break; sleep 5; done
+[ -e "$DEVICE" ] || { echo "data volume ${volume_id} never appeared" >&2; false; } # false fires the ERR trap
+
+# 4. Format only a brand-new, empty volume; never one that already holds data.
+if ! blkid "$DEVICE" >/dev/null 2>&1; then
+  mkfs -t xfs "$DEVICE"
+fi
+mkdir -p /data
+echo "$DEVICE /data xfs defaults,nofail 0 2" >> /etc/fstab
+mount /data
+mountpoint -q /data
+
+# 5. One folder per data store. PostgreSQL and Redis fix their own folder owners; Kafka runs as
+#    appuser (uid 1000) and can't write to a root-owned folder.
+mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/redis /data/kafka
+chown 1000:1000 /data/kafka
+
+# 6. Only now join the environment's ECS cluster: the data stores can start.
+echo "ECS_CLUSTER=${cluster}" >> /etc/ecs/ecs.config
+
+# 7. Report how full /data is, for the 80% alarm, per server group so staging and production
+#    don't share one metric.
+dnf install -y amazon-cloudwatch-agent
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'JSON'
+{
+  "metrics": {
+    "append_dimensions": { "AutoScalingGroupName": "$${aws:AutoScalingGroupName}" },
+    "aggregation_dimensions": [["AutoScalingGroupName", "path"]],
+    "metrics_collected": {
+      "disk": { "resources": ["/data"], "measurement": ["used_percent"], "drop_device": true }
+    }
+  }
+}
+JSON
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json

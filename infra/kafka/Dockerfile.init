@@ -1,0 +1,9 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
+# Scope: Generated from the deployment plan (Task 5): kafka-init as an image for ECS, which can't
+#        bind-mount files from the repo the way compose does. Same script and topic list as locally.
+# Author review: Pending Jian Bing's review.
+FROM apache/kafka:4.1.0
+COPY topics.txt /topics.txt
+COPY create-topics.sh /create-topics.sh
+ENTRYPOINT ["/bin/sh", "/create-topics.sh"]

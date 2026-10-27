@@ -98,6 +98,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-23
 Scope: Wrote the 2026-10-23 AWS deployment design entry (issue #58) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
+Scope: Wrote the 2026-10-25 AWS infrastructure entry (deploy part 2) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -105,6 +108,70 @@ Author review: pending — Jian Bing to record what he checked.
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+
+### 2026-10-27 — Codex review fixes on the AWS infrastructure (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug
+**Files:** `infra/scripts/put-secrets.sh`, `infra/scripts/push-images.sh`, `infra/scripts/test/*.test.sh`,
+`infra/terraform/modules/server/{main.tf,user_data.sh.tftpl,tests/server.tftest.hcl}`,
+`infra/terraform/global/{variables.tf,tests/global.tftest.hcl}`, `.github/workflows/terraform.yml`
+
+**Scenario:** Answer the 14 Codex review threads on PR #146. Claude checked each against the code and
+the live staging stack, fixed six test-first (secrets pinned to ap-southeast-1, Windows line endings,
+percent-encoded database passwords, a rerunnable image push, a portable file-mode check for Linux CI,
+a per-environment disk metric, and the GitHub OIDC subject in its immutable form, confirmed with
+`gh api repos/AY2627S1-CS3219-P3/GrabFoc/actions/oidc/customization/sub`), and replied on the rest.
+
+**Prompts (exact):**
+> okay confirmed tha tthey are secure [Image #9], then could you help me reoslve the conversation rasied by codex in this pr ?https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/146 and also please do psuh the new features
+
+**Key response:** "There are 14 unresolved Codex threads on #146. I'll check each one against the current
+`feat/aws-infra` code before changing anything."
+
+**Verification:** Pending — Jian Bing to record what he checked.
+
+### 2026-10-25 — AWS infrastructure in Terraform, deploy part 2 (issue #142)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** `infra/terraform/**`, `infra/scripts/**`, `infra/secrets/README.md`, `infra/kafka/Dockerfile.init`,
+`.github/workflows/terraform.yml`, `.gitignore`, `AGENTS.md` (one table row), the deployment spec §3.3
+
+**Scenario:** Build part 2 of the approved AWS deployment plan
+(`docs/superpowers/plans/2026-10-23-aws-infrastructure.md`): Terraform for the account-wide stack,
+network, ECS-on-EC2 server with its `/data` volume, every container as an ECS service, CloudFront, and
+the scripts that load secrets and push images. Claude implemented the plan task by task, test-first
+with a mocked AWS provider, then a separate Claude reviewer checked the whole branch. Nothing has been
+applied to AWS yet.
+
+**Prompts (exact, in order):**
+> looks good
+
+> make the corresponding issues on github, and i think lets do part 2 first, nus doesnt allow a 2nd staging account so we have to create 2 ecs instance sourselves i think
+
+> make the corresponding issues on github, and i think lets do part 2 first, nus doesnt allow a 2nd staging account so we have to create 2 ec2 instance sourselves i think
+
+> lets do part 1 next
+
+> sorry i pressed esc by accident, please continue
+
+> native
+
+> okay lets go back to cloud deployment, i want native development
+
+> open the pr
+
+> ok lets do the secret header as a service key? does that make sense, then after that open the pr
+
+**What it produced:** 15 commits: the Terraform stacks and modules with 10 test runs, `check.sh` and a
+CI workflow, `put-secrets.sh` (with 12 tests) and `push-images.sh`, and the runbook
+`infra/terraform/README.md`. An automated security review flagged over-broad IAM roles and an open
+Mailpit relay, and the final review found 2 critical and 6 important issues (e.g. one-off tasks
+couldn't resolve service names; a failed boot could start the databases on an empty disk). All were
+fixed test-first. Claude's own calls are listed in the PR description.
+**What I changed or rejected:** Chose single-account staging (NUS doesn't allow a second account).
+Decided the secret origin header (`X-Origin-Key`, like our service key) so the server only accepts our
+CloudFront distribution; Envoy's check stays in part 1.
+**Verification:** Pending — Jian Bing to record what he checked.
 
 ### 2026-10-23 — AWS deployment design and spec (issue #58)
 
