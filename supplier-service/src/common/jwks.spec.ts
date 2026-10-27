@@ -224,6 +224,17 @@ describe('key caching', () => {
    * aged out - up to 30 seconds of telling a valid administrator their token was bad (PR #129
    * review, swept here).
    */
+  /**
+   * A cold cache plus an unknown kid went to the endpoint twice in one request: once because the
+   * cache was empty, then again because the kid was missing from the set it had just loaded. Double
+   * the traffic on exactly the requests that are already failing, and a second fetch that fails
+   * turns an honest 401 into a 503 (PR #157 review).
+   */
+  it('fetches the key set once when a cold cache already has the answer', async () => {
+    await expect(verifyToken(bearer(signToken(makeKey('never-published'))))).resolves.toBeNull();
+    expect(stub.fetches).toBe(1);
+  });
+
   it('picks up a rotated key on the first unknown kid, without waiting', async () => {
     await verifyToken(bearer(signToken(rsa)));
     const rotated = makeKey('rsa-2');

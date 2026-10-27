@@ -5,8 +5,9 @@
  *        field, validation and error decisions in supplier-service/AGENTS.md.
  * Author review (Cole Lin): Read in full; ran it with Postman and checked the 400 cases: missing fields, unknown fields and bad query parameters.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
- * Scope: The name, type and building list filters reject control bytes and are length-bound,
- *        a class of bug the PR #129 review found in the Logging Service's filters.
+ * Scope: The name, type and building list filters reject control bytes, and are length-bound only
+ *        where the stored field is - a class of bug the PR #129 review found in the Logging
+ *        Service's filters, and an asymmetry the PR #157 review found in my first fix for it.
  * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
@@ -29,13 +30,18 @@ function hasControlChars(value: string): boolean {
 /**
  * A text filter that reaches the database. PostgreSQL cannot hold a NUL in a TEXT parameter, so
  * `?name=%00` used to pass validation, reach the query and come back as a 500 instead of a 400 -
- * the same gap the PR #129 review found in the Logging Service's filters. The length bound keeps a
- * megabyte-long `LIKE '%...%'` from being a free table scan; 100 is the column's own limit.
+ * the same gap the PR #129 review found in the Logging Service's filters.
+ *
+ * The length bound is per field, and it is the field's *own* stored limit or nothing at all. A
+ * shared 100 looked tidier and was wrong: `building` is stored unbounded, so an admin could create
+ * a location that no exact `?building=` filter could ever find again (PR #157 review). Bounding
+ * `building` and `type` on creation instead would make the pair symmetric at a shorter length -
+ * worth doing, but that is a schema decision for the service's owners, not a filter fix.
  */
-const textFilter = z
-  .string()
-  .max(100, 'must be at most 100 characters')
-  .refine((v) => !hasControlChars(v), 'must not contain control characters');
+const textFilter = (max?: number) => {
+  const base = z.string().refine((v) => !hasControlChars(v), 'must not contain control characters');
+  return max === undefined ? base : base.pipe(z.string().max(max, `must be at most ${max} characters`));
+};
 
 const locationFields = {
   name: nonBlank.pipe(z.string().max(100, 'must be at most 100 characters')),
@@ -97,9 +103,11 @@ const degrees = (min: number, max: number) =>
 
 export const listQuerySchema = z
   .object({
-    name: textFilter.optional(),
-    type: textFilter.optional(),
-    building: textFilter.optional(),
+    // 100 matches what createLocationSchema allows for a name; type and building are stored
+    // unbounded, so bounding the filter would hide rows that can legitimately exist.
+    name: textFilter(100).optional(),
+    type: textFilter().optional(),
+    building: textFilter().optional(),
     time: hhmm.optional(),
     includeInactive: z.enum(['true', 'false']).optional(),
     lat: degrees(-90, 90).optional(),

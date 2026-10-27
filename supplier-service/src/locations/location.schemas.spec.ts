@@ -157,10 +157,21 @@ describe('listQuerySchema', () => {
     expect(accepts(listQuerySchema, { [field]: `a${String.fromCharCode(31)}b` })).toBe(false);
   });
 
-  // 100 is the name column's own limit, so nothing storable becomes unsearchable.
-  it('accepts a filter at the column length and rejects one past it', () => {
+  /**
+   * The bound is the field's own stored limit, or nothing. A shared 100 was wrong: `building` is
+   * stored unbounded, so an admin could create a location no exact filter could find again
+   * (PR #157 review).
+   */
+  it('bounds the name filter at the length a name can actually be', () => {
     expect(accepts(listQuerySchema, { name: 'a'.repeat(100) })).toBe(true);
     expect(accepts(listQuerySchema, { name: 'a'.repeat(101) })).toBe(false);
+  });
+
+  it.each(['type', 'building'])('does not bound the %s filter, because the column does not', (field) => {
+    const long = 'a'.repeat(300);
+    // Storable, so searchable: createLocationSchema accepts these at any length.
+    expect(accepts(createLocationSchema, { ...valid, [field]: long })).toBe(true);
+    expect(accepts(listQuerySchema, { [field]: long })).toBe(true);
   });
 
   it('still accepts the ordinary filters', () => {
