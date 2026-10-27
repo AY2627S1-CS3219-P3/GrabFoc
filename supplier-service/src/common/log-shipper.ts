@@ -143,7 +143,12 @@ const TRUNCATED = '[TRUNCATED]';
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 function safeKey(key: string, index: number): string {
-  return SAFE_KEY.test(key) ? key : `[key ${index}: ${key.length} chars]`;
+  // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
+  // object runs Object.prototype's setter instead of defining a property, and the field is lost.
+  // The objects built below have null prototypes, so nothing is lost there - but the store's
+  // inbound schema builds its own object through Zod, which does drop that name, so it is
+  // replaced here rather than shipped and the two sides cannot disagree (PR #129 review).
+  return SAFE_KEY.test(key) && key !== '__proto__' ? key : `[key ${index}: ${key.length} chars]`;
 }
 const MAX_DEPTH = 6;
 
