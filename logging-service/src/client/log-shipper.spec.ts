@@ -31,11 +31,12 @@ const written: string[] = [];
 const published: OutboundLine[] = [];
 let ids = 0;
 
-function shipper(publisher?: LinePublisher, maxBuffer = 1000) {
+function shipper(publisher?: LinePublisher, maxBuffer = 1000, limits: { maxBufferBytes?: number; maxLineBytes?: number } = {}) {
   return new LogShipper({
     service: 'supplier',
     publisher,
     maxBuffer,
+    ...limits,
     write: (line) => written.push(line),
     newId: () => `id-${(ids += 1)}`,
   });
@@ -168,6 +169,56 @@ describe('redaction cannot be worked around', () => {
   // TypeScript refuses an overridden toJSON in typed code, so this is the path it could take:
   // a subclass whose prototype is patched at runtime, or anything arriving through `any`.
   // toISOString itself was still a virtual call, so an override ran after redaction.
+  /**
+   * A count is not a bound. A thousand lines carrying a megabyte of metadata each is a gigabyte
+   * held by the one component whose job is not to disrupt the service it logs for (PR #129 review).
+   */
+  it('never buffers a line too large to ship, but still writes it to stdout', () => {
+    const log = shipper(neverSettles, 1000, { maxLineBytes: 200 });
+    log.emit({ level: 'info', event: 'big', blob: 'x'.repeat(500) });
+    expect(written).toHaveLength(1);
+    expect(log.counts).toMatchObject({ emitted: 1, oversize: 1, dropped: 0 });
+  });
+
+  it('stops buffering once the byte budget is spent, not only the line count', () => {
+    const log = shipper(neverSettles, 1000, { maxBufferBytes: 900, maxLineBytes: 400 });
+    for (let i = 0; i < 6; i += 1) log.emit({ level: 'info', event: 'e', blob: 'x'.repeat(200) });
+    // Every line is on stdout; the buffer stopped well short of the 1,000-line limit.
+    expect(written).toHaveLength(6);
+    expect(log.counts.dropped).toBeGreaterThan(0);
+    expect(log.counts.emitted).toBe(6);
+  });
+
+  it('frees the byte budget once a batch has left the buffer', async () => {
+    // Three lines fit; six do not, so this fails unless the budget is released on flush.
+    const log = shipper(collecting, 1000, { maxBufferBytes: 1000, maxLineBytes: 400 });
+    for (let i = 0; i < 3; i += 1) log.emit({ level: 'info', event: 'e', blob: 'x'.repeat(200) });
+    await log.flush();
+    for (let i = 0; i < 3; i += 1) log.emit({ level: 'info', event: 'e', blob: 'x'.repeat(200) });
+    await log.flush();
+    expect(published).toHaveLength(6);
+    expect(log.counts).toMatchObject({ dropped: 0, oversize: 0 });
+  });
+
+  /**
+   * Only values were ever redacted, so data used as a key shipped untouched (PR #129 review).
+   */
+  it('replaces a field name that is really data, and keeps the value', () => {
+    shipper().emit({ level: 'info', event: 'mail', recipients: { 'alice@nus.edu.sg': true } });
+    expect(written[0]).not.toContain('alice@nus.edu.sg');
+    expect(JSON.parse(written[0]).recipients).toEqual({
+      [`[key 0: ${'alice@nus.edu.sg'.length} chars]`]: true,
+    });
+  });
+
+  it('keeps the field names a caller would actually write', () => {
+    shipper().emit({ level: 'info', event: 'e', orderId: 17, 'req.path': '/x', 'x-source': 'k' });
+    const line = JSON.parse(written[0]);
+    expect(line.orderId).toBe(17);
+    expect(line['req.path']).toBe('/x');
+    expect(line['x-source']).toBe('k');
+  });
+
   it('ignores a toISOString override on a Date', () => {
     const when = new Date('2026-10-25T00:00:00.000Z');
     (when as unknown as { toISOString: () => string }).toISOString = () => 'token must-not-appear';

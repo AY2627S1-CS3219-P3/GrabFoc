@@ -4,7 +4,8 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
 Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-27
-Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23, 2026-10-25 and 2026-10-27 from the prompts and work
+Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23, 2026-10-25 and the two
+  dated 2026-10-27 from the prompts and work
   in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
   verified; the wording is Claude's, written to the template in ai/usage-log.md.
 Author review: Cole Lin, read and approved.
@@ -14,6 +15,16 @@ Author review: Cole Lin, read and approved.
 
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-27 — Fourth review round, and fixing the class rather than the instance (PR #129, issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), review and debug.
+- Usage scenario: Five more findings, and a question from Cole Lin about why there had been so many rounds. Three of the five were the *same bug* as one already fixed, in a different place — field names being copied verbatim while only values were redacted.
+- Prompts (exact):
+  - "check 129 again. Why are there so many problems"
+- Key response: Field names are now sanitised everywhere a line can be written, not only in the dead-letter shape where the review first caught it: in the shipper (stdout and Kafka, the copy every service takes) and in the store's `extra` column. The shipper's buffer is bounded in bytes as well as in lines, because a thousand lines of megabyte metadata is a gigabyte held by the component whose job is not to disrupt the service it logs for. A line the store refuses now parks its shape too, like a line that fails validation. The `requestId` query filter accepts every id the store accepts — the inbound schema is lax on purpose, so the strange ids were exactly the ones that could be stored and then not searched for. And `logging-service/AGENTS.md` had no AI-disclosure header, which the course policy requires on every AI-authored file.
+- What I changed or rejected: Stopped fixing the instance the review named and went looking for the class — the three key-sanitising sites were found that way, and two of them had not been flagged yet. Rejected truncating an unsafe field name (half an address is still half an address) and rejected having a different rule in each of the three places, so one rule and one replacement format is now shared by all of them. Noted but did not change two files outside this PR that also lack a disclosure header (the root `README.md` and `supplier-service/AGENTS.md`), rather than widening the diff.
+- Verification: `npm test` (191 passed). All five fixes were reverted together and the suite re-run first: ten of the new tests fail against the unfixed code, which is how I know they test what they claim. Build clean. The integration job added earlier the same day covers the SQL.
 
 ### 2026-10-27 — Third review round on the logging PR (PR #129, issue #52)
 

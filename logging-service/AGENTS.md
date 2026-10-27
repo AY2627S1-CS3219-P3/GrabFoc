@@ -1,3 +1,13 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-27
+Scope: Wrote this document from the plan and the four schema answers Cole Lin gave in chat on
+  2026-10-16, and kept it in step with each review round on PR #129. The decisions it records are
+  his; the wording is Claude's. Where a section records a problem rather than a decision, he raised
+  it. The per-section "Origin" notes say which is which.
+Author review: Cole Lin, read and approved.
+-->
+
 # AGENTS.md — Centralized Logging Service (N2H)
 
 Service-specific context for `logging-service/`. Read the root [`AGENTS.md`](../AGENTS.md) first: it has the product, terminology, roles, the auth model, cross-cutting rules, the plan-first rule and the **AI-agent rules** (warn before breaking them).
@@ -63,7 +73,7 @@ Those six rules landed while this service was being written. Where it stands aga
 5. **Keyed by the entity whose order matters** — `requestId`, set by the shipper, so one request's lines stay in one partition and in order. A line with no request (startup, purge) is unkeyed; it has no sequence to preserve.
 6. **A dead-letter topic per consumer** — yes: `logging.lines.dlt`, listed in `infra/kafka/topics.txt` beside Credit's. A line this service cannot store is parked there as well as counted, with the same headers Credit uses (`x-source-topic`, `x-source-partition`, `x-source-offset`, `x-error`, `x-dead-lettered-at`) so one admin screen can read every service's dead letters, plus the inbound `x-request-id` so the dead letter can still be tied to the request that caused it.
 
-   **The parked body is the payload's shape, not its contents** (PR #129 review). A rejected line has not been through `toRow`, so parking it verbatim would put a `password` in a topic an admin screen reads. Name-based redaction is not enough on this path either: a line fails validation *because* a field held something unexpected, and `role: "Bearer eyJ..."` passes a name filter untouched. So the body carries field names and value types only — `{"lineId":"string(10)","role":"string(96)"}` — which is what a dead letter is actually read for. When the message did not parse at all, or parsed to something that is not an object, no body is parked: there are no field names to describe. The raw message stays in the source topic for Kafka's retention, which is where to look if the redacted copy is not enough. A park that fails is rethrown, so the offset is not committed and the broker redelivers: a line that is neither stored nor parked is the one outcome worth avoiding.
+   **The parked body is the payload's shape, not its contents** (PR #129 review), on both park paths — a line that failed validation and a line the store refused with a permanent error. The second one is not stored anywhere, so the dead-letter topic would otherwise be the only place its values live. A rejected line has not been through `toRow`, so parking it verbatim would put a `password` in a topic an admin screen reads. Name-based redaction is not enough on this path either: a line fails validation *because* a field held something unexpected, and `role: "Bearer eyJ..."` passes a name filter untouched. So the body carries field names and value types only — `{"lineId":"string(10)","role":"string(96)"}` — which is what a dead letter is actually read for. When the message did not parse at all, or parsed to something that is not an object, no body is parked: there are no field names to describe. The raw message stays in the source topic for Kafka's retention, which is where to look if the redacted copy is not enough. A park that fails is rethrown, so the offset is not committed and the broker redelivers: a line that is neither stored nor parked is the one outcome worth avoiding.
 
    _An exception was argued for first — a rejected log line is already on its producer's stdout, and replaying one that failed validation fails identically — and **Cole Lin decided against it on 2026-10-21**: every service should behave as its own microservice, and one consistent rule across five services is worth more than saving a topic here. Recorded because the reasoning matters more than the outcome._
 
@@ -108,11 +118,17 @@ _Origin: AI doc, from the plan Cole Lin approved_
 
 - It takes no Kafka client. A `LinePublisher` is handed in, so a service adopts `@confluentinc/kafka-javascript` (the client Credit pinned in #85) only when there is a broker to talk to.
 - **No broker configured means stdout only**, with no producer and no warnings. The Supplier Service's standalone Postman testing depends on that.
-- `emit()` returns immediately, buffers up to 1000 lines, and **drops rather than blocking** when the buffer is full or a publish fails. Dropping is acceptable because the line reaches stdout regardless, and the same `lineId` is on both, so re-reading stdout later cannot double-count.
+- `emit()` returns immediately, buffers up to **1000 lines and 4 MB**, and **drops rather than blocking** when either bound is reached or a publish fails. A single line over **64 KB** goes to stdout and is never buffered, counted apart as `oversize`. A line count alone was not a bound: a thousand lines of megabyte metadata is a gigabyte held by the one component whose job is not to disrupt the service it logs for (PR #129 review). Dropping is acceptable because the line reaches stdout regardless, and the same `lineId` is on both, so re-reading stdout later cannot double-count.
 - Each message is **keyed by `requestId`** (Kafka rule 5), so one request's lines keep their order.
 - **Sensitive field names are matched as substrings and replaced at any depth** (so `adminToken` and `customerEmail` go too, and it over-redacts rather than under-redacts), so a caller passing `password`, a `token`,
   or `{ request: { headers: { authorization } } }` cannot write it to stdout or Kafka. The store
   does the same on ingest; this is the only guard on the stdout copy.
+- **Field *names* are sanitised as well as values.** Redaction only ever looked at values, so
+  data used as a key — `{ recipients: { "alice@nus.edu.sg": true } }` — travelled untouched
+  into stdout, Kafka and the `extra` column (PR #129 review). A name outside
+  `[A-Za-z0-9_.:-]{1,64}` is replaced whole by its position and length, not truncated, since
+  half an address is still half an address. The value under it is kept. The same rule is in
+  the shipper, in `line.schema.ts` and in the dead-letter shape, and **the three must agree**.
 - **A caller cannot overwrite the envelope.** Their fields are serialised first, so `lineId`,
   `ts` and `service` always win — a line claiming another service's name would make the store
   unreadable.

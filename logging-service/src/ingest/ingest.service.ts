@@ -22,7 +22,7 @@
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
-import { inboundLineSchema, redactDeep, toRow } from '../lines/line.schema';
+import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinesService } from '../lines/lines.service';
 import { DEAD_LETTERS, DeadLetters, InboundMessage, LINE_CONSUMER, LineConsumer } from './consumer';
 
@@ -104,7 +104,11 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
       if (permanent) {
         // The database will never accept this line, so redelivering it would loop on the same
         // message forever and hold up every other service's logging behind it. Park it instead.
-        await this.reject(message, `the store rejected it (SQLSTATE ${permanent})`, safeBody(result.data));
+        // Shape, not values, for the same reason as the validation path: a line can be
+        // schema-valid and still hold a credential in a field no name filter knows, and this
+        // one is not being stored - the store just refused it - so the dead-letter topic
+        // would be the only place those values live (PR #129 review).
+        await this.reject(message, `the store rejected it (SQLSTATE ${permanent})`, shapeOf(result.data));
         return;
       }
       // A connection failure is ours, not the message's, and it passes: let the broker redeliver.
@@ -176,8 +180,9 @@ const SHAPE_MAX_DEPTH = 4;
 // as caller-controlled as a value: `{ "Bearer eyJ...": "x" }` put the token in the body as a key
 // even once the values had been reduced to types (PR #129 review). Truncating an unsafe key is no
 // good either - 40 characters of a token is still 40 characters of a token - so it is replaced
-// whole, by its position and length.
-const SAFE_KEY = /^[A-Za-z0-9_.-]{1,40}$/;
+// whole, by its position and length. Same rule and same replacement as line.schema.ts and the
+// shipper, so one bad name reads the same wherever it surfaces.
+const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 function safeKey(key: string, index: number): string {
   return SAFE_KEY.test(key) ? key : `[key ${index}: ${key.length} chars]`;
@@ -217,18 +222,6 @@ function shapeOf(parsed: unknown): string | null {
   try {
     // Object.entries runs enumerable getters, so a hostile payload can throw in here.
     return JSON.stringify(describeShape(parsed));
-  } catch {
-    return null;
-  }
-}
-
-function safeBody(parsed: unknown): string | null {
-  // Valid JSON need not be an object: `"Bearer eyJ..."` and `["Bearer eyJ..."]` both parse, and
-  // redaction works on field *names*, so a bare string has nothing to redact and would be copied
-  // into the dead-letter topic verbatim. No field names, no body (PR #129 review).
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  try {
-    return JSON.stringify(redactDeep(parsed));
   } catch {
     return null;
   }

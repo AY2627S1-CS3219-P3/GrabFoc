@@ -79,6 +79,29 @@ describe('toRow', () => {
     expect(row.extra).toEqual({ orderId: 17, attempt: 2 });
   });
 
+  /**
+   * Redaction only ever looked at values, so data used as a *key* reached the `extra` column
+   * untouched: `{ recipients: { "alice@nus.edu.sg": true } }` stored an address (PR #129 review).
+   */
+  it('replaces a field name that cannot be a real field name', () => {
+    const row = toRow(parse({ ...valid, recipients: { 'alice@nus.edu.sg': true } }).data!);
+    const extra = row.extra as { recipients: Record<string, unknown> };
+    expect(JSON.stringify(extra)).not.toContain('alice@nus.edu.sg');
+    expect(Object.keys(extra.recipients)[0]).toMatch(/^\[key \d+: \d+ chars\]$/);
+    // The value under it is harmless and still useful.
+    expect(Object.values(extra.recipients)[0]).toBe(true);
+  });
+
+  it('replaces a top-level field name that is really data', () => {
+    const row = toRow(parse({ ...valid, 'alice@nus.edu.sg': 'x' }).data!);
+    expect(JSON.stringify(row.extra)).not.toContain('alice@nus.edu.sg');
+  });
+
+  it('keeps ordinary field names, including the punctuation a producer uses', () => {
+    const row = toRow(parse({ ...valid, orderId: 17, 'req.path': '/x', 'x-source': 'kafka' }).data!);
+    expect(row.extra).toEqual({ orderId: 17, 'req.path': '/x', 'x-source': 'kafka' });
+  });
+
   it('leaves extra null when a line carries nothing beyond the columns', () => {
     expect(toRow(parse(valid).data!).extra).toBeNull();
   });
@@ -142,6 +165,26 @@ describe('the query parameters', () => {
   it.each(['service', 'event', 'userId'])('rejects a NUL byte in the %s filter', (field) => {
     expect(logQuerySchema.safeParse({ [field]: `a${String.fromCharCode(0)}b` }).success).toBe(false);
   });
+
+  /**
+   * The inbound schema is lax on purpose, so a line whose id looks odd is still recorded. The
+   * filter was stricter, so exactly those records could not be searched for - the id an admin is
+   * most likely to be chasing is the strange one (PR #129 review).
+   */
+  it.each(['trace+1', 'a'.repeat(150), 'trace 1', 'trace/1'])(
+    'accepts the stored request id %#, because the store accepted it',
+    (id) => {
+      expect(inboundLineSchema.safeParse({ ...valid, requestId: id }).success).toBe(true);
+      expect(logQuerySchema.safeParse({ requestId: id }).success).toBe(true);
+    },
+  );
+
+  it.each(['service', 'event', 'userId', 'requestId'])(
+    'rejects a control byte in the %s filter',
+    (field) => {
+      expect(logQuerySchema.safeParse({ [field]: `a${String.fromCharCode(31)}b` }).success).toBe(false);
+    },
+  );
 
   it('rejects an unknown filter rather than ignoring it', () => {
     expect(logQuerySchema.safeParse({ serivce: 'supplier' }).success).toBe(false);

@@ -12,6 +12,9 @@
  * Scope: After the third review round on PR #129: store a line whose requestId does not match
  *        the service-side pattern rather than dropping it, match sensitive names as substrings,
  *        and bound `page` so an offset cannot overflow the database.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: After the seventh review round on PR #129: sanitise field *names* as well as
+ *        values, and let the requestId filter accept every id the store accepts.
  * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
@@ -129,6 +132,16 @@ export interface LineRow {
 }
 
 const REDACTED = '[REDACTED]';
+// A field name a producer would plausibly write. A key is as caller-controlled as a value, and
+// redaction only ever looked at values - so `{ recipients: { "alice@nus.edu.sg": true } }` put an
+// address in the `extra` column with nothing flagged (PR #129 review). An unsafe name is replaced
+// whole rather than truncated, since half an address or half a token is still half too much. The
+// same rule lives in the shipper and in the dead-letter shape; the three must agree.
+const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
+
+function safeKey(key: string, index: number): string {
+  return SAFE_KEY.test(key) ? key : `[key ${index}: ${key.length} chars]`;
+}
 const TRUNCATED = '[TRUNCATED]';
 const MAX_DEPTH = 6;
 
@@ -144,10 +157,10 @@ export function redactDeep(value: unknown, depth = 0): unknown {
   if (depth > MAX_DEPTH) return TRUNCATED;
   if (Array.isArray(value)) return value.map((item) => redactDeep(item, depth + 1));
   const out: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof item === 'function') continue;
-    out[key] = neverStore(key) ? REDACTED : redactDeep(item, depth + 1);
-  }
+  Object.entries(value as Record<string, unknown>).forEach(([key, item], index) => {
+    if (typeof item === 'function') return;
+    out[safeKey(key, index)] = neverStore(key) ? REDACTED : redactDeep(item, depth + 1);
+  });
   return out;
 }
 
@@ -155,10 +168,10 @@ export function redactDeep(value: unknown, depth = 0): unknown {
 function extraOf(line: InboundLine): Record<string, unknown> | null {
   const known = new Set<string>(KNOWN_FIELDS);
   const extra: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(line)) {
-    if (known.has(key)) continue;
-    extra[key] = neverStore(key) ? REDACTED : redactDeep(value);
-  }
+  Object.entries(line).forEach(([key, value], index) => {
+    if (known.has(key)) return;
+    extra[safeKey(key, index)] = neverStore(key) ? REDACTED : redactDeep(value);
+  });
   return Object.keys(extra).length ? extra : null;
 }
 
@@ -209,7 +222,11 @@ const positiveInt = z.coerce.number().int().positive();
 /** Query parameters for GET /logs. Strict: an unknown filter is a typo, not a wildcard. */
 export const logQuerySchema = z
   .object({
-    requestId: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional(),
+    // The same rule the inbound schema applies, deliberately: that one is lax on purpose, so a
+    // line whose id looks odd is still recorded - and an id that can be stored has to be
+    // searchable, or the one record an admin is looking for is the one they cannot reach
+    // (PR #129 review).
+    requestId: plainText(200).optional(),
     service: plainText(40).optional(),
     event: plainText(60).optional(),
     userId: plainText(100).optional(),

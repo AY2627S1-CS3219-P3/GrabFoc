@@ -35,6 +35,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-25
  * Scope: Call Date.prototype.toISOString rather than the value's own, so an override cannot
  *        run after redaction (PR #145 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: After the seventh review round on PR #129: sanitise field *names* as well as
+ *        values, and bound the buffer in bytes as well as in lines.
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -96,6 +99,14 @@ export interface ShipperOptions {
   publisher?: LinePublisher;
   /** Lines held while a publish is in flight. Beyond this, lines are dropped. */
   maxBuffer?: number;
+  /**
+   * Bytes held while a publish is in flight, across all buffered lines. A count alone is not a
+   * bound: 1,000 lines carrying a megabyte of metadata each is a gigabyte held by the component
+   * whose whole purpose is not to disrupt the service it logs for (PR #129 review).
+   */
+  maxBufferBytes?: number;
+  /** A single line larger than this is written to stdout but never buffered. */
+  maxLineBytes?: number;
   /** How often the buffer is drained, in milliseconds. */
   flushMs?: number;
   /** Where the line goes locally. Replaced in tests. */
@@ -139,6 +150,16 @@ const NEVER_LOG = [
 
 const REDACTED = '[REDACTED]';
 const TRUNCATED = '[TRUNCATED]';
+// A field name a caller would plausibly write. Only values were ever redacted, so a caller passing
+// `{ recipients: { 'alice@nus.edu.sg': true } }` shipped an address as a field name with nothing
+// flagged (PR #129 review). An unsafe name is replaced whole, not truncated: half an address is
+// still half an address. The same rule is in the logging service's line.schema.ts and in its
+// dead-letter shape, and the three must agree.
+const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
+
+function safeKey(key: string, index: number): string {
+  return SAFE_KEY.test(key) ? key : `[key ${index}: ${key.length} chars]`;
+}
 const MAX_DEPTH = 6;
 
 /**
@@ -173,13 +194,13 @@ export function redactFields(value: unknown, depth = 0): unknown {
   if (value instanceof Date) return Date.prototype.toISOString.call(value);
   if (Array.isArray(value)) return value.map((item) => serialisable(redactFields(item, depth + 1)));
   const out: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+  Object.entries(value as Record<string, unknown>).forEach(([key, item], index) => {
     // A function is dropped. JSON.stringify ignores functions anyway, except an own `toJSON`,
     // which it calls instead of reading the object — so copying one across would let it return
     // whatever it liked, unredacted, including a replacement for the whole envelope.
-    if (typeof item === 'function') continue;
-    out[key] = isSensitive(key) ? REDACTED : serialisable(redactFields(item, depth + 1));
-  }
+    if (typeof item === 'function') return;
+    out[safeKey(key, index)] = isSensitive(key) ? REDACTED : serialisable(redactFields(item, depth + 1));
+  });
   return out;
 }
 
@@ -198,12 +219,20 @@ function serialisable(value: unknown): unknown {
 export class LogShipper {
   private readonly buffer: OutboundLine[] = [];
   private readonly maxBuffer: number;
+  private readonly maxBufferBytes: number;
+  private readonly maxLineBytes: number;
+  /** Bytes currently buffered. Kept as a running total rather than recomputed per emit. */
+  private bufferedBytes = 0;
   private timer?: NodeJS.Timeout;
   private publishing?: Promise<void>;
-  readonly counts = { emitted: 0, dropped: 0, failed: 0 };
+  readonly counts = { emitted: 0, dropped: 0, oversize: 0, failed: 0 };
 
   constructor(private readonly options: ShipperOptions) {
     this.maxBuffer = options.maxBuffer ?? 1000;
+    // 4 MB and 64 KB: a log line that does not fit in 64 KB is a bug in the caller, and 4 MB is
+    // small enough that holding it through a broker outage is not what takes a service down.
+    this.maxBufferBytes = options.maxBufferBytes ?? 4 * 1024 * 1024;
+    this.maxLineBytes = options.maxLineBytes ?? 64 * 1024;
     if (options.publisher) {
       this.timer = setInterval(() => void this.flush(), options.flushMs ?? 1000);
       // Never hold the process open just to ship a log line.
@@ -227,11 +256,19 @@ export class LogShipper {
     (this.options.write ?? console.log)(payload);
 
     if (!this.options.publisher) return;
-    if (this.buffer.length >= this.maxBuffer) {
+    const bytes = Buffer.byteLength(payload);
+    // Counted apart from an ordinary drop: a line too big to ship at all says something about the
+    // caller, while a full buffer says something about the broker.
+    if (bytes > this.maxLineBytes) {
+      this.counts.oversize += 1;
+      return;
+    }
+    if (this.buffer.length >= this.maxBuffer || this.bufferedBytes + bytes > this.maxBufferBytes) {
       this.counts.dropped += 1;
       return;
     }
     this.buffer.push({ key, value: payload });
+    this.bufferedBytes += bytes;
   }
 
   /**
@@ -294,6 +331,9 @@ export class LogShipper {
     if (this.publishing) return this.publishing;
     if (!this.options.publisher || !this.buffer.length) return;
     const batch = this.buffer.splice(0, this.buffer.length);
+    // The buffer is what holds the memory; once the batch is out of it the budget is free again,
+    // whether or not the publish then succeeds. Lines are never put back - they are on stdout.
+    this.bufferedBytes = 0;
     const publisher = this.options.publisher;
     const pending = (async () => {
       try {

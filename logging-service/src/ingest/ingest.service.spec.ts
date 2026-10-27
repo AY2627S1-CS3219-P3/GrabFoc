@@ -306,6 +306,19 @@ describe('handling a message', () => {
    * on the same message and hold up every other service's logging behind it. There is no
    * dead-letter topic for it, deliberately — see "Ingest" in AGENTS.md.
    */
+  /**
+   * A schema-valid line can still hold a credential in a field no name filter knows - `note:
+   * "Bearer ..."` - and a line the store refused is not stored anywhere, so the dead-letter topic
+   * would be the only place those values lived (PR #129 review).
+   */
+  it('parks a shape, not values, when the store rejects a valid line', async () => {
+    lines.insert.mockRejectedValue(Object.assign(new Error('rejected'), { code: '22001' }));
+    await consumer.deliver(line({ note: 'Bearer eyJhbGciOiJSUzI1NiJ9.must-not-appear' }));
+    expect(parked[0].body).not.toContain('must-not-appear');
+    expect(parked[0].body).toContain('note');
+    expect(parked[0].reason).toContain('SQLSTATE 22001');
+  });
+
   it.each([
     ['a check constraint', '23514'],
     ['a value too long for its column', '22001'],
