@@ -216,6 +216,19 @@ appears as its position and length rather than its name, and a field named `__pr
 only because the redacted copy has a null prototype — on an ordinary object that assignment runs
 the prototype setter, and the field disappears with its neighbours intact.
 
+**Bounds the store will accept.** The shipper also brings every field the Logging Service bounds
+inside that bound before writing the line: `path` at 400 characters, `event` at 60, `requestId` at
+200, `userId` at 100, `method` at 10, `service` at 40, plus the two enums for `level` and `role`. A
+value outside any one of them does not cost the field — `inboundLineSchema` refuses the **whole
+line** and ingest parks it — so a request to `/locations/<500 characters>` would leave its
+`access_denied` line on this container's stdout and keep it out of the searchable store, which is
+where anyone looking for it would look (PR #129 review). This service is what makes that reachable:
+`path` comes from the URL, so a caller chooses its length. `event` and `path` are cut and marked;
+an id, method, role, status or duration outside the bound is left out instead, because an id cut to
+length is some other request's id. The `requestId` this service accepts from `x-request-id` is
+already capped at 128 characters, so it stays inside the store's 200 either way. A line this
+happened to increments `log.counts.clamped`.
+
 **Correlation.** Each of those lines carries a `requestId`, which is how a line here is matched to
 the gateway's `request_completed` line for the same request:
 

@@ -3,7 +3,7 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-27
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-28
 Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23, 2026-10-25 and the two
   dated 2026-10-27 from the prompts and work
   in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
@@ -15,6 +15,17 @@ Author review: Cole Lin, read and approved.
 
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-28 — Re-syncing the shipper for a bound only the store was applying (PR #157)
+
+- Tool and mode: Claude Code (Claude Opus 5), review and debug.
+- Usage scenario: A finding on PR #129 showed that the shipper bounded no field at all while the log store bounds seven of them plus two enums, so one over-long field kept a whole line out of the searchable store. This service's copy of the shipper carries the same code, and this service is what makes it reachable: `path` comes from the URL, so a caller picks its length.
+- Prompts (exact):
+  - "is 129 ready?"
+  - "yes do the round"
+- Key response: Re-copied the canonical shipper, which now brings every field the store bounds inside that bound before writing the line. For this service the live case is `path`: a request to `/locations/` followed by 500 characters produces an `access_denied` line the store would have refused outright, leaving the only record on this container's stdout. `path` and `event` are cut and marked; ids, `method`, `role`, `status` and `durationMs` are left out instead. The `requestId` this service accepts from `x-request-id` is capped at 128 characters already, so it was never the exposed one.
+- What I changed or rejected: Took the canonical copy wholesale rather than hand-applying the change here, and checked the two bodies are byte-identical afterwards — the file's own contract is that a change there is repeated here, and the last five rounds of hardening are exactly what a hand-applied patch loses. The reasoning behind each clamp, and the one finding I disagreed with, are recorded in the entry for PR #129 rather than repeated here.
+- Verification: `npm test` in the Supplier Service (229 passed) and `tsc --noEmit` clean. The behaviour itself is covered by the canonical copy's spec in the Logging Service, which checks a written line against `inboundLineSchema` itself rather than against a copy of its numbers; 27 of those cases fail against the unfixed shipper.
 
 ### 2026-10-27 — Sixth round: a regression of my own, and three more on the logging PR (PRs #129 and #157)
 
