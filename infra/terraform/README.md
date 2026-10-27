@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 8).
 Author review: Pending Jian Bing's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Checks through /gateway; the first-apply gateway redeploy (deploy part 1, #141).
+Author review: Pending Jian Bing's review.
 -->
 
 # AWS deployment runbook
@@ -71,18 +74,27 @@ the one-shot `kafka-init` (topics) and `order-migrate` (Order's tables) run insi
 Order service tasks, which start only after they succeed. Services that start before their database
 or Kafka is ready fail their health check or exit, and ECS restarts them until they come up.
 
+**Only on an environment's very first apply:** the gateway is created before the frontend, so it
+can't reach it yet (a Service Connect client only learns the names that existed when it started).
+Once every service is running, redeploy the gateway once:
+
+```bash
+aws ecs update-service --cluster foc-<env> --service api-gateway --force-new-deployment
+```
+
 ## 5. Check it
 
 | Check | Expected |
 |---|---|
 | `aws ecs describe-services --cluster foc-staging --services $(aws ecs list-services --cluster foc-staging --query 'serviceArns[]' --output text)` | every service `runningCount: 1` |
-| `curl -s "$(terraform output -raw url)/.well-known/jwks.json"` | JSON with a `keys` array (works before deploy part 1) |
+| `curl -s "$(terraform output -raw url)/gateway/.well-known/jwks.json"` | JSON with a `keys` array |
+| `curl -s -o /dev/null -w '%{http_code}' "$(terraform output -raw url)/gateway/locations"` | `401` (no token) |
+| The URL in a browser | the sign-in page |
 | `curl -m 5 http://<the server's public IP>/` | times out: only CloudFront may reach the server |
 | In a shell on the server: `df -h /data; ls -ln /data` | the volume is mounted; `kafka` is owned by uid 1000 |
 
-Until deploy part 1 (#141) adds Envoy's edge listener and the `/gateway` prefix, only API paths work
-through CloudFront and the website answers "Browser not supported". Then set
-`edge_container_port = 80` in `<env>.tfvars`.
+CloudFront reaches Envoy's edge listener (container port 8080, `edge_container_port`): `/gateway/*`
+goes to the API, everything else to the website, and only with CloudFront's `X-Origin-Key`.
 
 ## Day to day
 
