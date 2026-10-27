@@ -101,6 +101,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 Scope: Wrote the 2026-10-25 AWS infrastructure entry (deploy part 2) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Wrote the 2026-10-26 staging apply and 2026-10-27 edge routing (deploy part 1) entries from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -108,6 +111,86 @@ Author review: pending — Jian Bing to record what he checked.
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+
+### 2026-10-27 — Edge routing: the website through CloudFront, deploy part 1 (issue #141)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain, generate
+**Files:** `api-gateway/envoy/render.py`, `api-gateway/envoy/frontend.lua`, `api-gateway/Dockerfile`,
+`api-gateway/test/**`, `api-gateway/postman/gateway.postman_collection.json`, `api-gateway/README.md`,
+`api-gateway/envoy/README.md`, `frontend/app/not-found.tsx`, `frontend/test/routes.test.mjs`,
+`infra/terraform/**`, the plan `docs/superpowers/plans/2026-10-27-deploy-part1-edge-routing.md`
+
+**Scenario:** The staging CloudFront URL answered `{"error":"Not found"}` and the server's own address
+timed out. Claude explained that both were expected: the address is closed to everyone but CloudFront,
+and Envoy had no route to the frontend yet. We then planned and built part 1: Envoy's edge listener
+(checks CloudFront's `X-Origin-Key`, sends `/gateway/*` to the API and everything else to the
+frontend), a not-found page, Postman's `baseUrl` ending in `/gateway`, and the frontend starting after
+the gateway on ECS. Claude implemented the plan test-first; a separate Claude reviewer checked the
+whole branch.
+
+**Prompts (exact, in order):**
+> [Image #7] [Image #8] seems to not be working,  help figure it out
+
+> wait so the frontend isnt routed right now?
+
+> caan we make it such that it will call localhost:3003 on lcoal and then have an environemnt vairalve to the live clodufornt url and the frontetend calls that in our aws cloud, and then i think we send / to main is reasonable, isnt tha thwo msot website owrk, also lets make a 404 page for the non-api path if they dont exist, or like custom 401 atc apges
+
+> jie yang has read thru and approved these changes
+
+> yes
+
+**What it produced:** The plan and 5 implementation commits (route-renderer, Lua, frontend and
+Terraform changes, each with tests). Claude's own calls are listed in the PR description.
+**What I changed or rejected:** Proposed an environment variable for the gateway URL and `/` going to
+the frontend; Claude showed the variable already exists (`FRONTEND_GATEWAY_URL`, used server-side) and
+should stay pointed at the gateway inside the server, not the CloudFront URL. Dropped a separate 401
+page, because every page already sends signed-out users to `/signin`. Jie Yang approved the gateway
+changes.
+**Verification:** Pending — Jian Bing to record what he checked.
+
+### 2026-10-26 — First staging apply (deploy part 2, PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain
+**Files:** `infra/terraform/**`, `infra/scripts/**`, `api-gateway/envoy/render.py` (IPv4 upstreams)
+
+**Scenario:** Applied deploy part 2 to AWS: the account-wide stack, then staging. Claude explained how
+to fill the secrets file and fixed what only the real deploy showed: the first server launch failing
+while its role propagated, services created at the same moment not finding each other's names, and
+Envoy picking an IPv6 address nothing answers on.
+
+**Prompts (exact, in order; button choices in brackets):**
+> lets apply first
+
+> sorry continue
+
+> [Budget $100; alert email e1155372@u.nus.edu; Apply]
+
+> how do i ge tthe 4 env secrets, and docker is runnign
+
+> its empty right now, i need to get it
+
+> how do i get it, like what should the email be
+
+> does it need to be a business gmail account?
+
+> oh okay i meant to use e1155372@u.nus.edu
+
+> done
+
+> done
+
+> [Apply]
+
+> [I'll fix it, tag Jie Yang]
+
+> [Apply]
+
+**What it produced:** The live staging environment at its CloudFront URL, plus three fix commits on
+PR #146 (`wait_for_capacity_timeout`, layered ECS services, Envoy `V4_PREFERRED`).
+**What I changed or rejected:** Set the $100 budget and the alert email. Rotated the Gmail app password
+after pasting it in chat by mistake. Chose to fix the gateway's IPv6 issue myself and ask Jie Yang to
+review it.
+**Verification:** Pending — Jian Bing to record what he checked.
 
 ### 2026-10-25 — AWS infrastructure in Terraform, deploy part 2 (issue #142)
 
