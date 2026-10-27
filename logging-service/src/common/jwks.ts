@@ -137,16 +137,25 @@ async function keysFor(kid: string): Promise<Jwk | undefined> {
   }
 
   let key = cachedKeys.find((k) => k.kid === kid);
-  // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
-  if (!key && !justRefreshed && Date.now() - lastMissAt > MIN_REFETCH_MS) {
-    await refreshKeys();
-    // Recorded only once the endpoint has answered. Set before the call, one failed refresh
-    // turned into 401s from the stale cache for the next MIN_REFETCH_MS even after the
-    // endpoint came back - and a 401 says the administrator's token is bad, which is a lie.
-    // A refresh that throws propagates as 503 instead, and concurrent requests share one
-    // in-flight fetch, so not recording the miss here cannot become a storm (PR #129 review).
-    lastMissAt = Date.now();
-    key = cachedKeys.find((k) => k.kid === kid);
+  if (!key) {
+    if (justRefreshed) {
+      // The fetch above is the endpoint's own answer about this kid, so it spends the allowance
+      // too. Skipping the branch without recording the miss left the gate open on the *next*
+      // request: a cold cache plus an unknown kid meant one JWKS request per incoming request for
+      // as long as the invalid tokens kept arriving - the opposite of the limit this constant
+      // documents (PR #157 review, same code as the Supplier Service's copy).
+      lastMissAt = Date.now();
+    } else if (Date.now() - lastMissAt > MIN_REFETCH_MS) {
+      // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
+      await refreshKeys();
+      // Recorded only once the endpoint has answered. Set before the call, one failed refresh
+      // turned into 401s from the stale cache for the next MIN_REFETCH_MS even after the
+      // endpoint came back - and a 401 says the administrator's token is bad, which is a lie.
+      // A refresh that throws propagates as 503 instead, and concurrent requests share one
+      // in-flight fetch, so not recording the miss here cannot become a storm (PR #129 review).
+      lastMissAt = Date.now();
+      key = cachedKeys.find((k) => k.kid === kid);
+    }
   }
   return key;
 }

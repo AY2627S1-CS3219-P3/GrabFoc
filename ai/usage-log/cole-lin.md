@@ -16,6 +16,16 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-27 — Sixth round: a regression of my own, and three more on the logging PR (PRs #129 and #157)
+
+- Tool and mode: Claude Code (Claude Opus 5), review and debug.
+- Usage scenario: Four findings across the two open PRs. One was a regression from the fix I had approved an hour earlier, which is the part worth recording: the guard added to stop a double fetch skipped the branch that recorded the miss, so the rate limit it sat next to stopped being a limit at all.
+- Prompts (exact):
+  - "yes do the round"
+- Key response: The unknown-`kid` fetch now spends the rate-limit allowance wherever it happens, including the cold-cache fetch that was skipping it — sustained invalid tokens were causing one JWKS request per incoming request instead of one per 30 seconds. A field named `__proto__` is no longer lost: assigning that name to an ordinary object runs `Object.prototype`'s setter rather than defining a property, so the field disappeared from a line with every neighbour intact, and all three walkers (the shipper, the stored `extra` column and the dead-letter shape) now build their output with a null prototype *and* replace the name. Display, given and family names and `phone` joined both redaction lists, which had covered credentials only. And the logging README promised a health endpoint that does not exist.
+- What I changed or rejected: Rejected adding the health endpoint: no service in the project has one, Compose's healthcheck is on the database, and inventing an unauthenticated route in this PR would settle a convention for six services on my own. The claim is gone, the README says what to use instead, and `AGENTS.md` records the liveness route as an [Open] item for the team. On `__proto__` I did both available fixes rather than choosing, because they do different jobs — the null prototype makes the loss impossible, while replacing the name is what keeps the shipper and the store in agreement, since the inbound schema's object is built by Zod, which drops that key no matter what we do. Rejected adding a bare `name` to the redaction list: it would take `eventName` and the location labels, which are public catalogue data.
+- Verification: `npm test` in the logging service (218 passed) and in the Supplier Service (229 passed), both builds clean. The new tests were run against the unfixed code first: 18 fail in the logging service and 1 in the Supplier Service, including the one that proves the JWKS rate limit is still a limit and not a lockout. The shipper's body was diffed against the canonical copy afterwards to confirm the two are still identical.
+
 ### 2026-10-27 — Fifth review round: the asymmetry my own fixes created (PRs #129 and #157)
 
 - Tool and mode: Claude Code (Claude Opus 5), review and debug.

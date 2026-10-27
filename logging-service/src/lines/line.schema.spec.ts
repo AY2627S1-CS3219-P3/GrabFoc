@@ -97,6 +97,22 @@ describe('toRow', () => {
     expect(JSON.stringify(row.extra)).not.toContain('alice@nus.edu.sg');
   });
 
+  /**
+   * `extra['__proto__'] = value` runs Object.prototype's setter instead of defining a property, so
+   * a field with that name vanished from the stored row while its neighbours were kept - the worst
+   * way to lose one from a record an admin queries for audit (PR #129 review).
+   */
+  it('keeps the value of a field named __proto__, under a replaced name', () => {
+    // Through JSON.parse: writing `__proto__` in a literal sets the prototype, not a field.
+    const row = toRow(parse({ ...valid, ...JSON.parse('{"wrapper":{"__proto__":"kept","keep":1}}') }).data!);
+    const wrapper = (row.extra as { wrapper: Record<string, unknown> }).wrapper;
+    expect(Object.values(wrapper)).toContain('kept');
+    expect(wrapper.keep).toBe(1);
+    // Replaced, not kept: the inbound schema builds its own object through Zod, which drops that
+    // name outright, so a producer must never be told the name itself survives.
+    expect(Object.keys(wrapper)).not.toContain('__proto__');
+  });
+
   it('keeps ordinary field names, including the punctuation a producer uses', () => {
     const row = toRow(parse({ ...valid, orderId: 17, 'req.path': '/x', 'x-source': 'kafka' }).data!);
     expect(row.extra).toEqual({ orderId: 17, 'req.path': '/x', 'x-source': 'kafka' });
@@ -143,6 +159,15 @@ describe('toRow', () => {
   // Listing every compound anyone might invent is not possible, so the match is a substring.
   it.each(['adminToken', 'passwordResetToken', 'apiSecret', 'customerEmail', 'userEmailAddress'])(
     'never stores a compound field called %s',
+    (field) => {
+      const row = toRow(parse({ ...valid, [field]: 'leak-me' }).data!);
+      expect(JSON.stringify(row)).not.toContain('leak-me');
+    },
+  );
+
+  // Personal data rather than credentials, which is all the list covered (PR #129 review).
+  it.each(['displayName', 'display_name', 'fullName', 'firstName', 'lastName', 'phone', 'phoneNumber'])(
+    'never stores a personal field called %s',
     (field) => {
       const row = toRow(parse({ ...valid, [field]: 'leak-me' }).data!);
       expect(JSON.stringify(row)).not.toContain('leak-me');

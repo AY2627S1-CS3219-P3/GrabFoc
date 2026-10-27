@@ -39,6 +39,10 @@
  * Scope: After the seventh review round on PR #129: sanitise field *names* as well as
  *        values, and bound the buffer in bytes as well as in lines.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: A field named `__proto__` no longer disappears from a line, and personal names -
+ *        display, given and family names, and `phone` - are redacted (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -143,6 +147,14 @@ const NEVER_LOG = [
   'emailhash',
   'mobile',
   'mobilenumber',
+  // Personal data rather than credentials, and just as unloggable: a display name identifies a
+  // student on sight, and `phone` sat outside `mobile` (root AGENTS.md: never log unmasked
+  // personal data). Found on the ingest side of this list in the PR #129 review.
+  'phone',
+  'displayname',
+  'fullname',
+  'firstname',
+  'lastname',
   'balance',
   'creditbalance',
   'credits',
@@ -158,7 +170,12 @@ const TRUNCATED = '[TRUNCATED]';
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 function safeKey(key: string, index: number): string {
-  return SAFE_KEY.test(key) ? key : `[key ${index}: ${key.length} chars]`;
+  // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
+  // object runs Object.prototype's setter instead of defining a property, and the field is lost.
+  // The objects built below have null prototypes, so nothing is lost there - but the store's
+  // inbound schema builds its own object through Zod, which does drop that name, so it is
+  // replaced here rather than shipped and the two sides cannot disagree (PR #129 review).
+  return SAFE_KEY.test(key) && key !== '__proto__' ? key : `[key ${index}: ${key.length} chars]`;
 }
 const MAX_DEPTH = 6;
 
@@ -193,7 +210,13 @@ export function redactFields(value: unknown, depth = 0): unknown {
   // an innocent-looking field (PR #145 review).
   if (value instanceof Date) return Date.prototype.toISOString.call(value);
   if (Array.isArray(value)) return value.map((item) => serialisable(redactFields(item, depth + 1)));
-  const out: Record<string, unknown> = {};
+  // Null-prototype, so a field named `__proto__` becomes an own property like any other. On a
+  // plain `{}`, `out['__proto__'] = item` runs Object.prototype's setter instead of defining a
+  // property, so that field vanished from the line - silently, with every neighbouring field
+  // intact, which is the worst way to lose one from a record kept for audit (PR #129 review).
+  // JSON.stringify and object spread both read own enumerable properties, so the envelope below
+  // is built from this unchanged, and no caller's field name can reach a prototype.
+  const out: Record<string, unknown> = Object.create(null);
   Object.entries(value as Record<string, unknown>).forEach(([key, item], index) => {
     // A function is dropped. JSON.stringify ignores functions anyway, except an own `toJSON`,
     // which it calls instead of reading the object — so copying one across would let it return

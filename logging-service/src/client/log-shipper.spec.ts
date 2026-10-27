@@ -211,6 +211,22 @@ describe('redaction cannot be worked around', () => {
     });
   });
 
+  /**
+   * A field named `__proto__` used to disappear. `out['__proto__'] = item` runs
+   * Object.prototype's setter instead of defining a property, so that one field was dropped while
+   * every neighbour survived - silently, from a line that is kept for audit (PR #129 review).
+   */
+  it.each([
+    ['nested in a field', '{"wrapper":{"__proto__":"kept","keep":1}}'],
+    ['at the top level', '{"wrapper":{"keep":1},"__proto__":"kept"}'],
+  ])('keeps the value of a field named __proto__ %s', (_where, json) => {
+    // Through JSON.parse: writing `__proto__` in a literal sets the prototype instead of a field,
+    // which is the very behaviour under test.
+    shipper().emit({ level: 'info', event: 'odd', ...JSON.parse(json) });
+    expect(written[0]).toContain('kept');
+    expect(JSON.parse(written[0]).wrapper.keep).toBe(1);
+  });
+
   it('keeps the field names a caller would actually write', () => {
     shipper().emit({ level: 'info', event: 'e', orderId: 17, 'req.path': '/x', 'x-source': 'k' });
     const line = JSON.parse(written[0]);
@@ -241,6 +257,16 @@ describe('compound sensitive names', () => {
     'redacts a field called %s',
     (field) => {
       shipper().emit({ level: 'warn', event: 'denied', [field]: 'must-not-appear' });
+      expect(written[0]).not.toContain('must-not-appear');
+    },
+  );
+
+  // Personal data rather than credentials: the list covered only the latter, so a display name
+  // reached stdout, Kafka and the store in the clear (PR #129 review).
+  it.each(['displayName', 'display_name', 'fullName', 'firstName', 'lastName', 'phone', 'phoneNumber'])(
+    'redacts the personal field %s',
+    (field) => {
+      shipper().emit({ level: 'info', event: 'profile', [field]: 'must-not-appear' });
       expect(written[0]).not.toContain('must-not-appear');
     },
   );

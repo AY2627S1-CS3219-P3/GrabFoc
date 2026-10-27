@@ -3,6 +3,10 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
 Scope: Generated this README from the plan Cole Lin approved on 2026-10-16.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-23 to 2026-10-27
+Scope: Added the standalone-run caveat about LOGGING_JWKS_URL, then removed the claim that this
+  service has a health endpoint, which it does not (both PR #129 review).
+Author review: Cole Lin, read and approved.
 -->
 
 # Logging Service
@@ -38,7 +42,11 @@ fallback here, every `GET /logs` answers 503 on its first key fetch. Set `LOGGIN
 LOGGING_JWKS_URL=http://host.docker.internal:3001/.well-known/jwks.json
 ```
 
-Ingest and the health endpoint do not need it; only reading the store does.
+Only reading the store needs it; ingest does not. There is **no health endpoint** — nothing in
+this service answers without a token, so the way to see it is up is that `GET /logs` answers at all
+(401 without a token, 503 when it cannot reach the JWKS). The Compose healthcheck is on the
+database. No service in the project has a liveness route yet; adding one is a convention for all
+six and belongs to the team, not to this PR.
 
 ## Ingest
 

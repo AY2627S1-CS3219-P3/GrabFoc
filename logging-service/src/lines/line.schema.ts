@@ -16,6 +16,10 @@
  * Scope: After the seventh review round on PR #129: sanitise field *names* as well as
  *        values, and let the requestId filter accept every id the store accepts.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: A field named `__proto__` is no longer lost, and personal names - display, given and
+ *        family names, and `phone` - are redacted (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -64,6 +68,14 @@ const NEVER_STORE = [
   'email',
   'mobile',
   'mobilenumber',
+  // Personal data rather than credentials, and just as unstorable: a display name identifies a
+  // student on sight, and `phone` sat outside `mobile` (root AGENTS.md: never log unmasked
+  // personal data). The same names are in the shipper's list (PR #129 review).
+  'phone',
+  'displayname',
+  'fullname',
+  'firstname',
+  'lastname',
   'balance',
   'credits',
 ];
@@ -149,7 +161,12 @@ const REDACTED = '[REDACTED]';
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 function safeKey(key: string, index: number): string {
-  return SAFE_KEY.test(key) ? key : `[key ${index}: ${key.length} chars]`;
+  // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
+  // object runs Object.prototype's setter instead of defining a property, and the field is lost.
+  // The objects built below have null prototypes, so nothing is lost there - but the store's
+  // inbound schema builds its own object through Zod, which does drop that name, so it is
+  // replaced here rather than shipped and the two sides cannot disagree (PR #129 review).
+  return SAFE_KEY.test(key) && key !== '__proto__' ? key : `[key ${index}: ${key.length} chars]`;
 }
 const TRUNCATED = '[TRUNCATED]';
 const MAX_DEPTH = 6;
@@ -165,7 +182,12 @@ export function redactDeep(value: unknown, depth = 0): unknown {
   // than this would be stored verbatim, and a cycle would reach the JSON serialiser (PR #130).
   if (depth > MAX_DEPTH) return TRUNCATED;
   if (Array.isArray(value)) return value.map((item) => redactDeep(item, depth + 1));
-  const out: Record<string, unknown> = {};
+  // Null-prototype, so a field name can only ever define a property on this object. `__proto__`
+  // is the one name for which `out[key] = item` does something else - it runs Object.prototype's
+  // setter - and the field was then missing from the stored row with its neighbours intact
+  // (PR #129 review). `safeKey` replaces that name too; this is what makes the loss structurally
+  // impossible rather than dependent on the list staying right.
+  const out: Record<string, unknown> = Object.create(null);
   Object.entries(value as Record<string, unknown>).forEach(([key, item], index) => {
     if (typeof item === 'function') return;
     out[safeKey(key, index)] = neverStore(key) ? REDACTED : redactDeep(item, depth + 1);
@@ -176,7 +198,8 @@ export function redactDeep(value: unknown, depth = 0): unknown {
 /** Everything the columns don't cover, with the names that must never be stored replaced. */
 function extraOf(line: InboundLine): Record<string, unknown> | null {
   const known = new Set<string>(KNOWN_FIELDS);
-  const extra: Record<string, unknown> = {};
+  // Null-prototype, for the same reason as in redactDeep above.
+  const extra: Record<string, unknown> = Object.create(null);
   Object.entries(line).forEach(([key, value], index) => {
     if (known.has(key)) return;
     extra[safeKey(key, index)] = neverStore(key) ? REDACTED : redactDeep(value);

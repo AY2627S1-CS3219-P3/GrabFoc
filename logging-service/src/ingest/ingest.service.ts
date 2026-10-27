@@ -19,6 +19,9 @@
  * Scope: Build a rejection reason from the field and the rule that failed, never from Zod's
  *        message, which quotes the value it received (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: A field named `__proto__` no longer drops out of the parked shape (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -185,7 +188,12 @@ const SHAPE_MAX_DEPTH = 4;
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 function safeKey(key: string, index: number): string {
-  return SAFE_KEY.test(key) ? key : `[key ${index}: ${key.length} chars]`;
+  // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
+  // object runs Object.prototype's setter instead of defining a property, and the field is lost.
+  // The objects built below have null prototypes, so nothing is lost there - but the store's
+  // inbound schema builds its own object through Zod, which does drop that name, so it is
+  // replaced here rather than shipped and the two sides cannot disagree (PR #129 review).
+  return SAFE_KEY.test(key) && key !== '__proto__' ? key : `[key ${index}: ${key.length} chars]`;
 }
 
 /**
@@ -207,7 +215,10 @@ function describeShape(value: unknown, depth = 0): unknown {
     // One element's shape stands for the array: this payload is a rejection either way.
     return value.length ? [`array(${value.length})`, describeShape(value[0], depth + 1)] : ['array(0)'];
   }
-  const out: Record<string, unknown> = {};
+  // Null-prototype, as in line.schema.ts: `out['__proto__'] = shape` on an ordinary object runs
+  // Object.prototype's setter, and that field would be missing from the shape with no sign it was
+  // ever there - in the one record that exists to say what arrived (PR #129 review).
+  const out: Record<string, unknown> = Object.create(null);
   const entries = Object.entries(value as Record<string, unknown>).slice(0, SHAPE_MAX_KEYS);
   entries.forEach(([key, inner], index) => {
     out[safeKey(key, index)] = describeShape(inner, depth + 1);

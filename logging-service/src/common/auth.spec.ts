@@ -148,6 +148,31 @@ describe('reading the log store', () => {
   });
 
   /**
+   * That one fetch is the endpoint's own answer about the kid, so it has to spend the rate-limit
+   * allowance. It did not, so the gate was still open on the *next* request: while invalid tokens
+   * kept arriving, every one of them went to the endpoint, rather than one per 30 seconds
+   * (PR #157 review, same code as this service's copy).
+   */
+  it('spends the allowance when the cold-cache fetch is itself the miss', async () => {
+    stub.fetches = 0;
+    const gone = (kid: string) => ({ Authorization: `Bearer ${signToken(makeKey(kid), { sub: 'u-1', role: 'ADMIN' })}` });
+
+    expect(await outcome(request(gone('gone-1')))).toBe(401);
+    expect(stub.fetches).toBe(1);
+
+    expect(await outcome(request(gone('gone-2')))).toBe(401);
+    expect(stub.fetches).toBe(1);
+
+    // Still a rate limit and not a lockout: a rotation is picked up once the window is over.
+    const rotated = makeKey('k-rotated');
+    stub.keys = [key, rotated];
+    jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 31 * 1000);
+    const token = { Authorization: `Bearer ${signToken(rotated, { sub: 'u-1', role: 'ADMIN' })}` };
+    expect(await outcome(request(token))).toBe('allowed');
+    expect(stub.fetches).toBe(2);
+  });
+
+  /**
    * A rotation whose first refetch fails. The miss used to be recorded before the fetch, so for
    * the next MIN_REFETCH_MS every request for the new kid skipped the endpoint and answered 401
    * from the stale cache - telling an administrator their valid token was bad (PR #129 review).

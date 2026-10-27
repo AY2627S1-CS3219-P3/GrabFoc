@@ -107,6 +107,7 @@ _Origin: AI doc, following the Supplier Service's conventions_
   sending a strange header would want. Control characters and anything over 200 characters are
   still refused.
 - `pageSize` is capped at 200. Newest first, with `line_id` breaking ties so a page boundary is stable when several lines share a millisecond.
+- **There is no health endpoint.** The guard is global, so nothing here answers without a token; `GET /logs` answering at all (401, or 503 when the JWKS is unreachable) is the liveness signal, and Compose's healthcheck is on the database. The README used to claim one existed (PR #129 review). **[Open]** a liveness route is a convention for all six services and belongs to the team.
 - Errors are Problem Details (RFC 9457), the same shape as every other service. 401, 403 and 503 match the Supplier Service exactly, including 503 when the JWKS cannot be reached **or returns a key set this service cannot use** — an empty array, or one holding a non-object. Answering 401 there would tell a valid administrator their token is bad when the truth is that we cannot check it, and would leave the cache empty so every later request refetched.
 - The database pool listens for its own `error` event. Without that, a routine PostgreSQL restart ends an idle connection, Node treats the event as uncaught and the service exits — taking ingest and the query API with it, and this Compose setup has no restart policy to bring it back.
 
@@ -131,6 +132,18 @@ _Origin: AI doc, from the plan Cole Lin approved_
   `[A-Za-z0-9_.:-]{1,64}` is replaced whole by its position and length, not truncated, since
   half an address is still half an address. The value under it is kept. The same rule is in
   the shipper, in `line.schema.ts` and in the dead-letter shape, and **the three must agree**.
+  `__proto__` is replaced too, although it matches the pattern: it is the one name for which
+  `out[key] = value` does not define a property but runs `Object.prototype`'s setter, so the
+  field was dropped while every neighbour survived — a silent loss from a record kept for audit
+  (PR #129 review). All three walkers also build their output with a **null prototype**, so that
+  loss is structurally impossible rather than dependent on the name list staying right. The
+  name is replaced as well as the prototype dropped because the inbound schema's own object is
+  built by Zod, which *does* drop that key: a line keeping the name on stdout and losing it in
+  the store is the kind of disagreement these reviews keep finding.
+- **The redaction list covers personal data, not only credentials.** `phone` and display, given
+  and family names were outside it, so a profile line put a student's name in the clear into
+  stdout, Kafka and the `extra` column (PR #129 review). `name` on its own is *not* in the list:
+  it would take `eventName` and the location labels, which are public catalogue data.
 - **A caller cannot overwrite the envelope.** Their fields are serialised first, so `lineId`,
   `ts` and `service` always win — a line claiming another service's name would make the store
   unreadable.
