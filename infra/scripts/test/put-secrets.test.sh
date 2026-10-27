@@ -2,6 +2,7 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 7): tests put-secrets.sh against a fake `aws`.
+#        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 # Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/put-secrets.test.sh   (no AWS access needed)
@@ -21,6 +22,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --name) name="$2"; shift ;;
     --value) value="$(cat "${2#file://}")"; shift ;;
+    --region) echo "$2" >> "$AWS_CALLS.region"; shift ;;
   esac
   shift
 done
@@ -71,7 +73,25 @@ check "Mailpit login is user:password" 'grep -qx "/foc/staging/MAILPIT_SMTP_AUTH
 check "quotes around a value are removed" 'grep -q "^/foc/staging/USER_JWT_PRIVATE_KEY=-----BEGIN" "$AWS_CALLS"'
 check "no secret value is printed" '! grep -qE "pg-user-pw|gmail-app-password|aes-secret|order-key" <<<"$out"'
 
-# 3. Only staging and production are accepted.
+# 3. Every call goes to the deployment region, whatever the profile's default.
+calls=$(wc -l < "$AWS_CALLS" | tr -d " ")
+check "every call pins ap-southeast-1" '[ "$(grep -cx ap-southeast-1 "$AWS_CALLS.region")" = "$calls" ]'
+
+# 4. A file saved with Windows line endings uploads the same values.
+full | sed 's/$/\r/' > "$work/repo/infra/secrets/staging.env"
+: > "$AWS_CALLS"
+FOC_REPO_ROOT="$work/repo" "$SCRIPT" staging >/dev/null 2>&1
+check "CRLF: no carriage return reaches SSM" '! grep -q $'"'"'\r'"'"' "$AWS_CALLS"'
+check "CRLF: quotes are still removed" 'grep -q "^/foc/staging/USER_JWT_PRIVATE_KEY=-----BEGIN" "$AWS_CALLS"'
+
+# 5. Database passwords are percent-encoded inside the URLs.
+full | sed 's|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=a/b?c#d@e:f%g h|' > "$work/repo/infra/secrets/staging.env"
+: > "$AWS_CALLS"
+FOC_REPO_ROOT="$work/repo" "$SCRIPT" staging >/dev/null 2>&1
+check "password is encoded in the URL" 'grep -qx "/foc/staging/USER_DATABASE_URL=postgres://foc:a%2Fb%3Fc%23d%40e%3Af%25g%20h@user-db:5432/users" "$AWS_CALLS"'
+check "the password itself is stored as written" 'grep -qx "/foc/staging/POSTGRES_PASSWORD=a/b?c#d@e:f%g h" "$AWS_CALLS"'
+
+# 6. Only staging and production are accepted.
 out=$(FOC_REPO_ROOT="$work/repo" "$SCRIPT" dev 2>&1); code=$?
 check "unknown environment rejected" '[ $code -ne 0 ]'
 

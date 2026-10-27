@@ -1,6 +1,7 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 1). Runs with a mocked AWS provider: no credentials needed.
+#        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 # Author review: Pending Jian Bing's review.
 
 mock_provider "aws" {
@@ -47,15 +48,15 @@ run "global" {
     error_message = "ecr_repository_urls must be keyed by the seven image names."
   }
   assert {
-    condition     = jsondecode(aws_iam_role.github["deploy-production"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AY2627S1-CS3219-P3/GrabFoc:environment:production"
+    condition     = jsondecode(aws_iam_role.github["deploy-production"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AY2627S1-CS3219-P3@326464642/GrabFoc@1361285513:environment:production"
     error_message = "Production deploy role must trust only the production environment."
   }
   assert {
-    condition     = jsondecode(aws_iam_role.github["deploy-staging"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AY2627S1-CS3219-P3/GrabFoc:ref:refs/heads/main"
+    condition     = jsondecode(aws_iam_role.github["deploy-staging"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AY2627S1-CS3219-P3@326464642/GrabFoc@1361285513:ref:refs/heads/main"
     error_message = "Staging deploy role must trust only main."
   }
   assert {
-    condition     = jsondecode(aws_iam_role.github["plan"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AY2627S1-CS3219-P3/GrabFoc:pull_request"
+    condition     = jsondecode(aws_iam_role.github["plan"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AY2627S1-CS3219-P3@326464642/GrabFoc@1361285513:pull_request"
     error_message = "Plan role must trust pull requests."
   }
   assert {

@@ -1,6 +1,7 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 4). Plan-only with a mocked AWS provider: the data
+#        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 #        volume has prevent_destroy, so the test never applies (and so never has to destroy) it.
 # Author review: Pending Jian Bing's review.
 
@@ -90,6 +91,15 @@ run "server" {
       aws_cloudwatch_metric_alarm.disk.threshold == 80
     )
     error_message = "Alarm when /data passes 80% full."
+  }
+  # Codex review on #146: staging and production must not share one disk metric.
+  assert {
+    condition = (
+      aws_cloudwatch_metric_alarm.disk.dimensions["AutoScalingGroupName"] == aws_autoscaling_group.server.name &&
+      strcontains(local.user_data, "\"AutoScalingGroupName\": \"$${aws:AutoScalingGroupName}\"") &&
+      strcontains(local.user_data, "[[\"AutoScalingGroupName\", \"path\"]]")
+    )
+    error_message = "The disk metric and its alarm must be per server group (per environment)."
   }
 
   # Final review (2026-10-25), Critical 2: a server whose start-up fails must never join the cluster.
