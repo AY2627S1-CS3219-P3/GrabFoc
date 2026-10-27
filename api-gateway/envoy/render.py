@@ -222,9 +222,14 @@ def json_response(match, status, body):
         "typed_per_filter_config": {JWT: {"@type": TYPE +
             "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig", "disabled": True}}}
 
+def health_route(path):
+    route = json_response({"path": path}, 200, '{"status":"ok"}')
+    route["match"]["headers"] = [{"name": ":method", "string_match": {"exact": "GET"}}]
+    return route
+
 def edge_routes(services, prefixes, settings, key):
     """/gateway/* to the API, everything else to the frontend; all of it only with the origin key."""
-    routes = api_routes(services, prefixes, settings, GATEWAY_PREFIX)
+    routes = [health_route(GATEWAY_PREFIX + "/health")] + api_routes(services, prefixes, settings, GATEWAY_PREFIX)
     routes.append(json_response({"prefix": GATEWAY_PREFIX + "/"}, 404, '{"error":"Not found"}'))
     routes.append(json_response({"path": GATEWAY_PREFIX}, 404, '{"error":"Not found"}'))
     # No auto_host_rewrite: the frontend compares the browser's Origin with the Host it receives.
@@ -266,12 +271,7 @@ def configuration(env):
 
     routes = (api_routes(services, prefixes, settings) +
               api_routes(services, prefixes, settings, GATEWAY_PREFIX))
-    routes.insert(0, {"match": {"path": "/health", "headers": [{"name": ":method",
-        "string_match": {"exact": "GET"}}]}, "direct_response": {"status": 200,
-        "body": {"inline_string": '{"status":"ok"}'}}, "response_headers_to_add": [{
-            "header": {"key": "content-type", "value": "application/json"}}],
-        "typed_per_filter_config": {JWT: {"@type": TYPE +
-            "envoy.extensions.filters.http.jwt_authn.v3.PerRouteConfig", "disabled": True}}})
+    routes[:0] = [health_route("/health"), health_route(GATEWAY_PREFIX + "/health")]
     routes.append(json_response({"prefix": "/"}, 404, '{"error":"Not found"}'))
     provider = {"from_headers": [{"name": "Authorization", "value_prefix": "Bearer "}],
                 "forward": True, "require_expiration": True,

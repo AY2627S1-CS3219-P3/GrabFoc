@@ -109,6 +109,16 @@ class RouteFilesTest(unittest.TestCase):
         hcm = listener["filter_chains"][0]["filters"][0]["typed_config"]
         self.assertEqual(hcm["route_config"]["request_headers_to_remove"], ["x-origin-key"])
 
+    def test_gateway_health_on_both_listeners(self):
+        config = self.renderer.configuration(self.edge_env)
+        for listener in (0, 1):
+            with self.subTest(listener=listener):
+                health = [r for r in self.routes(config, listener) if r["match"].get("path") == "/gateway/health"]
+                self.assertEqual(len(health), 1)
+                self.assertEqual(health[0]["direct_response"]["status"], 200)
+        edge = next(r for r in self.routes(config, 1) if r["match"].get("path") == "/gateway/health")
+        self.assertIn("x-origin-key", [h["name"] for h in edge["match"]["headers"]])
+
     def test_gateway_prefix_never_routes_internal_paths(self):
         routes = self.routes(self.renderer.configuration(self.env))
         patterns = [r["match"]["safe_regex"]["regex"] for r in routes if "safe_regex" in r["match"]]
