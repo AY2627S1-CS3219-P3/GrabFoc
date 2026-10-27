@@ -36,3 +36,4 @@ jobs:
         run: |
           infra/scripts/test/put-secrets.test.sh
           infra/scripts/test/new-secrets.test.sh
+          infra/scripts/test/push-images.test.sh

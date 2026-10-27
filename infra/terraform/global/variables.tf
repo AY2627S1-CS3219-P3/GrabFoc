@@ -1,12 +1,15 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 1).
+#        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 # Author review: Pending Jian Bing's review.
 
 variable "github_repo" {
-  description = "GitHub repository whose Actions may assume the roles."
+  # Repositories created after GitHub's July 2026 change put owner and repository IDs in the OIDC
+  # "sub" claim (gh api repos/<owner>/<repo>/actions/oidc/customization/sub shows the prefix).
+  description = "GitHub repository whose Actions may assume the roles, as OWNER@OWNER_ID/REPO@REPO_ID."
   type        = string
-  default     = "AY2627S1-CS3219-P3/GrabFoc"
+  default     = "AY2627S1-CS3219-P3@326464642/GrabFoc@1361285513"
 }
 
 variable "monthly_budget_usd" {

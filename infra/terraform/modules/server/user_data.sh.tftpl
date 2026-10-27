@@ -2,6 +2,7 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 4): server start-up (spec §4).
+#        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 # Author review: Pending Jian Bing's review.
 #
 # Runs once when the ECS server boots: joins the cluster, takes the Elastic IP, attaches and mounts
@@ -47,12 +48,14 @@ chown 1000:1000 /data/kafka
 # 6. Only now join the environment's ECS cluster: the data stores can start.
 echo "ECS_CLUSTER=${cluster}" >> /etc/ecs/ecs.config
 
-# 7. Report how full /data is, for the 80% alarm.
+# 7. Report how full /data is, for the 80% alarm, per server group so staging and production
+#    don't share one metric.
 dnf install -y amazon-cloudwatch-agent
 cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'JSON'
 {
   "metrics": {
-    "aggregation_dimensions": [["path"]],
+    "append_dimensions": { "AutoScalingGroupName": "$${aws:AutoScalingGroupName}" },
+    "aggregation_dimensions": [["AutoScalingGroupName", "path"]],
     "metrics_collected": {
       "disk": { "resources": ["/data"], "measurement": ["used_percent"], "drop_device": true }
     }

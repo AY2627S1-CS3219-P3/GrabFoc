@@ -2,6 +2,7 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Tests new-secrets.sh (deploy part 2, first live apply).
+#        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 # Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/new-secrets.test.sh
@@ -16,7 +17,8 @@ val() { grep "^$1=" "$file" | cut -d= -f2-; }
 
 out=$(FOC_REPO_ROOT="$work" "$HERE/../new-secrets.sh" staging 2>&1); code=$?
 check "creates the file" '[ $code -eq 0 ] && [ -f "$file" ]'
-check "file is private (600)" '[ "$(stat -f %Lp "$file" 2>/dev/null || stat -c %a "$file")" = 600 ]'
+# ls, not stat: BSD and GNU stat take different flags (Codex review on #146).
+check "file is private (600)" '[ "$(ls -l "$file" | cut -c1-10)" = "-rw-------" ]'
 for n in POSTGRES_PASSWORD SUPPLIER_POSTGRES_PASSWORD CREDIT_POSTGRES_PASSWORD ORDER_DB_PASSWORD CREDIT_SERVICE_KEY ORDER_SERVICE_KEY USER_JWT_KID; do
   check "$n generated" '[ -n "$(val '"$n"')" ]'
 done

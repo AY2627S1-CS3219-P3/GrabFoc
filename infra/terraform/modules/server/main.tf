@@ -1,6 +1,7 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 4).
+#        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 # Author review: Pending Jian Bing's review.
 # The environment's one ECS server (spec §3.1) and its persistent data volume (spec §4). The server
 # can be replaced at any time; the volume and the Elastic IP outlive it.
@@ -187,7 +188,7 @@ resource "aws_cloudwatch_metric_alarm" "disk" {
   alarm_description   = "The /data volume is more than 80% full"
   namespace           = "CWAgent"
   metric_name         = "disk_used_percent"
-  dimensions          = { path = "/data" }
+  dimensions          = { AutoScalingGroupName = aws_autoscaling_group.server.name, path = "/data" }
   statistic           = "Maximum"
   period              = 300
   evaluation_periods  = 1
