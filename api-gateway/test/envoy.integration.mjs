@@ -75,6 +75,9 @@ const upstream = (instance) => createServer((req, res) => {
     if (req.headers['x-test-unauthorized'] === 'yes') {
       res.writeHead(401); res.end('{"error":"Unauthorized"}'); return;
     }
+    if (req.headers['x-test-unavailable'] === 'yes') {
+      unavailableHits++; res.writeHead(503); res.end('{"error":"Unavailable"}'); return;
+    }
     res.writeHead(instance === 'user' ? 201 : 200);
     res.end(JSON.stringify({ instance, method: req.method, path: req.url,
       authorization: req.headers.authorization, userId: req.headers['x-user-id'],
@@ -84,8 +87,10 @@ const upstream = (instance) => createServer((req, res) => {
 });
 // AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang): a stand-in for the Next.js frontend.
 let frontendHits = 0;
+let unavailableHits = 0;
 const frontend = createServer((req, res) => {
   frontendHits++;
+  if (req.headers['x-test-unavailable'] === 'yes') { unavailableHits++; res.writeHead(503); res.end(); return; }
   res.setHeader('content-type', 'application/json');
   res.end(JSON.stringify({ instance: 'frontend', path: req.url, host: req.headers.host, cookie: req.headers.cookie,
     proto: req.headers['x-forwarded-proto'], userId: req.headers['x-user-id'], originKey: req.headers['x-origin-key'] }));
@@ -289,6 +294,19 @@ test('frontend route keeps cookies and host; API route strips them', async () =>
   assert.equal(api.body.cookie, undefined);
   assert.equal(api.body.userId, undefined);
   assert.equal(api.body.originKey, undefined);
+});
+
+test('clients cannot make Envoy retry their requests', async () => {
+  const url = await edge();
+  const retry = { 'x-forwarded-for': '10.0.0.1', 'x-envoy-retry-on': '5xx', 'x-envoy-max-retries': '3', 'x-test-unavailable': 'yes' };
+  const auth = { authorization: `Bearer ${token()}` };
+  const cases = [[gateway, '/gateway/locations', auth], [url, '/gateway/locations', { ...auth, 'x-origin-key': originKey }],
+    [url, '/profile', { 'x-origin-key': originKey }]];
+  for (const [base, path, headers] of cases) {
+    const before = unavailableHits;
+    assert.equal((await send(base, path, { ...headers, ...retry })).status, 503, path);
+    assert.equal(unavailableHits - before, 1, `${base}${path} reached its upstream once`);
+  }
 });
 
 test('stock JWT rejects malformed, modified, long-expired and missing-expiry tokens', async () => {
