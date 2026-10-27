@@ -2,6 +2,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 5).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+# Scope: Gateway edge-listener settings (GATEWAY_EDGE_PORT, FRONTEND_URL); the frontend in its own layer after the gateway (deploy part 1, #141).
+# Author review: Pending Jian Bing's review.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 
@@ -152,14 +155,17 @@ locals {
       port      = 3003
       host_port = 80 # the only port the server publishes; CloudFront's origin
       memory    = 96
-      env = {
+      env = merge({
         GATEWAY_PORT         = "3003"
         USER_SERVICE_URL     = "http://user-service:3001"
         SUPPLIER_SERVICE_URL = "http://supplier-service:3002"
         ORDER_SERVICE_URL    = "http://order-service:3005"
         CREDIT_SERVICE_URL   = "http://credit-service:3004"
-      }
-      # CloudFront's X-Origin-Key value; Envoy rejects port-80 requests without it (deploy part 1).
+        FRONTEND_URL         = "http://frontend:3000" # the edge listener's catch-all (deploy part 1)
+        }, var.edge_container_port == 3003 ? {} : {
+        GATEWAY_EDGE_PORT = tostring(var.edge_container_port)
+      })
+      # CloudFront's X-Origin-Key value; the edge listener rejects requests without it.
       secrets = { GATEWAY_ORIGIN_KEY = "CLOUDFRONT_ORIGIN_KEY" }
     }
     "frontend" = {
@@ -284,7 +290,7 @@ locals {
           # The internal port: Service Connect's name:port (for Envoy, the frontend's api-gateway:3003).
           [merge(
             { name = name, containerPort = c.port, protocol = "tcp" },
-            # Until Envoy's edge listener exists, the public port 80 maps to this same port.
+            # With edge_container_port 3003 (no edge listener), the public port 80 maps to this same port.
             try(c.host_port, null) != null && var.edge_container_port == c.port ? { hostPort = c.host_port } : {},
           )],
           try(c.host_port, null) != null && var.edge_container_port != c.port ? [
@@ -329,7 +335,9 @@ resource "aws_ecs_task_definition" "service" {
 
 # Created in three layers: a Service Connect client only learns the names that already existed when
 # its deployment was created (first live apply, 2026-10-26). Data stores first, then the apps that
-# use them, then Envoy and the frontend that call the apps.
+# use them, then Envoy, then the frontend (which calls Envoy). Envoy also calls the frontend, but on
+# an environment's very first apply it starts before the frontend exists: redeploy api-gateway once
+# afterwards (infra/terraform/README.md, deploy part 1).
 #
 # ECS has no depends_on between running services: a service whose database or Kafka isn't up yet
 # exits (or fails its health check) and is restarted until it is. A circuit breaker would stop
@@ -339,9 +347,10 @@ locals {
   layer = {
     data = toset(["user-db", "supplier-db", "credit-db", "order-db", "user-redis", "kafka", "mailpit"])
     app  = toset(["user-service", "supplier-service", "credit-service", "order-service"])
-    edge = toset(["api-gateway", "frontend"])
+    edge = toset(["api-gateway"])
+    web  = toset(["frontend"])
   }
-  ecs_services = merge(aws_ecs_service.data, aws_ecs_service.app, aws_ecs_service.edge)
+  ecs_services = merge(aws_ecs_service.data, aws_ecs_service.app, aws_ecs_service.edge, aws_ecs_service.web)
 }
 
 resource "aws_ecs_service" "data" {
@@ -450,6 +459,42 @@ resource "aws_ecs_service" "edge" {
   }
 }
 
+resource "aws_ecs_service" "web" {
+  for_each        = { for k, v in local.containers : k => v if contains(local.layer.web, k) }
+  name            = each.key
+  cluster         = var.cluster_arn
+  task_definition = aws_ecs_task_definition.service[each.key].arn
+  desired_count   = 1
+
+  depends_on = [aws_ecs_service.edge]
+
+  capacity_provider_strategy {
+    capacity_provider = var.capacity_provider_name
+    weight            = 1
+  }
+
+  deployment_circuit_breaker {
+    enable   = false
+    rollback = false
+  }
+
+  deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
+  deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
+
+  service_connect_configuration {
+    enabled   = true
+    namespace = aws_service_discovery_http_namespace.this.arn
+    service {
+      port_name      = each.key
+      discovery_name = each.key
+      client_alias {
+        dns_name = each.key
+        port     = each.value.port
+      }
+    }
+  }
+}
+
 # Services created before the layers existed keep running: same services, new addresses.
 moved {
   from = aws_ecs_service.service["user-db"]
@@ -516,3 +561,8 @@ moved {
   to   = aws_ecs_service.edge["frontend"]
 }
 
+# Deploy part 1: the frontend moved to its own layer after the gateway.
+moved {
+  from = aws_ecs_service.edge["frontend"]
+  to   = aws_ecs_service.web["frontend"]
+}

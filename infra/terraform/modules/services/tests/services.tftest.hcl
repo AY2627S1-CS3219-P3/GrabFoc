@@ -2,6 +2,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 5). Runs with a mocked AWS provider.
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+# Scope: Deploy part 1 (#141): the frontend's own layer, and the gateway's edge listener settings.
+# Author review: Pending Jian Bing's review.
 
 mock_provider "aws" {
   mock_data "aws_caller_identity" {
@@ -41,6 +44,17 @@ variables {
 
 run "staging" {
   command = apply
+
+  assert {
+    condition     = contains(keys(aws_ecs_service.web), "frontend") && !contains(keys(aws_ecs_service.edge), "frontend")
+    error_message = "The frontend starts in its own layer after the gateway, so it learns the api-gateway name."
+  }
+  assert {
+    condition = !contains([
+      for e in jsondecode(aws_ecs_task_definition.service["api-gateway"].container_definitions)[0].environment : e.name
+    ], "GATEWAY_EDGE_PORT")
+    error_message = "With edge_container_port 3003 there is no separate edge listener."
+  }
 
   assert {
     condition     = alltrue([for t in aws_ecs_task_definition.service : t.network_mode == "bridge" && t.requires_compatibilities == toset(["EC2"])])
@@ -106,14 +120,15 @@ run "staging" {
     error_message = "Data stores and the gateway are stopped before being replaced: two copies must never share a folder or port 80."
   }
   # First live apply (2026-10-26): a Service Connect client only learns names that existed when its
-  # deployment was created, so services are created in layers: data → apps → edge.
+  # deployment was created, so services are created in layers: data → apps → edge → web.
   assert {
     condition = (
       toset(keys(aws_ecs_service.data)) == toset(["user-db", "supplier-db", "credit-db", "order-db", "user-redis", "kafka", "mailpit"]) &&
       toset(keys(aws_ecs_service.app)) == toset(["user-service", "supplier-service", "credit-service", "order-service"]) &&
-      toset(keys(aws_ecs_service.edge)) == toset(["api-gateway", "frontend"])
+      toset(keys(aws_ecs_service.edge)) == toset(["api-gateway"]) &&
+      toset(keys(aws_ecs_service.web)) == toset(["frontend"])
     )
-    error_message = "Services are created in three layers: data stores, then apps, then the edge."
+    error_message = "Services are created in four layers: data stores, apps, the gateway, then the frontend."
   }
   assert {
     condition = alltrue([
@@ -202,14 +217,22 @@ run "production" {
 run "edge_listener" {
   command = apply
   variables {
-    edge_container_port = 80
+    edge_container_port = 8080
+  }
+
+  assert {
+    condition = {
+      for e in jsondecode(aws_ecs_task_definition.service["api-gateway"].container_definitions)[0].environment : e.name => e.value
+      if contains(["GATEWAY_EDGE_PORT", "FRONTEND_URL"], e.name)
+    } == { GATEWAY_EDGE_PORT = "8080", FRONTEND_URL = "http://frontend:3000" }
+    error_message = "The gateway gets its edge port and the frontend's address."
   }
 
   assert {
     condition = toset([
       for p in jsondecode(aws_ecs_task_definition.service["api-gateway"].container_definitions)[0].portMappings :
       "${p.name}:${p.containerPort}:${try(p.hostPort, 0)}"
-    ]) == toset(["api-gateway:3003:0", "edge:80:80"])
+    ]) == toset(["api-gateway:3003:0", "edge:8080:80"])
     error_message = "Service Connect keeps api-gateway:3003; host port 80 maps to the edge listener."
   }
 }

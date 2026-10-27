@@ -2,6 +2,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 2).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+# Scope: edge_container_port defaults to 8080, the edge listener (deploy part 1, #141).
+# Author review: Pending Jian Bing's review.
 
 variable "env" {
   description = "Environment name, used in every resource name (foc-<env>-…)."
@@ -20,9 +23,9 @@ variable "image_tag" {
 }
 
 variable "edge_container_port" {
-  description = "Envoy container port published on host port 80: 3003 until deploy part 1 adds the edge listener, then 80."
+  description = "Envoy's edge listener port, published on host port 80 (CloudFront's origin). 3003 means no edge listener."
   type        = number
-  default     = 3003
+  default     = 8080
 }
 
 variable "alert_emails" {

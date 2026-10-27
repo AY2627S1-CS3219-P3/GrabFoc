@@ -9,6 +9,9 @@ Author review: Reviewed by Zi Yi, 2026-10-21; pending Jie Yang's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added the Order Service upstream address.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Postman baseUrl ends in /gateway, locally and on AWS (#141).
+Author review: Pending Jie Yang's review.
 -->
 
 # API Gateway
@@ -18,8 +21,9 @@ The Compose stack runs official Envoy v1.38.6, with its built-in JWT verificatio
 no native compilation or custom registry release is required.
 See [build and tests](envoy/README.md) and [behaviour differences](envoy/behaviour-differences.md).
 Import the [gateway Postman collection](postman/gateway.postman_collection.json)
-to test User and Supplier routes through port 3003. Its collection description
-contains login and smoke-test instructions. The legacy Node gateway has been removed.
+to test the routes through the gateway. Its `baseUrl` is `http://localhost:3003/gateway`
+locally and `https://<CloudFront URL>/gateway` on AWS; nothing else changes. Its collection
+description contains login and smoke-test instructions. The legacy Node gateway has been removed.
 
 _Origin: AI doc; implementation of the gateway direction recorded in the project `AGENTS.md`._
 
