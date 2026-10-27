@@ -74,6 +74,17 @@ function neverStore(key: string): boolean {
   return NEVER_STORE.some((name) => normalised.includes(name));
 }
 
+function hasControlChars(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+const plainText = (max: number) =>
+  z.string().min(1).max(max).refine((v) => !hasControlChars(v), 'must not contain control characters');
+
 /**
  * The envelope every service produces. This is the one schema in the project that is not
  * `.strict()`: a log line's unknown fields are the point — they are what the event was about — so
@@ -85,9 +96,9 @@ export const inboundLineSchema = z
     // ISO-8601 with a Z offset. Zod's .datetime() rejects a local-time string, which is what we
     // want: a timestamp without a zone cannot be compared across containers.
     ts: z.string().datetime(),
-    service: z.string().min(1).max(40),
+    service: plainText(40),
     level: z.enum(['debug', 'info', 'warn', 'error']),
-    event: z.string().min(1).max(60),
+    event: plainText(60),
     /**
      * Deliberately laxer than the pattern a service applies to an inbound header. A service
      * decides what id to *use*; this store records what happened. Rejecting the line because its
@@ -95,13 +106,11 @@ export const inboundLineSchema = z
      * record a caller sending a strange header would want gone (PR #129 review). Control
      * characters are excluded because they would break a line-oriented reader.
      */
-    requestId: z
-      .string()
-      .min(1)
-      .max(200)
-      .refine((id) => !/[\u0000-\u001f\u007f]/.test(id), 'must not contain control characters')
-      .optional(),
-    userId: z.string().min(1).max(100).optional(),
+    requestId: plainText(200).optional(),
+    // The same control-character rule the query filter applies. Hardening only the filter left a
+    // line whose userId holds a tab storable and then unsearchable through the very filter an
+    // admin would reach for - and the odd row is the one they are looking for (PR #129 review).
+    userId: plainText(100).optional(),
     role: z.enum(['ADMIN', 'USER']).optional(),
     method: z.string().min(1).max(10).optional(),
     path: z.string().max(400).optional(),
@@ -207,16 +216,6 @@ const MAX_PAGE = 1_000_000;
  * came back as a 500 for input that should have been a 400 (PR #129 review). Written as a loop
  * rather than a regex so the escape sequences cannot be mangled by an editing tool.
  */
-function hasControlChars(value: string): boolean {
-  for (let i = 0; i < value.length; i += 1) {
-    const code = value.charCodeAt(i);
-    if (code < 0x20 || code === 0x7f) return true;
-  }
-  return false;
-}
-
-const plainText = (max: number) =>
-  z.string().min(1).max(max).refine((v) => !hasControlChars(v), 'must not contain control characters');
 const positiveInt = z.coerce.number().int().positive();
 
 /** Query parameters for GET /logs. Strict: an unknown filter is a typo, not a wildcard. */

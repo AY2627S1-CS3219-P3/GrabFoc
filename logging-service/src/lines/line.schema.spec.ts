@@ -179,6 +179,28 @@ describe('the query parameters', () => {
     },
   );
 
+  /**
+   * The filter and the store have to agree about what a text field may hold. Hardening only the
+   * filter left a line whose userId holds a tab storable and then unsearchable through the very
+   * filter an admin would reach for (PR #129 review).
+   */
+  it.each(['service', 'event', 'userId', 'requestId'])(
+    'rejects a control byte in the inbound %s, so nothing stored is unsearchable',
+    (field) => {
+      const line = { ...valid, [field]: `a${String.fromCharCode(9)}b` };
+      expect(inboundLineSchema.safeParse(line).success).toBe(false);
+      expect(logQuerySchema.safeParse({ [field]: `a${String.fromCharCode(9)}b` }).success).toBe(false);
+    },
+  );
+
+  it.each(['service', 'event', 'userId', 'requestId'])(
+    'accepts the same ordinary %s on both sides',
+    (field) => {
+      expect(inboundLineSchema.safeParse({ ...valid, [field]: 'u-123' }).success).toBe(true);
+      expect(logQuerySchema.safeParse({ [field]: 'u-123' }).success).toBe(true);
+    },
+  );
+
   it.each(['service', 'event', 'userId', 'requestId'])(
     'rejects a control byte in the %s filter',
     (field) => {

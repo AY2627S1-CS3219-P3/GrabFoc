@@ -123,6 +123,8 @@ _Origin: AI doc, from the plan Cole Lin approved_
 - **Sensitive field names are matched as substrings and replaced at any depth** (so `adminToken` and `customerEmail` go too, and it over-redacts rather than under-redacts), so a caller passing `password`, a `token`,
   or `{ request: { headers: { authorization } } }` cannot write it to stdout or Kafka. The store
   does the same on ingest; this is the only guard on the stdout copy.
+- **One statement for a page and its total.** The rows and the count come from a single query — a count CTE left-joined to the page CTE — so they always describe the same instant. `count(*) OVER ()` could not report a total for an empty page, and a fallback count query fixed the number by reintroducing exactly the race it replaced: a line inserted between the two statements gave `lines: []` with `total: 1` (PR #129 review). An empty page therefore comes back as one row carrying the total with `line_id` NULL, which the service filters out rather than reading as a line.
+- **Every text field obeys one rule on both sides.** `service`, `event`, `userId` and `requestId` reject control characters on **ingest** as well as in the query filter. Hardening only the filter left a line whose `userId` held a tab storable and then unsearchable through the very filter an admin would reach for (PR #129 review).
 - **Field *names* are sanitised as well as values.** Redaction only ever looked at values, so
   data used as a key — `{ recipients: { "alice@nus.edu.sg": true } }` — travelled untouched
   into stdout, Kafka and the `extra` column (PR #129 review). A name outside

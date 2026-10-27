@@ -126,11 +126,19 @@ function refreshKeys(): Promise<Jwk[]> {
 
 async function keysFor(kid: string): Promise<Jwk | undefined> {
   const fresh = Date.now() - cachedAt < CACHE_TTL_MS;
-  if (!fresh || !cachedKeys.length) await refreshKeys();
+  // Whether this call has already been to the endpoint. Without it, a cold or expired cache
+  // fetched here and then, on an unknown kid, fetched the identical set again - double the JWKS
+  // traffic on exactly the requests that are already failing, and a second fetch that happens to
+  // fail turns an honest 401 into a 503 (PR #157 review).
+  let justRefreshed = false;
+  if (!fresh || !cachedKeys.length) {
+    await refreshKeys();
+    justRefreshed = true;
+  }
 
   let key = cachedKeys.find((k) => k.kid === kid);
   // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
-  if (!key && Date.now() - lastMissAt > MIN_REFETCH_MS) {
+  if (!key && !justRefreshed && Date.now() - lastMissAt > MIN_REFETCH_MS) {
     await refreshKeys();
     // Recorded only once the endpoint has answered. Set before the call, one failed refresh
     // turned into 401s from the stale cache for the next MIN_REFETCH_MS even after the

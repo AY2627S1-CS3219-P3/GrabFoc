@@ -80,34 +80,43 @@ export class LinesService {
 
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    // One query, so the total and the rows come from the same snapshot. As two statements, a line
-    // inserted between them could be returned while the total still said zero, and a purge running
-    // between them produced the opposite — pagination that did not describe its own page
-    // (PR #129 review). count(*) OVER () counts the filtered set before LIMIT.
+    // One statement, so the rows and the total describe the same snapshot. Two statements let a
+    // line inserted between them be returned while the total still said zero, and a purge between
+    // them produced the opposite - pagination that did not describe its own page (PR #129 review).
+    //
+    // The shape is a count CTE LEFT JOINed to the page CTE, rather than count(*) OVER (): the
+    // window function rides on the returned rows, so an empty page carried no total at all. A
+    // fallback count fixed the number but reintroduced the second statement, which is the bug
+    // above. Joining from the one-row total means an empty page still comes back as exactly one
+    // row - with the total, and with line_id NULL to say there are no lines (PR #129 review).
     //
     // Newest first, with line_id breaking ties so a page boundary is stable when two lines share a
-    // timestamp — which they do, because one request writes several lines in the same millisecond.
+    // timestamp - which they do, because one request writes several lines in the same millisecond.
     const page = await this.pool.query(
-      `SELECT line_id, ts, received_at, service, level, event, request_id, user_id, role,
-              method, path, status, duration_ms, extra, count(*) OVER () AS total
-         FROM log_lines ${clause}
-        ORDER BY ts DESC, line_id DESC
-        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      `WITH filtered AS (
+              SELECT line_id, ts, received_at, service, level, event, request_id, user_id, role,
+                     method, path, status, duration_ms, extra
+                FROM log_lines ${clause}
+            ),
+            total AS (SELECT count(*) AS total FROM filtered),
+            page AS (
+              SELECT * FROM filtered
+               ORDER BY ts DESC, line_id DESC
+               LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+            )
+       SELECT t.total, p.*
+         FROM total t LEFT JOIN page p ON true
+        ORDER BY p.ts DESC, p.line_id DESC`,
       [...params, q.pageSize, (q.page - 1) * q.pageSize],
     );
 
-    // An empty page is either "nothing matched" or "you asked for page 9 of 3", and the window
-    // function cannot tell them apart: with no rows there is no row to carry the count. Reporting
-    // zero for both made the total depend on which page you asked for, so a client could not tell
-    // whether to navigate back (PR #129 review). Supplier keeps the filtered total for an empty
-    // page - locations.service.int.spec.ts:173 - and this now matches it. The extra statement runs
-    // only on an empty page, so the ordinary path is still one query and one snapshot.
-    const total = page.rows.length
-      ? Number(page.rows[0].total)
-      : Number((await this.pool.query(`SELECT count(*) AS total FROM log_lines ${clause}`, params)).rows[0].total);
+    // The LEFT JOIN always returns at least one row. When the page is empty that row is the total
+    // with every line column NULL, so it is not a line and must not be read as one.
+    const rows = page.rows.filter((row) => row.line_id !== null);
+    const total = Number(page.rows[0].total);
 
     return {
-      lines: page.rows.map((row) => ({
+      lines: rows.map((row) => ({
         lineId: row.line_id,
         ts: new Date(row.ts).toISOString(),
         receivedAt: new Date(row.received_at).toISOString(),

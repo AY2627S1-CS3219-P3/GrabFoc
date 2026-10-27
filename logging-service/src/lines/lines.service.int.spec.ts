@@ -174,6 +174,26 @@ describe('querying', () => {
     expect(total).toBe(2);
   });
 
+  /**
+   * One statement, so an empty page cannot report a total from a different instant. The fallback
+   * count that first fixed the number was a second statement: a line inserted between the two
+   * produced `lines: []` with `total: 1`, and a purge between them the reverse (PR #129 review).
+   */
+  it('returns one row carrying the total when the page is empty', async () => {
+    await lines.insert(line());
+    await lines.insert(line({ service: 'credit' }));
+    const { lines: rows, total, page, pageSize } = await lines.query({ page: 4, pageSize: 1 });
+    expect(rows).toEqual([]);
+    expect({ total, page, pageSize }).toEqual({ total: 2, page: 4, pageSize: 1 });
+  });
+
+  it('reports a zero total for a filter that matches nothing, without inventing a line', async () => {
+    await lines.insert(line());
+    const { lines: rows, total } = await lines.query({ requestId: 'no-such-trace', page: 1, pageSize: 50 });
+    expect(rows).toEqual([]);
+    expect(total).toBe(0);
+  });
+
   it('counts the filter, not the table, for a page past the end', async () => {
     await lines.insert(line({ service: 'supplier' }));
     await lines.insert(line({ service: 'supplier' }));

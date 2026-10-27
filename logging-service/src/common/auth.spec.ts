@@ -134,6 +134,20 @@ describe('reading the log store', () => {
   });
 
   /**
+   * A cold cache plus an unknown kid used to go to the endpoint twice in one request: once because
+   * the cache was empty, then again because the kid was missing from the set it had just loaded.
+   * Double the traffic on exactly the requests that are already failing, and a second fetch that
+   * fails turns an honest 401 into a 503 (PR #157 review, same code as this service's copy).
+   */
+  it('fetches the key set once when a cold cache already has the answer', async () => {
+    stub.fetches = 0;
+    const unknown = makeKey('never-published');
+    const token = { Authorization: `Bearer ${signToken(unknown, { sub: 'u-1', role: 'ADMIN' })}` };
+    expect(await outcome(request(token))).toBe(401);
+    expect(stub.fetches).toBe(1);
+  });
+
+  /**
    * A rotation whose first refetch fails. The miss used to be recorded before the fetch, so for
    * the next MIN_REFETCH_MS every request for the new kid skipped the endpoint and answered 401
    * from the stale cache - telling an administrator their valid token was bad (PR #129 review).

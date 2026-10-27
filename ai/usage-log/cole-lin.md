@@ -16,6 +16,16 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-27 — Fifth review round: the asymmetry my own fixes created (PRs #129 and #157)
+
+- Tool and mode: Claude Code (Claude Opus 5), review and debug.
+- Usage scenario: Four findings across the two open PRs, every one of them a consequence of a fix made hours earlier. Three were the same shape: I had hardened one side of a pair and left the two sides disagreeing.
+- Prompts (exact):
+  - "ok so can you fix the class, and relevant issues everywhere?"
+- Key response: The paginated total comes from one statement again — a count CTE left-joined to the page CTE — so an empty page carries a total from the same instant as the rows; the fallback count query that first fixed the number had reintroduced the race it replaced. `service`, `event`, `userId` and `requestId` now reject control characters on **ingest** as well as in the query filter, so nothing storable is unsearchable. The JWKS lookup no longer fetches the same key set twice in one request when the cache was cold and the kid is unknown.
+- What I changed or rejected: Took the point that a second statement is a second snapshot, rather than arguing the window is small. Chose the LEFT JOIN from a one-row count over `count(*) OVER ()`, accepting that an empty page then arrives as a row with NULL columns the service has to filter out, because that is cheaper than two queries and correct at any concurrency. On the control bytes I rejected the line at ingest rather than sanitising it, which matches what `requestId` already did and keeps the store's contents equal to what a producer sent.
+- Verification: `npm test` (200 passed). The double-fetch fix was reverted and its test re-run first, and it fails there. The pagination change is SQL, so it is the CI integration job — added earlier the same day for exactly this reason — that proves it, and I read its result rather than assuming. One of my own comments picked up a literal tab character while describing a tab; caught by a check over the file for control bytes before committing.
+
 ### 2026-10-27 — Fourth review round, and fixing the class rather than the instance (PR #129, issue #52)
 
 - Tool and mode: Claude Code (Claude Opus 5), review and debug.
