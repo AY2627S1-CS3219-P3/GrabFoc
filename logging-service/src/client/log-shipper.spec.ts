@@ -22,7 +22,13 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Added the compound-name and unserialisable-value cases (third review round, PR #129).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the store-bound cases, checked against inboundLineSchema itself, after the eighth
+ *        review round on PR #129 found a 500-character path keeping a line out of the store.
+ * Author review: Cole Lin, read and approved.
  */
+import { randomUUID } from 'node:crypto';
+import { inboundLineSchema } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
 
 // AI-generated (reviewed by Cole Lin).
@@ -534,5 +540,123 @@ describe('with a broker', () => {
     releases.forEach((resolve) => resolve());
     await stopped;
     expect(published.map((line) => JSON.parse(line.value).event)).toEqual(['first', 'second']);
+  });
+});
+
+describe('fields the store would refuse', () => {
+  // The pairing this shipper has to hold up: a line it writes must be a line the store accepts.
+  // Asserted against inboundLineSchema itself rather than against a copy of its numbers, so a
+  // bound added there and forgotten here fails a test instead of silently costing lines in
+  // production. Only the spec imports it - the shipper is copied into every service and must stay
+  // free of logging-service imports.
+  const storable = (line: string) => inboundLineSchema.safeParse(JSON.parse(line));
+
+  // A real uuid: the store requires one of lineId, and the shared helper above mints `id-1`.
+  function bounded(publisher?: LinePublisher) {
+    return new LogShipper({
+      service: 'supplier',
+      publisher,
+      write: (line) => written.push(line),
+      newId: () => randomUUID(),
+    });
+  }
+
+  it.each<[string, unknown]>([
+    ['path', `/locations/${'a'.repeat(500)}`],
+    ['event', 'e'.repeat(100)],
+    ['requestId', 'r'.repeat(300)],
+    ['userId', 'u'.repeat(150)],
+    ['method', 'NOTAREALMETHOD'],
+    ['method', ''],
+    ['role', 'guest'],
+    ['status', 99],
+    ['status', 1000],
+    ['status', 200.5],
+    ['durationMs', -1],
+    ['durationMs', 2147483648],
+    ['durationMs', 1.5],
+    ['requestId', 42],
+  ])('ships a line the store accepts when %s is %p', (field, value) => {
+    bounded().emit({ level: 'warn', event: 'access_denied', [field]: value });
+    expect(storable(written[0]).success).toBe(true);
+  });
+
+  it.each([9, 10, 0x7f])('leaves out a requestId holding control character %i', (code) => {
+    // The store refuses these in requestId, userId, service and event, because a line-oriented
+    // reader breaks on them. Stripped or dropped here, so one stray tab in a header cannot cost
+    // the whole line.
+    bounded().emit({ level: 'warn', event: 'access_denied', requestId: `trace${String.fromCharCode(code)}1` });
+    expect('requestId' in JSON.parse(written[0])).toBe(false);
+    expect(storable(written[0]).success).toBe(true);
+  });
+
+  it('keeps the start of an over-long path, marked, rather than losing the line', () => {
+    // The finding this came from: `inboundLineSchema` caps `path` at 400, so a 500-character URL
+    // left the required access_denied line on the producer's stdout and kept it out of the
+    // searchable store - which is the one place anyone looking for it would look (PR #129 review).
+    bounded().emit({ level: 'warn', event: 'access_denied', path: `/locations/${'a'.repeat(500)}` });
+    const line = JSON.parse(written[0]);
+    expect(line.path).toHaveLength(400);
+    expect(line.path.startsWith('/locations/aaa')).toBe(true);
+    expect(line.path.endsWith('[TRUNCATED]')).toBe(true);
+  });
+
+  it('cuts an over-long event name rather than dropping a field the store requires', () => {
+    bounded().emit({ level: 'warn', event: 'e'.repeat(100) });
+    expect(JSON.parse(written[0]).event).toHaveLength(60);
+  });
+
+  it.each(['requestId', 'userId'])('leaves out an over-long %s rather than cutting it', (field) => {
+    // Cut to length, a 300-character requestId is some other request's id and a userId is some
+    // other student's. An absent field is honest; a wrong one reads as fact.
+    bounded().emit({ level: 'warn', event: 'access_denied', [field]: 'x'.repeat(300) });
+    expect(field in JSON.parse(written[0])).toBe(false);
+  });
+
+  it('does not key a message by a requestId the store will not hold', async () => {
+    const log = bounded(collecting);
+    log.emit({ level: 'info', event: 'access_denied', requestId: 'x'.repeat(300) });
+    await log.flush();
+    expect(published[0].key).toBeUndefined();
+  });
+
+  it('reports a level it does not recognise as an error rather than hiding the line', () => {
+    bounded().emit({ level: 'trace' as never, event: 'access_denied' });
+    expect(JSON.parse(written[0]).level).toBe('error');
+    expect(storable(written[0]).success).toBe(true);
+  });
+
+  it('still names an event when the caller passed none', () => {
+    bounded().emit({ level: 'info' } as never);
+    const line = JSON.parse(written[0]);
+    expect(typeof line.event).toBe('string');
+    expect(line.event.length).toBeGreaterThan(0);
+    expect(storable(written[0]).success).toBe(true);
+  });
+
+  it('counts a line it had to clamp, so the producer sending them can be found', () => {
+    const log = bounded();
+    // Stripping the query string is this shipper's own rule, not the store's bound, so it is not
+    // a clamp: counting it would fire on every request line and tell an operator nothing.
+    log.emit({ level: 'info', event: 'ok', path: '/x?lat=1' });
+    expect(log.counts.clamped).toBe(0);
+    log.emit({ level: 'info', event: 'ok', userId: 'u'.repeat(300) });
+    expect(log.counts.clamped).toBe(1);
+  });
+
+  it('refuses a service name the store would reject, at construction', () => {
+    // Not at emit(): a name over the store's 40 characters makes every line this service will
+    // ever write unstorable, and the startup that configured it is the only place to say so.
+    expect(() => new LogShipper({ service: 's'.repeat(41) })).toThrow(RangeError);
+    expect(() => new LogShipper({ service: '' })).toThrow(RangeError);
+  });
+
+  it('bounds the event name it echoes back in a line it could not build', () => {
+    const hostile = new Proxy({}, { ownKeys() { throw new Error('nope'); } });
+    bounded().emit({ level: 'warn', event: 'e'.repeat(500), hostile });
+    const line = JSON.parse(written[0]);
+    expect(line.event).toBe('line_unserialisable');
+    expect(line.originalEvent).toHaveLength(60);
+    expect(storable(written[0]).success).toBe(true);
   });
 });

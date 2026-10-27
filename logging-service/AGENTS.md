@@ -75,6 +75,15 @@ Those six rules landed while this service was being written. Where it stands aga
 
    **The parked body is the payload's shape, not its contents** (PR #129 review), on both park paths — a line that failed validation and a line the store refused with a permanent error. The second one is not stored anywhere, so the dead-letter topic would otherwise be the only place its values live. A rejected line has not been through `toRow`, so parking it verbatim would put a `password` in a topic an admin screen reads. Name-based redaction is not enough on this path either: a line fails validation *because* a field held something unexpected, and `role: "Bearer eyJ..."` passes a name filter untouched. So the body carries field names and value types only — `{"lineId":"string(10)","role":"string(96)"}` — which is what a dead letter is actually read for. When the message did not parse at all, or parsed to something that is not an object, no body is parked: there are no field names to describe. The raw message stays in the source topic for Kafka's retention, which is where to look if the redacted copy is not enough. A park that fails is rethrown, so the offset is not committed and the broker redelivers: a line that is neither stored nor parked is the one outcome worth avoiding.
 
+   **Ingest refuses to consume at all without a dead-letter sink** (PR #129 review). The consumer
+   and the sink are both `@Optional()` providers, so a consumer wired in without a sink is a
+   configuration this service can be handed — and in it, `reject()` has nowhere to park a message
+   it cannot store, so `handle()` resolves, the offset is committed, and the line is gone from the
+   pipeline: the one outcome the paragraph above exists to prevent. Startup now logs an error and
+   leaves ingest off, so lines wait in `logging.lines` for Kafka's retention and the query API
+   still comes up — the same shape as the missing-consumer case. `reject()` keeps its own guard,
+   because `handle()` is public and must not throw on a missing sink.
+
    _An exception was argued for first — a rejected log line is already on its producer's stdout, and replaying one that failed validation fails identically — and **Cole Lin decided against it on 2026-10-21**: every service should behave as its own microservice, and one consistent rule across five services is worth more than saving a topic here. Recorded because the reasoning matters more than the outcome._
 
 Rule 6 did, however, surface a real bug, now fixed. A line the database will **never** accept — a constraint or data error, SQLSTATE class 22 or 23 — used to be rethrown, so the broker would redeliver it forever and hold every other service's logging behind it. Those are now dropped and counted like a malformed line; only a *temporary* failure (a dropped connection, a server shutting down, too many clients) is rethrown for redelivery.
@@ -126,6 +135,34 @@ _Origin: AI doc, from the plan Cole Lin approved_
   does the same on ingest; this is the only guard on the stdout copy.
 - **One statement for a page and its total.** The rows and the count come from a single query — a count CTE left-joined to the page CTE — so they always describe the same instant. `count(*) OVER ()` could not report a total for an empty page, and a fallback count query fixed the number by reintroducing exactly the race it replaced: a line inserted between the two statements gave `lines: []` with `total: 1` (PR #129 review). An empty page therefore comes back as one row carrying the total with `line_id` NULL, which the service filters out rather than reading as a line.
 - **Every text field obeys one rule on both sides.** `service`, `event`, `userId` and `requestId` reject control characters on **ingest** as well as in the query filter. Hardening only the filter left a line whose `userId` held a tab storable and then unsearchable through the very filter an admin would reach for (PR #129 review).
+- **Every field the store bounds is bounded here first.** `inboundLineSchema` caps `service` at
+  40 characters, `event` at 60, `requestId` at 200, `userId` at 100, `method` at 10 and `path` at
+  400, fixes `status` to 100–599 and `durationMs` to the `INTEGER` range, and admits only its two
+  enums for `level` and `role`. A value outside any one of them does not cost the field — it costs
+  the **whole line**, because the schema rejects the line and ingest parks it. So a caller who
+  controls one field could keep a line out of the searchable store while leaving it on the
+  producer's stdout, where nobody queries: a 500-character URL did exactly that to an
+  `access_denied` line (PR #129 review). The round before swept the *query filter* against the
+  store; this is the *producer* against the store — the same pairing from the other side, and the
+  one that had never been checked.
+  - `event` and `path` are **cut and marked** with `[TRUNCATED]` inside the bound, because the
+    leading characters are the informative part and a reader searches by them.
+  - `requestId`, `userId`, `method`, `role`, `status` and `durationMs` are **left out** instead:
+    an id cut to length is some other request's id, or some other student's, and an absent field
+    is honest where a wrong one reads as fact. A control character drops an id for the same reason
+    — `trace<TAB>1` with the tab taken out is `trace1`, which may belong to someone else.
+  - A `level` outside the enum becomes `error`, not `info`: a line nobody can explain is worth a
+    reader's attention rather than burial.
+  - `service` is checked in the **constructor**. A name outside the bound makes every line that
+    service will ever write unstorable, so it fails at startup — the one place that can say so —
+    rather than per line, where `emit()` may never throw.
+  - A clamped line increments `counts.clamped`. It is the only remaining trace that some producer
+    is handing the store values it will not take, now that the line itself goes on without them.
+    Stripping the query string is this shipper's own rule, not a store bound, so it does not count.
+  - The spec checks a shipped line against `inboundLineSchema` **itself**, not against a copy of
+    these numbers, so a bound added to the schema and forgotten here fails a test instead of
+    quietly costing lines. Only the spec imports it; the shipper is copied into every service and
+    stays free of logging-service imports.
 - **Field *names* are sanitised as well as values.** Redaction only ever looked at values, so
   data used as a key — `{ recipients: { "alice@nus.edu.sg": true } }` — travelled untouched
   into stdout, Kafka and the `extra` column (PR #129 review). A name outside
@@ -154,7 +191,7 @@ _Origin: AI doc, from the plan Cole Lin approved_
 
 ## Pending
 
-- The real Kafka consumer. `src/ingest/consumer.ts` is the seam; nothing provides it until #75. With `LOGGING_KAFKA_BROKERS` set and no consumer, startup says so and the query API still runs.
+- The real Kafka consumer. `src/ingest/consumer.ts` is the seam; nothing provides it until #75. With `LOGGING_KAFKA_BROKERS` set and no consumer, startup says so and the query API still runs — and a consumer provided **without** a `DEAD_LETTERS` sink is refused the same way, rather than consuming and committing the offset of messages it cannot park.
 - Services adopting the shipper: Supplier **done**. Then User (the rewrite landed in #125, so this is now a retrofit), Order (#119 landed too), Credit (#85, which already has the client). Each is its owner's to copy in; the file is ~130 lines and needs no dependency.
 - **[Open]** Nest's logger prefixes its own timestamp, PID and context, so the JSON object is the *message*, not the whole line, and a collector has to dig it out. `ConsoleLogger({ json: true })` makes it worse, nesting our JSON inside Nest's own envelope. The shipper sidesteps this by writing the line itself, which is the proposed answer for every service.
 - **[Open]** Where logs surface in the UI: a page in Zi Yi's admin dashboard, or a screen here.

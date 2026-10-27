@@ -54,6 +54,7 @@ let parked: Array<{ message: InboundMessage; reason: string; body: string | null
 let deadLetters: DeadLetters & { send: jest.Mock };
 let ingest: IngestService;
 let warn: jest.SpyInstance;
+let errored: jest.SpyInstance;
 
 beforeEach(() => {
   lines = { insert: jest.fn().mockResolvedValue(true) };
@@ -68,7 +69,7 @@ beforeEach(() => {
   ingest = new IngestService(lines as unknown as LinesService, consumer, deadLetters);
   warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-  jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  errored = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
   config.kafkaBrokers = ['kafka:9092'];
 });
 
@@ -95,6 +96,20 @@ describe('starting up', () => {
     const withoutConsumer = new IngestService(lines as unknown as LinesService);
     await expect(withoutConsumer.onApplicationBootstrap()).resolves.toBeUndefined();
     expect(warn.mock.calls.flat().join(' ')).toContain('#75');
+  });
+
+  /**
+   * Both providers are @Optional(), so a consumer without a dead-letter sink is a configuration
+   * this service can be handed. It must not consume in it: reject() has nowhere to park a message
+   * it cannot store, so handle() resolves, the offset is committed, and the line is gone from the
+   * pipeline - the one outcome the parking path exists to prevent. Not consuming leaves the line
+   * in the topic for Kafka's retention, and the query API still comes up (PR #129 review).
+   */
+  it('does not consume when a consumer is wired in but no dead-letter topic is', async () => {
+    const withoutSink = new IngestService(lines as unknown as LinesService, consumer);
+    await expect(withoutSink.onApplicationBootstrap()).resolves.toBeUndefined();
+    expect(consumer.handler).toBeUndefined();
+    expect(errored.mock.calls.flat().join(' ')).toContain('DEAD_LETTERS');
   });
 
   it('stops the consumer on shutdown', async () => {
@@ -270,9 +285,11 @@ describe('handling a message', () => {
    * reach it gets its own `dead_letter_failed` line.
    */
   it('still counts and logs when no dead-letter topic is wired in', async () => {
+    // Driven through handle() rather than through the consumer: this configuration no longer
+    // consumes at all (see 'starting up'), and reject() still has to log rather than throw for
+    // the callers that remain - this spec, and whatever wires handle() up next.
     const alone = new IngestService(lines as unknown as LinesService, consumer);
-    await alone.onApplicationBootstrap();
-    await consumer.deliver('not json');
+    await alone.handle({ value: 'not json', topic: 'logging.lines', partition: 0, offset: '7' });
     expect(alone.counts).toMatchObject({ rejected: 1, deadLettered: 0 });
     expect(warn.mock.calls.flat().join(' ')).toContain('"parked":false');
   });

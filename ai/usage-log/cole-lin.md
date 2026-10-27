@@ -3,9 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-27
-Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23, 2026-10-25 and the two
-  dated 2026-10-27 from the prompts and work
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-28
+Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23, 2026-10-25, the two
+  dated 2026-10-27 and the one dated 2026-10-28 from the prompts and work
   in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
   verified; the wording is Claude's, written to the template in ai/usage-log.md.
 Author review: Cole Lin, read and approved.
@@ -15,6 +15,17 @@ Author review: Cole Lin, read and approved.
 
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-28 — Seventh round: the producer side of a pairing I had swept only one side of (PR #129)
+
+- Tool and mode: Claude Code (Claude Opus 5), review and debug.
+- Usage scenario: Three findings on PR #129. Two of them were the class I had swept two rounds earlier and called closed — and the sweep had been half a sweep. I checked the *query filter* against the store's bounds; I never checked the *producer* against them, which is the same pairing from the other side.
+- Prompts (exact):
+  - "is 129 ready?"
+  - "yes do the round"
+- Key response: The shipper now brings every field the store bounds inside that bound before writing it. `inboundLineSchema` caps `path` at 400 characters, `event` at 60, `requestId` at 200, `userId` at 100, `method` at 10 and `service` at 40, and admits only its enums for `level` and `role` — and a value outside any one of them does not cost the field, it costs the whole line, because the schema refuses the line and ingest parks it. A 500-character URL was enough to keep a required `access_denied` line out of the searchable store while leaving it on the producer's stdout, where nobody queries. Separately, ingest now refuses to consume at all when a consumer is wired in without a dead-letter sink: both providers are optional, and in that configuration `reject()` had nowhere to park a message, so the handler resolved, the offset was committed, and the line was gone — the one outcome the parking path exists to prevent.
+- What I changed or rejected: Disagreed with the framing of one finding and said so on the PR. It read the event name in the serialisation-fallback line as newly unredacted, but `event` is an envelope field that is never redacted on either path, so the fallback was not an asymmetry; what was actually wrong is that the field was unbounded, which is the first finding again in a second place, and that is what I fixed. On the clamp itself I chose per field rather than one rule: `event` and `path` are cut and marked, because a reader searches by them and the leading characters are the informative part, while `requestId`, `userId`, `method`, `role`, `status` and `durationMs` are left out, because an id cut to length is some other request's id or some other student's, and an absent field is honest where a wrong one reads as fact. `service` is checked in the constructor instead of per line: a name outside the bound makes every line that service will ever write unstorable, so startup is the place to fail. Added a `clamped` counter, because the fix otherwise trades a noisy failure for a silent one and nothing would say a producer is sending values the store will not take. For the dead-letter gap I rejected throwing from `reject()` — that loops forever on a malformed message — and refused to start consuming instead, which matches what the service already does when a broker is configured with no consumer and keeps the query API up. Also re-copied the Supplier Service's copy of the shipper on this branch, which was five rounds of hardening behind the canonical one; the two bodies are byte-identical again, and the same file in PR #157 now matches, so the overlap resolves to identical content whichever merges first.
+- Verification: The new tests were written and run against the unfixed code first: 27 fail in the shipper spec and 1 in ingest, and every one of those 27 is a line the shipper writes today that the store would refuse. Then `npm test` in the logging service (246 passed, up from 218) and in the Supplier Service on this branch (177 passed), with `tsc --noEmit` clean in both. The shipper spec checks a written line against `inboundLineSchema` itself rather than against a copy of its numbers, so this pairing cannot drift again without a test failing. One of my own new tests was right where my helper was wrong: it expected an id holding a tab to be dropped, and the helper stripped the tab instead — `trace<TAB>1` becomes `trace1`, which may be someone else's id, exactly the objection I had already written down against truncating. The helper changed, not the test.
 
 ### 2026-10-27 — Sixth round: a regression of my own, and three more on the logging PR (PRs #129 and #157)
 

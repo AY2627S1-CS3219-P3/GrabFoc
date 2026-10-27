@@ -22,6 +22,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: A field named `__proto__` no longer drops out of the parked shape (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Refuse to consume without a dead-letter sink, rather than committing the offset of a
+ *        message there is nowhere to park (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -53,6 +57,22 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
       this.logger.warn(
         `LOGGING_KAFKA_BROKERS is set but no consumer is wired in yet (see #75, the shared Kafka ` +
           `broker). Lines produced to "${config.kafkaTopic}" will wait in the topic until it is.`,
+      );
+      return;
+    }
+    if (!this.deadLetters) {
+      // Both providers are @Optional(), so this configuration can be handed to us - and consuming
+      // in it loses lines. reject() would have nowhere to park a message it cannot store, so
+      // handle() resolves, the offset is committed, and the message is gone from the pipeline:
+      // the one outcome the parking path exists to prevent. Not starting leaves it in the topic
+      // for Kafka's retention, and the query API comes up either way (PR #129 review). An error
+      // rather than a warning: unlike a missing consumer, nothing about this is a normal way to
+      // run the service.
+      this.logger.error(
+        `A line consumer is wired in but no dead-letter sink (DEAD_LETTERS) is: ingest is off, ` +
+          `the query API is up. Consuming without one would commit the offset of every message ` +
+          `this service cannot store and lose it; lines wait in "${config.kafkaTopic}" instead. ` +
+          `Provide DEAD_LETTERS, which parks them in "${config.kafkaDeadLetterTopic}".`,
       );
       return;
     }
@@ -141,6 +161,9 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
         offset: message.offset ?? null,
       }),
     );
+    // Defensive now rather than reachable: onApplicationBootstrap refuses to consume without a
+    // sink, so nothing in a running service reaches this. handle() is public, though, and it may
+    // not throw on a missing sink for the callers that remain.
     if (!this.deadLetters) return;
     try {
       await this.deadLetters.send(message, reason, body);
