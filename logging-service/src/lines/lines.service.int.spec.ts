@@ -7,6 +7,9 @@
  * Scope: Added the future-timestamp retention case (PR #129 review).
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Added the cases for the total coming from the page query (PR #129 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: The total survives an empty page, so it describes the filter rather than the page
+ *        that was asked for (PR #129 review).
  * Author review: Cole Lin, read and approved.
  */
 import { Pool } from 'pg';
@@ -157,11 +160,26 @@ describe('querying', () => {
     expect((await lines.query({ service: 'supplier', page: 1, pageSize: 50 })).total).toBe(2);
   });
 
-  it('reports zero for a page past the end', async () => {
+  /**
+   * The total describes the filter, not the page you happened to ask for. Reporting zero here made
+   * a client unable to tell "nothing matched" from "you have gone past the end", so it could not
+   * decide whether to navigate back. Supplier behaves this way too, in
+   * `supplier-service/src/locations/locations.service.int.spec.ts` (PR #129 review).
+   */
+  it('keeps the filtered total for a page past the end', async () => {
     await lines.insert(line());
+    await lines.insert(line({ service: 'credit' }));
     const { lines: rows, total } = await lines.query({ page: 9, pageSize: 50 });
     expect(rows).toHaveLength(0);
-    expect(total).toBe(0);
+    expect(total).toBe(2);
+  });
+
+  it('counts the filter, not the table, for a page past the end', async () => {
+    await lines.insert(line({ service: 'supplier' }));
+    await lines.insert(line({ service: 'supplier' }));
+    await lines.insert(line({ service: 'credit' }));
+    const { total } = await lines.query({ service: 'supplier', page: 4, pageSize: 2 });
+    expect(total).toBe(2);
   });
 
   it('reports zero when nothing matches', async () => {

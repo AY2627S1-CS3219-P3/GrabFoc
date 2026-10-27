@@ -57,7 +57,12 @@ services:
     environment:
       LOGGING_PORT: 3006
       LOGGING_DATABASE_URL: postgres://foc:${LOGGING_POSTGRES_PASSWORD:-change-me-in-dotenv}@logging-db:5432/logging
-      LOGGING_JWKS_URL: http://user-service:3001/.well-known/jwks.json
+      # Overridable, unlike the other services' copies of this line. They all have a dev-auth
+      # fallback; this one deliberately does not, so on the standalone run in README.md the
+      # `user-service` hostname does not exist on the project network and every `GET /logs`
+      # answers 503 on its first JWKS fetch - with no way round it. Point it at a reachable
+      # User Service (`http://host.docker.internal:3001/...`) for that run (PR #129 review).
+      LOGGING_JWKS_URL: ${LOGGING_JWKS_URL:-http://user-service:3001/.well-known/jwks.json}
       # Empty until the shared broker (#75) is merged; then kafka:9092.
       LOGGING_KAFKA_BROKERS: ${LOGGING_KAFKA_BROKERS:-}
       LOGGING_KAFKA_TOPIC: ${LOGGING_KAFKA_TOPIC:-logging.lines}

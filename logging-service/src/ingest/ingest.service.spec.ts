@@ -204,6 +204,31 @@ describe('handling a message', () => {
     expect(parked[0].body).toContain('role');
   });
 
+  /**
+   * A key is as caller-controlled as a value: `{ "Bearer eyJ...": "x" }` carried the token into
+   * the body as a field name even once the values were reduced to types (PR #129 review).
+   */
+  it('does not copy a field name that cannot be a real field name', async () => {
+    await consumer.deliver(
+      JSON.stringify({ lineId: 'nope', 'Bearer eyJhbGciOiJSUzI1NiJ9.must-not-appear': 'x' }),
+    );
+    expect(parked[0].body).not.toContain('must-not-appear');
+    expect(parked[0].body).not.toContain('Bearer');
+    // Position and length, so two unsafe keys stay distinguishable without either being shown.
+    expect(parked[0].body).toContain('chars]');
+    // A name a producer would plausibly write is kept, because that is the diagnostic value.
+    expect(parked[0].body).toContain('lineId');
+  });
+
+  it('keeps ordinary field names, including ones redaction would blank', async () => {
+    await consumer.deliver(JSON.stringify({ lineId: 'nope', user_id: 'u-1', 'req.path': '/x' }));
+    expect(JSON.parse(parked[0].body as string)).toEqual({
+      lineId: 'string(4)',
+      user_id: 'string(3)',
+      'req.path': 'string(2)',
+    });
+  });
+
   it('describes a nested object without descending for ever', async () => {
     await consumer.deliver(
       JSON.stringify({ lineId: 'nope', a: { b: { c: { d: { e: { secret: 'must-not-appear' } } } } } }),

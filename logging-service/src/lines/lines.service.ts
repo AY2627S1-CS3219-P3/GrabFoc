@@ -96,6 +96,16 @@ export class LinesService {
       [...params, q.pageSize, (q.page - 1) * q.pageSize],
     );
 
+    // An empty page is either "nothing matched" or "you asked for page 9 of 3", and the window
+    // function cannot tell them apart: with no rows there is no row to carry the count. Reporting
+    // zero for both made the total depend on which page you asked for, so a client could not tell
+    // whether to navigate back (PR #129 review). Supplier keeps the filtered total for an empty
+    // page - locations.service.int.spec.ts:173 - and this now matches it. The extra statement runs
+    // only on an empty page, so the ordinary path is still one query and one snapshot.
+    const total = page.rows.length
+      ? Number(page.rows[0].total)
+      : Number((await this.pool.query(`SELECT count(*) AS total FROM log_lines ${clause}`, params)).rows[0].total);
+
     return {
       lines: page.rows.map((row) => ({
         lineId: row.line_id,
@@ -115,10 +125,7 @@ export class LinesService {
       })),
       page: q.page,
       pageSize: q.pageSize,
-      // No rows means nothing matched, or the page is past the end; either way the window
-      // function had nothing to report, so a count query would have to run separately to tell
-      // them apart - and for a log viewer, zero is the useful answer to both.
-      total: page.rows.length ? Number(page.rows[0].total) : 0,
+      total,
     };
   }
 

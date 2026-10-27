@@ -29,6 +29,17 @@ docker compose -f logging-service/compose.yaml --env-file .env up --build
 
 It listens on `3006` and `logging-db` on `5436`.
 
+That standalone run starts this service and its database only, so the `user-service` hostname the
+JWKS URL defaults to does not exist on the project network — and because there is no dev-header
+fallback here, every `GET /logs` answers 503 on its first key fetch. Set `LOGGING_JWKS_URL` in
+`.env` to a User Service the container can actually reach for that run:
+
+```
+LOGGING_JWKS_URL=http://host.docker.internal:3001/.well-known/jwks.json
+```
+
+Ingest and the health endpoint do not need it; only reading the store does.
+
 ## Ingest
 
 Services produce log lines to the Kafka topic `logging.lines`. The consumer is not wired up yet: the
@@ -62,7 +73,7 @@ of its own.
 | `LOGGING_KAFKA_GROUP_ID` | `logging-service` | |
 | `LOGGING_PURGE_INTERVAL_MINUTES` | `60` | |
 | `LOGGING_DATABASE_URL` | — | Required |
-| `LOGGING_JWKS_URL` | — | Required. The User Service's public keys |
+| `LOGGING_JWKS_URL` | — | Required. The User Service's public keys. Set it for a standalone Compose run (see above) |
 | `LOGGING_JWT_ISSUER`, `LOGGING_JWT_AUDIENCE` | unset | Checked only when set |
 | `LOGGING_KAFKA_BROKERS` | unset | Unset means ingest is off |
 | `LOGGING_KAFKA_TOPIC` | `logging.lines` | Must exist in `infra/kafka/topics.txt` (#75) |

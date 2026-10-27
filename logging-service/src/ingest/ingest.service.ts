@@ -172,6 +172,16 @@ function unstorable(err: unknown): string | undefined {
  */
 const SHAPE_MAX_KEYS = 40;
 const SHAPE_MAX_DEPTH = 4;
+// A field name a producer would plausibly write. Anything else is not described, because a key is
+// as caller-controlled as a value: `{ "Bearer eyJ...": "x" }` put the token in the body as a key
+// even once the values had been reduced to types (PR #129 review). Truncating an unsafe key is no
+// good either - 40 characters of a token is still 40 characters of a token - so it is replaced
+// whole, by its position and length.
+const SAFE_KEY = /^[A-Za-z0-9_.-]{1,40}$/;
+
+function safeKey(key: string, index: number): string {
+  return SAFE_KEY.test(key) ? key : `[key ${index}: ${key.length} chars]`;
+}
 
 /**
  * The *shape* of a payload: field names and value types, never a value.
@@ -193,9 +203,10 @@ function describeShape(value: unknown, depth = 0): unknown {
     return value.length ? [`array(${value.length})`, describeShape(value[0], depth + 1)] : ['array(0)'];
   }
   const out: Record<string, unknown> = {};
-  for (const [key, inner] of Object.entries(value as Record<string, unknown>).slice(0, SHAPE_MAX_KEYS)) {
-    out[key] = describeShape(inner, depth + 1);
-  }
+  const entries = Object.entries(value as Record<string, unknown>).slice(0, SHAPE_MAX_KEYS);
+  entries.forEach(([key, inner], index) => {
+    out[safeKey(key, index)] = describeShape(inner, depth + 1);
+  });
   return out;
 }
 
