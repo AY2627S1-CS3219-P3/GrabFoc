@@ -13,6 +13,9 @@
  * Scope: The denial line now goes through the shipper rather than Nest's logger, so these
  *        read the shipped line and assert the fields it adds (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: The fake request carries a route, since the logged path is now the route template.
+ * Author review: Cole Lin, read and approved.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -34,7 +37,16 @@ const guard = new JwtAuthGuard(new Reflector());
 
 function request(headers: Record<string, string> = {}): AuthedRequest {
   const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
-  return { header: (name: string) => lower[name.toLowerCase()], method: 'GET', originalUrl: '/locations' } as unknown as AuthedRequest;
+  // `route` is what Express has filled in by the time a guard runs, and what the logged path comes
+  // from now (PR #145 review).
+  return {
+    header: (name: string) => lower[name.toLowerCase()],
+    method: 'GET',
+    originalUrl: '/locations',
+    baseUrl: '',
+    route: { path: '/locations' },
+    headers: lower,
+  } as unknown as AuthedRequest;
 }
 
 function context(req: AuthedRequest, handler: 'open' | 'adminOnly' = 'open'): ExecutionContext {

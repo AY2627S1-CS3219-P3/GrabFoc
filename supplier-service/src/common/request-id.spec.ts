@@ -7,6 +7,8 @@
  * Scope: Added the logPath cases after the PR #90 review.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: Read the denial line from the shipper rather than Nest's logger (issue #52).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Rewrote the logPath cases for the route template (PR #145 review).
  * Author review (Cole Lin): Read in full; ran `npm test` (176 passed) and checked a supplied id,
  *        a minted one and a rejected one all reach the log line and the response header, and that
  *        a query string never reaches a log line.
@@ -16,7 +18,7 @@ import { Reflector } from '@nestjs/core';
 import type { NextFunction, Request, Response } from 'express';
 import { config } from '../config';
 import { AuthedRequest, JwtAuthGuard } from './auth';
-import { logPath, requestIdMiddleware, requestIdOf, resolveRequestId } from './request-id';
+import { UNROUTED, logPath, requestIdMiddleware, requestIdOf, resolveRequestId } from './request-id';
 
 // AI-generated (reviewed by Cole Lin).
 
@@ -49,18 +51,35 @@ describe('resolveRequestId', () => {
 });
 
 describe('logPath', () => {
-  // A location search carries the caller's position, so the query must not reach a log line that
-  // also names them (PR #90 review).
-  it('drops the query string, coordinates included', () => {
-    expect(logPath({ originalUrl: '/locations?lat=1.2966&lon=103.7764' } as Request)).toBe('/locations');
+  /** A request Express has routed: `route.path` is the template, not what the caller typed. */
+  const routed = (route: string, originalUrl: string) =>
+    ({ route: { path: route }, originalUrl, baseUrl: '' }) as unknown as Request;
+
+  it('logs the route template, so an id never reaches the line', () => {
+    expect(logPath(routed('/locations/:locationId', '/locations/7'))).toBe('/locations/:locationId');
   });
 
-  it('leaves a path with no query alone', () => {
-    expect(logPath({ originalUrl: '/locations/7' } as Request)).toBe('/locations/7');
+  /**
+   * The case the PR #145 review raised: redaction matches field names, so a secret sitting in a
+   * path segment would have gone to the store verbatim.
+   */
+  it('logs the template even when the caller put a token in the path', () => {
+    const line = logPath(routed('/locations/:locationId', '/locations/eyJhbGciOiJSUzI1NiJ9.secret'));
+    expect(line).toBe('/locations/:locationId');
+    expect(line).not.toContain('secret');
   });
 
-  it('survives a request object without a url', () => {
-    expect(logPath({} as Request)).toBe('');
+  it('drops the query string with it', () => {
+    expect(logPath(routed('/locations', '/locations?lat=1.2966&lon=103.7764'))).toBe('/locations');
+  });
+
+  // Nothing matched, so the URL is whatever somebody invented - the one case with no safe template.
+  it('says unrouted when no route matched', () => {
+    expect(logPath({ originalUrl: '/reset/abc123token' } as Request)).toBe(UNROUTED);
+  });
+
+  it('survives a request object with nothing on it', () => {
+    expect(logPath({} as Request)).toBe(UNROUTED);
   });
 });
 
@@ -105,7 +124,14 @@ describe('the requestId in the access_denied log', () => {
 
   /** Denies an unauthenticated request and returns the line the guard logged. */
   async function deniedLine(headers: Record<string, string>, originalUrl = '/locations') {
-    const req = { headers, header: () => undefined, method: 'POST', originalUrl } as unknown as AuthedRequest;
+    const req = {
+      headers,
+      header: () => undefined,
+      method: 'POST',
+      originalUrl,
+      baseUrl: '',
+      route: { path: '/locations' },
+    } as unknown as AuthedRequest;
     requestIdMiddleware(req, { setHeader: () => undefined } as unknown as Response, (() => undefined) as NextFunction);
     await guard
       .canActivate({
@@ -127,7 +153,7 @@ describe('the requestId in the access_denied log', () => {
     });
   });
 
-  it('logs the path without the query string', async () => {
+  it('logs the route template, so neither the query nor an id reaches the line', async () => {
     const line = await deniedLine({}, '/locations?lat=1.2966&lon=103.7764');
     expect(line.path).toBe('/locations');
     expect(JSON.stringify(line)).not.toContain('103.7764');

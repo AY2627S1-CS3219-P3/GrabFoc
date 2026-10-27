@@ -3,6 +3,12 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-27
+Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23, 2026-10-25 and the two
+  dated 2026-10-27 from the prompts and work
+  in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
+  verified; the wording is Claude's, written to the template in ai/usage-log.md.
+Author review: Cole Lin, read and approved.
 -->
 
 # AI Usage Log — Cole Lin
@@ -10,6 +16,65 @@ Author review: Jian Bing checked the logs locally against the AI usage-log guide
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-27 — Fourth review round, and fixing the class rather than the instance (PR #129, issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), review and debug.
+- Usage scenario: Five more findings, and a question from Cole Lin about why there had been so many rounds. Three of the five were the *same bug* as one already fixed, in a different place — field names being copied verbatim while only values were redacted.
+- Prompts (exact):
+  - "check 129 again. Why are there so many problems"
+- Key response: Field names are now sanitised everywhere a line can be written, not only in the dead-letter shape where the review first caught it: in the shipper (stdout and Kafka, the copy every service takes) and in the store's `extra` column. The shipper's buffer is bounded in bytes as well as in lines, because a thousand lines of megabyte metadata is a gigabyte held by the component whose job is not to disrupt the service it logs for. A line the store refuses now parks its shape too, like a line that fails validation. The `requestId` query filter accepts every id the store accepts — the inbound schema is lax on purpose, so the strange ids were exactly the ones that could be stored and then not searched for. And `logging-service/AGENTS.md` had no AI-disclosure header, which the course policy requires on every AI-authored file.
+- What I changed or rejected: Stopped fixing the instance the review named and went looking for the class — the three key-sanitising sites were found that way, and two of them had not been flagged yet. Rejected truncating an unsafe field name (half an address is still half an address) and rejected having a different rule in each of the three places, so one rule and one replacement format is now shared by all of them. Noted but did not change two files outside this PR that also lack a disclosure header (the root `README.md` and `supplier-service/AGENTS.md`), rather than widening the diff.
+- Verification: `npm test` (191 passed). All five fixes were reverted together and the suite re-run first: ten of the new tests fail against the unfixed code, which is how I know they test what they claim. Build clean. The integration job added earlier the same day covers the SQL.
+
+### 2026-10-27 — Third review round on the logging PR (PR #129, issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), review and debug.
+- Usage scenario: Three more findings on PR #129, all of them on code added two days earlier.
+- Prompts (exact):
+  - "fix 129"
+- Key response: Field *names* in a dead-letter body are now sanitised, not just the values: a key is as caller-controlled as a value, and `{ "Bearer eyJ...": "x" }` carried the token into the body as a field name. A name that could not be a real field name is replaced whole by its position and length, because showing the first 40 characters of a token is no better than showing all of it. The paginated total survives an empty page, so it describes the filter rather than the page that was asked for. And the standalone Compose run can point `LOGGING_JWKS_URL` at a reachable User Service, which it previously could not — the hostname it defaults to does not exist on that project network, and this service deliberately has no dev-header fallback, so reading the store was impossible in that mode.
+- What I changed or rejected: Rejected truncating an unsafe field name, and rejected redacting it by the sensitive-name list, since the problem is the name itself rather than what it is called. On the empty-page total, I had written a comment in the previous round arguing that zero was the useful answer for a log viewer; the review was right that it makes the total depend on the page asked for, and Supplier already behaves the other way, so the comment was wrong and is gone. Chose a second count query on the empty page only, rather than two queries always, so the ordinary path still reads its rows and its total from one snapshot. Also added the logging service's integration tests to CI, mirroring the Credit Service's job: the pagination change is SQL, Docker was not running on this machine, and nothing in CI would otherwise have run those tests at all.
+- Verification: `npm test` (174 passed). The new unit test was run against the unfixed code first and fails there. The two new integration tests could not be run locally — no Docker — so the CI job added in this commit is what proves them, and I read its result rather than assuming it.
+
+### 2026-10-25 — Clearing the review findings on both logging PRs (PRs #129 and #145, issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), review and debug.
+- Usage scenario: Both open logging PRs had unresolved review conversations blocking the merge, and the two branches share a copied file, so a fix in one has to be mirrored in the other.
+- Prompts (exact):
+  - "make 129 and 145 not have merge conflicts with each other"
+  - "fix 129 and 145"
+- Key response: Six fixes. The JWKS key filter now rejects a key whose `use` or `alg` the verifier would refuse anyway, and an unknown `kid` gets its own refetch clock, so a key rotation seconds after an ordinary fetch is not answered with 401 for the rest of the cache window. The `service`, `event` and `userId` query filters reject control bytes, so `?service=%00` is a 400 instead of a PostgreSQL error. `LOGGING_JWKS_URL` is parsed at startup, so a scheme-less URL fails to boot rather than looking like a transient outage later. A dead letter whose payload is valid JSON but not an object carries no body, so a bare `"Bearer eyJ…"` string is never copied into the dead-letter topic. The Date serialiser calls `Date.prototype.toISOString` rather than the value's own, so an override cannot run after redaction has already decided the field is safe.
+- What I changed or rejected: Took the finding that the two branches would conflict on the usage log and had the file made byte-identical on both, rather than resolving the same conflict twice at merge time. Rejected rewriting the file's older disclosure entries while fixing one that had been inserted in the wrong place; only the misplaced block moved.
+- Second round the same day: the review came back on two of these fixes. The dead-letter body still carried a credential when it sat in a field no name filter would list, such as `role`, so the body is now the payload's *shape* — field names and value types, no values at all. And the unknown-key refetch recorded its rate-limit timestamp before the fetch, so one failed refresh answered 401 from the stale cache for 30 seconds after the endpoint recovered; it is recorded only once the endpoint has answered. Four files had also picked up doubled carriage returns from my own earlier edits and were committed with CRLF while the rest of the repository stores LF; normalised. A root `node_modules/` ignore rule was added after `git add -A` on a branch where another service's folder is untracked staged 13,230 files and had to be undone with a force-push.
+- Verification: `npm test` in the logging service (172 passed) and in the Supplier Service, with a test added for each code fix — an unusable key set, a NUL in each text filter, three malformed JWKS URLs, a non-object dead-letter payload, a Date carrying an own `toISOString`, a dead letter whose shape is parked instead of its values, and a rotation whose first refetch fails. Each new test was also run against the unfixed code to confirm it fails there — five did. Both merge orders checked for conflicts with `git merge-tree`. Integration tests not re-run: Docker Desktop is not up on this machine and no SQL changed.
+
+### 2026-10-23 — Supplier: log every request, and the route template (PR #145, issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate and review.
+- Usage scenario: The Logging Service could say who had been refused, but nothing about what anyone actually did, and had no durations — so the store answered half of what observability is being asked to mean at D3.
+- Prompts (exact):
+  - "ok I need you to help me understand logging service. I wanted all logs to be recorded, even POST and stuff. Based on my understanding you only logged failures. Is this good? why did we do this"
+  - "so this would allow me to log everything and show it for the demo just like the failures"
+  - "yes build it on a new branch"
+  - "if its refused, why is there a request completed"
+  - "fix it again."
+- Key response: `request_completed` on every request, carrying method, route, status, `durationMs` and the caller. Built as middleware rather than a Nest interceptor, because guards run before interceptors — an interceptor would never see a refused request, so it would have missed every 401 and 403, which is most of what anyone looks up.
+- What I changed or rejected: Asked why only failures were logged rather than accepting it, which is what turned up the gap. Kept both `request_completed` and `access_denied` on a refused request rather than folding them together, because the backlog asks for unauthorised attempts by name (U5.1.1) — and had the consequence written down, that any "how many denials" query has to pick one event. Queried the event name, since "completed" reads like success for a 403; kept it because the gateway already emits that exact name and two names for one concept across services is worse. Took the review's finding that a caller can put a token in a URL path and had the logged path changed to the **route template** (`/locations/:locationId`), which carries no caller data at all.
+- Verification: `npm test` (200 passed). The route-template behaviour was checked against Express directly with a throwaway probe rather than assumed: a matched request exposes the template, an unmatched one exposes nothing, which is why a 404 logs a placeholder instead of the invented path.
+
+### 2026-10-21 — The Logging Service (issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate and review.
+- Usage scenario: Build the Centralized Logging N2H I was assigned: a store for the structured log lines every service already writes, an ADMIN-only way to query them, and the module other services copy to produce them.
+- Prompts (exact):
+  - "I want to start work on the logging service. Ask any questions you need, and if these questions require other services input, let me know as well as I need to coordinate with my team on when they are doing these parts. You can start with a quick excerpt on what you think the logging service is."
+  - "ok ask me again what do I need to decide" — then chose: stub the consumer until the shared broker is merged; a line id with deduplication on insert; 30-day retention; and one PR covering the service, the shipper and Supplier adopting it.
+  - My answers on the line format: an explicit `service` field written by each service; `ts` as ISO-8601 UTC; align Envoy's field names; `x-request-id` as the Kafka header for tracing, with `eventId` staying the idempotency and dead-letter key.
+  - My corrections to the first ingest proposal: Envoy cannot produce to Kafka (its access loggers are stdout/file, gRPC ALS and OpenTelemetry), so the gateway stays stdout-only and services log through Kafka; "nothing can slow a request down" is not the argument, because a non-awaited HTTP POST also stays out of the request path — buffering is; the Kafka client is a real cost for every service; and at-least-once delivery means expecting duplicate rows.
+  - "finish it all first" / "do 1 to 4 and split the PRs"
+- Key response: `logging-service/` with the `log_lines` table, ingest behind an interface so the service works before the broker exists, the ADMIN-only `GET /logs`, a 30-day purge, and `src/client/log-shipper.ts` for other services to copy.
+- What I changed or rejected: Rejected the first ingest design — it assumed Envoy could produce to Kafka and argued for Kafka on the wrong grounds. Took the hybrid (services on Kafka, gateway on stdout) knowing it leaves the gateway's own line out of the store, and had that gap written down rather than glossed over. Chose deduplication on a line id over accepting approximate counts. Set retention to 30 days, shorter than the 90 for `location_changes`, because these rows hold a user id, a path and a timestamp together. Refused a dev-auth header fallback on the query API even though Supplier has one. Had an exception to the dead-letter rule argued for first, then **overruled it on 2026-10-21**: every service should behave as its own microservice, and one consistent rule across five services is worth more than saving a topic. `logging.lines` and `logging.lines.dlt` are now in `infra/kafka/topics.txt` with the same dead-letter headers Credit uses, so one admin screen can read every service's dead letters. Both the argument and the decision are recorded in `logging-service/AGENTS.md`.
+- Verification: Read the service in full. `npm test` (78 passed) and `npm run test:int` against the `logging-db` container (16 passed: insert, a redelivered line deduplicated, every filter, paging and the purge), plus `npm run build`. Added the service to the CI matrix so its tests run on every pull request, and checked `docker compose config` still validates the whole stack with it included.
 ### 2026-10-21 — Supplier: correlation ids, and producing log lines for the Logging Service (issue #52)
 
 - Tool and mode: Claude Code (Claude Opus 5), generate, debug and review.

@@ -13,6 +13,14 @@
  *        threads were resolved and CI passed before approving and merging PR #30. The fixes were
  *        tested by Claude Code against a stub JWKS server (invalid and null bodies, 20 concurrent
  *        requests making one fetch).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Refuse an empty or malformed JWKS key set as unavailable, after the PR #129 review
+ *        found it in the Logging Service's copy of this file.
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: A key has to carry the fields this service reads, not merely be an object
+ *        (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
 import { config } from '../config';
@@ -47,6 +55,18 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+/**
+ * A key this service can actually use: looked up by `kid` and imported by `createPublicKey`, which
+ * needs `kty`. `{}` satisfies isObject, so an object-shaped but empty key set used to be cached -
+ * and then a valid caller's kid was never found, so they got 401 instead of the 503 that says the
+ * key service is unusable (PR #145 review).
+ */
+function isUsableKey(value: unknown): value is Record<string, unknown> {
+  if (!isObject(value)) return false;
+  const { kid, kty } = value as { kid?: unknown; kty?: unknown };
+  return typeof kid === 'string' && kid !== '' && typeof kty === 'string' && kty !== '';
+}
+
 async function fetchKeys(): Promise<Jwk[]> {
   const url = config.jwksUrl;
   // Unset only in dev-auth mode, where a bearer token still can't be accepted unverified.
@@ -69,7 +89,22 @@ async function fetchKeys(): Promise<Jwk[]> {
   if (!isObject(body) || !Array.isArray(body.keys)) {
     throw new JwksUnavailableError('JWKS response has no keys array');
   }
-  cachedKeys = body.keys as Jwk[];
+  // An empty array, or one holding anything that is not an object, is a key set this service
+  // cannot use. Accepting it answers 401 to a valid caller - saying their token is bad when the
+  // truth is that we cannot check it - and leaves the cache empty, so every later request
+  // refetches. A non-object entry is worse: reading it produces a 500. 503 is the honest answer,
+  // and it matches the gateway (api-gateway/envoy/behaviour-differences.md). Found by the PR #129
+  // review of the Logging Service's copy of this file.
+  // AI-generated (reviewed by Cole Lin).
+  // Filtered, not rejected: a key set with one good key and one junk entry should keep
+  // working. Same approach as credit-service/src/common/jwks.ts, which got here first. A 200
+  // with nothing usable in it is as unusable as an error, so 503 rather than blaming a valid
+  // caller's token with a 401 (PR #145 review).
+  const usable = body.keys.filter(isUsableKey);
+  if (!usable.length) {
+    throw new JwksUnavailableError(`${url} returned no usable keys`);
+  }
+  cachedKeys = usable as Jwk[];
   cachedAt = Date.now();
   return cachedKeys;
 }

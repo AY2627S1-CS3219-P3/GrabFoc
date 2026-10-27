@@ -6,6 +6,10 @@
  *        supplier-service/AGENTS.md).
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Added logPath() after the PR #90 review found query strings were reaching the logs.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: logPath returns the route template rather than the caller's pathname, so a secret in a
+ *        path segment cannot reach the log store (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  * Author review (Cole Lin): Read in full; ran `npm test` (176 passed) and checked a supplied id,
  *        a minted one and a rejected one all reach the log line and the response header, and that
  *        a query string never reaches a log line.
@@ -52,14 +56,24 @@ export function requestIdOf(req: Request): string {
 }
 
 /**
- * The path to put in a log line: the pathname, never the query string. `originalUrl` carries the
- * query, and this service's own filters put personal data there — `?lat=1.2966&lon=103.7764` is
- * the caller's position — so the full URL must not reach a line that also names the caller (root
- * AGENTS.md: never log unmasked personal data). The gateway drops query strings for the same
- * reason; see api-gateway/envoy/behaviour-differences.md.
+ * The path to put in a log line: **the route template, never the caller's URL.**
+ *
+ * `/locations/:locationId`, not `/locations/7` and certainly not
+ * `/locations/eyJhbGciOiJSUzI1NiJ9.whatever-the-caller-put-there`. A caller chooses every byte of a
+ * URL, and the shipper's redaction matches field *names*, so it sees a harmless `path` key and lets
+ * the value through — a token or an email sitting in a path segment would reach the store verbatim
+ * (PR #145 review). The template contains no caller data at all, and it groups better: a thousand
+ * lookups aggregate to one route rather than a thousand paths.
+ *
+ * Express fills `req.route` once routing has matched, which is before any guard runs and so before
+ * any line this service writes. When nothing matched — a 404 for a path somebody invented — there
+ * is no template, and that is exactly the case where the URL is arbitrary caller content, so it
+ * becomes a placeholder. The raw path is still in the gateway's own log if anyone needs it.
  */
 export function logPath(req: Request): string {
-  const url = req.originalUrl ?? '';
-  const query = url.indexOf('?');
-  return query === -1 ? url : url.slice(0, query);
+  const route = (req as { route?: { path?: string } }).route?.path;
+  if (route) return `${req.baseUrl ?? ''}${route}`;
+  return UNROUTED;
 }
+
+export const UNROUTED = '/<unrouted>';
