@@ -21,6 +21,10 @@
  *        cannot use one over-long field to keep a whole line out of the searchable store
  *        (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Guard the local write too - it was the one statement outside emit()'s guard, so a sink
+ *        that throws took down the request it was logging (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -301,7 +305,7 @@ export class LogShipper {
   private bufferedBytes = 0;
   private timer?: NodeJS.Timeout;
   private publishing?: Promise<void>;
-  readonly counts = { emitted: 0, dropped: 0, oversize: 0, failed: 0, clamped: 0 };
+  readonly counts = { emitted: 0, dropped: 0, oversize: 0, failed: 0, clamped: 0, writeFailed: 0 };
 
   constructor(private readonly options: ShipperOptions) {
     // Checked at construction, not per line: a name outside the store's bound makes every line
@@ -328,9 +332,10 @@ export class LogShipper {
 
   /**
    * Records one line and returns immediately: nothing here is awaited, so a slow or dead broker
-   * cannot slow a request down. The line always reaches stdout, so a line dropped from a full
+   * cannot slow a request down. The line reaches stdout first, so a line dropped from a full
    * buffer is still in the container log — which is what makes dropping acceptable rather than
-   * lossy.
+   * lossy. If the local sink is itself broken that justification weakens, and `counts.writeFailed`
+   * is what says so; there is nothing better to do about it from in here.
    */
   emit(input: LineInput): void {
     const { payload, key } = this.build(
@@ -339,8 +344,21 @@ export class LogShipper {
       input,
     );
     this.counts.emitted += 1;
-    (this.options.write ?? console.log)(payload);
+    // Guarded like the build above it. `write` is a documented option, so it is caller-supplied
+    // code - and the default is no safer: stdout in a container is a pipe, a pipe write is
+    // synchronous on Linux, and a reader that goes away raises EPIPE on the caller's own stack.
+    // This statement was the one left outside the guard, so a dead sink threw into the request it
+    // was logging and turned it into a 500: the component whose whole purpose is not to disturb
+    // the service it logs for taking that service down (PR #129 review). Counted rather than
+    // reported, because there is nowhere to report a broken log sink *to*.
+    try {
+      (this.options.write ?? console.log)(payload);
+    } catch {
+      this.counts.writeFailed += 1;
+    }
 
+    // Deliberately after that catch rather than inside an else: a broken local sink is a reason to
+    // ship the line harder, not to stop, because the topic is then the only copy of it.
     if (!this.options.publisher) return;
     const bytes = Buffer.byteLength(payload);
     // Counted apart from an ordinary drop: a line too big to ship at all says something about the
