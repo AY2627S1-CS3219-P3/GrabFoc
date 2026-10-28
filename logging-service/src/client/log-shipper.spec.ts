@@ -26,6 +26,9 @@
  * Scope: Added the store-bound cases, checked against inboundLineSchema itself, after the eighth
  *        review round on PR #129 found a 500-character path keeping a line out of the store.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for a local write that throws (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 import { inboundLineSchema } from '../lines/line.schema';
@@ -658,5 +661,52 @@ describe('fields the store would refuse', () => {
     expect(line.event).toBe('line_unserialisable');
     expect(line.originalEvent).toHaveLength(60);
     expect(storable(written[0]).success).toBe(true);
+  });
+});
+
+describe('a local write that fails', () => {
+  // `write` is a documented option, so it is caller-supplied code, and the default `console.log`
+  // is not safe either: stdout in a container is a pipe, and on Linux a pipe write is synchronous,
+  // so a reader that goes away raises EPIPE straight into whoever called emit(). This write was
+  // the one statement outside the guard, so a dead sink took down the request it was logging - the
+  // one thing this component exists not to do (PR #129 review).
+  const throwing = () => {
+    throw new Error('EPIPE');
+  };
+
+  it('does not let the exception reach the caller', () => {
+    const log = new LogShipper({ service: 'supplier', write: throwing, newId: () => 'id-1' });
+    expect(() => log.emit({ level: 'warn', event: 'access_denied' })).not.toThrow();
+    expect(log.counts).toMatchObject({ emitted: 1, writeFailed: 1 });
+  });
+
+  it('still buffers the line for the broker', async () => {
+    // A broken stdout is a reason to ship harder, not to stop: the topic is then the only copy.
+    const log = new LogShipper({
+      service: 'supplier',
+      publisher: collecting,
+      write: throwing,
+      newId: () => 'id-1',
+    });
+    log.emit({ level: 'info', event: 'access_denied', requestId: 'trace-1' });
+    await log.flush();
+    expect(published.map((out) => JSON.parse(out.value).event)).toEqual(['access_denied']);
+  });
+
+  it('keeps working once the sink recovers', () => {
+    let broken = true;
+    const log = new LogShipper({
+      service: 'supplier',
+      write: (out) => {
+        if (broken) throw new Error('EPIPE');
+        written.push(out);
+      },
+      newId: () => 'id-1',
+    });
+    log.emit({ level: 'info', event: 'first' });
+    broken = false;
+    log.emit({ level: 'info', event: 'second' });
+    expect(written.map((out) => JSON.parse(out).event)).toEqual(['second']);
+    expect(log.counts).toMatchObject({ emitted: 2, writeFailed: 1 });
   });
 });
