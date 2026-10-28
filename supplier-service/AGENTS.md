@@ -216,6 +216,14 @@ appears as its position and length rather than its name, and a field named `__pr
 only because the redacted copy has a null prototype — on an ordinary object that assignment runs
 the prototype setter, and the field disappears with its neighbours intact.
 
+A name is matched with **every separator removed**, not just `-` and `_`: a key may contain `.` and
+`:`, so `pass.word` normalised to `pass.word`, matched nothing in the list, and
+`{ 'pass.word': 'hunter2' }` went to stdout and the topic in the clear (PR #129 review). And the
+`[key 0: 16 chars]` a replaced name becomes is now a **fixed point**: the Logging Service sanitises
+keys again on the way into its own table, the marker did not match the pattern it tests against, so
+the stored row reported the marker's length rather than the key's — 16 characters on this
+container's stdout and 17 in the row. Both sides recognise a marker now.
+
 **Bounds the store will accept.** The shipper also brings every field the Logging Service bounds
 inside that bound before writing the line: `path` at 400 characters, `event` at 60, `requestId` at
 200, `userId` at 100, `method` at 10, `service` at 40, plus the two enums for `level` and `role`. A
