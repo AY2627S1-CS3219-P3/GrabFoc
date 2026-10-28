@@ -34,6 +34,10 @@
  *        flushMs setInterval cannot schedule. Hold the validated service name rather than
  *        rereading the caller's object per line (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Take out of the metadata what the store's JSONB cannot hold, and rebuild an array
+ *        without going through the caller's own `map` (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -160,6 +164,53 @@ const NEVER_LOG = [
   'credits',
 ];
 
+/**
+ * `value` with the characters PostgreSQL's JSONB cannot represent removed: a NUL, and a surrogate
+ * with no partner. JSONB stores text, and PG text cannot hold a NUL at all; an unpaired surrogate
+ * reaches the server as a `\\ud800` escape, which its JSON parser refuses. Either one costs the
+ * **whole line** - the insert fails with a class-22 error, ingest reads that as permanently
+ * unstorable, and a line the schema had just accepted is parked instead of being searchable
+ * (PR #129 review). The round before brought `method` and `path` inside what their TEXT columns
+ * accept; this is the same pairing one level down, in `extra`.
+ *
+ * Removed rather than rejected, and the other way round from the envelope fields: `extra` is
+ * free-form metadata, so a tab or a newline in a `note` is content and is kept. Only what JSONB
+ * cannot carry comes out, and taking out a character costs less than losing the line. Written as
+ * loops rather than regexes so the escape sequences cannot be mangled by an editing tool.
+ */
+function unstorableInJsonb(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code === 0 || (code >= 0xd800 && code <= 0xdfff)) return true;
+  }
+  return false;
+}
+
+function jsonbSafe(value: string): string {
+  // A valid surrogate pair trips the check above and comes back out of the loop unchanged, which
+  // is why this is a fast path and not the decision itself.
+  if (!unstorableInJsonb(value)) return value;
+  let out = '';
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code === 0) continue;
+    if (code >= 0xd800 && code <= 0xdbff) {
+      // A high surrogate is kept only with the low surrogate that completes it. charCodeAt past
+      // the end is NaN, so the last character of a string falls through to the drop below.
+      const low = value.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        out += value[i] + value[i + 1];
+        i += 1;
+      }
+      continue;
+    }
+    // A low surrogate reached on its own: the pair above consumes the valid ones.
+    if (code >= 0xdc00 && code <= 0xdfff) continue;
+    out += value[i];
+  }
+  return out;
+}
+
 const REDACTED = '[REDACTED]';
 const TRUNCATED = '[TRUNCATED]';
 // A field name a caller would plausibly write. Only values were ever redacted, so a caller passing
@@ -167,6 +218,15 @@ const TRUNCATED = '[TRUNCATED]';
 // flagged (PR #129 review). An unsafe name is replaced whole, not truncated: half an address is
 // still half an address. The same rule is in the logging service's line.schema.ts and in its
 // dead-letter shape, and the three must agree.
+//
+// A filter for keys that *cannot* be field names, not a proof that the rest are safe. A later
+// round asked for credential-shaped keys to go too, and `{ attempts: { '123456': true } }` really
+// is a six-digit code shipped verbatim - but nothing tells it apart from `{ byStatus: { '404': 3 }
+// }` or `{ byYear: { '2026': 5 } }`, which are ordinary aggregates. Redaction matches names, so it
+// cannot identify a secret by its contents, in a key any more than in a value. The rule that helps
+// is the call-site one in root AGENTS.md: never log an OTP or a handover code, as a value *or* as a
+// field name. `otp` and `code` are in the list above, so `{ otp: { ... } }` is caught by its
+// parent's name.
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 function safeKey(key: string, index: number): string {
@@ -197,6 +257,9 @@ function isSensitive(key: string): boolean {
  * access can query, so this is the last point at which anything can be removed.
  */
 export function redactFields(value: unknown, depth = 0): unknown {
+  // Strings first: these land in the store's `extra` JSONB column, which cannot hold a NUL or a
+  // lone surrogate - and a value it cannot hold costs the whole line. See `jsonbSafe` above.
+  if (typeof value === 'string') return jsonbSafe(value);
   if (value === null || typeof value !== 'object') return value;
   // Beyond the limit the subtree is replaced, not returned: returning it would serialise a secret
   // nested deeper than this verbatim, and would let a cycle through to JSON.stringify, which
@@ -209,7 +272,19 @@ export function redactFields(value: unknown, depth = 0): unknown {
   // otherwise run after redaction has decided this field is safe, and could return a token from
   // an innocent-looking field (PR #145 review).
   if (value instanceof Date) return Date.prototype.toISOString.call(value);
-  if (Array.isArray(value)) return value.map((item) => serialisable(redactFields(item, depth + 1)));
+  if (Array.isArray(value)) {
+    // Built by index into a plain array rather than with `value.map`: `Array.prototype.map` goes
+    // through `Symbol.species`, so mapping a subclass returned another instance of that subclass -
+    // prototype and all - and `JSON.stringify` then called its inherited `toJSON` *after*
+    // redaction had finished, free to return anything. Dropping own function values does not help:
+    // a class puts `toJSON` on the prototype, where `Object.entries` never looks. An overridden
+    // `map` would have been caller code running inside the walk as well (PR #129 review).
+    const items: unknown[] = [];
+    for (let i = 0; i < value.length; i += 1) {
+      items.push(serialisable(redactFields(value[i], depth + 1)));
+    }
+    return items;
+  }
   // Null-prototype, so a field named `__proto__` becomes an own property like any other. On a
   // plain `{}`, `out['__proto__'] = item` runs Object.prototype's setter instead of defining a
   // property, so that field vanished from the line - silently, with every neighbouring field
@@ -305,7 +380,11 @@ function boundedId(value: unknown, max: number): string | undefined {
  * a cut path off as the resource that was asked for.
  */
 function boundedText(value: string, max: number): string {
-  const text = stripControl(value);
+  // `jsonbSafe` as well as `stripControl`, because this function's third caller is the fallback
+  // line's `originalEvent`, which is not an envelope field and so lands in the store's `extra`
+  // JSONB. For `event` and `path` it changes nothing worth keeping: they go to TEXT columns, where
+  // a lone surrogate is encoded rather than refused (PR #129 review).
+  const text = jsonbSafe(stripControl(value));
   return text.length <= max ? text : `${text.slice(0, max - TRUNCATED.length)}${TRUNCATED}`;
 }
 
