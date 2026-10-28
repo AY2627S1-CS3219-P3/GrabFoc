@@ -38,6 +38,11 @@
  * Scope: Take out of the metadata what the store's JSONB cannot hold, and rebuild an array
  *        without going through the caller's own `map` (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Hold every option in a field, so nothing of the caller's object is read after
+ *        construction, and fall back when newId returns an id the store would refuse
+ *        (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -398,6 +403,13 @@ function boundedText(value: string, max: number): string {
  */
 const MAX_TIMER_MS = 2_147_483_647;
 
+/**
+ * What the store accepts as a `lineId` - the same shape `z.string().uuid()` matches. A regex is
+ * safe here where it was not for the control characters: there is no escape sequence in it for an
+ * editing tool to mangle.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** `value` when the store would hold it in that column, otherwise undefined. */
 function boundedInt(value: unknown, min: number, max: number): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : undefined;
@@ -420,9 +432,19 @@ export class LogShipper {
    * (PR #129 review).
    */
   private readonly service: string;
+  /**
+   * The rest of the options, held for the same reason as the name above: a property read on an
+   * object the caller still owns is itself caller code. Guarding the *call* to `newId` was not
+   * enough - `this.options.newId` ran before the guard, and `this.options.publisher` in `emit()`
+   * ran outside one altogether, so an accessor or a Proxy trap that throws escaped `emit()` anyway.
+   * After this constructor there is nothing of the caller's left to read (PR #129 review).
+   */
+  private readonly write?: (line: string) => void;
+  private readonly newId?: () => string;
+  private readonly publisher?: LinePublisher;
   readonly counts = { emitted: 0, dropped: 0, oversize: 0, failed: 0, clamped: 0, writeFailed: 0, idFailed: 0 };
 
-  constructor(private readonly options: ShipperOptions) {
+  constructor(options: ShipperOptions) {
     // Checked at construction, not per line: a name outside the store's bound makes every line
     // this service will ever write unstorable, and the startup that configured it is the only
     // place that can say so. emit() must never throw - a constructor may, and this is a
@@ -434,6 +456,9 @@ export class LogShipper {
       );
     }
     this.service = options.service;
+    this.write = options.write;
+    this.newId = options.newId;
+    this.publisher = options.publisher;
     const flushMs = options.flushMs ?? 1000;
     // Checked whether or not a publisher is wired in: a delay setInterval cannot schedule is a
     // mistake worth reporting at the line that made it, not only in the configurations that
@@ -449,7 +474,7 @@ export class LogShipper {
     // small enough that holding it through a broker outage is not what takes a service down.
     this.maxBufferBytes = options.maxBufferBytes ?? 4 * 1024 * 1024;
     this.maxLineBytes = options.maxLineBytes ?? 64 * 1024;
-    if (options.publisher) {
+    if (this.publisher) {
       this.timer = setInterval(() => void this.flush(), flushMs);
       // Never hold the process open just to ship a log line.
       this.timer.unref();
@@ -474,14 +499,14 @@ export class LogShipper {
     // the service it logs for taking that service down (PR #129 review). Counted rather than
     // reported, because there is nowhere to report a broken log sink *to*.
     try {
-      (this.options.write ?? console.log)(payload);
+      (this.write ?? console.log)(payload);
     } catch {
       this.counts.writeFailed += 1;
     }
 
     // Deliberately after that catch rather than inside an else: a broken local sink is a reason to
     // ship the line harder, not to stop, because the topic is then the only copy of it.
-    if (!this.options.publisher) return;
+    if (!this.publisher) return;
     const bytes = Buffer.byteLength(payload);
     // Counted apart from an ordinary drop: a line too big to ship at all says something about the
     // caller, while a full buffer says something about the broker.
@@ -508,14 +533,21 @@ export class LogShipper {
    * throws on every call would otherwise leave no trace at all.
    */
   private newLineId(): string {
-    const mint = this.options.newId;
-    if (!mint) return randomUUID();
+    if (!this.newId) return randomUUID();
+    let id: unknown;
     try {
-      return mint();
+      id = this.newId();
     } catch {
       this.counts.idFailed += 1;
       return randomUUID();
     }
+    // Checked, not trusted. `lineId` is the one envelope field that can be neither dropped nor
+    // cut - the store requires a UUID of it - so a generator returning a counter or an adapter's
+    // own id would cost every line this service writes, which is the cost `service` is checked at
+    // construction to avoid. This one is per line, so it is checked per line (PR #129 review).
+    if (typeof id === 'string' && UUID.test(id)) return id;
+    this.counts.idFailed += 1;
+    return randomUUID();
   }
 
   /**
@@ -629,12 +661,12 @@ export class LogShipper {
   /** Drains the buffer. Safe to call while one is already running; one publish at a time. */
   async flush(): Promise<void> {
     if (this.publishing) return this.publishing;
-    if (!this.options.publisher || !this.buffer.length) return;
+    if (!this.publisher || !this.buffer.length) return;
     const batch = this.buffer.splice(0, this.buffer.length);
     // The buffer is what holds the memory; once the batch is out of it the budget is free again,
     // whether or not the publish then succeeds. Lines are never put back - they are on stdout.
     this.bufferedBytes = 0;
-    const publisher = this.options.publisher;
+    const publisher = this.publisher;
     const pending = (async () => {
       try {
         // Awaited inside the promise, so a publisher that throws synchronously is still caught
