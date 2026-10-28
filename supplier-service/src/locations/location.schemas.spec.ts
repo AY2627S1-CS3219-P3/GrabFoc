@@ -4,6 +4,14 @@
  * Scope: Generated these unit tests for the request validation rules.
  * Author review (Jian Bing): Ran `npm test` on 2026-10-01 (157 passed) and verified each test
  *        case in this file by hand.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Added the cases for the list filters rejecting control bytes and being length-bound only
+ *        where the stored field is (PR #129 and PR #157 reviews).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for a value creation accepts staying findable through its own filter
+ *        (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { ProblemException } from '../common/problem';
 import { createLocationSchema, listQuerySchema, parseOr400, updateLocationSchema } from './location.schemas';
@@ -144,6 +152,50 @@ describe('listQuerySchema', () => {
     expect(accepts(listQuerySchema, { page })).toBe(false);
   });
 
+  /**
+   * PostgreSQL cannot hold a NUL in a TEXT parameter, so `?name=%00` passed validation, reached
+   * the query and came back as a 500 rather than a 400 - the same gap the PR #129 review found in
+   * the Logging Service's filters.
+   */
+  it.each(['name', 'type', 'building'])('rejects a NUL byte in the %s filter', (field) => {
+    expect(accepts(listQuerySchema, { [field]: `a${String.fromCharCode(0)}b` })).toBe(false);
+  });
+
+  /**
+   * Narrowed from every control character to a NUL, the only one PostgreSQL cannot store. This
+   * asserted the opposite, and was wrong in the same way the shared length bound was: it refused
+   * on the filter side what creation accepts, which leaves a stored row unreachable through the
+   * filter meant to find it. The sibling below already had the right rule written down - storable,
+   * so searchable - and this test sat two blocks above it breaking it (PR #157 review).
+   */
+  it.each(['name', 'type', 'building'])('accepts another control byte in the %s filter', (field) => {
+    expect(accepts(listQuerySchema, { [field]: `a${String.fromCharCode(31)}b` })).toBe(true);
+  });
+
+  /**
+   * The bound is the field's own stored limit, or nothing. A shared 100 was wrong: `building` is
+   * stored unbounded, so an admin could create a location no exact filter could find again
+   * (PR #157 review).
+   */
+  it('bounds the name filter at the length a name can actually be', () => {
+    expect(accepts(listQuerySchema, { name: 'a'.repeat(100) })).toBe(true);
+    expect(accepts(listQuerySchema, { name: 'a'.repeat(101) })).toBe(false);
+  });
+
+  it.each(['type', 'building'])('does not bound the %s filter, because the column does not', (field) => {
+    const long = 'a'.repeat(300);
+    // Storable, so searchable: createLocationSchema accepts these at any length.
+    expect(accepts(createLocationSchema, { ...valid, [field]: long })).toBe(true);
+    expect(accepts(listQuerySchema, { [field]: long })).toBe(true);
+  });
+
+  it('still accepts the ordinary filters', () => {
+    expect(listQuerySchema.parse({ name: 'Starbucks@UTown', building: 'COM3' })).toMatchObject({
+      name: 'Starbucks@UTown',
+      building: 'COM3',
+    });
+  });
+
   it('turns lat and lon text into numbers', () => {
     expect(listQuerySchema.parse({ lat: '1.2966', lon: '103.7764' })).toMatchObject({ lat: 1.2966, lon: 103.7764 });
   });
@@ -205,5 +257,42 @@ describe('parseOr400', () => {
     expect(problem.message).toMatch(/^Invalid location: /);
     expect(problem.message).toContain('name:');
     expect(problem.message).toContain('floor:');
+  });
+});
+
+/**
+ * The filter refused every control character and DEL; creation refused none of them. So an admin
+ * could create a building named with a tab, PostgreSQL would store it, and the exact `?building=`
+ * filter rejected that same value with a 400 - the row unreachable through the filter meant to
+ * find it. Both sides now refuse exactly what the store cannot hold, which is a NUL (PR #157).
+ */
+describe('a value creation accepts stays findable', () => {
+  const withControl = (field: string, value: string) => ({ ...valid, [field]: value });
+
+  it.each([
+    ['a tab', 'Techno\tEdge'],
+    ['a newline', 'Techno\nEdge'],
+    ['a DEL', `Techno${String.fromCharCode(0x7f)}Edge`],
+  ])('accepts %s on creation and in the filter alike', (_why, value) => {
+    expect(createLocationSchema.safeParse(withControl('building', value)).success).toBe(true);
+    expect(listQuerySchema.safeParse({ building: value }).success).toBe(true);
+  });
+
+  it.each(['name', 'type', 'building', 'location_desc'])('refuses a NUL in %s on creation', (field) => {
+    // Previously a driver 500 from the INSERT; the filter already returned 400 for this one.
+    expect(createLocationSchema.safeParse(withControl(field, `a${String.fromCharCode(0)}b`)).success).toBe(
+      false,
+    );
+  });
+
+  it.each(['name', 'type', 'building'])('still refuses a NUL in the %s filter', (field) => {
+    expect(listQuerySchema.safeParse({ [field]: `a${String.fromCharCode(0)}b` }).success).toBe(false);
+  });
+
+  it('keeps an unpaired surrogate on both sides, because it is not a storage failure', () => {
+    // Node encodes it to U+FFFD on the way in and in the filter term alike, so the two agree.
+    const lone = 'Techno\ud800Edge';
+    expect(createLocationSchema.safeParse(withControl('building', lone)).success).toBe(true);
+    expect(listQuerySchema.safeParse({ building: lone }).success).toBe(true);
   });
 });

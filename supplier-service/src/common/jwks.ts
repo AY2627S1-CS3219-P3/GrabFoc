@@ -20,6 +20,12 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: A key has to carry the fields this service reads, not merely be an object
  *        (PR #145 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Apply the restrictions verifyToken applies when the key set is filtered, and give the
+ *        unknown-kid refetch its own clock, recorded only after the endpoint answers.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Do not fetch the same key set twice in one request when the cache was cold and the kid is
+ *        unknown, and let that one fetch spend the unknown-kid allowance (PR #157 review).
  * Author review: Cole Lin, read and approved.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
@@ -40,6 +46,9 @@ const MIN_REFETCH_MS = 30 * 1000; // don't hammer the User Service when a kid is
 
 let cachedKeys: Jwk[] = [];
 let cachedAt = 0;
+// Separate from cachedAt: gating the unknown-kid refetch on the ordinary fetch time meant a key
+// rotation seconds after a normal fetch was answered with 401 until that cache aged out.
+let lastMissAt = 0;
 // The fetch in progress, shared so concurrent requests trigger one JWKS request, not one each.
 let inflight: Promise<Jwk[]> | undefined;
 
@@ -60,11 +69,26 @@ function isObject(value: unknown): value is Record<string, unknown> {
  * needs `kty`. `{}` satisfies isObject, so an object-shaped but empty key set used to be cached -
  * and then a valid caller's kid was never found, so they got 401 instead of the 503 that says the
  * key service is unusable (PR #145 review).
+ *
+ * It also applies the two restrictions verifyToken applies, and tries the import rather than
+ * inferring it from the fields: a key published for encryption, or for an alg we do not accept, is
+ * importable and so passed this filter, and the set was cached as usable - and then verifyToken
+ * refused the same key, answering 401 to a cryptographically valid administrator token. The filter
+ * and the verifier cannot disagree about a key now (swept from the PR #129 review).
  */
 function isUsableKey(value: unknown): value is Record<string, unknown> {
   if (!isObject(value)) return false;
-  const { kid, kty } = value as { kid?: unknown; kty?: unknown };
-  return typeof kid === 'string' && kid !== '' && typeof kty === 'string' && kty !== '';
+  const { kid, kty, use, alg } = value as { kid?: unknown; kty?: unknown; use?: unknown; alg?: unknown };
+  if (typeof kid !== 'string' || kid === '') return false;
+  if (typeof kty !== 'string' || kty === '') return false;
+  if (use !== undefined && use !== 'sig') return false;
+  if (alg !== undefined && alg !== 'RS256' && alg !== 'ES256') return false;
+  try {
+    createPublicKey({ key: value as JsonWebKey, format: 'jwk' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function fetchKeys(): Promise<Jwk[]> {
@@ -119,13 +143,35 @@ function refreshKeys(): Promise<Jwk[]> {
 
 async function keysFor(kid: string): Promise<Jwk | undefined> {
   const fresh = Date.now() - cachedAt < CACHE_TTL_MS;
-  if (!fresh || !cachedKeys.length) await refreshKeys();
+  // Whether this call has already been to the endpoint. Without it, a cold or expired cache
+  // fetched here and then, on an unknown kid, fetched the identical set again - double the JWKS
+  // traffic on exactly the requests that are already failing, and a second fetch that happens to
+  // fail turns an honest 401 into a 503 (PR #157 review).
+  let justRefreshed = false;
+  if (!fresh || !cachedKeys.length) {
+    await refreshKeys();
+    justRefreshed = true;
+  }
 
   let key = cachedKeys.find((k) => k.kid === kid);
-  // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
-  if (!key && Date.now() - cachedAt > MIN_REFETCH_MS) {
-    await refreshKeys();
-    key = cachedKeys.find((k) => k.kid === kid);
+  if (!key) {
+    if (justRefreshed) {
+      // The fetch above is the endpoint's own answer about this kid, so it spends the allowance
+      // too. Skipping the branch without recording the miss left the gate open on the *next*
+      // request: a cold cache plus an unknown kid meant one JWKS request per incoming request for
+      // as long as the invalid tokens kept arriving - the opposite of the limit this constant
+      // documents (PR #157 review).
+      lastMissAt = Date.now();
+    } else if (Date.now() - lastMissAt > MIN_REFETCH_MS) {
+      // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
+      await refreshKeys();
+      // Recorded only once the endpoint has answered. Recorded before the call, one failed refresh
+      // answered 401 from the stale cache for the next MIN_REFETCH_MS even after the endpoint came
+      // back. A refresh that throws propagates as 503 instead, and refreshKeys() already shares one
+      // in-flight fetch between concurrent callers, so this cannot become a storm.
+      lastMissAt = Date.now();
+      key = cachedKeys.find((k) => k.kid === kid);
+    }
   }
   return key;
 }
@@ -188,5 +234,6 @@ export async function verifyToken(authorization: string | undefined): Promise<To
 export function resetJwksCache(): void {
   cachedKeys = [];
   cachedAt = 0;
+  lastMissAt = 0;
   inflight = undefined;
 }

@@ -5,6 +5,10 @@ Scope: Added the "every request, not only the failures" section and the request_
   the event table, from Cole Lin's decision of the same day (issue #52). Earlier AI-assisted
   changes to this file are recorded per section in its _Origin:_ lines.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+Scope: Recorded the JWKS filtering and the bounded list filters in the Auth section
+  (swept from the PR #129 review).
+Author review: Cole Lin, read and approved.
 -->
 # AGENTS.md — Supplier (Location) Service
 
@@ -17,7 +21,8 @@ Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the roo
 **Implementation [Decided]** · _Origin: Team_
 - NestJS (TypeScript, Node.js), PostgreSQL through `pg` with plain parameterized SQL, strict Zod validation.
 - JSON field names are the same as the columns (`id`, `name`, `type`, `building`, `floor`, `location_desc`, `lat`, `lon`, `image_url`, `status`, `version`), except the hours: `open_time` / `close_time`, as `HHMMhrs` strings (stored as minutes in `open_min` / `close_min`).
-- **Auth [Decided]:** every request carries a bearer token issued by the User Service. The gateway verifies it and forwards it unchanged; **this service verifies it again** against the User Service's JWKS (`SUPPLIER_JWKS_URL`) rather than trusting the network, then takes the caller from the `sub` and `role` claims. RS256/ES256 only, `exp` and `nbf` enforced, `iss`/`aud` checked only when configured (same as the gateway). Keys are cached for 5 minutes and refetched when a `kid` is unknown (at most every 30 s). Missing or invalid token → **401**; wrong role → **403**; JWKS unreachable → **503**.
+- **Auth [Decided]:** every request carries a bearer token issued by the User Service. The gateway verifies it and forwards it unchanged; **this service verifies it again** against the User Service's JWKS (`SUPPLIER_JWKS_URL`) rather than trusting the network, then takes the caller from the `sub` and `role` claims. RS256/ES256 only, `exp` and `nbf` enforced, `iss`/`aud` checked only when configured (same as the gateway). Keys are cached for 5 minutes and refetched on the **first** unknown `kid`, with repeat misses rate-limited to one refetch per 30 s — the miss is recorded only once the endpoint answers, so a failed refetch does not hold off the retry. A key the service could not verify with (no `kid` or `kty`, `use` other than `sig`, an alg outside RS256/ES256, or one `crypto` cannot import) is **filtered out when the set is fetched**; a set with nothing usable left is treated as unreachable. Missing or invalid token → **401**; wrong role → **403**; JWKS unreachable, or holding nothing verifiable → **503**, because 401 would tell a valid administrator their token was bad.
+- **A filter never refuses what creation accepts: anything storable stays findable.** A NUL in `?name=`, `?type=` or `?building=` is a **400** — PostgreSQL cannot carry a NUL in a TEXT parameter, so it used to reach the query and come back as a 500 — and a NUL in a `name`, `type`, `building` or `location_desc` **body** is now a 400 as well, where it used to reach the INSERT and come back as a driver 500. Nothing else is refused on either side. The first version of this refused *every* control character, on the filter side only, so an admin could create a building named with a tab, PostgreSQL would store it, and the exact `?building=` filter then rejected that same value with a 400 — leaving the row unreachable through the filter meant to find it (PR #157 review). An unpaired surrogate is not a storage failure and is accepted on both sides: Node encodes it to U+FFFD on the way in and in the filter term alike, so the two agree and the row is found. The length bound follows the same rule: `?name=` is capped at 100, matching what a name may be, while `?type=` and `?building=` are **not** capped, because those columns are stored unbounded. **[Open]** bounding `building` and `type` by length on creation would let the filters bound them too — a schema decision for Cole Lin and Jian Bing, not a filter fix.
 - **Local testing only:** with `SUPPLIER_DEV_AUTH=true` the service falls back to `X-User-Id` / `X-User-Role` headers **when no bearer token is sent**, so it can be tested without the User Service. A real token is always verified, so the headers can never override or downgrade one. The flag is off by default, startup refuses it when `NODE_ENV=production` (which the Dockerfile sets), and it logs a warning at startup when on.
 - Run and test instructions: `README.md`. Postman collection: `postman/supplier.postman_collection.json`.
 
@@ -201,6 +206,45 @@ there are four records in two places.
 stack can carry whatever the failure touched (a connection string, say). Both still go to Nest's
 logger, which is local to the container; neither reaches the store, which is queryable by anyone
 with access to it.
+
+Within a line, the shipper redacts **by field name, as a substring, at any depth, and on both sides
+of a pair** — a name is as caller-controlled as a value, so `{ recipients: { 'alice@nus.edu.sg':
+true } }` is caught as well as `{ email: ... }`. The set covers credentials *and* personal data,
+including `phone` and display or given names, which identify a student on sight (PR #129 review).
+Two consequences to know about when reading a line: a field whose name is not a plain identifier
+appears as its position and length rather than its name, and a field named `__proto__` survives
+only because the redacted copy has a null prototype — on an ordinary object that assignment runs
+the prototype setter, and the field disappears with its neighbours intact.
+
+A name is matched with **every separator removed**, not just `-` and `_`: a key may contain `.` and
+`:`, so `pass.word` normalised to `pass.word`, matched nothing in the list, and
+`{ 'pass.word': 'hunter2' }` went to stdout and the topic in the clear (PR #129 review). And the
+`[key 0: 16 chars]` a replaced name becomes is now a **fixed point**: the Logging Service sanitises
+keys again on the way into its own table, the marker did not match the pattern it tests against, so
+the stored row reported the marker's length rather than the key's — 16 characters on this
+container's stdout and 17 in the row. Both sides recognise a marker now.
+
+**Bounds the store will accept.** The shipper also brings every field the Logging Service bounds
+inside that bound before writing the line: `path` at 400 characters, `event` at 60, `requestId` at
+200, `userId` at 100, `method` at 10, `service` at 40, plus the two enums for `level` and `role`. A
+value outside any one of them does not cost the field — `inboundLineSchema` refuses the **whole
+line** and ingest parks it — so a request to `/locations/<500 characters>` would leave its
+`access_denied` line on this container's stdout and keep it out of the searchable store, which is
+where anyone looking for it would look (PR #129 review). This service is what makes that reachable:
+`path` comes from the URL, so a caller chooses its length. `event` and `path` are cut and marked;
+an id, method, role, status or duration outside the bound is left out instead, because an id cut to
+length is some other request's id. The `requestId` this service accepts from `x-request-id` is
+already capped at 128 characters, so it stays inside the store's 200 either way. A line this
+happened to increments `log.counts.clamped`.
+
+**A log call that cannot be built stays on its request.** When a caller hands `emit()` an object
+that cannot be read at all - a throwing getter, a hostile Proxy - the shipper writes a
+`line_unserialisable` line instead of the real one, and that line now carries the `requestId` and
+is keyed by it (PR #129 review). It is the only record that a log call failed, and without the id
+the gap it left in a trace read as a line nobody wrote rather than a line that was lost. Every
+`emit()` call in this service passes `requestIdOf(req)`, so every one of those failures is
+traceable: `access_denied` in `src/common/auth.ts`, `jwks_unavailable` beside it, and
+`unhandled_error` in `src/common/problem.ts`.
 
 **Correlation.** Each of those lines carries a `requestId`, which is how a line here is matched to
 the gateway's `request_completed` line for the same request:

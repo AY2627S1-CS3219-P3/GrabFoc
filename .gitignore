@@ -3,8 +3,17 @@
 # Scope: Ignore downloaded Envoy sources and native build artifacts.
 # Author review: Pending human review.
 # AI-generated addition; review pending.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+# Scope: Ignore node_modules/ from the repository root as well, so a branch on which a service
+#   folder is untracked cannot sweep its dependencies in.
+# Author review: Cole Lin, read and approved.
 api-gateway/.build/
 api-gateway/envoy/__pycache__/
+
+# Dependencies. Every service also ignores its own, but only on the branch where that
+# service folder is tracked — on any other branch the folder is untracked and its
+# .gitignore is not read, so `git add -A` would sweep node_modules in. Covered here too.
+node_modules/
 
 # Build output
 dist/

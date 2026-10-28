@@ -6,6 +6,13 @@
  *        case in this file by hand.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Added the empty and malformed key-set rows (PR #129 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Reworked the alg/use cases now that an unusable key set is caught when it is fetched, and
+ *        replaced the unknown-kid timing cases, which pinned the behaviour the PR #129 review
+ *        found wrong: the first miss refetches immediately, and only repeats are rate-limited.
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Added the case where the cold-cache fetch is itself the miss (PR #157 review).
  * Author review: Cole Lin, read and approved.
  */
 import { config } from '../config';
@@ -81,13 +88,28 @@ describe('rejected tokens (null)', () => {
     await expect(verifyToken(bearer(signToken(rsa, {}, { alg: 'HS256' })))).resolves.toBeNull();
   });
 
-  it('rejects a token whose alg differs from the one its key was published for', async () => {
-    stub.keys = [{ ...rsa, jwk: { ...rsa.jwk, alg: 'PS256' } }];
-    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toBeNull();
+  /**
+   * The published alg and use are now checked when the key set is *fetched*, not only when a token
+   * arrives, so these two cases split in half (PR #129 review, swept here).
+   *
+   * When such a key is the only one, the set holds nothing this service can verify with, and the
+   * honest answer is "we cannot judge your token" - 503 - rather than 401, which says the caller's
+   * token is bad. When a usable key sits beside it, the unusable one is simply filtered out, and a
+   * token that names it is an unknown kid: 401, as before.
+   */
+  it.each([
+    ['an alg we do not accept', { alg: 'PS256' }],
+    ['a key published for encryption', { use: 'enc' }],
+  ])('treats a set holding only %s as unavailable, not as a bad token', async (_why, patch) => {
+    stub.keys = [{ ...rsa, jwk: { ...rsa.jwk, ...patch } }];
+    await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);
   });
 
-  it('rejects a token matched to a key published for encryption, not signing', async () => {
-    stub.keys = [{ ...rsa, jwk: { ...rsa.jwk, use: 'enc' } }];
+  it.each([
+    ['an alg we do not accept', { alg: 'PS256' }],
+    ['a key published for encryption', { use: 'enc' }],
+  ])('rejects a token naming %s when a usable key sits beside it', async (_why, patch) => {
+    stub.keys = [{ ...rsa, jwk: { ...rsa.jwk, ...patch } }, ec];
     await expect(verifyToken(bearer(signToken(rsa)))).resolves.toBeNull();
   });
 
@@ -199,20 +221,83 @@ describe('key caching', () => {
     expect(stub.fetches).toBe(2);
   });
 
-  it('refetches for an unknown kid only once 30 seconds have passed', async () => {
+  /**
+   * The rate limit is on repeated *misses*, not on the last ordinary fetch. Gated on the cache's
+   * own timestamp, a rotation seconds after a normal fetch was answered with 401 until that cache
+   * aged out - up to 30 seconds of telling a valid administrator their token was bad (PR #129
+   * review, swept here).
+   */
+  /**
+   * A cold cache plus an unknown kid went to the endpoint twice in one request: once because the
+   * cache was empty, then again because the kid was missing from the set it had just loaded. Double
+   * the traffic on exactly the requests that are already failing, and a second fetch that fails
+   * turns an honest 401 into a 503 (PR #157 review).
+   */
+  it('fetches the key set once when a cold cache already has the answer', async () => {
+    await expect(verifyToken(bearer(signToken(makeKey('never-published'))))).resolves.toBeNull();
+    expect(stub.fetches).toBe(1);
+  });
+
+  it('picks up a rotated key on the first unknown kid, without waiting', async () => {
     await verifyToken(bearer(signToken(rsa)));
     const rotated = makeKey('rsa-2');
     stub.keys = [rsa, ec, rotated];
 
-    // Within 30 s: no refetch, so the new key is not known yet.
-    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toBeNull();
-    expect(stub.fetches).toBe(1);
+    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toEqual({ sub: 'user-1', role: 'USER' });
+    expect(stub.fetches).toBe(2);
+  });
 
-    // After 30 s: one refetch picks up the rotated key.
+  it('does not refetch again for another unknown kid within 30 seconds', async () => {
+    await verifyToken(bearer(signToken(rsa)));
+    // The first miss spends the allowance.
+    await expect(verifyToken(bearer(signToken(makeKey('gone-1'))))).resolves.toBeNull();
+    expect(stub.fetches).toBe(2);
+
+    const rotated = makeKey('rsa-2');
+    stub.keys = [rsa, ec, rotated];
+    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toBeNull();
+    expect(stub.fetches).toBe(2);
+
+    // After 30 s the allowance is back.
     const start = Date.now();
     jest.spyOn(Date, 'now').mockReturnValue(start + 31 * 1000);
     await expect(verifyToken(bearer(signToken(rotated)))).resolves.toEqual({ sub: 'user-1', role: 'USER' });
+    expect(stub.fetches).toBe(3);
+  });
+
+  /**
+   * The cold-cache fetch is itself the endpoint's answer about that kid, so it has to spend the
+   * allowance. It did not, so the gate was still open on the *next* request: while invalid tokens
+   * kept arriving, every one of them went to the endpoint, instead of one per 30 seconds
+   * (PR #157 review).
+   */
+  it('spends the allowance when the cold-cache fetch is itself the miss', async () => {
+    await expect(verifyToken(bearer(signToken(makeKey('gone-1'))))).resolves.toBeNull();
+    expect(stub.fetches).toBe(1);
+
+    await expect(verifyToken(bearer(signToken(makeKey('gone-2'))))).resolves.toBeNull();
+    expect(stub.fetches).toBe(1);
+
+    // Still a rate limit and not a lockout: a rotation is picked up once the window is over.
+    const rotated = makeKey('rsa-2');
+    stub.keys = [rsa, ec, rotated];
+    jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 31 * 1000);
+    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toEqual({ sub: 'user-1', role: 'USER' });
     expect(stub.fetches).toBe(2);
+  });
+
+  it('retries an unknown kid once the endpoint recovers from a failed refresh', async () => {
+    await verifyToken(bearer(signToken(rsa)));
+    const rotated = makeKey('rsa-2');
+
+    stub.respond = () => ({ status: 500, body: '{}' });
+    await expect(verifyToken(bearer(signToken(rotated)))).rejects.toBeInstanceOf(JwksUnavailableError);
+
+    // Recovers straight away: the miss is recorded only once the endpoint has answered, so this
+    // is not held off for the rest of the rate-limit window.
+    stub.respond = undefined;
+    stub.keys = [rsa, ec, rotated];
+    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toEqual({ sub: 'user-1', role: 'USER' });
   });
 
   it('makes one refetch for 20 simultaneous requests with a new kid', async () => {
