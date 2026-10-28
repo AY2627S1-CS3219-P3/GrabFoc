@@ -175,6 +175,22 @@ _Origin: AI doc, from the plan Cole Lin approved_
     `extra` is free-form metadata: a tab or a newline in a `note` is content and is kept, and losing
     one character costs less than losing the line. Stripped in the shipper too, so stdout and the
     stored row say the same thing (PR #129 review).
+  - **A number JSONB cannot hold either.** `JSON.parse('{"attempt":1e400}')` yields `Infinity`, a
+    passthrough schema accepts a number without asking which one, and the driver JSON-stringifies
+    `extra` — where JSON has no `Infinity` and no `NaN`, so the row held `null` and read as though
+    the producer had sent nothing. Stored as text now, which is what the shipper's `serialisable`
+    already made of one: this was the one pairing on this page bounded at the *producer* and not at
+    the store, where every other was the other way round. `bigint` and `symbol` cannot arrive at
+    all, because `JSON.parse` makes neither (PR #129 review).
+  - **A replaced key is a fixed point.** A key is sanitised up to three times on its way into a row
+    — by the shipper, by `redactDeep`/`extraOf` defensively, and by the dead-letter shape if the
+    line is parked — and `[key 0: 16 chars]` does not match `SAFE_KEY`, so each pass replaced the
+    previous one's work and reported *its* length. `alice@nus.edu.sg` left the shipper as
+    `[key 0: 16 chars]` and was stored as `[key 0: 17 chars]`, so the row disagreed with the line on
+    stdout about the one number the marker exists to carry. All four copies recognise the marker
+    now. The brackets stay outside the safe alphabet on purpose, and a caller's own key spelled like
+    a marker passing through costs nothing: the shape carries a position and a length and no
+    content of its own (PR #129 review).
   - **An array is rebuilt by index, never with the caller's `map`.** `Array.prototype.map` goes
     through `Symbol.species`, so mapping a subclass returned another instance of that subclass —
     prototype and all — and `JSON.stringify` then called its inherited `toJSON` *after* redaction
@@ -233,6 +249,13 @@ _Origin: AI doc, from the plan Cole Lin approved_
   in a value. What does help is the call-site rule in root AGENTS.md: never log an OTP or a handover
   code, as a value or as a field name. `otp` and `code` are both in the name list, so the usual
   shapes are caught by the parent key. **Left open on the PR** for the team rather than resolved
+  (PR #129 review).
+- **Every separator comes out before a sensitive name is matched, not just `-` and `_`.**
+  `SAFE_KEY` permits `.` and `:` as well, so `pass.word` normalised to `pass.word`, matched nothing
+  in the list, and `{ 'pass.word': 'hunter2' }` reached stdout, the topic and the `extra` column in
+  the clear. Both sides had the same gap, so a producer using the shipper could not have caught it
+  on the way either. Stripping more can only add matches and never lose one: every name in both
+  lists is plain lowercase alphanumeric, so a name that was a contiguous substring before still is
   (PR #129 review).
 - **`event` is a fixed name, never text built from a request.** It is an envelope field, so it is
   the one field redaction cannot help with: `redactFields` matches field *names*, and the value of

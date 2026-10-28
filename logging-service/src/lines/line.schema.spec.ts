@@ -19,6 +19,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
  * Scope: Added the year-zero cases: an ISO year PostgreSQL has no room for (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for a key the producer already sanitised, a sensitive name spelled with
+ *        a separator, and a number JSONB cannot hold (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, redactDeep, toRow } from './line.schema';
 
@@ -413,5 +417,87 @@ describe('a year PostgreSQL has no room for', () => {
   it.each(['0001-01-01T00:00:00.000Z', '9999-12-31T23:59:59.999Z'])('still accepts %s', (ts) => {
     expect(parse({ ...valid, ts }).success).toBe(true);
     expect(logQuerySchema.safeParse({ from: ts }).success).toBe(true);
+  });
+});
+
+/**
+ * A key is sanitised more than once on its way into a row: the shipper replaces an unsafe name,
+ * and then this side replaces anything that still fails the pattern. The marker did not match the
+ * pattern, so the second pass replaced the first one's work and reported the marker's own length -
+ * `[key 0: 16 chars]` arrived and `[key 0: 17 chars]` was stored, a row disagreeing with the line
+ * on stdout about the one number the marker exists to carry (PR #129 review).
+ */
+describe('a key the producer already sanitised', () => {
+  const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
+
+  it('survives this side unchanged', () => {
+    const row = toRow(parse({ ...valid, recipients: { [marker]: true } }).data!);
+    expect(Object.keys((row.extra as { recipients: object }).recipients)).toEqual([marker]);
+  });
+
+  it('is a fixed point at the top level too, where the index differs', () => {
+    const row = toRow(parse({ ...valid, [marker]: 1 }).data!);
+    expect(Object.keys(row.extra as object)).toEqual([marker]);
+  });
+
+  it('is the same marker this side would have produced', () => {
+    const row = toRow(parse({ ...valid, recipients: { 'alice@nus.edu.sg': true } }).data!);
+    expect(Object.keys((row.extra as { recipients: object }).recipients)).toEqual([marker]);
+  });
+});
+
+/**
+ * `SAFE_KEY` permits `.` and `:`, but only `-` and `_` were stripped before a name was matched, so
+ * `pass.word` normalised to `pass.word` and matched nothing in the list (PR #129 review).
+ */
+describe('a sensitive name spelled with a separator', () => {
+  it.each(['pass.word', 'pass:word', 'display.name', 'private.key'])('redacts %s', (key) => {
+    expect(toRow(parse({ ...valid, meta: { [key]: 'hunter2' } }).data!).extra).toEqual({
+      meta: { [key]: '[REDACTED]' },
+    });
+  });
+
+  it('still keeps an ordinary dotted name and its value', () => {
+    expect(toRow(parse({ ...valid, 'req.path': '/x' }).data!).extra).toEqual({ 'req.path': '/x' });
+  });
+});
+
+/**
+ * `JSON.parse('{"attempt":1e400}')` yields Infinity, and the passthrough schema accepts a number
+ * without asking which one. The driver JSON-stringifies `extra`, and JSON has no Infinity or NaN,
+ * so the row held `null` where the producer had sent a number too large to hold. The shipper's own
+ * `serialisable` already turns one into text; this side did not, which made it the one pairing
+ * bounded at the producer and not at the store (PR #129 review).
+ */
+describe('a number JSONB cannot hold', () => {
+  const lineWith = (fields: string) =>
+    JSON.parse(`{${JSON.stringify(valid).slice(1, -1)},${fields}}`) as Record<string, unknown>;
+
+  it.each([
+    ['1e400', 'Infinity'],
+    ['-1e400', '-Infinity'],
+  ])('stores the number literal %s as text rather than as null', (literal, expected) => {
+    expect(toRow(parse(lineWith(`"attempt":${literal}`)).data!).extra).toEqual({ attempt: expected });
+  });
+
+  it('reaches one nested in an object and one in an array', () => {
+    const line = lineWith('"best":{"attempt":1e400},"tries":[1,1e400]');
+    expect(toRow(parse(line).data!).extra).toEqual({
+      best: { attempt: 'Infinity' },
+      tries: [1, 'Infinity'],
+    });
+  });
+
+  it('is what the driver would otherwise have made of it', () => {
+    // The behaviour this replaces: a field that reads as "the producer sent nothing".
+    expect(JSON.stringify({ attempt: Number.POSITIVE_INFINITY })).toBe('{"attempt":null}');
+  });
+
+  it('leaves an ordinary number alone', () => {
+    expect(toRow(parse(lineWith('"attempt":42')).data!).extra).toEqual({ attempt: 42 });
+  });
+
+  it('covers NaN too, which JSON has no literal for', () => {
+    expect(redactDeep({ attempt: Number.NaN })).toEqual({ attempt: 'NaN' });
   });
 });

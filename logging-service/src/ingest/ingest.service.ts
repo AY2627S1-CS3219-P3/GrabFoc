@@ -30,6 +30,9 @@
  * Scope: Say what handle() actually throws, since the consumer #75 has yet to write is the thing
  *        that has to not swallow it (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Keep a sanitised key a fixed point in the parked shape too (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -225,6 +228,18 @@ const SHAPE_MAX_DEPTH = 4;
 // whole, by its position and length. Same rule and same replacement as line.schema.ts and the
 // shipper, so one bad name reads the same wherever it surfaces.
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
+/**
+ * The replacement below, recognised on sight. A key is sanitised more than once on its way into a
+ * stored row - by the shipper, then by this side's own pass over the same object, then by the
+ * dead-letter shape if the line is parked - and the marker does not match SAFE_KEY, so each pass
+ * replaced the previous one's work and reported *its* length instead. `alice@nus.edu.sg` left as
+ * `[key 0: 16 chars]` and was stored as `[key 0: 17 chars]`, so the row disagreed with the line on
+ * stdout and on the topic about the one number the marker exists to carry (PR #129 review). It is
+ * a fixed point now. A caller's own key spelled exactly like a marker passes through as well,
+ * which costs nothing: the shape carries a position and a length and no content of its own, so
+ * the worst case is a key that says about itself what it would have said anyway.
+ */
+const KEY_MARKER = /^\[key \d+: \d+ chars\]$/;
 
 function safeKey(key: string, index: number): string {
   // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
@@ -232,6 +247,7 @@ function safeKey(key: string, index: number): string {
   // The objects built below have null prototypes, so nothing is lost there - but the store's
   // inbound schema builds its own object through Zod, which does drop that name, so it is
   // replaced here rather than shipped and the two sides cannot disagree (PR #129 review).
+  if (KEY_MARKER.test(key)) return key;
   return SAFE_KEY.test(key) && key !== '__proto__' ? key : `[key ${index}: ${key.length} chars]`;
 }
 

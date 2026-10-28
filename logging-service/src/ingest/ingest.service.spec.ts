@@ -13,6 +13,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Added the cases for a redacted dead-letter body and a park failure being redelivered.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the case for a field name the producer had already replaced (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Logger } from '@nestjs/common';
 import { config } from '../config';
@@ -233,6 +236,17 @@ describe('handling a message', () => {
     expect(parked[0].body).toContain('chars]');
     // A name a producer would plausibly write is kept, because that is the diagnostic value.
     expect(parked[0].body).toContain('lineId');
+  });
+
+  /**
+   * The parked shape is the third pass over a key, after the shipper and the store's schema. The
+   * marker does not match the safe-key pattern, so each pass replaced the previous one's work and
+   * reported its own length instead of the key's (PR #129 review).
+   */
+  it('leaves a field name the producer already replaced alone', async () => {
+    const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
+    await consumer.deliver(JSON.stringify({ lineId: 'nope', [marker]: 'x' }));
+    expect(parked[0].body).toContain(marker);
   });
 
   it('keeps ordinary field names, including ones redaction would blank', async () => {

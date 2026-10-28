@@ -46,8 +46,12 @@
  *        shipper no longer passes a non-UUID through. Added the cases for reading the options
  *        once (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for a sensitive name spelled with a separator, and for a replaced key
+ *        surviving the store's own pass (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
-import { inboundLineSchema } from '../lines/line.schema';
+import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
 
 // AI-generated (reviewed by Cole Lin).
@@ -995,5 +999,40 @@ describe('the options are read once, at construction', () => {
     // A constructor may throw where emit() may not: this is a configuration error, raised at the
     // line that made it rather than inside the first request that happens to log.
     expect(() => new LogShipper(options as never)).toThrow('getter exploded');
+  });
+});
+
+/**
+ * Only `-` and `_` were stripped before a name was matched, but `SAFE_KEY` permits `.` and `:` as
+ * well - so `{ 'pass.word': 'hunter2' }` matched nothing and went out in the clear (PR #129).
+ */
+describe('a sensitive name spelled with a separator', () => {
+  it.each(['pass.word', 'pass:word', 'display.name', 'private.key'])('redacts %s', (key) => {
+    shipper().emit({ level: 'info', event: 'mail', meta: { [key]: 'hunter2' } });
+    expect(written[0]).not.toContain('hunter2');
+    expect(JSON.parse(written[0]).meta).toEqual({ [key]: '[REDACTED]' });
+  });
+
+  it('still keeps an ordinary dotted name and its value', () => {
+    shipper().emit({ level: 'info', event: 'mail', meta: { 'req.path': '/x' } });
+    expect(JSON.parse(written[0]).meta).toEqual({ 'req.path': '/x' });
+  });
+});
+
+describe('a replaced key and the store it is shipped to', () => {
+  /**
+   * The store sanitises keys again, defensively, and the marker did not match its safe-key
+   * pattern - so it was replaced a second time and the stored row reported the marker's length
+   * rather than the key's: 16 chars on stdout, 17 in the row (PR #129 review). Checked against
+   * the store's own code here rather than against a copy of the marker shape, so the two sides
+   * cannot drift apart silently.
+   */
+  it('survives the store without changing what it says', () => {
+    shipper().emit({ level: 'info', event: 'mail', recipients: { 'alice@nus.edu.sg': true } });
+    const line = JSON.parse(written[0]);
+    const marker = Object.keys(line.recipients)[0];
+    expect(marker).toMatch(/^\[key \d+: \d+ chars\]$/);
+    const row = toRow(inboundLineSchema.parse(line));
+    expect(Object.keys((row.extra as { recipients: object }).recipients)).toEqual([marker]);
   });
 });

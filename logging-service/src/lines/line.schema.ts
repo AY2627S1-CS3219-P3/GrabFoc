@@ -31,6 +31,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
  * Scope: Refuse an ISO year PostgreSQL has no room for, on both sides (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Keep a sanitised key a fixed point, strip every separator before matching a sensitive
+ *        name, and store a non-finite number as text rather than as null (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -93,7 +97,13 @@ const NEVER_STORE = [
 
 /** A substring match, so `adminToken` and `customerEmail` are caught too (PR #129 review). */
 function neverStore(key: string): boolean {
-  const normalised = key.toLowerCase().replace(/[-_]/g, '');
+  // Every separator, not just `-` and `_`: SAFE_KEY permits `.` and `:` too, so `pass.word`
+  // normalised to `pass.word`, matched nothing in the list, and `{ 'pass.word': 'hunter2' }` was
+  // stored in the clear. The shipper had the same gap, so a producer using it could not have
+  // caught this one on the way either (PR #129 review). Stripping more can only add matches,
+  // never lose one: every name in the list is plain lowercase alphanumeric, so a name that was a
+  // contiguous substring before still is.
+  const normalised = key.toLowerCase().replace(/[^a-z0-9]/g, '');
   return NEVER_STORE.some((name) => normalised.includes(name));
 }
 
@@ -261,6 +271,18 @@ const REDACTED = '[REDACTED]';
 // an OTP or a handover code, as a value *or* as a field name. `otp` and `code` are both in the
 // list above, so the usual shapes - `{ otp: { ... } }` - are caught by the parent name.
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
+/**
+ * The replacement below, recognised on sight. A key is sanitised more than once on its way into a
+ * stored row - by the shipper, then by this side's own pass over the same object, then by the
+ * dead-letter shape if the line is parked - and the marker does not match SAFE_KEY, so each pass
+ * replaced the previous one's work and reported *its* length instead. `alice@nus.edu.sg` left as
+ * `[key 0: 16 chars]` and was stored as `[key 0: 17 chars]`, so the row disagreed with the line on
+ * stdout and on the topic about the one number the marker exists to carry (PR #129 review). It is
+ * a fixed point now. A caller's own key spelled exactly like a marker passes through as well,
+ * which costs nothing: the shape carries a position and a length and no content of its own, so
+ * the worst case is a key that says about itself what it would have said anyway.
+ */
+const KEY_MARKER = /^\[key \d+: \d+ chars\]$/;
 
 function safeKey(key: string, index: number): string {
   // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
@@ -268,6 +290,7 @@ function safeKey(key: string, index: number): string {
   // The objects built below have null prototypes, so nothing is lost there - but the store's
   // inbound schema builds its own object through Zod, which does drop that name, so it is
   // replaced here rather than shipped and the two sides cannot disagree (PR #129 review).
+  if (KEY_MARKER.test(key)) return key;
   return SAFE_KEY.test(key) && key !== '__proto__' ? key : `[key ${index}: ${key.length} chars]`;
 }
 const TRUNCATED = '[TRUNCATED]';
@@ -282,6 +305,15 @@ export function redactDeep(value: unknown, depth = 0): unknown {
   // Strings first, because `extra` is JSONB and this is where a value that cannot go in it is
   // taken out. See `jsonbSafe` above for why the whole line was the cost of leaving it in.
   if (typeof value === 'string') return jsonbSafe(value);
+  // `JSON.parse('{"attempt":1e400}')` yields Infinity, and a passthrough schema accepts a number
+  // without asking which one. The driver JSON-stringifies `extra`, and JSON has no Infinity or
+  // NaN, so the row held `null` where the producer had sent a number too large to hold - a field
+  // reading as "nothing was sent" is worse than one saying what arrived. Text, which is what the
+  // shipper's own `serialisable` already makes of one, so the two sides say the same thing. This
+  // is the one pairing here that was bounded at the producer and not at the store; every other
+  // was the other way round. bigint and symbol cannot arrive: JSON.parse makes neither of them
+  // (PR #129 review).
+  if (typeof value === 'number' && !Number.isFinite(value)) return `${value}`;
   if (value === null || typeof value !== 'object') return value;
   // Replaced rather than returned, for the same reasons as in the shipper: a secret nested deeper
   // than this would be stored verbatim, and a cycle would reach the JSON serialiser (PR #130).
