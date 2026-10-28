@@ -39,6 +39,9 @@
  * Scope: Bound the array walk, so an inflated `length` cannot block the event loop (PR #129
  *        review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Keep a top-level `__proto__` metadata field, which Zod's own object build dropped before
+ *        the walkers could rename it (PR #129 review).
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -157,7 +160,42 @@ const plainTextOrEmpty = (max: number) => noControl(z.string().max(max));
  * `.strict()`: a log line's unknown fields are the point — they are what the event was about — so
  * they are kept rather than rejected. They are split off into `extra` by `toRow` below.
  */
-export const inboundLineSchema = z
+const PROTO = '__proto__';
+
+/**
+ * Hands the parse a line whose top-level `__proto__` field has already been renamed.
+ *
+ * Every walker below replaces that name and builds its output with a null prototype, so the field
+ * survives at any depth - but the top-level object is built by *Zod*, where `out[key] = value`
+ * runs `Object.prototype`'s setter instead of defining a property. So the field was gone before
+ * `extraOf` could reach it: present on the stdout line the shipper wrote, missing from the row
+ * built from the same message. That disagreement is the one AGENTS.md already warned about here,
+ * and the code did not prevent it on this side (PR #129 review).
+ *
+ * The new name is spelled by `safeKey` itself, with the key's position among the line's own fields
+ * as its index, so it reads the same as a name replaced anywhere else; `safeKey` recognises its own
+ * marker and leaves it alone on the way through. Nothing is renamed when the field is absent, which
+ * is every ordinary line.
+ */
+function renameTopLevelProto(input: unknown): unknown {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return input;
+  if (!Object.prototype.hasOwnProperty.call(input, PROTO)) return input;
+  const source = input as Record<string, unknown>;
+  const renamed: Record<string, unknown> = {};
+  Object.keys(source).forEach((key, index) => {
+    // Defined rather than assigned: assignment is what lost the field in the first place, and a
+    // marker is only worth writing if writing it cannot fail the same way.
+    Object.defineProperty(renamed, key === PROTO ? safeKey(PROTO, index) : key, {
+      value: source[key],
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  });
+  return renamed;
+}
+
+const inboundLineFields = z
   .object({
     lineId: z.string().uuid(),
     // ISO-8601 with a Z offset. Zod's .datetime() rejects a local-time string, which is what we
@@ -194,7 +232,9 @@ export const inboundLineSchema = z
   })
   .passthrough();
 
-export type InboundLine = z.infer<typeof inboundLineSchema>;
+export const inboundLineSchema = z.preprocess(renameTopLevelProto, inboundLineFields);
+
+export type InboundLine = z.infer<typeof inboundLineFields>;
 
 export interface LineRow {
   lineId: string;

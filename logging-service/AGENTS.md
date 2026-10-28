@@ -1,6 +1,6 @@
 <!--
 AI Assistance Disclosure:
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-27
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-28
 Scope: Wrote this document from the plan and the four schema answers Cole Lin gave in chat on
   2026-10-16, and kept it in step with each review round on PR #129. The decisions it records are
   his; the wording is Claude's. Where a section records a problem rather than a decision, he raised
@@ -128,7 +128,7 @@ _Origin: AI doc, from the plan Cole Lin approved_
 
 - It takes no Kafka client. A `LinePublisher` is handed in, so a service adopts `@confluentinc/kafka-javascript` (the client Credit pinned in #85) only when there is a broker to talk to.
 - **No broker configured means stdout only**, with no producer and no warnings. The Supplier Service's standalone Postman testing depends on that.
-- `emit()` returns immediately, buffers up to **1000 lines and 4 MB**, and **drops rather than blocking** when either bound is reached or a publish fails. A single line over **64 KB** goes to stdout and is never buffered, counted apart as `oversize`. A line count alone was not a bound: a thousand lines of megabyte metadata is a gigabyte held by the one component whose job is not to disrupt the service it logs for (PR #129 review). Dropping is acceptable because the line reaches stdout regardless, and the same `lineId` is on both, so re-reading stdout later cannot double-count.
+- `emit()` returns immediately, buffers up to **1000 lines and 4 MB**, and **drops rather than blocking** when either bound is reached or a publish fails. A single line over **64 KB** goes to stdout and is never buffered, counted apart as `oversize`. A line count alone was not a bound: a thousand lines of megabyte metadata is a gigabyte held by the one component whose job is not to disrupt the service it logs for (PR #129 review). Dropping is acceptable because the line reaches stdout regardless, and the same `lineId` is on both, so re-reading stdout later cannot double-count. **All three limits are refused unless they are whole numbers of at least 1, and `maxLineBytes` may not exceed `maxBufferBytes`.** Every one of them is used in a `>`, and `NaN` makes a `>` false - so a limit of `NaN` does not tighten a bound, it removes it, and `Number(process.env.MAX_BUFFER_BYTES)` with the variable unset is that value. `flushMs` in the same constructor was checked and these were not: the option whose misuse `setInterval` makes loud was guarded, and the three whose misuse is silent were taken as given (PR #129 review).
 - Each message is **keyed by `requestId`** (Kafka rule 5), so one request's lines keep their order.
 - **Sensitive field names are matched as substrings and replaced at any depth** (so `adminToken` and `customerEmail` go too, and it over-redacts rather than under-redacts), so a caller passing `password`, a `token`,
   or `{ request: { headers: { authorization } } }` cannot write it to stdout or Kafka. The store
@@ -239,7 +239,11 @@ _Origin: AI doc, from the plan Cole Lin approved_
   loss is structurally impossible rather than dependent on the name list staying right. The
   name is replaced as well as the prototype dropped because the inbound schema's own object is
   built by Zod, which *does* drop that key: a line keeping the name on stdout and losing it in
-  the store is the kind of disagreement these reviews keep finding.
+  the store is the kind of disagreement these reviews keep finding. Knowing that was not the same
+  as handling it, and for a *top-level* `__proto__` the store did drop the field, because the walk
+  that renames it runs on Zod's output and the name was gone by then. The parse is now preceded by
+  a rename of that one key on the raw input, spelled by `safeKey` itself, so the field arrives
+  where the walkers can see it (PR #129 review).
 - **The redaction list covers personal data, not only credentials.** `phone` and display, given
   and family names were outside it, so a profile line put a student's name in the clear into
   stdout, Kafka and the `extra` column (PR #129 review). `name` on its own is *not* in the list:

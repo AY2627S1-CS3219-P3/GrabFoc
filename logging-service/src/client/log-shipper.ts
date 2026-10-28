@@ -78,6 +78,9 @@
  * Scope: Read the service name once rather than three times, and bound the array walk so an
  *        inflated `length` cannot block the event loop (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Refuse a buffer limit a comparison cannot act on, so a bound cannot be removed by
+ *        configuring it (PR #129 review).
  */
 import { randomUUID } from 'node:crypto';
 
@@ -474,6 +477,31 @@ function boundedText(value: string, max: number): string {
 const MAX_TIMER_MS = 2_147_483_647;
 
 /**
+ * A bound a comparison can act on.
+ *
+ * `flushMs` was checked in this constructor and these three limits were not: the one option whose
+ * misuse `setInterval` makes loud was guarded, and the three whose misuse is silent were taken as
+ * given. Every use of them is a `>`, and `NaN` makes a `>` false - so such a limit does not
+ * tighten the bound, it *removes* it, and `maxBufferBytes: NaN` leaves this component holding an
+ * unbounded buffer, in the one component whose job is not to disrupt the service it logs for.
+ * `Number(process.env.MAX_BUFFER_BYTES)` with the variable unset is exactly that value, which is
+ * how it arrives from a deployment rather than from a test (PR #129 review).
+ *
+ * `Number.isInteger` refuses `NaN` and `Infinity` alike - the same reason the store's schema needs
+ * no separate check for either on `status` and `durationMs`. A zero or a negative is refused from
+ * the same line because it points the other way: it bounds *everything*, and every line is then
+ * dropped by a component that is supposed to be shipping them.
+ */
+function positiveLimit(value: number, option: string): number {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 1) return value;
+  // Interpolated only once it is known to be a number. It is a local by this point, so nothing
+  // can change underneath it, but a non-number cast through this parameter would otherwise run
+  // its own `toString` from inside the error path.
+  const shown = typeof value === 'number' ? value : typeof value;
+  throw new RangeError(`${option} must be a whole number of at least 1, not ${shown}`);
+}
+
+/**
  * What the store accepts as a `lineId` - the same shape `z.string().uuid()` matches. A regex is
  * safe here where it was not for the control characters: there is no escape sequence in it for an
  * editing tool to mangle.
@@ -546,11 +574,21 @@ export class LogShipper {
           `silently reduces anything else to about 1 ms, which with a publisher is a flush loop`,
       );
     }
-    this.maxBuffer = options.maxBuffer ?? 1000;
+    this.maxBuffer = positiveLimit(options.maxBuffer ?? 1000, 'maxBuffer');
     // 4 MB and 64 KB: a log line that does not fit in 64 KB is a bug in the caller, and 4 MB is
     // small enough that holding it through a broker outage is not what takes a service down.
-    this.maxBufferBytes = options.maxBufferBytes ?? 4 * 1024 * 1024;
-    this.maxLineBytes = options.maxLineBytes ?? 64 * 1024;
+    this.maxBufferBytes = positiveLimit(options.maxBufferBytes ?? 4 * 1024 * 1024, 'maxBufferBytes');
+    this.maxLineBytes = positiveLimit(options.maxLineBytes ?? 64 * 1024, 'maxLineBytes');
+    // The pair, not just each on its own. A line larger than the whole buffer clears the oversize
+    // check and then trips the buffer check on every emit, so it is dropped every time and counted
+    // against the broker rather than against the caller who sent it - and these counters are the
+    // only thing this component says out loud about what it discarded.
+    if (this.maxLineBytes > this.maxBufferBytes) {
+      throw new RangeError(
+        `maxLineBytes (${this.maxLineBytes}) must not exceed maxBufferBytes (${this.maxBufferBytes}): a ` +
+          `line too large for the buffer is dropped on every emit and counted as a full buffer`,
+      );
+    }
     if (this.publisher) {
       this.timer = setInterval(() => void this.flush(), flushMs);
       // Never hold the process open just to ship a log line.

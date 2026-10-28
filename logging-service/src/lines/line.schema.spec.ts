@@ -26,6 +26,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
  * Scope: Added the cases for an array whose `length` a caller inflated (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for a top-level `__proto__` metadata field, which Zod dropped before the
+ *        walkers could reach it (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, redactDeep, toRow } from './line.schema';
 
@@ -523,5 +527,56 @@ describe('an array whose length a caller inflated', () => {
 
   it('leaves an array inside the cap alone', () => {
     expect(redactDeep({ tries: [1, 2, 3] })).toEqual({ tries: [1, 2, 3] });
+  });
+});
+
+/**
+ * `__proto__` is replaced at every depth, and the walkers build with a null prototype so the
+ * replacement cannot be the thing that loses the field. The *top-level* name never reached them:
+ * Zod builds the parsed object itself, and `out[key] = value` there runs `Object.prototype`'s
+ * setter instead of defining a property - so the field vanished between a stdout line that kept
+ * it and a row that did not, which is the disagreement AGENTS.md already warned about and the code
+ * did not prevent (PR #129 review).
+ */
+describe('a top-level __proto__ metadata field', () => {
+  const envelope =
+    '"lineId":"11111111-1111-1111-1111-111111111111","ts":"2026-10-28T00:00:00.000Z",' +
+    '"service":"supplier","level":"info","event":"probe"';
+  const parseRaw = (extra: string) => inboundLineSchema.safeParse(JSON.parse(`{${envelope},${extra}}`));
+
+  it('survives as a replaced name rather than disappearing', () => {
+    const result = parseRaw('"__proto__":{"attempt":1}');
+    expect(result.success).toBe(true);
+    // The index is its position among the line's own keys, which is what `extraOf` would have
+    // given it had the name reached that far - the 9 is `'__proto__'.length`.
+    expect(toRow(result.data!).extra).toEqual({ '[key 5: 9 chars]': { attempt: 1 } });
+  });
+
+  it('survives when its value is a primitive, which the setter discards silently', () => {
+    const result = parseRaw('"__proto__":"hunter2"');
+    expect(toRow(result.data!).extra).toEqual({ '[key 5: 9 chars]': 'hunter2' });
+  });
+
+  it('is redacted by name like any other field, not just renamed', () => {
+    const result = parseRaw('"__proto__":{"password":"hunter2"}');
+    expect(toRow(result.data!).extra).toEqual({ '[key 5: 9 chars]': { password: '[REDACTED]' } });
+  });
+
+  it('pollutes neither the parsed object nor Object.prototype', () => {
+    // The global was safe before this fix too - Zod dropped the key rather than assigning it -
+    // which is why the finding is a lost field and not a hole. What was not checkable before is
+    // the second assertion: there was no `extra` to ask about.
+    parseRaw('"__proto__":{"polluted":true}');
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    const extra = toRow(parseRaw('"__proto__":{"polluted":true}').data!).extra!;
+    expect(Object.getPrototypeOf(extra)).toBeNull();
+  });
+
+  it('leaves a nested one alone, and an ordinary neighbour alone', () => {
+    const result = parseRaw('"attempt":{"__proto__":{"x":1}},"tries":2');
+    expect(toRow(result.data!).extra).toEqual({
+      attempt: { '[key 0: 9 chars]': { x: 1 } },
+      tries: 2,
+    });
   });
 });

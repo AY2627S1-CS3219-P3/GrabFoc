@@ -54,6 +54,10 @@
  * Scope: Added the cases for a service name that changes between reads, and for an array whose
  *        `length` a caller inflated (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for a buffer limit a comparison cannot act on - NaN disables the bound
+ *        rather than tightening it (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -1101,5 +1105,58 @@ describe('an array whose length a caller inflated', () => {
     sparse[3] = 4;
     shipper().emit({ level: 'warn', event: 'access_denied', sparse });
     expect(JSON.parse(written[0]).sparse).toEqual([1, null, null, 4]);
+  });
+});
+
+/**
+ * `flushMs` was checked in this same constructor and these three were not, so the one option whose
+ * misuse `setInterval` would have made loud was guarded and the three whose misuse is silent were
+ * taken as given. `NaN` is a number, `??` keeps it, and every bound here is a `>` - so a limit of
+ * `NaN` does not tighten the bound, it removes it. `Number(process.env.MAX_BYTES)` with the
+ * variable unset is exactly that value, which is how this arrives in a deployment rather than in a
+ * test (PR #129 review).
+ */
+describe('a buffer limit a comparison cannot act on', () => {
+  const build = (limits: Record<string, number>) =>
+    () =>
+      new LogShipper({
+        service: 'supplier',
+        publisher: neverSettles,
+        write: () => undefined,
+        newId: () => testId(1),
+        ...limits,
+      });
+
+  it.each(['maxBuffer', 'maxBufferBytes', 'maxLineBytes'])('refuses NaN for %s', (option) => {
+    expect(build({ [option]: Number.NaN })).toThrow(RangeError);
+  });
+
+  it.each(['maxBuffer', 'maxBufferBytes', 'maxLineBytes'])('refuses Infinity for %s', (option) => {
+    expect(build({ [option]: Number.POSITIVE_INFINITY })).toThrow(RangeError);
+  });
+
+  it.each([0, -1, 1.5])('refuses %s, which bounds nothing or everything', (value) => {
+    expect(build({ maxBuffer: value as number })).toThrow(RangeError);
+  });
+
+  it('names the option it refused, so the message is actionable', () => {
+    expect(build({ maxBufferBytes: Number.NaN })).toThrow(/maxBufferBytes/);
+  });
+
+  it('refuses a line bound above the buffer bound, which can only ever drop', () => {
+    // A line between the two passes the oversize check and then always trips the buffer check, so
+    // it is dropped every time and counted against the broker rather than the caller.
+    expect(build({ maxBufferBytes: 1000, maxLineBytes: 2000 })).toThrow(RangeError);
+  });
+
+  it('accepts the bounds the service actually runs with', () => {
+    expect(build({ maxBuffer: 1000, maxBufferBytes: 4 * 1024 * 1024, maxLineBytes: 64 * 1024 })).not.toThrow();
+  });
+
+  it('still drops past a bound that was given explicitly', () => {
+    const log = shipper(neverSettles, 1, {});
+    log.emit({ level: 'info', event: 'a' });
+    log.emit({ level: 'info', event: 'b' });
+    expect(log.counts.dropped).toBe(1);
   });
 });
