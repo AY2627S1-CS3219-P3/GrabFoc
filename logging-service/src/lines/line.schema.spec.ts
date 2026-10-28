@@ -23,6 +23,9 @@
  * Scope: Added the cases for a key the producer already sanitised, a sensitive name spelled with
  *        a separator, and a number JSONB cannot hold (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for an array whose `length` a caller inflated (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, redactDeep, toRow } from './line.schema';
 
@@ -499,5 +502,26 @@ describe('a number JSONB cannot hold', () => {
 
   it('covers NaN too, which JSON has no literal for', () => {
     expect(redactDeep({ attempt: Number.NaN })).toEqual({ attempt: 'NaN' });
+  });
+});
+
+/**
+ * Not reachable from a broker message, where an array's length is its element count - but
+ * `redactDeep` is exported, and both sides of this pairing carry the same bounds so that neither
+ * can be the one that was forgotten (PR #129 review).
+ */
+describe('an array whose length a caller inflated', () => {
+  it('is not walked', () => {
+    const holes: unknown[] = [];
+    holes.length = 0xffffffff;
+    const started = Date.now();
+    const out = redactDeep({ holes }) as { holes: unknown[] };
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(out.holes).toHaveLength(1001);
+    expect(out.holes[1000]).toBe('[TRUNCATED]');
+  });
+
+  it('leaves an array inside the cap alone', () => {
+    expect(redactDeep({ tries: [1, 2, 3] })).toEqual({ tries: [1, 2, 3] });
   });
 });

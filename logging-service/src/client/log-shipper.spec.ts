@@ -50,6 +50,10 @@
  * Scope: Added the cases for a sensitive name spelled with a separator, and for a replaced key
  *        surviving the store's own pass (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for a service name that changes between reads, and for an array whose
+ *        `length` a caller inflated (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -1034,5 +1038,68 @@ describe('a replaced key and the store it is shipped to', () => {
     expect(marker).toMatch(/^\[key \d+: \d+ chars\]$/);
     const row = toRow(inboundLineSchema.parse(line));
     expect(Object.keys((row.extra as { recipients: object }).recipients)).toEqual([marker]);
+  });
+});
+
+describe('a service name that changes between reads', () => {
+  /**
+   * The constructor read `options.service` twice for its check and a third time for the
+   * assignment, so a getter could answer the check with a valid name and the assignment with an
+   * over-long one - and that name then goes on every line this shipper writes, each of which the
+   * store refuses. Holding the options closed this class at the seam; this was the same bug one
+   * level inside the constructor (PR #129 review).
+   */
+  it('keeps the name it checked, not a later read', () => {
+    let reads = 0;
+    const options = {
+      write: (line: string) => written.push(line),
+      newId: () => testId(1),
+      get service() {
+        reads += 1;
+        return reads > 2 ? 'x'.repeat(200) : 'supplier';
+      },
+    };
+    const log = new LogShipper(options as never);
+    log.emit({ level: 'warn', event: 'access_denied' });
+    const line = JSON.parse(written[0]);
+    expect(line.service).toBe('supplier');
+    expect(inboundLineSchema.safeParse(line).success).toBe(true);
+  });
+});
+
+describe('an array whose length a caller inflated', () => {
+  /**
+   * `a.length = 0xffffffff` is one assignment, and rebuilding by index then reads 4.29 billion
+   * holes - about 55 seconds of blocked event loop, on `emit()`'s synchronous path inside the
+   * request being logged. `Array.prototype.map` skipped holes, so this is what rebuilding by
+   * index gave up and has to buy back (PR #129 review).
+   */
+  it('does not walk it', () => {
+    const holes: unknown[] = [];
+    holes.length = 0xffffffff;
+    const started = Date.now();
+    shipper().emit({ level: 'warn', event: 'access_denied', holes });
+    expect(Date.now() - started).toBeLessThan(2000);
+    const items = JSON.parse(written[0]).holes;
+    expect(items).toHaveLength(1001);
+    expect(items[1000]).toBe('[TRUNCATED]');
+  });
+
+  it('cuts an array of real elements at the cap and marks it', () => {
+    const many = Array.from({ length: 1500 }, (_v, i) => i);
+    shipper().emit({ level: 'warn', event: 'access_denied', many });
+    const items = JSON.parse(written[0]).many;
+    expect(items.slice(0, 3)).toEqual([0, 1, 2]);
+    expect(items[999]).toBe(999);
+    expect(items[1000]).toBe('[TRUNCATED]');
+    expect(items).toHaveLength(1001);
+  });
+
+  it('leaves an array inside the cap alone, holes included', () => {
+    // A hole serialises as null either way, so the rebuild says what `map` said.
+    const sparse: unknown[] = [1];
+    sparse[3] = 4;
+    shipper().emit({ level: 'warn', event: 'access_denied', sparse });
+    expect(JSON.parse(written[0]).sparse).toEqual([1, null, null, 4]);
   });
 });

@@ -35,6 +35,10 @@
  * Scope: Keep a sanitised key a fixed point, strip every separator before matching a sensitive
  *        name, and store a non-finite number as text rather than as null (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Bound the array walk, so an inflated `length` cannot block the event loop (PR #129
+ *        review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -295,6 +299,15 @@ function safeKey(key: string, index: number): string {
 }
 const TRUNCATED = '[TRUNCATED]';
 const MAX_DEPTH = 6;
+/**
+ * How many elements of one array are walked. `length` is caller-controlled and costs nothing to
+ * inflate - `a.length = 0xffffffff` on an empty array is one assignment - and rebuilding by index
+ * then reads every hole: 4.29 billion of them, measured at about 55 seconds of blocked event loop,
+ * on `emit()`'s own synchronous path inside the request being logged. `Array.prototype.map` skipped
+ * holes, so bounding the walk is what the rebuild gave up and has to buy back (PR #129 review). An
+ * array this long could not have reached the store anyway: the line would not fit `maxLineBytes`.
+ */
+const MAX_ARRAY_ITEMS = 1000;
 
 /**
  * A copy of `value` with every sensitive field replaced, at any depth. A nested secret —
@@ -326,7 +339,15 @@ export function redactDeep(value: unknown, depth = 0): unknown {
     // a class puts `toJSON` on the prototype, where `Object.entries` never looks. An overridden
     // `map` would have been caller code running inside the walk as well (PR #129 review).
     const items: unknown[] = [];
-    for (let i = 0; i < value.length; i += 1) items.push(redactDeep(value[i], depth + 1));
+    // `length` read once and capped: see MAX_ARRAY_ITEMS. Once, because a property read on an
+    // object the caller still owns is caller code wherever it appears - the same lesson as the
+    // service name in the constructor, one level in - so the cut below compares `total` rather
+    // than reading it again.
+    const total = value.length;
+    const length = Math.min(total, MAX_ARRAY_ITEMS);
+    for (let i = 0; i < length; i += 1) items.push(redactDeep(value[i], depth + 1));
+    // Marked rather than cut silently, as a subtree beyond MAX_DEPTH is.
+    if (total > length) items.push(TRUNCATED);
     return items;
   }
   // Null-prototype, so a field name can only ever define a property on this object. `__proto__`

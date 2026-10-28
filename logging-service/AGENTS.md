@@ -191,6 +191,15 @@ _Origin: AI doc, from the plan Cole Lin approved_
     now. The brackets stay outside the safe alphabet on purpose, and a caller's own key spelled like
     a marker passing through costs nothing: the shape carries a position and a length and no
     content of its own (PR #129 review).
+  - **The array walk is bounded, because rebuilding by index gave up what `map` had.**
+    `Array.prototype.map` skips holes; a loop over `length` does not, and `length` is
+    caller-controlled and free to inflate — `a.length = 0xffffffff` on an empty array is one
+    assignment, and reading those 4.29 billion holes measured about **55 seconds** of blocked event
+    loop, on `emit()`'s synchronous path inside the request being logged. At most
+    `MAX_ARRAY_ITEMS` (1000) elements are walked now and a cut is marked, on both sides, with
+    `length` read once so the cut compares the value already read. The store side is not reachable
+    from a broker message, where an array's length is its element count, but both sides carry the
+    same bound so neither can be the one that was forgotten (PR #129 review).
   - **An array is rebuilt by index, never with the caller's `map`.** `Array.prototype.map` goes
     through `Symbol.species`, so mapping a subclass returned another instance of that subclass —
     prototype and all — and `JSON.stringify` then called its inherited `toJSON` *after* redaction
