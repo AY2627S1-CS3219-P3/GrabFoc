@@ -12,8 +12,12 @@
  * Scope: Added the control-character cases for method and path, the two fields that passed
  *        validation and then failed the insert (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for what JSONB cannot hold inside `extra`, and for an Array subclass
+ *        surviving the redaction walk (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
-import { inboundLineSchema, logQuerySchema, parseOr400, toRow } from './line.schema';
+import { inboundLineSchema, logQuerySchema, parseOr400, redactDeep, toRow } from './line.schema';
 
 // AI-generated (reviewed by Cole Lin).
 
@@ -305,5 +309,78 @@ describe('the query parameters', () => {
 
   it('names the invalid parameter in the 400', () => {
     expect(() => parseOr400(logQuerySchema, { page: '0' }, 'query parameters')).toThrow(/page/);
+  });
+});
+
+describe('what JSONB cannot hold', () => {
+  /**
+   * The round before brought `method` and `path` inside what their TEXT columns accept. This is the
+   * same defect one level down: `extra` is JSONB, and PostgreSQL's JSONB cannot represent a NUL or
+   * an unpaired surrogate at all - it refuses the value with a class-22 error, which ingest reads
+   * as permanently unstorable and parks. So a line with `{ note: "a\u0000b" }` was accepted here
+   * and then lost, which is the outcome this pairing exists to prevent (PR #129 review).
+   *
+   * Removed rather than rejected, deliberately, and the other way round from the envelope fields:
+   * `extra` is free-form metadata, so a tab or a newline in a `note` is content and is kept. Only
+   * what JSONB cannot carry is taken out, and taking it out costs that character where rejecting
+   * would cost the whole line.
+   */
+  it.each([
+    ['a NUL', `a${'\u0000'}b`, 'ab'],
+    ['an unpaired high surrogate', `a${'\ud800'}b`, 'ab'],
+    ['a lone low surrogate', 'a\udc00b', 'ab'],
+  ])('removes %s from an extra value', (_why, note, expected) => {
+    expect(toRow({ ...valid, note } as never).extra).toEqual({ note: expected });
+  });
+
+  it('keeps a valid surrogate pair, which JSONB can hold', () => {
+    expect(toRow({ ...valid, note: 'a\ud83d\ude00b' } as never).extra).toEqual({ note: 'a\ud83d\ude00b' });
+  });
+
+  it('keeps a tab and a newline, which are content in free-form metadata', () => {
+    expect(toRow({ ...valid, note: 'a\tb\nc' } as never).extra).toEqual({ note: 'a\tb\nc' });
+  });
+
+  it('removes them at any depth, and inside an array', () => {
+    const row = toRow({ ...valid, ctx: { deep: [`x${'\u0000'}y`] } } as never);
+    expect(row.extra).toEqual({ ctx: { deep: ['xy'] } });
+  });
+
+  it('serialises the result, which is what the insert actually sends', () => {
+    const row = toRow({ ...valid, note: `a${'\u0000'}b` } as never);
+    expect(JSON.stringify(row.extra)).not.toContain('\\u0000');
+  });
+});
+
+describe('an Array subclass in the metadata', () => {
+  /**
+   * `Array.prototype.map` goes through `Symbol.species`, so mapping a subclass returned another
+   * instance of that subclass - prototype and all - and `JSON.stringify` then called its inherited
+   * `toJSON` *after* redaction had finished, free to return anything. Dropping own function values
+   * does not help: a class puts `toJSON` on the prototype, where `Object.entries` never looks
+   * (PR #129 review). Unreachable from the ingest path, where every value came from `JSON.parse`,
+   * but `redactDeep` is exported and has to hold on its own.
+   */
+  class Sneaky extends Array {
+    toJSON() {
+      return 'password=hunter2';
+    }
+  }
+
+  const sneaky = () => {
+    const out = new Sneaky();
+    out.push('a');
+    return out;
+  };
+
+  it('does not let an inherited toJSON run after redaction', () => {
+    expect(JSON.stringify(redactDeep({ items: sneaky() }))).not.toContain('hunter2');
+  });
+
+  it('rebuilds it as a plain array', () => {
+    const out = redactDeep({ items: sneaky() }) as { items: unknown[] };
+    expect(Array.isArray(out.items)).toBe(true);
+    expect(out.items.constructor).toBe(Array);
+    expect(out.items).toEqual(['a']);
   });
 });

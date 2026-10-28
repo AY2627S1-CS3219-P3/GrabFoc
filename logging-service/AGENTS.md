@@ -162,6 +162,22 @@ _Origin: AI doc, from the plan Cole Lin approved_
     minimum length, because the shipper strips control characters and so a path made only of them
     arrives as `''`, which `toRow` turns into NULL. Same defect as the `durationMs` bound, same
     fix (PR #129 review).
+  - **`extra` is JSONB, and JSONB has bounds of its own.** It cannot represent a NUL or an unpaired
+    surrogate: PG text holds no NUL at all, and a lone surrogate arrives as a `\ud800` escape its
+    JSON parser refuses. Either one costs the whole line, exactly as an over-long `path` did — the
+    insert fails with a class-22 error, which ingest reads as permanent and parks. Both are
+    *removed* here rather than rejected, and the other way round from the envelope fields, because
+    `extra` is free-form metadata: a tab or a newline in a `note` is content and is kept, and losing
+    one character costs less than losing the line. Stripped in the shipper too, so stdout and the
+    stored row say the same thing (PR #129 review).
+  - **An array is rebuilt by index, never with the caller's `map`.** `Array.prototype.map` goes
+    through `Symbol.species`, so mapping a subclass returned another instance of that subclass —
+    prototype and all — and `JSON.stringify` then called its inherited `toJSON` *after* redaction
+    had finished, free to return a token from an innocuous-looking array. Dropping own function
+    values does not help: a class puts `toJSON` on the prototype, where `Object.entries` never
+    looks. Reachable from a caller in the shipper; in `line.schema.ts` every value came from
+    `JSON.parse`, so the same change there is defensive and `redactDeep` is exported
+    (PR #129 review).
   - `event` and `path` are **cut and marked** with `[TRUNCATED]` inside the bound, because the
     leading characters are the informative part and a reader searches by them.
   - `requestId`, `userId`, `method`, `role`, `status` and `durationMs` are **left out** instead:
@@ -202,6 +218,17 @@ _Origin: AI doc, from the plan Cole Lin approved_
   `ts` and `service` always win — a line claiming another service's name would make the store
   unreadable.
 - It writes the line itself rather than through Nest's logger, which would wrap the JSON in Nest's own timestamp, PID and context and leave a collector digging it out.
+- **A safe-looking key is not a safe key, and nothing here can make it one.** `safeKey` replaces a
+  field name that *cannot* be a field name — one with an `@`, a space, 200 characters — because such
+  a name is data rather than a name. A review round asked for credential-*shaped* keys to be
+  replaced as well, and it is right that `{ attempts: { "123456": true } }` writes a six-digit code
+  verbatim. There is no fix at this layer: nothing distinguishes that key from
+  `{ byStatus: { "404": 3 } }` or `{ byYear: { "2026": 5 } }`, which are ordinary aggregates, and
+  redaction matches *names*, so it cannot identify a secret by its contents — in a key no more than
+  in a value. What does help is the call-site rule in root AGENTS.md: never log an OTP or a handover
+  code, as a value or as a field name. `otp` and `code` are both in the name list, so the usual
+  shapes are caught by the parent key. **Left open on the PR** for the team rather than resolved
+  (PR #129 review).
 - **`event` is a fixed name, never text built from a request.** It is an envelope field, so it is
   the one field redaction cannot help with: `redactFields` matches field *names*, and the value of
   `event` is written through on the ordinary path and echoed as `originalEvent` on the

@@ -37,6 +37,10 @@
  * Scope: Added the cases for a throwing newId, an unschedulable flushMs and a service name
  *        mutated after construction (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for what JSONB cannot hold, and for an Array subclass surviving the
+ *        redaction walk (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 import { inboundLineSchema } from '../lines/line.schema';
@@ -843,5 +847,83 @@ describe('the other caller-supplied parts of the options', () => {
     log.emit({ level: 'warn', event: 'access_denied', hostile });
     const line = JSON.parse(written[0]);
     expect(line).toMatchObject({ event: 'line_unserialisable', service: 'supplier' });
+  });
+});
+
+describe('values the store cannot hold in extra', () => {
+  /**
+   * `extra` is JSONB, and PostgreSQL's JSONB cannot represent a NUL or an unpaired surrogate - it
+   * refuses the value with a class-22 error, which ingest reads as permanently unstorable and
+   * parks. Stripped here as well as there, so stdout and the stored row say the same thing; and
+   * stripped rather than rejected, because losing the character costs less than losing the line
+   * (PR #129 review).
+   */
+  it.each([
+    ['a NUL', `a${'\u0000'}b`],
+    ['an unpaired surrogate', `a${'\ud800'}b`],
+  ])('removes %s from a metadata value', (_why, note) => {
+    shipper().emit({ level: 'warn', event: 'access_denied', note });
+    expect(JSON.parse(written[0]).note).toBe('ab');
+  });
+
+  it('writes a line the store will take', () => {
+    const log = new LogShipper({
+      service: 'supplier',
+      write: (line) => written.push(line),
+      newId: () => randomUUID(),
+    });
+    log.emit({ level: 'warn', event: 'access_denied', note: `a${'\u0000'}b` });
+    expect(inboundLineSchema.safeParse(JSON.parse(written[0])).success).toBe(true);
+  });
+
+  it('keeps a tab, a newline and a valid surrogate pair', () => {
+    shipper().emit({ level: 'warn', event: 'access_denied', note: 'a\tb\nc\ud83d\ude00' });
+    expect(JSON.parse(written[0]).note).toBe('a\tb\nc\ud83d\ude00');
+  });
+});
+
+describe('an Array subclass in the metadata', () => {
+  /**
+   * `Array.prototype.map` goes through `Symbol.species`, so mapping a subclass returned another
+   * instance of it - prototype and all - and `JSON.stringify` then called the inherited `toJSON`
+   * *after* redaction had finished, free to return anything at all. Dropping own function values
+   * does not help here: a class puts `toJSON` on the prototype, where `Object.entries` never
+   * looks. An overridden `map` would have been caller code running in the walk as well
+   * (PR #129 review).
+   */
+  class Sneaky extends Array {
+    toJSON() {
+      return 'password=hunter2';
+    }
+  }
+
+  const sneaky = () => {
+    const out = new Sneaky();
+    out.push('a');
+    return out;
+  };
+
+  it('does not let an inherited toJSON reach the line', () => {
+    shipper().emit({ level: 'warn', event: 'access_denied', items: sneaky() });
+    expect(written[0]).not.toContain('hunter2');
+  });
+
+  it('ships it as a plain array', () => {
+    shipper().emit({ level: 'warn', event: 'access_denied', items: sneaky() });
+    expect(JSON.parse(written[0]).items).toEqual(['a']);
+  });
+
+  it('does not call a map the caller overrode', () => {
+    class Trap extends Array {
+      map(): never[] {
+        throw new Error('map exploded');
+      }
+    }
+    const items = new Trap();
+    items.push('a');
+    const log = shipper();
+    expect(() => log.emit({ level: 'warn', event: 'access_denied', items })).not.toThrow();
+    // Not the fallback line: the walk never went through the caller's `map` at all.
+    expect(JSON.parse(written[0])).toMatchObject({ event: 'access_denied', items: ['a'] });
   });
 });

@@ -24,6 +24,10 @@
  * Scope: Refuse a control character in `method` and `path` here, rather than accepting the line
  *        and letting the insert fail on it (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Take out of `extra` what JSONB cannot hold, and rebuild an array without going through
+ *        the caller's own `map` (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -177,12 +181,68 @@ export interface LineRow {
   extra: Record<string, unknown> | null;
 }
 
+/**
+ * `value` with the characters PostgreSQL's JSONB cannot represent removed: a NUL, and a surrogate
+ * with no partner. JSONB stores text, and PG text cannot hold a NUL at all; an unpaired surrogate
+ * reaches the server as a `\\ud800` escape, which its JSON parser refuses. Either one costs the
+ * **whole line** - the insert fails with a class-22 error, ingest reads that as permanently
+ * unstorable, and a line the schema had just accepted is parked instead of being searchable
+ * (PR #129 review). The round before brought `method` and `path` inside what their TEXT columns
+ * accept; this is the same pairing one level down, in `extra`.
+ *
+ * Removed rather than rejected, and the other way round from the envelope fields: `extra` is
+ * free-form metadata, so a tab or a newline in a `note` is content and is kept. Only what JSONB
+ * cannot carry comes out, and taking out a character costs less than losing the line. Written as
+ * loops rather than regexes so the escape sequences cannot be mangled by an editing tool.
+ */
+function unstorableInJsonb(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code === 0 || (code >= 0xd800 && code <= 0xdfff)) return true;
+  }
+  return false;
+}
+
+function jsonbSafe(value: string): string {
+  // A valid surrogate pair trips the check above and comes back out of the loop unchanged, which
+  // is why this is a fast path and not the decision itself.
+  if (!unstorableInJsonb(value)) return value;
+  let out = '';
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code === 0) continue;
+    if (code >= 0xd800 && code <= 0xdbff) {
+      // A high surrogate is kept only with the low surrogate that completes it. charCodeAt past
+      // the end is NaN, so the last character of a string falls through to the drop below.
+      const low = value.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        out += value[i] + value[i + 1];
+        i += 1;
+      }
+      continue;
+    }
+    // A low surrogate reached on its own: the pair above consumes the valid ones.
+    if (code >= 0xdc00 && code <= 0xdfff) continue;
+    out += value[i];
+  }
+  return out;
+}
+
 const REDACTED = '[REDACTED]';
 // A field name a producer would plausibly write. A key is as caller-controlled as a value, and
 // redaction only ever looked at values - so `{ recipients: { "alice@nus.edu.sg": true } }` put an
 // address in the `extra` column with nothing flagged (PR #129 review). An unsafe name is replaced
 // whole rather than truncated, since half an address or half a token is still half too much. The
 // same rule lives in the shipper and in the dead-letter shape; the three must agree.
+//
+// This is a filter for keys that *cannot* be field names, not a proof that the rest are safe: a
+// later round asked for credential-shaped keys to be redacted too, and `{ attempts: { "123456":
+// true } }` is indeed a six-digit code written verbatim. There is no fix here, because nothing
+// distinguishes it from `{ byStatus: { "404": 3 } }` or `{ byYear: { "2026": 5 } }`, which are
+// ordinary aggregates - name-based redaction cannot identify a secret by its contents, in a key
+// any more than in a value. The rule that helps is the call-site one in root AGENTS.md: never log
+// an OTP or a handover code, as a value *or* as a field name. `otp` and `code` are both in the
+// list above, so the usual shapes - `{ otp: { ... } }` - are caught by the parent name.
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
 
 function safeKey(key: string, index: number): string {
@@ -202,11 +262,24 @@ const MAX_DEPTH = 6;
  * once it is in the `extra` column, so dropping only the outer keys is not enough (PR #129 review).
  */
 export function redactDeep(value: unknown, depth = 0): unknown {
+  // Strings first, because `extra` is JSONB and this is where a value that cannot go in it is
+  // taken out. See `jsonbSafe` above for why the whole line was the cost of leaving it in.
+  if (typeof value === 'string') return jsonbSafe(value);
   if (value === null || typeof value !== 'object') return value;
   // Replaced rather than returned, for the same reasons as in the shipper: a secret nested deeper
   // than this would be stored verbatim, and a cycle would reach the JSON serialiser (PR #130).
   if (depth > MAX_DEPTH) return TRUNCATED;
-  if (Array.isArray(value)) return value.map((item) => redactDeep(item, depth + 1));
+  if (Array.isArray(value)) {
+    // Built by index into a plain array rather than with `value.map`: `Array.prototype.map` goes
+    // through `Symbol.species`, so mapping a subclass returned another instance of that subclass -
+    // prototype and all - and `JSON.stringify` then called its inherited `toJSON` *after*
+    // redaction had finished, free to return anything. Dropping own function values does not help:
+    // a class puts `toJSON` on the prototype, where `Object.entries` never looks. An overridden
+    // `map` would have been caller code running inside the walk as well (PR #129 review).
+    const items: unknown[] = [];
+    for (let i = 0; i < value.length; i += 1) items.push(redactDeep(value[i], depth + 1));
+    return items;
+  }
   // Null-prototype, so a field name can only ever define a property on this object. `__proto__`
   // is the one name for which `out[key] = item` does something else - it runs Object.prototype's
   // setter - and the field was then missing from the stored row with its neighbours intact
