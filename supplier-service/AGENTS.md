@@ -229,6 +229,15 @@ length is some other request's id. The `requestId` this service accepts from `x-
 already capped at 128 characters, so it stays inside the store's 200 either way. A line this
 happened to increments `log.counts.clamped`.
 
+**A log call that cannot be built stays on its request.** When a caller hands `emit()` an object
+that cannot be read at all - a throwing getter, a hostile Proxy - the shipper writes a
+`line_unserialisable` line instead of the real one, and that line now carries the `requestId` and
+is keyed by it (PR #129 review). It is the only record that a log call failed, and without the id
+the gap it left in a trace read as a line nobody wrote rather than a line that was lost. Every
+`emit()` call in this service passes `requestIdOf(req)`, so every one of those failures is
+traceable: `access_denied` in `src/common/auth.ts`, `jwks_unavailable` beside it, and
+`unhandled_error` in `src/common/problem.ts`.
+
 **Correlation.** Each of those lines carries a `requestId`, which is how a line here is matched to
 the gateway's `request_completed` line for the same request:
 

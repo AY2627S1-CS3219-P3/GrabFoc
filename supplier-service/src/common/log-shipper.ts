@@ -25,6 +25,10 @@
  * Scope: Guard the local write too - it was the one statement outside emit()'s guard, so a sink
  *        that throws took down the request it was logging (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Keep the requestId on the fallback line, so the one record that a log call failed is
+ *        still on the request it failed on (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -388,6 +392,19 @@ export class LogShipper {
       originalEvent = null;
     }
 
+    // Read the same way and for the same reason. The fallback is the only record that a log call
+    // failed, and it carried no requestId - so in the one service whose purpose is following a
+    // request across services, the gap it left in a trace read as a line nobody wrote rather than
+    // a line that was lost (PR #129 review). Bounded here rather than below, because the bound is
+    // what makes it storable and `boundedId` is total: it returns undefined instead of throwing,
+    // so it cannot itself be the reason this line fails too.
+    let originalRequestId: string | undefined;
+    try {
+      originalRequestId = boundedId(input.requestId, STORE_LIMITS.requestId);
+    } catch {
+      originalRequestId = undefined;
+    }
+
     try {
       // **Everything** that reads the caller's input happens in here. Destructuring it runs an
       // enumerable getter, and a Proxy trap runs on enumeration, so doing it outside meant a
@@ -453,6 +470,9 @@ export class LogShipper {
           service: this.options.service,
           level: 'error',
           event: 'line_unserialisable',
+          // Left out of the line entirely when there is no usable one, which is what the store's
+          // `.optional()` means - rather than a null, which would read as "this had no request".
+          requestId: originalRequestId,
           reason: 'the line could not be built',
           // Bounded like `event` itself. This is caller text on a path that exists *because* the
           // caller's object misbehaved, and the fixed `reason` beside it is fixed for that same
@@ -460,6 +480,9 @@ export class LogShipper {
           // topic (PR #129 review).
           originalEvent: originalEvent === null ? null : boundedText(originalEvent, STORE_LIMITS.event),
         }),
+        // Keyed like any other line, so the failure lands in the partition already holding that
+        // request's lines, in the order it happened (root AGENTS.md section 3, rule 5).
+        key: originalRequestId,
       };
     }
   }
