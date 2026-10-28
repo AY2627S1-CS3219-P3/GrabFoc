@@ -145,6 +145,15 @@ _Origin: AI doc, from the plan Cole Lin approved_
   `access_denied` line (PR #129 review). The round before swept the *query filter* against the
   store; this is the *producer* against the store — the same pairing from the other side, and the
   one that had never been checked.
+  - **A line this schema calls valid has to be a line the columns can hold.** `method` and `path`
+    were the only two text fields declared as a bare `z.string()`; every other one goes through
+    `plainText`, which refuses control characters. So a NUL in a path passed validation and then
+    failed the `INSERT` with a class-22 `SQLSTATE`, which `unstorable()` reads as permanent — so
+    ingest parked a line this schema had just called valid, and the round-trip to the database was
+    wasted finding out. Both now go through `plainText`; `path` through a variant without the
+    minimum length, because the shipper strips control characters and so a path made only of them
+    arrives as `''`, which `toRow` turns into NULL. Same defect as the `durationMs` bound, same
+    fix (PR #129 review).
   - `event` and `path` are **cut and marked** with `[TRUNCATED]` inside the bound, because the
     leading characters are the informative part and a reader searches by them.
   - `requestId`, `userId`, `method`, `role`, `status` and `durationMs` are **left out** instead:
@@ -186,12 +195,15 @@ _Origin: AI doc, from the plan Cole Lin approved_
   unreadable.
 - It writes the line itself rather than through Nest's logger, which would wrap the JSON in Nest's own timestamp, PID and context and leave a collector digging it out.
 - **`emit()` cannot throw.** Redaction and serialisation both sit inside one guard, because reading a caller's fields can itself throw — an enumerable getter or a Proxy trap runs during `Object.entries`. If the body cannot be built, a `line_unserialisable` line is written with the envelope and the original event name, so the failure is visible rather than silent. **The local write is guarded too** (PR #129 review). It was the one statement outside that guard, and it is not a safe one: `write` is a documented option, so it is caller-supplied code, and the default is no better — stdout in a container is a pipe, a pipe write is synchronous on Linux, and a reader that goes away raises `EPIPE` on the caller's own stack. "Fire and forget" covers the *broker*, which is buffered and never awaited; the stdout write is an ordinary synchronous call in the request's stack, so a dead sink turned the request it was logging into a 500 — the component whose whole purpose is not to disturb the service it logs for taking that service down. It is counted as `writeFailed` rather than reported, because there is nowhere to report a broken log sink *to*, and the line is still buffered for the broker afterwards: a broken local sink is a reason to ship harder, not to stop, since the topic is then the only copy.
+  **The fallback line carries the `requestId` too** (PR #129 review). It is the only record that a log call failed, and it had none — so in the one service whose purpose is following a request across services, the gap it left in a trace read as a line nobody wrote rather than a line that was lost. `input.requestId` is read in its own `try` exactly as `input.event` already was, and bounded by `boundedId`, which returns `undefined` rather than throwing and so cannot be the reason this line fails as well. It is the Kafka key as well, so the failure lands in the partition already holding that request's lines.
 
 **Adopted by:** the Supplier Service (`supplier-service/src/common/log.ts`), whose `access_denied`, `jwks_unavailable` and `unhandled_error` lines now go through it.
 
 ## Pending
 
 - The real Kafka consumer. `src/ingest/consumer.ts` is the seam; nothing provides it until #75. With `LOGGING_KAFKA_BROKERS` set and no consumer, startup says so and the query API still runs — and a consumer provided **without** a `DEAD_LETTERS` sink is refused the same way, rather than consuming and committing the offset of messages it cannot park.
+
+  **Whoever writes it owes one thing: await the handler, and on a rejection leave the offset uncommitted** (root AGENTS.md §3, rule 2). The contract is now on `MessageHandler` itself rather than only in `IngestService`'s comments, because `handle()`'s own docstring used to say it "never throws" — which it does, deliberately, when the failure is ours rather than the message's: the store briefly unreachable, or the park itself failing. Everything the service can judge is counted and parked instead. A consumer that catches the rejection and commits anyway drops every line written during a database restart, with nothing but `counts.failed` to say so, and "never throws" is the one sentence that would have made writing such a consumer reasonable (PR #129 review).
 - Services adopting the shipper: Supplier **done**. Then User (the rewrite landed in #125, so this is now a retrofit), Order (#119 landed too), Credit (#85, which already has the client). Each is its owner's to copy in; the file is ~130 lines and needs no dependency.
 - **[Open]** Nest's logger prefixes its own timestamp, PID and context, so the JSON object is the *message*, not the whole line, and a collector has to dig it out. `ConsoleLogger({ json: true })` makes it worse, nesting our JSON inside Nest's own envelope. The shipper sidesteps this by writing the line itself, which is the proposed answer for every service.
 - **[Open]** Where logs surface in the UI: a page in Zi Yi's admin dashboard, or a screen here.

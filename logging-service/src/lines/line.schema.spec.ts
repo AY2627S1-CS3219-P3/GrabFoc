@@ -8,6 +8,10 @@
  * Scope: A line with an odd requestId is now stored rather than dropped, plus the compound-name
  *        and page-bound cases (third review round on PR #129).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the control-character cases for method and path, the two fields that passed
+ *        validation and then failed the insert (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, toRow } from './line.schema';
 
@@ -70,6 +74,42 @@ describe('the inbound line envelope', () => {
       expect(parse({ ...valid, ts }).success).toBe(false);
     },
   );
+  /**
+   * `method` and `path` were the only two text fields left as a bare `z.string()`: every other one
+   * goes through `plainText`, which refuses control characters. So a NUL in a path passed this
+   * schema and then failed the INSERT with a class-22 SQLSTATE, which ingest reads as permanently
+   * unstorable and parks - for a line this schema had just called valid. That is the same defect
+   * the `durationMs` bound above was added to fix (PR #129 review).
+   */
+  it.each<[string, number]>([
+    ['a NUL', 0],
+    ['a tab', 9],
+    ['a newline', 10],
+    ['a DEL', 0x7f],
+  ])('rejects %s in path here rather than at the insert', (_why, code) => {
+    expect(parse({ ...valid, path: `/locations${String.fromCharCode(code)}` }).success).toBe(false);
+  });
+
+  it.each<[string, number]>([
+    ['a NUL', 0],
+    ['a tab', 9],
+  ])('rejects %s in method here rather than at the insert', (_why, code) => {
+    expect(parse({ ...valid, method: `GET${String.fromCharCode(code)}` }).success).toBe(false);
+  });
+
+  /**
+   * The guard above must not cost the empty path. The shipper strips control characters from
+   * `path`, so a path of nothing but control characters arrives as `''` - and `toRow` turns that
+   * into NULL. Requiring at least one character here would reject the whole line instead.
+   */
+  it('still accepts an empty path', () => {
+    expect(parse({ ...valid, path: '' }).success).toBe(true);
+  });
+
+  it('still accepts an ordinary method and path', () => {
+    expect(parse({ ...valid, method: 'PATCH', path: '/locations/3f1c8e9a' }).success).toBe(true);
+  });
+
 });
 
 describe('toRow', () => {

@@ -29,6 +29,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
  * Scope: Added the cases for a local write that throws (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for the fallback line keeping the requestId it failed on
+ *        (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 import { inboundLineSchema } from '../lines/line.schema';
@@ -383,13 +387,13 @@ describe('metadata that fights back', () => {
     expect(JSON.parse(written[0]).reason).toBe('the line could not be built');
   });
 
-  it('publishes no Kafka key when the line could not be built', async () => {
+  it('keys the fallback by the requestId it failed on', async () => {
     const input: Record<string, unknown> = { level: 'warn', event: 'hostile', requestId: 'trace-9' };
     Object.defineProperty(input, 'boom', { enumerable: true, get() { throw new Error('nope'); } });
     const log = shipper(collecting);
     log.emit(input as never);
     await log.flush();
-    expect(published[0].key).toBeUndefined();
+    expect(published[0].key).toBe('trace-9');
   });
 
   it('still records the envelope when the body could not be built', () => {
@@ -708,5 +712,60 @@ describe('a local write that fails', () => {
     log.emit({ level: 'info', event: 'second' });
     expect(written.map((out) => JSON.parse(out).event)).toEqual(['second']);
     expect(log.counts).toMatchObject({ emitted: 2, writeFailed: 1 });
+  });
+});
+
+describe('the fallback line stays on its request', () => {
+  // The fallback is the only record that a log call failed, and it carried no requestId - so in the
+  // one service whose purpose is following a request across services, the gap in a trace read as a
+  // line nobody wrote rather than a line that was lost (PR #129 review). `input.event` was already
+  // read defensively for exactly this reason; `input.requestId` is read the same way.
+  const throwingInput = (fields: Record<string, unknown>) => {
+    const input: Record<string, unknown> = { level: 'warn', event: 'access_denied', ...fields };
+    Object.defineProperty(input, 'boom', {
+      enumerable: true,
+      get() {
+        throw new Error('nope');
+      },
+    });
+    return input;
+  };
+
+  it('keeps the requestId on the line', () => {
+    shipper().emit(throwingInput({ requestId: 'trace-1' }) as never);
+    expect(JSON.parse(written[0])).toMatchObject({
+      event: 'line_unserialisable',
+      requestId: 'trace-1',
+    });
+  });
+
+  it('leaves out a requestId the store would refuse, rather than costing the line', () => {
+    shipper().emit(throwingInput({ requestId: 'x'.repeat(201) }) as never);
+    const line = JSON.parse(written[0]);
+    expect(line.event).toBe('line_unserialisable');
+    expect(line).not.toHaveProperty('requestId');
+  });
+
+  it('still writes a fallback line when reading the requestId itself throws', () => {
+    const input: Record<string, unknown> = { level: 'warn', event: 'access_denied' };
+    Object.defineProperty(input, 'requestId', {
+      enumerable: true,
+      get() {
+        throw new Error('nope');
+      },
+    });
+    const log = shipper();
+    expect(() => log.emit(input as never)).not.toThrow();
+    expect(JSON.parse(written[0]).event).toBe('line_unserialisable');
+  });
+
+  it('writes a fallback line the store will take', () => {
+    const log = new LogShipper({
+      service: 'supplier',
+      write: (line) => written.push(line),
+      newId: () => randomUUID(),
+    });
+    log.emit(throwingInput({ requestId: 'trace-1' }) as never);
+    expect(inboundLineSchema.safeParse(JSON.parse(written[0])).success).toBe(true);
   });
 });

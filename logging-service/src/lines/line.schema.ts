@@ -20,6 +20,10 @@
  * Scope: A field named `__proto__` is no longer lost, and personal names - display, given and
  *        family names, and `phone` - are redacted (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Refuse a control character in `method` and `path` here, rather than accepting the line
+ *        and letting the insert fail on it (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -86,6 +90,14 @@ function neverStore(key: string): boolean {
   return NEVER_STORE.some((name) => normalised.includes(name));
 }
 
+/**
+ * PostgreSQL cannot hold a control character in a TEXT column: a NUL in a parameter is refused
+ * outright. So this is not only about readability. `?service=%00` reached the query and came back
+ * as a 500 for input that should have been a 400, and on the inbound side a NUL reached the INSERT
+ * and failed it with a class-22 SQLSTATE - which ingest reads as permanently unstorable and parks,
+ * for a line this schema had just called valid (PR #129 review). Written as a loop rather than a
+ * regex so the escape sequences cannot be mangled by an editing tool.
+ */
 function hasControlChars(value: string): boolean {
   for (let i = 0; i < value.length; i += 1) {
     const code = value.charCodeAt(i);
@@ -94,8 +106,16 @@ function hasControlChars(value: string): boolean {
   return false;
 }
 
-const plainText = (max: number) =>
-  z.string().min(1).max(max).refine((v) => !hasControlChars(v), 'must not contain control characters');
+const noControl = (schema: z.ZodString) =>
+  schema.refine((v) => !hasControlChars(v), 'must not contain control characters');
+
+const plainText = (max: number) => noControl(z.string().min(1).max(max));
+/**
+ * `plainText` without the minimum length. Only `path` needs it: the shipper strips control
+ * characters from a path, so one made of nothing but them arrives as `''`, and `toRow` turns that
+ * into NULL. Requiring a character here would cost the whole line instead (PR #129 review).
+ */
+const plainTextOrEmpty = (max: number) => noControl(z.string().max(max));
 
 /**
  * The envelope every service produces. This is the one schema in the project that is not
@@ -124,8 +144,13 @@ export const inboundLineSchema = z
     // admin would reach for - and the odd row is the one they are looking for (PR #129 review).
     userId: plainText(100).optional(),
     role: z.enum(['ADMIN', 'USER']).optional(),
-    method: z.string().min(1).max(10).optional(),
-    path: z.string().max(400).optional(),
+    // These two were the only text fields left as a bare `z.string()`, so a control character
+    // passed validation and then failed the insert - the same defect the `durationMs` bound below
+    // was added to fix. `method` comes from the request line and `path` from the URL, so both are
+    // caller-controlled: a line this schema calls valid has to be a line the columns can hold, or
+    // one `access_denied` event is parked instead of stored (PR #129 review).
+    method: plainText(10).optional(),
+    path: plainTextOrEmpty(400).optional(),
     status: z.number().int().min(100).max(599).optional(),
     // The column is INTEGER, so a larger value passed validation and then failed the insert with
     // SQLSTATE 22003 - which ingest reads as permanently unstorable and dead-letters, for a line
@@ -234,11 +259,6 @@ export function toRow(line: InboundLine): LineRow {
 // Bounded, so (page - 1) * pageSize cannot exceed PostgreSQL's OFFSET range: page=1e20 passes an
 // unbounded integer check and then fails in the database as a 500 (PR #129 review).
 const MAX_PAGE = 1_000_000;
-/**
- * PostgreSQL cannot represent a NUL in a TEXT parameter, so `?service=%00` reached the query and
- * came back as a 500 for input that should have been a 400 (PR #129 review). Written as a loop
- * rather than a regex so the escape sequences cannot be mangled by an editing tool.
- */
 const positiveInt = z.coerce.number().int().positive();
 
 /** Query parameters for GET /logs. Strict: an unknown filter is a typo, not a wildcard. */

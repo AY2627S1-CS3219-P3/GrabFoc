@@ -26,6 +26,10 @@
  * Scope: Refuse to consume without a dead-letter sink, rather than committing the offset of a
  *        message there is nowhere to park (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Say what handle() actually throws, since the consumer #75 has yet to write is the thing
+ *        that has to not swallow it (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -85,8 +89,20 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /**
-   * Stores one message. Never throws: a message this cannot parse must not stop the consumer, or
-   * one malformed line from one service blocks every other service's logging.
+   * Stores one message.
+   *
+   * A message this cannot parse, cannot validate, or that the store refuses *permanently* is
+   * counted and parked rather than rethrown: one malformed line from one service must not stop the
+   * consumer and block every other service's logging behind it.
+   *
+   * It **does** throw when the failure is ours rather than the message's - the store briefly
+   * unreachable, or the dead-letter park itself failing - and that is load-bearing, not a leak.
+   * The consumer must let it propagate and leave the offset uncommitted so the broker redelivers
+   * (root AGENTS.md section 3, rule 2); the contract is on `MessageHandler` in consumer.ts. A
+   * consumer that catches it and commits anyway drops every line written during a database
+   * restart, with nothing but `counts.failed` to say so. This docstring used to say "never
+   * throws", which is the one thing that would have made writing such a consumer reasonable
+   * (PR #129 review).
    */
   async handle(message: InboundMessage): Promise<void> {
     let parsed: unknown;
