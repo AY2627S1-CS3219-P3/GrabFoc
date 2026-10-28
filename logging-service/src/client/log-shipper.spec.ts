@@ -41,8 +41,12 @@
  * Scope: Added the cases for what JSONB cannot hold, and for an Array subclass surviving the
  *        redaction walk (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: The shared helper mints real UUIDs, because the store requires one of `lineId` and the
+ *        shipper no longer passes a non-UUID through. Added the cases for reading the options
+ *        once (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
-import { randomUUID } from 'node:crypto';
 import { inboundLineSchema } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
 
@@ -51,6 +55,12 @@ import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
 const written: string[] = [];
 const published: OutboundLine[] = [];
 let ids = 0;
+/**
+ * Predictable *and* well-formed. The store requires `lineId` to be a UUID, and a `newId` that
+ * returns anything else now falls back to a random one - so `id-1` would have made these
+ * assertions unpredictable, which is the opposite of what this seam is for (PR #129 review).
+ */
+const testId = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
 function shipper(publisher?: LinePublisher, maxBuffer = 1000, limits: { maxBufferBytes?: number; maxLineBytes?: number } = {}) {
   return new LogShipper({
@@ -59,7 +69,7 @@ function shipper(publisher?: LinePublisher, maxBuffer = 1000, limits: { maxBuffe
     maxBuffer,
     ...limits,
     write: (line) => written.push(line),
-    newId: () => `id-${(ids += 1)}`,
+    newId: () => testId((ids += 1)),
   });
 }
 
@@ -77,7 +87,7 @@ describe('the envelope', () => {
     shipper().emit({ level: 'warn', event: 'access_denied', status: 403 });
     const line = JSON.parse(written[0]);
     expect(line).toMatchObject({
-      lineId: 'id-1',
+      lineId: testId(1),
       service: 'supplier',
       level: 'warn',
       event: 'access_denied',
@@ -211,8 +221,11 @@ describe('redaction cannot be worked around', () => {
   });
 
   it('frees the byte budget once a batch has left the buffer', async () => {
-    // Three lines fit; six do not, so this fails unless the budget is released on flush.
-    const log = shipper(collecting, 1000, { maxBufferBytes: 1000, maxLineBytes: 400 });
+    // Three lines fit; six do not, so this fails unless the budget is released on flush. The
+    // budget is 1100 rather than 1000 because `lineId` is now a real UUID: a line here is 339
+    // bytes, so three are 1017 and six are 2034. Raised deliberately to keep that property rather
+    // than to make the test pass - change it again if a field is added to the envelope.
+    const log = shipper(collecting, 1000, { maxBufferBytes: 1100, maxLineBytes: 400 });
     for (let i = 0; i < 3; i += 1) log.emit({ level: 'info', event: 'e', blob: 'x'.repeat(200) });
     await log.flush();
     for (let i = 0; i < 3; i += 1) log.emit({ level: 'info', event: 'e', blob: 'x'.repeat(200) });
@@ -409,7 +422,7 @@ describe('metadata that fights back', () => {
     shipper().emit({ level: 'warn', event: 'access_denied', hostile });
     const line = JSON.parse(written[0]);
     expect(line).toMatchObject({ service: 'supplier', event: 'line_unserialisable', originalEvent: 'access_denied' });
-    expect(line.lineId).toBe('id-1');
+    expect(line.lineId).toBe(testId(1));
   });
 });
 
@@ -447,7 +460,7 @@ describe('with a broker', () => {
     log.emit({ level: 'warn', event: 'access_denied' });
     await log.flush();
     expect(published.map((line) => line.value)).toEqual(written);
-    expect(JSON.parse(published[0].value).lineId).toBe('id-1');
+    expect(JSON.parse(published[0].value).lineId).toBe(testId(1));
   });
 
   it('returns before anything is published, so a request never waits on the broker', () => {
@@ -566,16 +579,6 @@ describe('fields the store would refuse', () => {
   // free of logging-service imports.
   const storable = (line: string) => inboundLineSchema.safeParse(JSON.parse(line));
 
-  // A real uuid: the store requires one of lineId, and the shared helper above mints `id-1`.
-  function bounded(publisher?: LinePublisher) {
-    return new LogShipper({
-      service: 'supplier',
-      publisher,
-      write: (line) => written.push(line),
-      newId: () => randomUUID(),
-    });
-  }
-
   it.each<[string, unknown]>([
     ['path', `/locations/${'a'.repeat(500)}`],
     ['event', 'e'.repeat(100)],
@@ -592,7 +595,7 @@ describe('fields the store would refuse', () => {
     ['durationMs', 1.5],
     ['requestId', 42],
   ])('ships a line the store accepts when %s is %p', (field, value) => {
-    bounded().emit({ level: 'warn', event: 'access_denied', [field]: value });
+    shipper().emit({ level: 'warn', event: 'access_denied', [field]: value });
     expect(storable(written[0]).success).toBe(true);
   });
 
@@ -600,7 +603,7 @@ describe('fields the store would refuse', () => {
     // The store refuses these in requestId, userId, service and event, because a line-oriented
     // reader breaks on them. Stripped or dropped here, so one stray tab in a header cannot cost
     // the whole line.
-    bounded().emit({ level: 'warn', event: 'access_denied', requestId: `trace${String.fromCharCode(code)}1` });
+    shipper().emit({ level: 'warn', event: 'access_denied', requestId: `trace${String.fromCharCode(code)}1` });
     expect('requestId' in JSON.parse(written[0])).toBe(false);
     expect(storable(written[0]).success).toBe(true);
   });
@@ -609,7 +612,7 @@ describe('fields the store would refuse', () => {
     // The finding this came from: `inboundLineSchema` caps `path` at 400, so a 500-character URL
     // left the required access_denied line on the producer's stdout and kept it out of the
     // searchable store - which is the one place anyone looking for it would look (PR #129 review).
-    bounded().emit({ level: 'warn', event: 'access_denied', path: `/locations/${'a'.repeat(500)}` });
+    shipper().emit({ level: 'warn', event: 'access_denied', path: `/locations/${'a'.repeat(500)}` });
     const line = JSON.parse(written[0]);
     expect(line.path).toHaveLength(400);
     expect(line.path.startsWith('/locations/aaa')).toBe(true);
@@ -617,32 +620,32 @@ describe('fields the store would refuse', () => {
   });
 
   it('cuts an over-long event name rather than dropping a field the store requires', () => {
-    bounded().emit({ level: 'warn', event: 'e'.repeat(100) });
+    shipper().emit({ level: 'warn', event: 'e'.repeat(100) });
     expect(JSON.parse(written[0]).event).toHaveLength(60);
   });
 
   it.each(['requestId', 'userId'])('leaves out an over-long %s rather than cutting it', (field) => {
     // Cut to length, a 300-character requestId is some other request's id and a userId is some
     // other student's. An absent field is honest; a wrong one reads as fact.
-    bounded().emit({ level: 'warn', event: 'access_denied', [field]: 'x'.repeat(300) });
+    shipper().emit({ level: 'warn', event: 'access_denied', [field]: 'x'.repeat(300) });
     expect(field in JSON.parse(written[0])).toBe(false);
   });
 
   it('does not key a message by a requestId the store will not hold', async () => {
-    const log = bounded(collecting);
+    const log = shipper(collecting);
     log.emit({ level: 'info', event: 'access_denied', requestId: 'x'.repeat(300) });
     await log.flush();
     expect(published[0].key).toBeUndefined();
   });
 
   it('reports a level it does not recognise as an error rather than hiding the line', () => {
-    bounded().emit({ level: 'trace' as never, event: 'access_denied' });
+    shipper().emit({ level: 'trace' as never, event: 'access_denied' });
     expect(JSON.parse(written[0]).level).toBe('error');
     expect(storable(written[0]).success).toBe(true);
   });
 
   it('still names an event when the caller passed none', () => {
-    bounded().emit({ level: 'info' } as never);
+    shipper().emit({ level: 'info' } as never);
     const line = JSON.parse(written[0]);
     expect(typeof line.event).toBe('string');
     expect(line.event.length).toBeGreaterThan(0);
@@ -650,7 +653,7 @@ describe('fields the store would refuse', () => {
   });
 
   it('counts a line it had to clamp, so the producer sending them can be found', () => {
-    const log = bounded();
+    const log = shipper();
     // Stripping the query string is this shipper's own rule, not the store's bound, so it is not
     // a clamp: counting it would fire on every request line and tell an operator nothing.
     log.emit({ level: 'info', event: 'ok', path: '/x?lat=1' });
@@ -668,7 +671,7 @@ describe('fields the store would refuse', () => {
 
   it('bounds the event name it echoes back in a line it could not build', () => {
     const hostile = new Proxy({}, { ownKeys() { throw new Error('nope'); } });
-    bounded().emit({ level: 'warn', event: 'e'.repeat(500), hostile });
+    shipper().emit({ level: 'warn', event: 'e'.repeat(500), hostile });
     const line = JSON.parse(written[0]);
     expect(line.event).toBe('line_unserialisable');
     expect(line.originalEvent).toHaveLength(60);
@@ -687,7 +690,7 @@ describe('a local write that fails', () => {
   };
 
   it('does not let the exception reach the caller', () => {
-    const log = new LogShipper({ service: 'supplier', write: throwing, newId: () => 'id-1' });
+    const log = new LogShipper({ service: 'supplier', write: throwing, newId: () => testId(1) });
     expect(() => log.emit({ level: 'warn', event: 'access_denied' })).not.toThrow();
     expect(log.counts).toMatchObject({ emitted: 1, writeFailed: 1 });
   });
@@ -698,7 +701,7 @@ describe('a local write that fails', () => {
       service: 'supplier',
       publisher: collecting,
       write: throwing,
-      newId: () => 'id-1',
+      newId: () => testId(1),
     });
     log.emit({ level: 'info', event: 'access_denied', requestId: 'trace-1' });
     await log.flush();
@@ -713,7 +716,7 @@ describe('a local write that fails', () => {
         if (broken) throw new Error('EPIPE');
         written.push(out);
       },
-      newId: () => 'id-1',
+      newId: () => testId(1),
     });
     log.emit({ level: 'info', event: 'first' });
     broken = false;
@@ -768,11 +771,7 @@ describe('the fallback line stays on its request', () => {
   });
 
   it('writes a fallback line the store will take', () => {
-    const log = new LogShipper({
-      service: 'supplier',
-      write: (line) => written.push(line),
-      newId: () => randomUUID(),
-    });
+    const log = shipper();
     log.emit(throwingInput({ requestId: 'trace-1' }) as never);
     expect(inboundLineSchema.safeParse(JSON.parse(written[0])).success).toBe(true);
   });
@@ -832,7 +831,7 @@ describe('the other caller-supplied parts of the options', () => {
    * of them unstorable, without passing that check again (PR #129 review).
    */
   it('keeps the service name it validated, even if the caller mutates the options', () => {
-    const options = { service: 'supplier', write: (l: string) => written.push(l), newId: () => 'id-1' };
+    const options = { service: 'supplier', write: (l: string) => written.push(l), newId: () => testId(1) };
     const log = new LogShipper(options);
     options.service = 'gateway';
     log.emit({ level: 'warn', event: 'access_denied' });
@@ -840,7 +839,7 @@ describe('the other caller-supplied parts of the options', () => {
   });
 
   it('keeps it on the fallback line too', () => {
-    const options = { service: 'supplier', write: (l: string) => written.push(l), newId: () => 'id-1' };
+    const options = { service: 'supplier', write: (l: string) => written.push(l), newId: () => testId(1) };
     const log = new LogShipper(options);
     options.service = 'x'.repeat(200);
     const hostile = new Proxy({}, { ownKeys() { throw new Error('nope'); } });
@@ -867,11 +866,7 @@ describe('values the store cannot hold in extra', () => {
   });
 
   it('writes a line the store will take', () => {
-    const log = new LogShipper({
-      service: 'supplier',
-      write: (line) => written.push(line),
-      newId: () => randomUUID(),
-    });
+    const log = shipper();
     log.emit({ level: 'warn', event: 'access_denied', note: `a${'\u0000'}b` });
     expect(inboundLineSchema.safeParse(JSON.parse(written[0])).success).toBe(true);
   });
@@ -925,5 +920,80 @@ describe('an Array subclass in the metadata', () => {
     expect(() => log.emit({ level: 'warn', event: 'access_denied', items })).not.toThrow();
     // Not the fallback line: the walk never went through the caller's `map` at all.
     expect(JSON.parse(written[0])).toMatchObject({ event: 'access_denied', items: ['a'] });
+  });
+});
+
+describe('an id the store would refuse', () => {
+  /**
+   * `lineId` is the one envelope field that cannot be dropped or cut: the store requires a UUID,
+   * so a `newId` returning anything else costs every line that service writes. `service` is checked
+   * at construction for exactly that reason; this one is per line, so it is checked per line
+   * (PR #129 review).
+   */
+  it('falls back to a real one rather than shipping it', () => {
+    const log = new LogShipper({ service: 'supplier', write: (l) => written.push(l), newId: () => 'id-1' });
+    log.emit({ level: 'warn', event: 'access_denied' });
+    const line = JSON.parse(written[0]);
+    expect(line.lineId).not.toBe('id-1');
+    expect(inboundLineSchema.safeParse(line).success).toBe(true);
+  });
+
+  it.each([['an empty string', ''], ['a number', 7], ['undefined', undefined]])(
+    'falls back when newId returns %s',
+    (_why, value) => {
+      const log = new LogShipper({
+        service: 'supplier',
+        write: (l) => written.push(l),
+        newId: () => value as string,
+      });
+      log.emit({ level: 'warn', event: 'access_denied' });
+      expect(inboundLineSchema.safeParse(JSON.parse(written[0])).success).toBe(true);
+    },
+  );
+
+  it('counts it alongside a generator that throws', () => {
+    const log = new LogShipper({ service: 'supplier', write: (l) => written.push(l), newId: () => 'id-1' });
+    log.emit({ level: 'warn', event: 'access_denied' });
+    expect(log.counts).toMatchObject({ emitted: 1, idFailed: 1 });
+  });
+});
+
+describe('the options are read once, at construction', () => {
+  /**
+   * Guarding the *call* to `newId` was not enough: reading `this.options.newId` is itself a
+   * property access on an object the caller still owns, and it happened before the guard - so an
+   * accessor or a Proxy trap that throws escaped `emit()` anyway. Same for `publisher`, read
+   * outside any guard in `emit()`. Every option is held in a field now, so after construction
+   * there is nothing of the caller's left to read (PR #129 review).
+   */
+  it('does not read the caller\'s object again after construction', () => {
+    const reads: string[] = [];
+    const options = new Proxy(
+      { service: 'supplier', write: (l: string) => written.push(l), newId: () => testId(1) },
+      {
+        get(target, key, receiver) {
+          reads.push(String(key));
+          return Reflect.get(target, key, receiver);
+        },
+      },
+    );
+    const log = new LogShipper(options);
+    reads.length = 0;
+    log.emit({ level: 'warn', event: 'access_denied' });
+    log.emit({ level: 'warn', event: 'access_denied' });
+    expect(reads).toEqual([]);
+    expect(written).toHaveLength(2);
+  });
+
+  it.each(['newId', 'write', 'publisher'])('surfaces a throwing %s getter at construction', (option) => {
+    const options = {
+      service: 'supplier',
+      get [option]() {
+        throw new Error('getter exploded');
+      },
+    };
+    // A constructor may throw where emit() may not: this is a configuration error, raised at the
+    // line that made it rather than inside the first request that happens to log.
+    expect(() => new LogShipper(options as never)).toThrow('getter exploded');
   });
 });

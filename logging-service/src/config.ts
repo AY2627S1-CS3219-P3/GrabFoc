@@ -7,6 +7,10 @@
  * Scope: Check the database URL parses, after the PR #129 review noted compose interpolates the
  *        password into it without percent-encoding.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Bound LOGGING_PORT by the socket range, like the other two numeric settings
+ *        (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { existsSync } from 'fs';
 import * as path from 'path';
@@ -96,7 +100,10 @@ function positive(name: string, fallback: number, max = Number.MAX_SAFE_INTEGER)
 }
 
 export const config = {
-  port: positive('LOGGING_PORT', 3006),
+  // Bounded like the two settings below. Without a maximum, a port above the socket range passed
+  // startup and then failed in `app.listen` with ERR_SOCKET_BAD_PORT - a Node error about a socket
+  // rather than this file's own message naming the variable and what it may hold (PR #129 review).
+  port: positive('LOGGING_PORT', 3006, 65535),
   databaseUrl: databaseUrl(),
 
   // There is no dev-auth header fallback here, unlike the Supplier Service. This store pools one

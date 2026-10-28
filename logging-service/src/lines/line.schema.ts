@@ -28,6 +28,9 @@
  * Scope: Take out of `extra` what JSONB cannot hold, and rebuild an array without going through
  *        the caller's own `map` (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Refuse an ISO year PostgreSQL has no room for, on both sides (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -115,6 +118,20 @@ const noControl = (schema: z.ZodString) =>
 
 const plainText = (max: number) => noControl(z.string().min(1).max(max));
 /**
+ * An ISO timestamp PostgreSQL can also represent. `.datetime()` takes a four-digit year and `0000`
+ * is a valid ISO one, but PG's calendar has no year zero - it counts 1 BC where ISO counts 0000 -
+ * so it refuses the parameter with a class-22 SQLSTATE. On the query side that reached the generic
+ * 500 path for input that should have been a 400; on the inbound side it cost the whole line,
+ * because ingest reads a class-22 failure as permanently unstorable and parks it. Both sides of
+ * one pairing, as with `method` and `path` (PR #129 review). The other four-digit years are all
+ * inside TIMESTAMPTZ's range, which runs from 4713 BC to 294276 AD.
+ */
+const pgDatetime = () =>
+  z
+    .string()
+    .datetime()
+    .refine((v) => !v.startsWith('0000-'), 'year must not be 0000: PostgreSQL has no year zero');
+/**
  * `plainText` without the minimum length. Only `path` needs it: the shipper strips control
  * characters from a path, so one made of nothing but them arrives as `''`, and `toRow` turns that
  * into NULL. Requiring a character here would cost the whole line instead (PR #129 review).
@@ -131,7 +148,7 @@ export const inboundLineSchema = z
     lineId: z.string().uuid(),
     // ISO-8601 with a Z offset. Zod's .datetime() rejects a local-time string, which is what we
     // want: a timestamp without a zone cannot be compared across containers.
-    ts: z.string().datetime(),
+    ts: pgDatetime(),
     service: plainText(40),
     level: z.enum(['debug', 'info', 'warn', 'error']),
     event: plainText(60),
@@ -347,8 +364,8 @@ export const logQuerySchema = z
     userId: plainText(100).optional(),
     level: z.enum(['debug', 'info', 'warn', 'error']).optional(),
     status: z.coerce.number().int().min(100).max(599).optional(),
-    from: z.string().datetime().optional(),
-    to: z.string().datetime().optional(),
+    from: pgDatetime().optional(),
+    to: pgDatetime().optional(),
     page: positiveInt.max(MAX_PAGE).default(1),
     pageSize: positiveInt.max(200).default(50),
   })

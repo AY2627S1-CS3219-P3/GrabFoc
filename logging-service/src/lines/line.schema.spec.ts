@@ -16,6 +16,9 @@
  * Scope: Added the cases for what JSONB cannot hold inside `extra`, and for an Array subclass
  *        surviving the redaction walk (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the year-zero cases: an ISO year PostgreSQL has no room for (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, redactDeep, toRow } from './line.schema';
 
@@ -382,5 +385,33 @@ describe('an Array subclass in the metadata', () => {
     expect(Array.isArray(out.items)).toBe(true);
     expect(out.items.constructor).toBe(Array);
     expect(out.items).toEqual(['a']);
+  });
+});
+
+/**
+ * `.datetime()` takes a four-digit year, and `0000` is a valid ISO one - but PostgreSQL's calendar
+ * has no year zero, so it refuses the parameter with a class-22 SQLSTATE. On the query side that
+ * reached the generic 500 path for input that should have been a 400; on the inbound side it cost
+ * the whole line, because ingest reads a class-22 failure as permanently unstorable and parks it.
+ * Both sides of the same pairing, as with `method` and `path` (PR #129 review).
+ */
+describe('a year PostgreSQL has no room for', () => {
+  it.each(['from', 'to'])('rejects %s in year zero rather than failing in SQL', (field) => {
+    expect(logQuerySchema.safeParse({ [field]: '0000-01-01T00:00:00.000Z' }).success).toBe(false);
+  });
+
+  it('names the parameter in the 400', () => {
+    expect(() => parseOr400(logQuerySchema, { from: '0000-06-01T00:00:00.000Z' }, 'query parameters')).toThrow(
+      /from/,
+    );
+  });
+
+  it('rejects an inbound line dated year zero', () => {
+    expect(parse({ ...valid, ts: '0000-01-01T00:00:00.000Z' }).success).toBe(false);
+  });
+
+  it.each(['0001-01-01T00:00:00.000Z', '9999-12-31T23:59:59.999Z'])('still accepts %s', (ts) => {
+    expect(parse({ ...valid, ts }).success).toBe(true);
+    expect(logQuerySchema.safeParse({ from: ts }).success).toBe(true);
   });
 });

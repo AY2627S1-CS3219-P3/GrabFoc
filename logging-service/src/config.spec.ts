@@ -8,6 +8,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Added the unrepresentable-interval cases (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the port-range cases (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 
 /** Evaluates src/config.ts afresh with the given environment; returns the error message, or 'ok'. */
@@ -113,4 +116,18 @@ it('splits a broker list and ignores stray whitespace', () => {
     loaded = (require('./config') as typeof import('./config')).config;
   });
   expect(loaded!.kafkaBrokers).toEqual(['kafka:9092', 'kafka-2:9092']);
+});
+
+/**
+ * `positive()` had no upper bound here, so a port above the socket range passed startup and then
+ * failed in `app.listen` with ERR_SOCKET_BAD_PORT - a Node error about a socket, rather than this
+ * service's own message naming the variable and what it may hold. The other two numeric settings
+ * in this file are bounded for the same reason (PR #129 review).
+ */
+it.each(['65536', '70000', '99999'])('refuses LOGGING_PORT=%s, outside the socket range', (port) => {
+  expect(loadConfig({ ...base, LOGGING_PORT: port })).toContain('LOGGING_PORT must be a whole number');
+});
+
+it.each(['1', '3006', '65535'])('accepts LOGGING_PORT=%s', (port) => {
+  expect(loadConfig({ ...base, LOGGING_PORT: port })).toBe('ok');
 });
