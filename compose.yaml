@@ -23,6 +23,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
 # Author review: Jian Bing supplied what it states; the wording is Claude's.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+# Scope: Included logging-service/compose.yaml (issue #52).
+# Author review: Cole Lin, read and approved.
 #
 # One command for the whole project (M7). Each service keeps its own compose.yaml in its own
 # folder, with its OWN database container — services must not share a database (root
@@ -51,4 +54,7 @@ include:
     env_file: .env
   # AI-generated; user-approved database-only integration.
   - path: order-service/compose.yaml
+    env_file: .env
+  # added for logging service
+  - path: logging-service/compose.yaml
     env_file: .env

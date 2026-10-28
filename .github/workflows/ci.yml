@@ -13,6 +13,13 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
 # Author review: Jian Bing supplied what it states; the wording is Claude's.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+# Scope: Added the logging-service integration job, mirroring the credit-service one.
+# Author review: Cole Lin, read and approved.
+# Scope: Added the logging-service entry to the unit-test matrix (issue #52), so its tests
+#   run on every pull request like every other service's.
+# Author review: Cole Lin, read and approved.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Removed api-gateway from the Node matrix; the Envoy gateway has its own workflow
 #   (api-gateway.yml).
@@ -45,6 +52,9 @@ jobs:
           - service: supplier-service
             node: 22
           - service: credit-service
+            node: 22
+          # added for logging service
+          - service: logging-service
             node: 22
     defaults:
       run:
@@ -103,6 +113,49 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: credit-service/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Integration tests
+        run: npm run test:int
+
+  # The Logging Service's store is where its pagination, filtering and retention rules actually
+  # live - they are SQL, so unit tests cannot reach them. Added because a pagination fix of mine
+  # could not be run locally (no Docker on that machine) and nothing in CI would have caught it
+  # (PR #129 review).
+  logging-integration:
+    name: Integration tests (logging-service)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: foc
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U foc"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: logging-service
+    env:
+      # The tests create this database themselves; its name must end in _test.
+      LOGGING_TEST_DATABASE_URL: postgres://foc:ci-only-password@localhost:5432/logging_test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: logging-service/package-lock.json
       - name: Install dependencies
         run: npm ci
       - name: Integration tests
