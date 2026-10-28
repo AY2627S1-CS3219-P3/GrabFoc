@@ -9,6 +9,10 @@
  *        where the stored field is - a class of bug the PR #129 review found in the Logging
  *        Service's filters, and an asymmetry the PR #157 review found in my first fix for it.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Refuse in a filter only what PostgreSQL cannot store, and refuse the same on creation,
+ *        so anything storable stays findable (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -17,38 +21,55 @@ import { HHMM_RE } from './hours';
 const hhmm = z.string().regex(HHMM_RE, 'must be in HHMMhrs format, e.g. 0900hrs');
 const nonBlank = z.string().refine((s) => s.trim().length > 0, 'must not be empty');
 
-// Written as a loop rather than a regex: a control-character class is easy to get subtly wrong,
-// and this reads the same to anyone checking it.
-function hasControlChars(value: string): boolean {
+/**
+ * A NUL, which is the one character PostgreSQL cannot hold in a TEXT value at all.
+ *
+ * This refused every control character and DEL as well, and only on the *filter* side - so an
+ * admin could create a building named with a tab, PostgreSQL would store it happily, and then the
+ * exact `?building=` filter rejected that same value with a 400, leaving the row unreachable
+ * through the filter meant to find it (PR #157 review). Narrowed to what the store actually
+ * refuses, and applied on both sides: anything storable is findable, and a NUL is a 400 wherever
+ * it arrives rather than a 500 from the driver.
+ *
+ * Not surrogates: an unpaired one is not a storage failure. Node encodes it to UTF-8 as U+FFFD, on
+ * the way in and in the filter term alike, so the two agree and the row is still found.
+ *
+ * Written as a loop rather than a regex, because this reads the same to anyone checking it.
+ */
+function hasNul(value: string): boolean {
   for (let i = 0; i < value.length; i += 1) {
-    const code = value.charCodeAt(i);
-    if (code < 0x20 || code === 0x7f) return true;
+    if (value.charCodeAt(i) === 0) return true;
   }
   return false;
 }
+
+const NO_NUL = 'must not contain a NUL character';
+const storable = z.string().refine((v) => !hasNul(v), NO_NUL);
 
 /**
  * A text filter that reaches the database. PostgreSQL cannot hold a NUL in a TEXT parameter, so
  * `?name=%00` used to pass validation, reach the query and come back as a 500 instead of a 400 -
  * the same gap the PR #129 review found in the Logging Service's filters.
  *
- * The length bound is per field, and it is the field's *own* stored limit or nothing at all. A
- * shared 100 looked tidier and was wrong: `building` is stored unbounded, so an admin could create
- * a location that no exact `?building=` filter could ever find again (PR #157 review). Bounding
- * `building` and `type` on creation instead would make the pair symmetric at a shorter length -
- * worth doing, but that is a schema decision for the service's owners, not a filter fix.
+ * Every bound here is one the *write* side applies too, which is the whole point: a filter that
+ * refuses what creation accepts leaves a stored row that no filter can reach. The length bound is
+ * per field and is the field's own stored limit or nothing at all - a shared 100 looked tidier and
+ * was wrong, because `building` is stored unbounded. The control-character bound was the same
+ * mistake in the same function: it refused tabs and DEL on this side only (PR #157 review).
+ * Bounding `building` and `type` by *length* on creation would let this side bound them too, which
+ * is worth doing, but that is a schema decision for the service's owners rather than a filter fix.
  */
-const textFilter = (max?: number) => {
-  const base = z.string().refine((v) => !hasControlChars(v), 'must not contain control characters');
-  return max === undefined ? base : base.pipe(z.string().max(max, `must be at most ${max} characters`));
-};
+const textFilter = (max?: number) =>
+  max === undefined ? storable : storable.pipe(z.string().max(max, `must be at most ${max} characters`));
 
 const locationFields = {
-  name: nonBlank.pipe(z.string().max(100, 'must be at most 100 characters')),
-  type: nonBlank,
-  building: nonBlank,
+  // `storable` as well as non-blank: a NUL reached the INSERT and came back as a driver 500, and
+  // refusing it here is also what lets the list filters accept everything else (PR #157 review).
+  name: nonBlank.pipe(storable).pipe(z.string().max(100, 'must be at most 100 characters')),
+  type: nonBlank.pipe(storable),
+  building: nonBlank.pipe(storable),
+  location_desc: nonBlank.pipe(storable),
   floor: z.number().int('must be a whole number'),
-  location_desc: nonBlank,
   lat: z.number(),
   lon: z.number(),
   open_time: hhmm.nullable().optional(),

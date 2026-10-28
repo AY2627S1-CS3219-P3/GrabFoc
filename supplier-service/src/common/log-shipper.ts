@@ -47,6 +47,10 @@
  * Scope: Keep a sanitised key a fixed point, and strip every separator before matching a
  *        sensitive name (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Read the service name once rather than three times, and bound the array walk so an
+ *        inflated `length` cannot block the event loop (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -260,6 +264,15 @@ function safeKey(key: string, index: number): string {
   return SAFE_KEY.test(key) && key !== '__proto__' ? key : `[key ${index}: ${key.length} chars]`;
 }
 const MAX_DEPTH = 6;
+/**
+ * How many elements of one array are walked. `length` is caller-controlled and costs nothing to
+ * inflate - `a.length = 0xffffffff` on an empty array is one assignment - and rebuilding by index
+ * then reads every hole: 4.29 billion of them, measured at about 55 seconds of blocked event loop,
+ * on `emit()`'s own synchronous path inside the request being logged. `Array.prototype.map` skipped
+ * holes, so bounding the walk is what the rebuild gave up and has to buy back (PR #129 review). An
+ * array this long could not have reached the store anyway: the line would not fit `maxLineBytes`.
+ */
+const MAX_ARRAY_ITEMS = 1000;
 
 /**
  * Matched as a **substring** of the normalised key, not as the whole key: `adminToken`,
@@ -307,9 +320,17 @@ export function redactFields(value: unknown, depth = 0): unknown {
     // a class puts `toJSON` on the prototype, where `Object.entries` never looks. An overridden
     // `map` would have been caller code running inside the walk as well (PR #129 review).
     const items: unknown[] = [];
-    for (let i = 0; i < value.length; i += 1) {
+    // `length` read once and capped: see MAX_ARRAY_ITEMS. Once, because a property read on an
+    // object the caller still owns is caller code wherever it appears - the same lesson as the
+    // service name in the constructor, one level in - so the cut below compares `total` rather
+    // than reading it again.
+    const total = value.length;
+    const length = Math.min(total, MAX_ARRAY_ITEMS);
+    for (let i = 0; i < length; i += 1) {
       items.push(serialisable(redactFields(value[i], depth + 1)));
     }
+    // Marked rather than cut silently, as a subtree beyond MAX_DEPTH is.
+    if (total > length) items.push(TRUNCATED);
     return items;
   }
   // Null-prototype, so a field named `__proto__` becomes an own property like any other. On a
@@ -471,13 +492,20 @@ export class LogShipper {
     // this service will ever write unstorable, and the startup that configured it is the only
     // place that can say so. emit() must never throw - a constructor may, and this is a
     // configuration error rather than a log call.
-    if (boundedId(options.service, STORE_LIMITS.service) !== options.service) {
+    // Read once, then checked and kept. This read the caller's property twice for the check and
+    // a third time for the assignment, so an accessor or a Proxy could answer the check with a
+    // valid name and the assignment with an over-long one - and that name is then on every line
+    // this shipper writes, each of which the store refuses. Holding the options was the right
+    // move; reading one of them three times inside the constructor was the same bug one level in
+    // (PR #129 review).
+    const service = options.service;
+    if (boundedId(service, STORE_LIMITS.service) !== service) {
       throw new RangeError(
         `service must be 1-${STORE_LIMITS.service} characters and hold no control characters: the ` +
           `log store rejects every line from a service named otherwise`,
       );
     }
-    this.service = options.service;
+    this.service = service;
     this.write = options.write;
     this.newId = options.newId;
     this.publisher = options.publisher;
