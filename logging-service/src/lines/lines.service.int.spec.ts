@@ -11,6 +11,10 @@
  * Scope: The total survives an empty page, so it describes the filter rather than the page
  *        that was asked for (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Corrected the note below, which still described the window function two rewrites of this
+ *        query ago. These are the cases that have to hold through each of them (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Pool } from 'pg';
 import { emptyLines, openTestDatabase } from '../test/database';
@@ -142,9 +146,11 @@ describe('querying', () => {
   });
 
   /**
-   * The total now comes from `count(*) OVER ()` in the page query rather than a separate count, so
-   * it describes the rows actually returned. These are the cases that would have caught a mistake
-   * in that rewrite (PR #129 review).
+   * The total and the rows come from one statement, so they describe one snapshot. How has changed
+   * twice - `count(*) OVER ()`, then a shared `filtered` CTE, now a count and a page subquery over
+   * `log_lines` with the same predicate - and these are the cases that have to hold through each
+   * of them, which is why they are worth more than the shape they were written for
+   * (PR #129 review).
    */
   it('reports the filtered total, not the page size', async () => {
     for (let i = 0; i < 5; i += 1) await lines.insert(line());

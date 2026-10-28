@@ -29,6 +29,11 @@
  * Scope: Keep the requestId on the fallback line, so the one record that a log call failed is
  *        still on the request it failed on (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Guard the other two caller-supplied parts of the options: a newId that throws, and a
+ *        flushMs setInterval cannot schedule. Hold the validated service name rather than
+ *        rereading the caller's object per line (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -51,6 +56,15 @@ export type Level = 'debug' | 'info' | 'warn' | 'error';
 /** What a caller passes. `event` is the only required part; the rest is whatever it was about. */
 export interface LineInput {
   level: Level;
+  /**
+   * A fixed name for what happened - `access_denied`, `jwks_unavailable` - and **never** text
+   * built from a request. It is an envelope field, so it is the one thing here that redaction
+   * cannot help with: `redactFields` works on field *names*, and the value of `event` is written
+   * through on the ordinary path and echoed as `originalEvent` on the fallback path alike. A
+   * reviewer read the fallback as the leak; it is not, because the ordinary path carries the same
+   * value to the same two places. The rule is about what may go in this field at all, and it
+   * applies to every call site (PR #129 review).
+   */
   event: string;
   requestId?: string;
   userId?: string;
@@ -295,6 +309,16 @@ function boundedText(value: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - TRUNCATED.length)}${TRUNCATED}`;
 }
 
+/**
+ * setInterval takes a signed 32-bit delay and silently reduces anything else - a larger number, a
+ * fraction, zero, NaN - to about 1 ms. With a publisher wired in that is a flush loop for the life
+ * of the process, from the component whose whole purpose is not to disturb the service it logs for
+ * (PR #129 review). PurgeService guards its own timer for the same reason, by clamping; this one
+ * refuses, because `flushMs` is written in code rather than read from the environment, and a
+ * constructor is allowed to fail where `emit()` is not.
+ */
+const MAX_TIMER_MS = 2_147_483_647;
+
 /** `value` when the store would hold it in that column, otherwise undefined. */
 function boundedInt(value: unknown, min: number, max: number): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : undefined;
@@ -309,7 +333,15 @@ export class LogShipper {
   private bufferedBytes = 0;
   private timer?: NodeJS.Timeout;
   private publishing?: Promise<void>;
-  readonly counts = { emitted: 0, dropped: 0, oversize: 0, failed: 0, clamped: 0, writeFailed: 0 };
+  /**
+   * The validated service name. Read once here rather than from `this.options` per line: the caller
+   * keeps the object it passed, and the check in the constructor only ever saw the value that was
+   * in it then. Mutating it afterwards misattributed every later line - or, with an overlong or
+   * control-bearing name, made every later line unstorable - without passing that check again
+   * (PR #129 review).
+   */
+  private readonly service: string;
+  readonly counts = { emitted: 0, dropped: 0, oversize: 0, failed: 0, clamped: 0, writeFailed: 0, idFailed: 0 };
 
   constructor(private readonly options: ShipperOptions) {
     // Checked at construction, not per line: a name outside the store's bound makes every line
@@ -322,13 +354,24 @@ export class LogShipper {
           `log store rejects every line from a service named otherwise`,
       );
     }
+    this.service = options.service;
+    const flushMs = options.flushMs ?? 1000;
+    // Checked whether or not a publisher is wired in: a delay setInterval cannot schedule is a
+    // mistake worth reporting at the line that made it, not only in the configurations that
+    // happen to schedule it.
+    if (!Number.isInteger(flushMs) || flushMs < 1 || flushMs > MAX_TIMER_MS) {
+      throw new RangeError(
+        `flushMs must be a whole number of milliseconds between 1 and ${MAX_TIMER_MS}: setInterval ` +
+          `silently reduces anything else to about 1 ms, which with a publisher is a flush loop`,
+      );
+    }
     this.maxBuffer = options.maxBuffer ?? 1000;
     // 4 MB and 64 KB: a log line that does not fit in 64 KB is a bug in the caller, and 4 MB is
     // small enough that holding it through a broker outage is not what takes a service down.
     this.maxBufferBytes = options.maxBufferBytes ?? 4 * 1024 * 1024;
     this.maxLineBytes = options.maxLineBytes ?? 64 * 1024;
     if (options.publisher) {
-      this.timer = setInterval(() => void this.flush(), options.flushMs ?? 1000);
+      this.timer = setInterval(() => void this.flush(), flushMs);
       // Never hold the process open just to ship a log line.
       this.timer.unref();
     }
@@ -342,11 +385,7 @@ export class LogShipper {
    * is what says so; there is nothing better to do about it from in here.
    */
   emit(input: LineInput): void {
-    const { payload, key } = this.build(
-      (this.options.newId ?? randomUUID)(),
-      new Date().toISOString(),
-      input,
-    );
+    const { payload, key } = this.build(this.newLineId(), new Date().toISOString(), input);
     this.counts.emitted += 1;
     // Guarded like the build above it. `write` is a documented option, so it is caller-supplied
     // code - and the default is no safer: stdout in a container is a pipe, a pipe write is
@@ -377,6 +416,27 @@ export class LogShipper {
     }
     this.buffer.push({ key, value: payload });
     this.bufferedBytes += bytes;
+  }
+
+  /**
+   * An id for one line. `newId` is a documented option, so it is caller-supplied code running on
+   * the request's own stack - and it ran *before* `build()`, so an exception from it escaped
+   * `emit()` altogether, which is the one thing this component must not do. The same hole the
+   * local `write` had, in the same statement, one argument along (PR #129 review).
+   *
+   * The default stands in rather than the line being dropped: the store refuses a line with no id,
+   * so losing the line would be the worse of the two failures. Counted, because a generator that
+   * throws on every call would otherwise leave no trace at all.
+   */
+  private newLineId(): string {
+    const mint = this.options.newId;
+    if (!mint) return randomUUID();
+    try {
+      return mint();
+    } catch {
+      this.counts.idFailed += 1;
+      return randomUUID();
+    }
   }
 
   /**
@@ -453,7 +513,7 @@ export class LogShipper {
         ...safeRest,
         lineId,
         ts,
-        service: this.options.service,
+        service: this.service,
         ...envelope,
       });
       // The bounded id, not the caller's: a key the store will not hold would group one request's
@@ -467,7 +527,7 @@ export class LogShipper {
         payload: JSON.stringify({
           lineId,
           ts,
-          service: this.options.service,
+          service: this.service,
           level: 'error',
           event: 'line_unserialisable',
           // Left out of the line entirely when there is no usable one, which is what the store's

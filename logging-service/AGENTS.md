@@ -133,6 +133,14 @@ _Origin: AI doc, from the plan Cole Lin approved_
 - **Sensitive field names are matched as substrings and replaced at any depth** (so `adminToken` and `customerEmail` go too, and it over-redacts rather than under-redacts), so a caller passing `password`, a `token`,
   or `{ request: { headers: { authorization } } }` cannot write it to stdout or Kafka. The store
   does the same on ingest; this is the only guard on the stdout copy.
+- **The page query does not materialise the table.** The predicate is written into both the count
+  and the page subquery rather than into one `filtered` CTE they share. PostgreSQL materialises a
+  CTE referenced more than once, so the shared version built every matching row — `extra` JSONB
+  included — sorted the lot, and then returned fifty of them; on an unfiltered page, which is how
+  an admin screen opens, that is the whole table in a temporary result. Each subquery reads
+  `log_lines` once now, so the count can go index-only and the page can stop early on
+  `ix_log_lines_ts`. Both still see one snapshot, because a snapshot belongs to the statement and
+  not to the scan — which is the only thing the single statement was ever for (PR #129 review).
 - **One statement for a page and its total.** The rows and the count come from a single query — a count CTE left-joined to the page CTE — so they always describe the same instant. `count(*) OVER ()` could not report a total for an empty page, and a fallback count query fixed the number by reintroducing exactly the race it replaced: a line inserted between the two statements gave `lines: []` with `total: 1` (PR #129 review). An empty page therefore comes back as one row carrying the total with `line_id` NULL, which the service filters out rather than reading as a line.
 - **Every text field obeys one rule on both sides.** `service`, `event`, `userId` and `requestId` reject control characters on **ingest** as well as in the query filter. Hardening only the filter left a line whose `userId` held a tab storable and then unsearchable through the very filter an admin would reach for (PR #129 review).
 - **Every field the store bounds is bounded here first.** `inboundLineSchema` caps `service` at
@@ -194,7 +202,19 @@ _Origin: AI doc, from the plan Cole Lin approved_
   `ts` and `service` always win — a line claiming another service's name would make the store
   unreadable.
 - It writes the line itself rather than through Nest's logger, which would wrap the JSON in Nest's own timestamp, PID and context and leave a collector digging it out.
+- **`event` is a fixed name, never text built from a request.** It is an envelope field, so it is
+  the one field redaction cannot help with: `redactFields` matches field *names*, and the value of
+  `event` is written through on the ordinary path and echoed as `originalEvent` on the
+  `line_unserialisable` path alike. A review round read the fallback as a leak of its own and asked
+  for the field to be dropped there; it is not a leak of its own — the ordinary path carries the
+  same value to the same two places, stdout and the topic — and dropping it would cost the only
+  thing that line says, which is *which* event could not be built. The real rule is the one above,
+  and it is a call-site rule: an `event` interpolated with caller data leaks on every line, not
+  just the failed ones. It is written on `LineInput.event` so it is read where calls are made.
+  **Left open on the PR** rather than resolved, so the team can arbitrate (PR #129 review).
 - **`emit()` cannot throw.** Redaction and serialisation both sit inside one guard, because reading a caller's fields can itself throw — an enumerable getter or a Proxy trap runs during `Object.entries`. If the body cannot be built, a `line_unserialisable` line is written with the envelope and the original event name, so the failure is visible rather than silent. **The local write is guarded too** (PR #129 review). It was the one statement outside that guard, and it is not a safe one: `write` is a documented option, so it is caller-supplied code, and the default is no better — stdout in a container is a pipe, a pipe write is synchronous on Linux, and a reader that goes away raises `EPIPE` on the caller's own stack. "Fire and forget" covers the *broker*, which is buffered and never awaited; the stdout write is an ordinary synchronous call in the request's stack, so a dead sink turned the request it was logging into a 500 — the component whose whole purpose is not to disturb the service it logs for taking that service down. It is counted as `writeFailed` rather than reported, because there is nowhere to report a broken log sink *to*, and the line is still buffered for the broker afterwards: a broken local sink is a reason to ship harder, not to stop, since the topic is then the only copy.
+  **The two other caller-supplied parts of the options are guarded as well** (PR #129 review). `newId` sat in the same statement as the local write, one argument along, and ran *before* `build()`, so an exception from it escaped `emit()` altogether; the default `randomUUID` stands in and `counts.idFailed` says it happened, because the store refuses a line with no id and losing the line would be the worse of the two failures. `flushMs` is refused at construction unless it is a whole number `setInterval` can actually schedule: anything else — larger than the signed 32-bit limit, fractional, zero, `NaN` — is silently reduced to about 1 ms, which with a publisher wired in is a flush loop for the life of the process. The constructor is allowed to fail where `emit()` is not, so this is a throw rather than the clamp `PurgeService` uses for the same hazard on an environment variable.
+  **The validated service name is held, not reread** (PR #129 review). It was checked once in the constructor and then read from the caller's own object per line, so mutating `options.service` afterwards misattributed every later line, or made every later line unstorable, without passing that check again.
   **The fallback line carries the `requestId` too** (PR #129 review). It is the only record that a log call failed, and it had none — so in the one service whose purpose is following a request across services, the gap it left in a trace read as a line nobody wrote rather than a line that was lost. `input.requestId` is read in its own `try` exactly as `input.event` already was, and bounded by `boundedId`, which returns `undefined` rather than throwing and so cannot be the reason this line fails as well. It is the Kafka key as well, so the failure lands in the partition already holding that request's lines.
 
 **Adopted by:** the Supplier Service (`supplier-service/src/common/log.ts`), whose `access_denied`, `jwks_unavailable` and `unhandled_error` lines now go through it.

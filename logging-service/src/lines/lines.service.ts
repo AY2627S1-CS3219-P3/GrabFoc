@@ -8,6 +8,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Count and page in one query, so the total describes the rows returned (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Filter inside both subqueries instead of in one CTE they share, so a broad page stops
+ *        materialising every matching row (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool } from 'pg';
@@ -90,17 +94,23 @@ export class LinesService {
     // above. Joining from the one-row total means an empty page still comes back as exactly one
     // row - with the total, and with line_id NULL to say there are no lines (PR #129 review).
     //
+    // The predicate is repeated into both subqueries rather than put in one `filtered` CTE they
+    // both read. PostgreSQL materialises a CTE referenced more than once, so the shared version
+    // built every matching row - `extra` JSONB included - sorted the lot and then returned fifty of
+    // them; on an unfiltered page, which is how the admin screen opens, that is the whole table.
+    // Each subquery reads `log_lines` once now, so the count can go index-only and the page can
+    // stop early on ix_log_lines_ts. Both still see one snapshot, because a snapshot belongs to the
+    // statement and not to the scan - which is the only thing the single statement was for
+    // (PR #129 review).
+    //
     // Newest first, with line_id breaking ties so a page boundary is stable when two lines share a
     // timestamp - which they do, because one request writes several lines in the same millisecond.
     const page = await this.pool.query(
-      `WITH filtered AS (
+      `WITH total AS (SELECT count(*) AS total FROM log_lines ${clause}),
+            page AS (
               SELECT line_id, ts, received_at, service, level, event, request_id, user_id, role,
                      method, path, status, duration_ms, extra
                 FROM log_lines ${clause}
-            ),
-            total AS (SELECT count(*) AS total FROM filtered),
-            page AS (
-              SELECT * FROM filtered
                ORDER BY ts DESC, line_id DESC
                LIMIT $${params.length + 1} OFFSET $${params.length + 2}
             )

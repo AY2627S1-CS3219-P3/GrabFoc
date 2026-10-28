@@ -33,6 +33,10 @@
  * Scope: Added the cases for the fallback line keeping the requestId it failed on
  *        (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
+ * Scope: Added the cases for a throwing newId, an unschedulable flushMs and a service name
+ *        mutated after construction (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 import { inboundLineSchema } from '../lines/line.schema';
@@ -767,5 +771,77 @@ describe('the fallback line stays on its request', () => {
     });
     log.emit(throwingInput({ requestId: 'trace-1' }) as never);
     expect(inboundLineSchema.safeParse(JSON.parse(written[0])).success).toBe(true);
+  });
+});
+
+describe('the other caller-supplied parts of the options', () => {
+  /**
+   * `write` was guarded a round ago; `newId` sat in the same statement, one line above it, and was
+   * not. Both are documented options, so both are caller code running on the request's own stack -
+   * and this one ran before `build()`, so its exception escaped `emit()` entirely (PR #129 review).
+   */
+  describe('a newId that throws', () => {
+    const throwing = () => {
+      throw new Error('no entropy');
+    };
+
+    it('does not reach the caller', () => {
+      const log = new LogShipper({ service: 'supplier', write: (l) => written.push(l), newId: throwing });
+      expect(() => log.emit({ level: 'warn', event: 'access_denied' })).not.toThrow();
+    });
+
+    it('still writes the line, with an id the store will take', () => {
+      const log = new LogShipper({ service: 'supplier', write: (l) => written.push(l), newId: throwing });
+      log.emit({ level: 'warn', event: 'access_denied' });
+      // A line with no id is a line the store refuses outright, so the default stands in: losing
+      // the line over a broken id generator would be the worse of the two failures.
+      expect(inboundLineSchema.safeParse(JSON.parse(written[0])).success).toBe(true);
+    });
+
+    it('is counted, so a broken generator is not silent', () => {
+      const log = new LogShipper({ service: 'supplier', write: (l) => written.push(l), newId: throwing });
+      log.emit({ level: 'warn', event: 'access_denied' });
+      expect(log.counts).toMatchObject({ emitted: 1, idFailed: 1 });
+    });
+  });
+
+  /**
+   * setInterval takes a signed 32-bit delay and silently reduces anything else to about 1 ms, so a
+   * publisher plus one of these values is a flush loop for the life of the process - from the
+   * component whose whole purpose is not to disturb the service it logs for. PurgeService already
+   * guards its own timer for the same reason (PR #129 review).
+   */
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648])(
+    'refuses flushMs=%p at construction',
+    (flushMs) => {
+      expect(() => new LogShipper({ service: 'supplier', publisher: collecting, flushMs })).toThrow(RangeError);
+    },
+  );
+
+  it.each([1, 1000, 2_147_483_647])('accepts flushMs=%p', (flushMs) => {
+    expect(() => new LogShipper({ service: 'supplier', publisher: collecting, flushMs })).not.toThrow();
+  });
+
+  /**
+   * The name is validated once, in the constructor, and was then reread from the caller's own
+   * object on every line - so mutating it afterwards misattributed later lines, or made every one
+   * of them unstorable, without passing that check again (PR #129 review).
+   */
+  it('keeps the service name it validated, even if the caller mutates the options', () => {
+    const options = { service: 'supplier', write: (l: string) => written.push(l), newId: () => 'id-1' };
+    const log = new LogShipper(options);
+    options.service = 'gateway';
+    log.emit({ level: 'warn', event: 'access_denied' });
+    expect(JSON.parse(written[0]).service).toBe('supplier');
+  });
+
+  it('keeps it on the fallback line too', () => {
+    const options = { service: 'supplier', write: (l: string) => written.push(l), newId: () => 'id-1' };
+    const log = new LogShipper(options);
+    options.service = 'x'.repeat(200);
+    const hostile = new Proxy({}, { ownKeys() { throw new Error('nope'); } });
+    log.emit({ level: 'warn', event: 'access_denied', hostile });
+    const line = JSON.parse(written[0]);
+    expect(line).toMatchObject({ event: 'line_unserialisable', service: 'supplier' });
   });
 });
