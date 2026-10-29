@@ -21,6 +21,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Replaced the "no OrderCancelled event yet" note now that history feeds order.events.
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+ * Scope: Added cancelForSuspendedUser (UserSuspended consumer, Phase D); a create that a suspension
+ *        cancelled now returns 403 USER_SUSPENDED instead of the misleading 503.
+ * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { Caller } from '../common/jwt-auth.guard';
@@ -170,9 +174,12 @@ export class OrdersService {
       }
       return placed;
     });
-    // Only if settleCredits() cancelled it first, which needs this request to stall for 30 s.
-    if (!placed) throw new AppError(503, ErrorCode.SERVICE_UNAVAILABLE, 'Creating the order took too long. Try again.');
-    return placed;
+    if (placed) return placed;
+    // Something cancelled it first: a suspension, or settleCredits() after this request stalled 30 s.
+    if ((await this.orders.cancelReason(order.id)) === 'USER_SUSPENDED') {
+      throw new AppError(403, ErrorCode.USER_SUSPENDED, 'Your account is suspended.');
+    }
+    throw new AppError(503, ErrorCode.SERVICE_UNAVAILABLE, 'Creating the order took too long. Try again.');
   }
 
   /**
@@ -228,6 +235,39 @@ export class OrdersService {
         newStatus: 'CANCELLED',
         changeDetails: { reason: 'EXPIRED' },
       });
+    });
+  }
+
+  /**
+   * For UserSuspended: cancels every unfinished order the user is requester or courier on,
+   * AWAITING_CREDIT and ARRIVED included (plan §2), and supersedes their pending proposals.
+   * Each order is rechecked under its row lock, so a repeat event changes nothing.
+   * settleCredits() then releases the holds. Throws on failure, so the event is retried.
+   */
+  async cancelForSuspendedUser(userId: string): Promise<number> {
+    let cancelled = 0;
+    for (const orderId of await this.orders.unfinishedOrderIds(userId)) {
+      if (await this.cancelForSuspension(orderId)) cancelled++;
+    }
+    return cancelled;
+  }
+
+  /** Its CANCELLED history entry is the OrderCancelled event, except from AWAITING_CREDIT. */
+  private cancelForSuspension(orderId: string): Promise<boolean> {
+    return this.orders.transaction(async (tx) => {
+      const order = await this.orders.lockUnfinished(tx, orderId);
+      if (!order) return false;
+      await this.orders.setStatus(tx, orderId, order.status, 'CANCELLED');
+      await this.orders.supersedePending(tx, orderId, ['TIMING_CHANGE', 'CANCELLATION', 'COMPLETION']);
+      await this.orders.addHistory(tx, {
+        orderId,
+        actorId: null, // system action
+        action: 'CANCELLED',
+        previousStatus: order.status,
+        newStatus: 'CANCELLED',
+        changeDetails: { reason: 'USER_SUSPENDED' },
+      });
+      return true;
     });
   }
 

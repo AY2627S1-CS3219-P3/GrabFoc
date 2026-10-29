@@ -20,6 +20,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added the order.events outbox queries and the active-order lookup (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+ * Scope: Added the suspended user's unfinished-order queries and cancelReason (Phase D).
+ * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -41,6 +44,9 @@ const LISTS = {
   courier: `courier_id = $1`,
 } as const;
 export type OrderList = keyof typeof LISTS;
+
+/** States an order has not finished in; a suspension cancels all of them, AWAITING_CREDIT included. */
+const UNFINISHED = `status NOT IN ('COMPLETED','CANCELLED')`;
 
 /** States the expiry worker cancels once window_end has passed. */
 const EXPIRABLE = `'PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS'`;
@@ -361,11 +367,35 @@ export class OrdersRepository {
   /** True if the user is requester or courier on any order that has not finished. */
   async hasActiveOrders(userId: string): Promise<boolean> {
     const { rows } = await this.pool.query(
-      `SELECT EXISTS (SELECT 1 FROM orders WHERE (requester_id = $1 OR courier_id = $1)
-         AND status NOT IN ('COMPLETED','CANCELLED')) AS active`,
+      `SELECT EXISTS (SELECT 1 FROM orders WHERE (requester_id = $1 OR courier_id = $1) AND ${UNFINISHED}) AS active`,
       [userId],
     );
     return rows[0].active;
+  }
+
+  /** Unfinished orders the user is requester or courier on. */
+  async unfinishedOrderIds(userId: string): Promise<string[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id FROM orders WHERE (requester_id = $1 OR courier_id = $1) AND ${UNFINISHED}`,
+      [userId],
+    );
+    return rows.map((row) => row.id);
+  }
+
+  /** Locks the order only if it is still unfinished; like lockExpired, rechecked after any wait. */
+  async lockUnfinished(tx: PoolClient, id: string): Promise<Order | undefined> {
+    const { rows } = await tx.query(`SELECT * FROM orders WHERE id = $1 AND ${UNFINISHED} FOR UPDATE`, [id]);
+    return rows[0] && toOrder(rows[0]);
+  }
+
+  /** The reason recorded when the order was cancelled, if it was. */
+  async cancelReason(id: string): Promise<string | undefined> {
+    const { rows } = await this.pool.query(
+      `SELECT change_details->>'reason' AS reason FROM order_history
+       WHERE order_id = $1 AND action = 'CANCELLED' ORDER BY occurred_at DESC LIMIT 1`,
+      [id],
+    );
+    return rows[0]?.reason ?? undefined;
   }
 
   /** Oldest first, like history. */
