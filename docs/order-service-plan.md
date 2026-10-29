@@ -21,7 +21,9 @@ Scope: Ticked the Phase E test items in §8 and updated the §6 edge-case status
 Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
 Scope: Recorded the UserSuspended consumer (§5 payload, §6 table, §8 Phase D) at Zi Yi's direction.
-Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+Scope: Recorded the SupplierDeactivated consumer (§5 payload, §6 table, §8 Phase D; issue #121).
+Author review: Reviewed by Zi Yi, 2026-10-30.
 -->
 
 # GrabFoC Order Service — Implementation Plan
@@ -53,7 +55,7 @@ Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2
 | Expiry | Every 60 seconds, cancel past-`window_end` orders in PENDING/ACCEPTED/PICKED_UP/IN_PROGRESS; **do not expire ARRIVED** |
 | Voluntary user deactivation | User Service rejects deactivation if user is requester or courier on any ongoing order; Order Service provides an active-order lookup for this |
 | Administrative suspension | User Service emits `UserSuspended`; Order Service cancels all affected nonterminal orders, including ARRIVED |
-| Supplier deactivation | Supplier Service emits `SupplierDeactivated`; Order Service cancels all affected nonterminal orders, including ARRIVED |
+| Supplier deactivation | Supplier Service emits `SupplierDeactivated`; Order Service cancels every nonterminal order delivering to the location, and orders picking up there that are not yet picked up (`AWAITING_CREDIT`, `PENDING`, `ACCEPTED`); once picked up from it, the order carries on (Zi Yi, 30 October 2026) |
 | Broker | **Kafka**; broker infrastructure/setup is owned by a teammate, not the Order Service implementer |
 | Credit | Synchronous HTTP **reserve** (Credit Service atomically checks sufficiency and reserves); Order sends Credit's `TransferCredits` / `ReleaseCredits` **commands** on `credit.commands` for transfer and release (Zi Yi, 2026-10-17, replacing the 2026-10-15 events decision). Root `AGENTS.md` §3 records this |
 | Credit failures | Order cancels a create whose reservation failed and sends `ReleaseCredits` (none for insufficient credits); a background job every 10 s resends commands Kafka has not stored and cancels creates stuck in `AWAITING_CREDIT` for over 30 s. The Credit owner handles releases for unknown orders (§4) |
@@ -90,7 +92,7 @@ The migration provides schema constraints but **does not automatically increment
 | PENDING | Cancel / requester | CANCELLED | Direct cancellation; history and `OrderCancelled` |
 | ACCEPTED, PICKED_UP, IN_PROGRESS, ARRIVED | Both approve CANCELLATION proposal | CANCELLED | Atomically resolve proposal; history and `OrderCancelled` |
 | PENDING, ACCEPTED, PICKED_UP, IN_PROGRESS | Expiry worker, `now >= window_end` | CANCELLED | System cancellation; no acknowledgement needed; history and `OrderCancelled` |
-| Any nonterminal state (including ARRIVED) | Relevant `UserSuspended` / `SupplierDeactivated` | CANCELLED | System cancellation; supersede pending confirmation; history with reason; publish `OrderCancelled` |
+| Any nonterminal state (including ARRIVED), except a `SupplierDeactivated` for the pickup location after PICKED_UP | Relevant `UserSuspended` / `SupplierDeactivated` | CANCELLED | System cancellation; supersede pending confirmation; history with reason; publish `OrderCancelled` |
 
 `COMPLETED` and `CANCELLED` are terminal. Invalid transitions and stale versions return `409 Conflict`. No ordinary field edits are allowed in ARRIVED.
 
@@ -164,7 +166,7 @@ All protected routes validate JWT. IDs for requester/courier are derived from `s
 - Call Supplier Service asynchronously over HTTP on creation, direct location edits, and timing validation where relevant.
 - Check location existence/ACTIVE status, read pickup opening/closing hours, and copy `name`/`lat`/`lon` into the Order row.
 - Apply pickup-hours overlap **only before PICKED_UP**; do not constrain delivery hours.
-- On a `SupplierDeactivated` Kafka event carrying a **location ID**, find affected nonterminal orders whose `pickup_location_id` **or** `delivery_location_id` matches. Cancel each and emit `OrderCancelled`.
+- On a `SupplierDeactivated` Kafka event carrying a **location ID**, find nonterminal orders whose `delivery_location_id` matches, and orders not yet picked up (`AWAITING_CREDIT`, `PENDING`, `ACCEPTED`) whose `pickup_location_id` matches. Cancel each and emit `OrderCancelled`.
 - Confirm exact URL/field naming with Supplier owner; the existing Supplier Service stores `locations.id` and exposes `GET /locations/:locationId`.
 
 ### User Service — JWT plus suspension events
@@ -238,7 +240,7 @@ Settlement does not use `order.events` (Zi Yi, 2026-10-17): Credit reads only it
 - For `OrderAccepted`, `OrderPickedUp`, `OrderInProgress`, `OrderArrived`: same order/participant identifiers (courier non-null once accepted).
 - For `OrderCancelled`: `reason` may be `REQUESTER_CANCELLED`, `MUTUAL_CANCELLATION`, `EXPIRED`, `USER_SUSPENDED`, or `SUPPLIER_DEACTIVATED`; `courierId` can be null for a never-accepted order.
 - For `UserSuspended`: the User Service's own flat shape, `{ "type": "UserSuspended", "eventId": "uuid", "userId": "uuid", "occurredAt": "ISO-8601" }` (`user-service/AGENTS.md`; the owner defines it, root §3 Messaging rule 3). Order skips other `type`s and parks unreadable events on `order.user-events.dlt`.
-- For `SupplierDeactivated`: same envelope, `data: { "locationId": 12 }` (use Supplier's actual location ID, **not** a separate supplier-account ID).
+- For `SupplierDeactivated`: same envelope, `data: { "locationId": 12 }` (use Supplier's actual location ID, **not** a separate supplier-account ID; `supplier-service/AGENTS.md`). Order cancels only orders created before `occurredAt`, skips other `eventType`s and parks unreadable events on `order.supplier-events.dlt`.
 
 **`order.events` (Zi Yi, 18 October 2026):** `data` also carries `status`, the new state (root §10). `order_history` is the outbox: the history entry is saved in the same transaction as the state change, and a job publishes unpublished entries every second and sets `published_at` once Kafka stores each, so a Kafka outage delays events instead of losing them; `eventId` is the history entry's ID, so a resend keeps it. This replaces "no transactional outbox now" below for `order.events`. Contract: `order-service/AGENTS.md` "History and events".
 
@@ -266,7 +268,8 @@ Settlement does not use `order.events` (Zi Yi, 2026-10-17): Credit reads only it
 | Simultaneous responses to same confirmation | Handled; tested | Lock order/confirmation in one transaction, recheck pending status, finalize once |
 | Two different pending proposals on same order | DB enforced | Existing `order_confirmations_one_pending_idx` |
 | Expiry races with acceptance or timing approval | Handled; tested | Conditional updates/transactional locks; `now >= stored window_end` wins when eligible |
-| Supplier/User deactivation event delivered twice | User: handled; tested. Supplier: handler needed | Lock and recheck each order; only unfinished orders are cancelled, so a repeat adds no state, history or event |
+| Supplier/User deactivation event delivered twice | Handled; tested | Lock and recheck each order; only unfinished orders are cancelled, so a repeat adds no state, history or event |
+| Deactivation while Credit reserves a new order | Handled; tested (30 October 2026) | As for a suspension, but the create returns 409 `LOCATION_INACTIVE` |
 | Suspension while Credit reserves a new order | Handled; tested (Zi Yi, 21 October 2026) | The suspension cancels the `AWAITING_CREDIT` order; the create's guarded update to `PENDING` fails and returns 403 `USER_SUSPENDED`; `settleCredits` releases the hold |
 | TransferCredits/ReleaseCredits delivered or sent twice | Credit owner | Credit hold keyed by order and idempotent terminal state handling |
 | Order DB commits but Kafka publish fails | Handled; tested | `order_history` is the outbox: unpublished entries are resent (Zi Yi, 18 October 2026) |
@@ -335,7 +338,7 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 - [x] Obtain broker bootstrap address, topic names, and access/configuration details from the teammate responsible for Kafka setup (`infra/kafka/`); do not set up the broker as part of Order Service work.
 - [x] Credit settlement: `TransferCredits` / `ReleaseCredits` on `credit.commands` from the settlement job (outbox on `credit_settled_at`).
 - [x] Kafka producer for `order.events` (Notification); add the topic to `infra/kafka/topics.txt`.
-- [ ] `UserSuspended` and `SupplierDeactivated` consumers; cancel affected nonterminal orders and supersede pending confirmations. (`UserSuspended` done 21 October 2026, `AWAITING_CREDIT` included; `SupplierDeactivated` waits on Supplier.)
+- [x] `UserSuspended` and `SupplierDeactivated` consumers; cancel affected nonterminal orders and supersede pending confirmations. (`UserSuspended` done 21 October 2026, `SupplierDeactivated` 30 October 2026 (issue #121), pickup location before pickup only; `AWAITING_CREDIT` included.)
 - [x] 60-second expiry worker (`expireOrders`).
 - [x] Publish `OrderCancelled` for successful expirations (with the `order.events` producer).
 - [x] Internal active-order lookup for User Service deactivation guard (the User Service does not call it yet).
@@ -346,7 +349,7 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 - [x] Tests: creation/location validation/credit insufficiency, access restrictions, available/mine/assigned lists.
 - [x] Tests: valid/invalid lifecycle transitions, credit offer immutability, stale versions, histories and confirmation rules.
 - [x] Concurrency tests: two couriers accepting, same courier accepting two orders, duplicate progress, duplicate approval, expiry races.
-- [ ] Kafka tests: suspension/deactivation cancellation, duplicate events, Credit/Notification both consume each relevant event. (Blocked: the consumers wait on User/Supplier events. Order's side of Credit's commands and `order.events` is tested with a fake producer.)
+- [ ] Kafka tests: suspension/deactivation cancellation, duplicate events, Credit/Notification both consume each relevant event. (Cancellation and duplicates are tested by calling each consumer's `handle()` against PostgreSQL; delivery through a real broker is not yet automated. Order's side of Credit's commands and `order.events` is tested with a fake producer.)
 - [x] Tests: expiry excludes ARRIVED; no event emitted for a failed transition.
 - [ ] Containerize Order Service and demonstrate a full flow with User, Supplier, Credit and Notification services using the **teammate-provisioned Kafka broker**; broker setup belongs to that teammate. (Order is containerized and was run with User, Supplier, Credit and Kafka on 18–19 October 2026; Notification does not exist yet.)
 

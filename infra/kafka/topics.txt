@@ -17,6 +17,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
 # Scope: Added order.user-events.dlt (Order's dead letters for user.events) at Zi Yi's direction.
 # Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+# Scope: Added order.supplier-events.dlt (Order's dead letters for supplier.events, issue #121).
+# Author review: Reviewed by Zi Yi, 2026-10-30.
 #
 # Every Kafka topic in the system, and the only list of them: kafka-init creates exactly these
 # (root AGENTS.md §3 Messaging, rule 4). Add a topic by adding a line: <name> <partitions>.
@@ -43,3 +46,4 @@ credit.commands.retry.4 1
 credit.commands.dlt 1
 credit.user-events.dlt 1
 order.user-events.dlt 1
+order.supplier-events.dlt 1

@@ -30,6 +30,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
  * Scope: Added UserSuspended consumer tests and the 403 for a create a suspension cancelled (Phase D).
  * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+ * Scope: Added SupplierDeactivated consumer tests (issue #121).
+ * Author review: Reviewed by Zi Yi, 2026-10-30.
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -47,6 +50,7 @@ import { KafkaProducer } from '../integrations/kafka.producer';
 import { ORDER_EVENTS_TOPIC, OrderEvent, OrderEvents } from '../integrations/order.events';
 import { runMigrations } from '../db/migrator';
 import { OrdersService } from '../orders/orders.service';
+import { SUPPLIER_EVENTS_DLT, SupplierEvents } from '../integrations/supplier.events';
 import { USER_EVENTS_DLT, UserEvents } from '../integrations/user.events';
 import { startJwksStub, type JwksStub } from './jwks-stub';
 
@@ -105,7 +109,7 @@ class FakeKafkaProducer extends KafkaProducer {
     if (kafkaDown) throw new Error('broker unreachable');
     if (topic === CREDIT_COMMANDS_TOPIC) commands.push(value as CreditCommand);
     else if (topic === ORDER_EVENTS_TOPIC) events.push({ key, value: value as OrderEvent });
-    else if (topic === USER_EVENTS_DLT) deadLetters.push({ key, value, headers });
+    else if (topic === USER_EVENTS_DLT || topic === SUPPLIER_EVENTS_DLT) deadLetters.push({ key, value, headers });
     else throw new Error(`unexpected topic ${topic}`);
   }
 }
@@ -866,5 +870,120 @@ test('user.events: other types are skipped, unreadable events go to the dead-let
   assert.deepEqual(deadLetters.map((d) => [d.key, d.value, d.headers?.['x-source-topic']]), [
     [alice, '{"type":"UserSuspended","userId":"not-a-uuid"}', 'user.events'],
     [alice, 'not json', 'user.events'],
+  ]);
+});
+
+// ---- SupplierDeactivated (supplier.events) ----
+
+const supplierEvent = (eventType: string, locationId: number, occurredAt = new Date()) => ({
+  key: String(locationId),
+  value: JSON.stringify({ eventId: randomUUID(), eventType, occurredAt: occurredAt.toISOString(), data: { locationId } }),
+});
+const deactivate = (locationId: number, occurredAt?: Date) =>
+  app.get(SupplierEvents).handle(supplierEvent('SupplierDeactivated', locationId, occurredAt));
+const courier = () => randomUUID(); // one active order per courier
+
+test('SupplierDeactivated cancels orders delivering to the location, and those picking up there before pickup', async () => {
+  const awaiting = await insertOrder({ status: 'AWAITING_CREDIT' });
+  const pending = await insertOrder({ pickup_location_id: 5, delivery_location_id: 1 }); // delivers there
+  const accepted = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  const cancellation = await post(confirmations(accepted), alice, { kind: 'CANCELLATION' });
+  assert.equal(cancellation.status, 201, JSON.stringify(cancellation.body));
+  const pickedUp = []; // picking up there, already collected
+  const delivering = []; // delivering there, after pickup
+  for (const status of ['PICKED_UP', 'IN_PROGRESS', 'ARRIVED']) {
+    pickedUp.push(await insertOrder({ status, courier_id: courier() }));
+    delivering.push(await insertOrder({ status, courier_id: courier(), pickup_location_id: 5, delivery_location_id: 1 }));
+  }
+  const elsewhere = await insertOrder({ pickup_location_id: 2, delivery_location_id: 5 });
+  const done = await insertOrder({ status: 'COMPLETED', courier_id: carol, credit_settled_at: new Date() });
+
+  await deactivate(1);
+
+  const cancelled = [awaiting, pending, accepted, ...delivering];
+  for (const id of cancelled) assert.equal((await row(id)).status, 'CANCELLED', id);
+  // The courier already has the items, so these carry on.
+  assert.deepEqual(await Promise.all(pickedUp.map(async (id) => (await row(id)).status)), ['PICKED_UP', 'IN_PROGRESS', 'ARRIVED']);
+  assert.equal((await row(elsewhere)).status, 'PENDING');
+  assert.equal((await row(done)).status, 'COMPLETED');
+  const proposal = (await pool.query('SELECT status FROM order_confirmations WHERE id = $1', [cancellation.body.id])).rows[0];
+  assert.equal(proposal.status, 'SUPERSEDED');
+  const [entry] = (await history(accepted)).slice(-1);
+  assert.deepEqual([entry.actorId, entry.previousStatus, entry.changeDetails], [null, 'ACCEPTED', { reason: 'SUPPLIER_DEACTIVATED' }]);
+
+  // A repeat changes nothing.
+  const entries = await count('order_history');
+  await deactivate(1);
+  assert.equal(await count('order_history'), entries);
+
+  await settleCredits();
+  assert.deepEqual(sent().sort(), cancelled.map((id) => ['ReleaseCredits', id]).sort());
+  await publishEvents();
+  // One OrderCancelled per order anyone saw; the AWAITING_CREDIT one was never visible.
+  assert.deepEqual(events.map((e) => [e.value.data.orderId, e.value.data.reason]).sort(),
+    [pending, accepted, ...delivering].map((id) => [id, 'SUPPLIER_DEACTIVATED']).sort());
+});
+
+test('a replayed SupplierDeactivated leaves orders placed after the event alone', async () => {
+  const deactivatedAt = new Date();
+  const later = await insertOrder({ created_at: new Date(deactivatedAt.getTime() + 60_000) }); // after a restore
+  await deactivate(1, deactivatedAt);
+  assert.equal((await row(later)).status, 'PENDING');
+});
+
+test('a pickup location\'s deactivation racing an accept cancels the order; racing a pick-up, whichever commits first wins', async () => {
+  const open = await insertOrder();
+  const accepted = await insertOrder({ status: 'ACCEPTED', courier_id: carol });
+  const [acceptRes, stepRes] = await Promise.all([
+    post(`/orders/${open}/accept`, bob, { version: 1 }),
+    post(`/orders/${accepted}/pick-up`, carol, { version: 1 }),
+    deactivate(1),
+  ]);
+  // An accept that lands first leaves the order ACCEPTED, which the deactivation still cancels.
+  assert.ok([200, 409].includes(acceptRes.status), JSON.stringify(acceptRes.body));
+  assert.equal((await row(open)).status, 'CANCELLED');
+  // A pick-up that lands first saves the order; otherwise the pick-up is refused.
+  assert.equal((await row(accepted)).status, stepRes.status === 200 ? 'PICKED_UP' : 'CANCELLED');
+  for (const id of [open, accepted]) {
+    const cancels = (await history(id)).filter((h: any) => h.action === 'CANCELLED');
+    assert.equal(cancels.length, (await row(id)).status === 'CANCELLED' ? 1 : 0);
+  }
+});
+
+test('a deactivation waiting on a pick-up skips the order once it is picked up', async () => {
+  const id = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  // Hold the row lock, pick up inside it, and let the deactivation wait on the lock.
+  const client = await pool.connect();
+  await client.query('BEGIN');
+  await client.query('SELECT 1 FROM orders WHERE id = $1 FOR UPDATE', [id]);
+  const deactivation = deactivate(1);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  await client.query(`UPDATE orders SET status = 'PICKED_UP', version = version + 1 WHERE id = $1`, [id]);
+  await client.query('COMMIT');
+  client.release();
+  await deactivation;
+  assert.equal((await row(id)).status, 'PICKED_UP');
+  assert.equal(await count('order_history'), 0);
+});
+
+test('a create cancelled by a deactivation while Credit reserves returns 409 and the hold is released', async () => {
+  beforeCreditReply = () => deactivate(1);
+  expectError(await post('/orders', alice, newOrder()), 409, 'LOCATION_INACTIVE');
+  const { rows } = await pool.query('SELECT id, status FROM orders');
+  assert.deepEqual(rows.map((r) => r.status), ['CANCELLED']);
+  await settleCredits();
+  assert.deepEqual(sent(), [['ReleaseCredits', rows[0].id]]);
+});
+
+test('supplier.events: other types are skipped, unreadable events go to the dead-letter topic', async () => {
+  const id = await insertOrder();
+  await app.get(SupplierEvents).handle(supplierEvent('SupplierRestored', 1));
+  const bad = '{"eventType":"SupplierDeactivated","eventId":"x","data":{"locationId":1}}';
+  await app.get(SupplierEvents).handle({ key: '1', value: bad });
+  await app.get(SupplierEvents).handle({ key: '1', value: 'not json' });
+  assert.equal((await row(id)).status, 'PENDING');
+  assert.deepEqual(deadLetters.map((d) => [d.key, d.value, d.headers?.['x-source-topic']]), [
+    ['1', bad, 'supplier.events'],
+    ['1', 'not json', 'supplier.events'],
   ]);
 });
