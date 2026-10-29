@@ -4,7 +4,7 @@ Service-specific context for `supplier-service/`. Read the root [`AGENTS.md`](..
 
 Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the root `AGENTS.md`).
 
-**Scope for now:** simple CRUD on locations. Change history is pending (see Rules).
+**Scope for now:** simple CRUD on locations, plus a `SupplierDeactivated` event (see Events). Change history is pending (see Rules).
 
 **Implementation [Decided]** · _Origin: Team_
 - NestJS (TypeScript, Node.js), PostgreSQL through `pg` with plain parameterized SQL, strict Zod validation.
@@ -87,6 +87,21 @@ CREATE TABLE locations (
 CREATE UNIQUE INDEX uq_locations_active_name ON locations (lower(name)) WHERE status = 'ACTIVE';
 ```
 
+`⚠ AI` The outbox table below was proposed by Claude Code and approved by Jie Yang (issue #120); Supplier owners to confirm.
+
+```sql
+-- Events saved in the same transaction as the change, sent to Kafka by the outbox relay (see Events)
+CREATE TABLE supplier_outbox (
+    event_id      UUID PRIMARY KEY,
+    topic         TEXT NOT NULL,
+    msg_key       TEXT NOT NULL,
+    payload       JSONB NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at  TIMESTAMPTZ          -- NULL until sent
+);
+CREATE INDEX ix_supplier_outbox_unpublished ON supplier_outbox (created_at) WHERE published_at IS NULL;
+```
+
 ## API [Decided]
 
 _Origin: Team_
@@ -141,6 +156,30 @@ Searching by a time *t* (in `HHMMhrs` format) returns the locations open at *t*.
 **Error body:** Problem Details (RFC 9457), sent as `application/problem+json`, with the standard fields (`type`, `title`, `status`, `detail`, `instance`). `detail` explains what went wrong, e.g. which field was invalid. No extension fields for now.
 
 Postman needs a real token: log in through the User Service and put it in the collection's `adminToken` / `userToken` variables. The service must be usable through Postman without the UI running (D2 point 3). Keep a Postman collection in `supplier-service/postman/`. Use Postman variables (e.g. `{{token}}`, `{{baseUrl}}`) for tokens and URLs; never commit real tokens or passwords.
+
+## Events published [Proposed]
+
+_Origin: Team (contract proposed in issue #120 from `docs/order-service-plan.md` §5; awaiting confirmation by Cole Lin / Jian Bing); AI doc (outbox and relay design proposed by Claude Code, approved by Jie Yang)_
+
+Supplier owns the `supplier.events` topic and its message shape (root `AGENTS.md` §3 Messaging, rule 3). The Order Service consumes it to cancel orders that use a deactivated location.
+
+- **Topic:** `supplier.events` (3 partitions, listed in `infra/kafka/topics.txt`). **Key:** the location ID as a string, so events for one location stay in order.
+- **`SupplierDeactivated`**, published once for each successful `POST /locations/:locationId/deactivate`:
+  ```json
+  {
+    "eventId": "uuid",
+    "eventType": "SupplierDeactivated",
+    "occurredAt": "ISO-8601",
+    "data": { "locationId": 12 }
+  }
+  ```
+  `locationId` is `locations.id`; there is no separate supplier-account ID.
+- A rejected deactivation (404, or 409 because the location is already `INACTIVE`) publishes nothing. Restore publishes nothing.
+- **Outbox:** the event is inserted into `supplier_outbox` in the same transaction as the status change, so it is saved if and only if the deactivation is.
+- **Relay:** every `SUPPLIER_OUTBOX_POLL_MS` (default 1000) it claims unsent rows oldest first (`FOR UPDATE SKIP LOCKED`, so replicas never send a row twice), sends each to Kafka, and sets `published_at`. A failed send stops the pass, so later events never overtake it; it is retried on the next pass. A Kafka outage delays events but never loses them.
+- **At least once:** a crash between the send and setting `published_at` sends the event again. Consumers must dedupe on `eventId` (rule 1).
+- `SUPPLIER_KAFKA_BROKERS` is optional so the service can run alone: without it, events wait in the outbox until it is set. The producer connects on the first send, so the service starts while Kafka is down.
+- Sent rows are kept; cleaning them up is not designed yet.
 
 ## Logging
 
