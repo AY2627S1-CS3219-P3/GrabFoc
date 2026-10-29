@@ -1,0 +1,50 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+# Scope: Generated the Notification Service and its database, following credit-service/compose.yaml (#149).
+# Author review: pending — Jie Yang to record the review.
+
+name: foc
+
+services:
+  notification-db:
+    # Restarted after a crash or a Docker restart; `docker compose stop` still stops it.
+    restart: unless-stopped
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: foc
+      # Its own password, separate from the other databases'. Override it in .env.
+      POSTGRES_PASSWORD: ${NOTIFICATION_POSTGRES_PASSWORD:-change-me-in-dotenv}
+      POSTGRES_DB: notification
+    ports:
+      # 5436 on the host: user-db has 5432, supplier-db 5434 and credit-db 5435.
+      - "5436:5432"
+    volumes:
+      # Named volume, so the data survives `docker compose down` (root AGENTS.md §8).
+      - notification-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foc -d notification"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  notification-service:
+    restart: unless-stopped
+    build:
+      context: .
+    depends_on:
+      notification-db:
+        condition: service_healthy
+    # No env_file: only the variables below reach this container.
+    environment:
+      NOTIFICATION_PORT: 3006
+      # The password goes in PGPASSWORD, which the PostgreSQL driver reads directly, not in the URL:
+      # a password containing / # ? or @ would break the URL (PR #48 review).
+      NOTIFICATION_DATABASE_URL: postgres://foc@notification-db:5432/notification
+      PGPASSWORD: ${NOTIFICATION_POSTGRES_PASSWORD:-change-me-in-dotenv}
+    # Published for local checks (GET /health). The gateway never routes here: Notification has no
+    # routes for the frontend.
+    ports:
+      - "3006:3006"
+
+volumes:
+  notification-db-data:
