@@ -18,6 +18,9 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: §3 Communication: recorded the mentor's validation of transfer/release as Kafka commands (PR #97 review).
 Author review: Jian Bing supplied the approval it records; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+Scope: Moved §7 Notification Service into notification-service/AGENTS.md, now that the folder exists (#149); §7 and the "Where to find things" row point there.
+Author review: pending — Jie Yang to record the review.
 -->
 
 # AGENTS.md — FoC (CS3219 AY26/27 S1, Project Group 3)
@@ -62,12 +65,12 @@ This file holds **project-wide** context only. Service-specific rules, schemas, 
 | Order Service: lifecycle, rules, events | `order-service/AGENTS.md` |
 | Credit Service: balances, reserve / transfer / release | `credit-service/AGENTS.md` |
 | API Gateway, how services authenticate and authorize | §6 below |
-| Notification Service | §7 below |
+| Notification Service: recipients, deduplication, stale events | `notification-service/AGENTS.md` |
 | Seed data | `data/csv/supplier-seed-data.csv`, `data/images/` |
 | Anything spanning several services | this file: §5 roles, §6 auth, §8 cross-cutting rules |
 
 - Keep this file lean. New service-specific detail goes in that service's `AGENTS.md`; only project-wide decisions belong here.
-- When the `api-gateway/` or `notification-service/` folder is created, give it its own `AGENTS.md` and move its section there.
+- When the `api-gateway/` folder gets its own `AGENTS.md`, move its section there.
 
 ## How to work: plan first
 
@@ -297,33 +300,9 @@ _Origin: Team (JWT token-based authentication, authentication at the API Gateway
 
 ## 7. Notification Service
 
-_Origin: Team (Backlog NTFR1–3, NFR3.4);_
+_Origin: AI doc_
 
-_Kept here until the `notification-service/` folder exists; then move this section to its `AGENTS.md`._
-
-- Email only. Consumes order-state events and emails the right party. Stores almost nothing.
-
-**Who gets emailed [Decided]**
-
-| New state | Recipient |
-|---|---|
-| `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS` | requester |
-| `ARRIVED` | requester |
-| `COMPLETED` | requester and courier |
-| `CANCELLED` | requester, plus the courier if one was assigned |
-| any other state | recorded and discarded |
-
-**Rules**
-
-- Deduplicate on the event ID: send at most one email per event.
-- Keep the last processed state per order and discard stale events. State order: `PENDING < ACCEPTED < PICKED_UP < IN_PROGRESS < ARRIVED < COMPLETED/CANCELLED`.
-- Mark an event handled only after its send outcome is saved. After a restart, resume from the last handled event.
-- **[Proposed]** Retry with exponential backoff?
-- **[Decided]** (Backlog NFR3.4) Target: 95% of emails handed to the mail provider within 10 s of the event.
-
-**Edge cases**
-
-- Order events arrive out of order → no emails sent out of sequence.
+Moved to `notification-service/AGENTS.md` (who gets emailed, deduplication, stale events, NFR3.4).
 
 ---
 
