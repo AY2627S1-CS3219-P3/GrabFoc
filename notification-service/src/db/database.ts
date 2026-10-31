@@ -4,10 +4,14 @@
  * Scope: Copied the pool and its lifecycle from credit-service/src/db/database.ts (#149). The schema
  *        comes with #150; until then startup only checks the database answers.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-01
+ * Scope: Startup applies the schema (#150).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { Global, Inject, Injectable, Logger, Module, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Pool } from 'pg';
 import { config } from '../config';
+import { SCHEMA_SQL } from './schema';
 
 export const PG_POOL = Symbol('PG_POOL');
 
@@ -38,8 +42,8 @@ export class DatabaseLifecycle implements OnModuleInit, OnModuleDestroy {
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
 
   async onModuleInit() {
-    await this.pool.query('SELECT 1');
-    this.logger.log('Database reachable');
+    await this.pool.query(SCHEMA_SQL);
+    this.logger.log('Database reachable; schema applied');
   }
 
   async onModuleDestroy() {
