@@ -4,6 +4,9 @@
  * Scope: Generated the scaffold's settings (#149), following credit-service/src/config.ts. Kafka, SMTP
  *        and User Service settings are added with the code that reads them (#152, #153).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-01
+ * Scope: Added the Kafka settings (#152), following credit-service/src/config.ts.
+ * Author review: pending — Jie Yang to record the review.
  */
 import { existsSync } from 'fs';
 import * as path from 'path';
@@ -31,4 +34,11 @@ function required(name: string): string {
 export const config = {
   port: Number(process.env.NOTIFICATION_PORT || 3006),
   databaseUrl: required('NOTIFICATION_DATABASE_URL'),
+  // Kafka bootstrap servers, comma-separated: kafka:9092 inside Compose, 127.0.0.1:9094 from the host.
+  kafkaBrokers: required('NOTIFICATION_KAFKA_BROKERS')
+    .split(',')
+    .map((broker) => broker.trim())
+    .filter(Boolean),
+  // The Kafka tests set their own, so they never take the running service's messages.
+  kafkaGroupId: 'notification-service',
 };

@@ -2,23 +2,27 @@
   "name": "notification-service",
   "version": "0.1.0",
   "private": true,
-  "description": "FoC Notification Service. AI Assistance Disclosure: Claude Code (Claude Opus 5.5), 2026-10-30; scaffold (#149), following credit-service/package.json; Kafka, SMTP and User client dependencies come with #152 and #153. Author review: pending, Jie Yang to record the review.",
+  "description": "FoC Notification Service. AI Assistance Disclosure: Claude Code (Claude Opus 5.5), 2026-10-30; scaffold (#149), following credit-service/package.json. 2026-11-01: Kafka client, Zod and the integration and Kafka test scripts (#150, #152). Author review: pending, Jie Yang to record the review.",
   "engines": {
     "node": ">=22.12"
   },
   "scripts": {
     "build": "nest build",
     "test": "jest",
+    "test:int": "jest --config jest.int.config.js",
+    "test:kafka": "jest --config jest.kafka.config.js",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch"
   },
   "dependencies": {
+    "@confluentinc/kafka-javascript": "1.11.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.2.6",
     "pg": "^8.13.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
@@ -52,5 +56,8 @@
       "\\.int\\.spec\\.ts$",
       "\\.kafka\\.spec\\.ts$"
     ]
+  },
+  "allowScripts": {
+    "@confluentinc/kafka-javascript@1.11.0": true
   }
 }

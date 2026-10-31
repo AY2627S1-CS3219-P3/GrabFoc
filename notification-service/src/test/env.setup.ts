@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
  * Scope: Generated this Jest setup, following credit-service/src/test/env.setup.ts (#149).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-01
+ * Scope: Pinned NOTIFICATION_KAFKA_BROKERS (#152).
+ * Author review: pending — Jie Yang to record the review.
  */
 
 /**
@@ -14,3 +17,5 @@
 // Unit tests never connect to it.
 process.env.NOTIFICATION_DATABASE_URL = 'postgres://unused@127.0.0.1:1/unused';
 process.env.NOTIFICATION_PORT = '';
+// Nothing connects at import time; the Kafka tests point config.kafkaBrokers at the test broker.
+process.env.NOTIFICATION_KAFKA_BROKERS = '127.0.0.1:1';

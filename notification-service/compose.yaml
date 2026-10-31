@@ -2,6 +2,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
 # Scope: Generated the Notification Service and its database, following credit-service/compose.yaml (#149).
 # Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-01
+# Scope: Waits for kafka-init and passes the broker address (#152).
+# Author review: pending — Jie Yang to record the review.
 
 name: foc
 
@@ -34,9 +37,13 @@ services:
     depends_on:
       notification-db:
         condition: service_healthy
+      # Topics are created only by kafka-init (root AGENTS.md §3 Messaging, rule 4).
+      kafka-init:
+        condition: service_completed_successfully
     # No env_file: only the variables below reach this container.
     environment:
       NOTIFICATION_PORT: 3006
+      NOTIFICATION_KAFKA_BROKERS: kafka:9092
       # The password goes in PGPASSWORD, which the PostgreSQL driver reads directly, not in the URL:
       # a password containing / # ? or @ would break the URL (PR #48 review).
       NOTIFICATION_DATABASE_URL: postgres://foc@notification-db:5432/notification
