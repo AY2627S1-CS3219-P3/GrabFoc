@@ -5,6 +5,9 @@
  *        credit-service/src/messaging/messages.ts. The event shape is Order's
  *        (order-service/src/integrations/order.events.ts).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Added the x-due-at header for retry topics (#154).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { z } from 'zod';
 
@@ -31,7 +34,7 @@ export interface Publisher {
   send(message: OutboundMessage): Promise<void>;
 }
 
-/** Headers Notification adds to messages it dead-letters; the same names as Credit's. */
+/** Headers Notification adds to messages it retries or dead-letters; the same names as Credit's. */
 export const HEADER = {
   /** How many times the message has failed so far. */
   attempt: 'x-attempt',
@@ -43,6 +46,8 @@ export const HEADER = {
   sourcePartition: 'x-source-partition',
   sourceOffset: 'x-source-offset',
   deadLetteredAt: 'x-dead-lettered-at',
+  /** On a retry topic: when the message may be handled, in epoch milliseconds. */
+  dueAt: 'x-due-at',
 } as const;
 
 /** A message that can never be handled, however often it is retried. */

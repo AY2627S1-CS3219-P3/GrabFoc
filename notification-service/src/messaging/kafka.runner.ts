@@ -8,19 +8,33 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
  * Scope: Sends the event's emails after it is recorded, duplicates included (#153).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Retry topics (#154), following credit-service/src/messaging/kafka.runner.ts: an event whose
+ *        emails may still succeed moves to the next retry topic, then to the DLT; a retry message
+ *        waits, with its partition paused, until it is due.
+ * Author review: pending — Jie Yang to record the review.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { config } from '../config';
 import { DeadLettersService } from '../dead-letters/dead-letters.service';
 import { OrderEventsService } from '../events/order-events.service';
-import { SenderService } from '../events/sender.service';
+import { SenderService, SendResult } from '../events/sender.service';
 import { KafkaConnection, toInbound } from './kafka.connection';
+import { NOT_DUE_YET } from './kafka.logger';
 import { HEADER, InboundMessage, InvalidMessageError, parseOrderEvent } from './messages';
+import { isRetryTopic, nextHop, waitBeforeProcessing } from './retries';
 import { allTopics, findTopicMismatch, Topics, TOPICS } from './topics';
 
 /** How long a partition rests after an unexpected error (e.g. the database is down). */
 const ERROR_PAUSE_MS = 5000;
+
+/** Thrown to leave a retry message unread until it is due; the client then seeks back to it. */
+class NotDueYet extends Error {
+  constructor() {
+    super(NOT_DUE_YET);
+  }
+}
 
 @Injectable()
 export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
@@ -47,7 +61,10 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
     this.logger.log('Consuming order events');
   }
 
-  /** infra/kafka/topics.txt is the one list of topics; stop at startup if a topic is missing. */
+  /**
+   * infra/kafka/topics.txt is the one list of topics; stop at startup if a topic is missing or the
+   * retry topics don't match NOTIFICATION_RETRY_DELAYS.
+   */
   private async checkTopics(): Promise<void> {
     const admin = this.connection.kafka.admin();
     await admin.connect();
@@ -68,19 +85,29 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
     const inbound = toInbound(topic, message, partition);
     try {
       if (topic === this.topics.orderEventsDeadLetter) return await this.deadLetters.record(inbound);
+      const wait = waitBeforeProcessing(inbound, this.topics, Date.now());
+      if (wait > 0) {
+        // Every message in a retry topic has the same delay, so nothing behind this one is due
+        // sooner: resting this partition delays no other message.
+        this.pauseFor(pause, wait);
+        throw new NotDueYet();
+      }
       await this.onOrderEvent(inbound);
     } catch (err) {
-      this.logger.error(
-        `Couldn't handle a message from ${topic}; trying again in ${ERROR_PAUSE_MS / 1000}s: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      this.pauseFor(pause, ERROR_PAUSE_MS);
+      if (!(err instanceof NotDueYet)) {
+        this.logger.error(
+          `Couldn't handle a message from ${topic}; trying again in ${ERROR_PAUSE_MS / 1000}s: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        this.pauseFor(pause, ERROR_PAUSE_MS);
+      }
       // Throwing makes the client seek back, so the message is read again after the pause.
       throw err;
     }
   }
 
+  /** An event from order.events, or one of its retries. */
   private async onOrderEvent(message: InboundMessage): Promise<void> {
     let event;
     try {
@@ -90,10 +117,22 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
       await this.deadLetter(message, err);
       return;
     }
-    const outcome = await this.events.handle(event);
-    // Also after a DUPLICATE: if the last delivery crashed before every email was sent, the rest are
-    // sent now. The offset is stored only after this returns.
-    const { sent, failed } = await this.sender.sendPending(event.eventId);
+    let outcome: string;
+    let result: SendResult;
+    if (isRetryTopic(message.topic, this.topics)) {
+      // Already recorded when it first arrived; only its failed emails are sent again.
+      outcome = 'RETRY';
+      result = await this.sender.retryFailed(event.eventId);
+    } else {
+      outcome = await this.events.handle(event);
+      // Also after a DUPLICATE: if the last delivery crashed before every email was sent, the rest
+      // are sent now.
+      result = await this.sender.sendPending(event.eventId);
+    }
+    // Before the offset is stored, so a crash here sends the event on again; a retry only sends
+    // emails still FAILED, so the extra copy changes nothing.
+    const next = result.retryable.length ? nextHop(message, this.topics, result.retryable, Date.now()) : null;
+    if (next) await this.connection.send(next);
     this.logger.log(
       JSON.stringify({
         event: 'order_event_handled',
@@ -101,10 +140,16 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
         orderId: event.orderId,
         status: event.status,
         outcome,
-        sent,
-        failed,
+        sent: result.sent,
+        failed: result.failed,
+        superseded: result.superseded,
+        retryable: result.retryable.length,
+        ...(next ? { next: next.topic } : {}),
       }),
     );
+    if (next?.topic === this.topics.orderEventsDeadLetter) {
+      this.logger.error(JSON.stringify({ event: 'order_event_dead_lettered', eventId: event.eventId, reason: 'retries used up' }));
+    }
   }
 
   /** An unreadable event can never succeed: park it on Notification's own DLT and move on. */
