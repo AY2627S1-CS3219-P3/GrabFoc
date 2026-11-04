@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-01
  * Scope: Copied the test-database helpers from credit-service/src/test/database.ts (#150).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Default host localhost → 127.0.0.1, like the Kafka test broker.
+ * Author review: pending — Jie Yang to record the review.
  */
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
@@ -27,7 +30,8 @@ export function setting(name: string): string | undefined {
 export function testDatabaseUrl(): string {
   const password = encodeURIComponent(setting('NOTIFICATION_POSTGRES_PASSWORD') || 'change-me-in-dotenv');
   const url = new URL(
-    setting('NOTIFICATION_TEST_DATABASE_URL') || `postgres://foc:${password}@localhost:5436/notification_test`,
+    // 127.0.0.1, not localhost: some machines resolve localhost to IPv6 first, and Docker resets that.
+    setting('NOTIFICATION_TEST_DATABASE_URL') || `postgres://foc:${password}@127.0.0.1:5436/notification_test`,
   );
   if (!url.pathname.slice(1).endsWith('_test')) {
     throw new Error(`Refusing to run integration tests against "${url.pathname.slice(1)}": its name must end in _test.`);
