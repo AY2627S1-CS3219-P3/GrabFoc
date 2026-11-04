@@ -1,0 +1,59 @@
+/*
+ * AI Assistance Disclosure:
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Generated the email template tests (#153).
+ * Author review: pending — Jie Yang to record the review.
+ */
+// AI-generated (pending review)
+import { renderEmail } from './templates';
+
+const ORDER = '3f2a9c1e-0000-4000-8000-000000000001';
+const URL = 'https://foc.test';
+
+describe('renderEmail', () => {
+  it.each(['ACCEPTED', 'PICKED_UP', 'IN_PROGRESS', 'ARRIVED', 'COMPLETED'] as const)(
+    'has a subject, the order reference and the button for %s',
+    (status) => {
+      const email = renderEmail({ status, role: 'REQUESTER', orderId: ORDER, reason: null }, URL);
+      expect(email.subject).not.toBe('');
+      expect(email.text).toContain('Order reference: 3f2a9c1e');
+      expect(email.text).toContain(`Open FoC: ${URL}`);
+      expect(email.html).toContain(`href="${URL}"`);
+      expect(email.html).toContain('Open FoC</a>');
+    },
+  );
+
+  it('tells the requester and the courier different things on completion', () => {
+    const requester = renderEmail({ status: 'COMPLETED', role: 'REQUESTER', orderId: ORDER, reason: null }, URL);
+    const courier = renderEmail({ status: 'COMPLETED', role: 'COURIER', orderId: ORDER, reason: null }, URL);
+    expect(requester.text).toMatch(/paid to your courier/);
+    expect(courier.text).toMatch(/added to your balance/);
+  });
+
+  it.each([
+    ['REQUESTER_CANCELLED', 'REQUESTER', 'You cancelled it.'],
+    ['REQUESTER_CANCELLED', 'COURIER', 'The requester cancelled it.'],
+    ['MUTUAL_CANCELLATION', 'COURIER', 'You and the requester agreed to cancel it.'],
+    ['EXPIRED', 'REQUESTER', 'Its delivery window ended before it was completed.'],
+  ] as const)('shows the %s reason to the %s', (reason, role, sentence) => {
+    const email = renderEmail({ status: 'CANCELLED', role, orderId: ORDER, reason }, URL);
+    expect(email.text).toContain(sentence);
+    expect(email.html).toContain(sentence);
+  });
+
+  it('tells the requester their credits came back, and leaves out an unknown reason', () => {
+    const email = renderEmail({ status: 'CANCELLED', role: 'REQUESTER', orderId: ORDER, reason: 'SOMETHING_NEW' }, URL);
+    expect(email.text.split('\n')[0]).toBe(
+      'Your order was cancelled. Its reserved credits have been returned to you.',
+    );
+  });
+
+  it('escapes the link in the HTML', () => {
+    const email = renderEmail({ status: 'ARRIVED', role: 'REQUESTER', orderId: ORDER, reason: null }, 'https://x.test/?a=1&b="2"');
+    expect(email.html).toContain('href="https://x.test/?a=1&amp;b=&quot;2&quot;"');
+  });
+
+  it('has no email for a state nobody is told about', () => {
+    expect(() => renderEmail({ status: 'PENDING', role: 'REQUESTER', orderId: ORDER, reason: null }, URL)).toThrow();
+  });
+});

@@ -7,6 +7,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-01
  * Scope: Added the Kafka settings (#152), following credit-service/src/config.ts.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Added the SMTP, User Service and frontend link settings (#153).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { existsSync } from 'fs';
 import * as path from 'path';
@@ -41,4 +44,18 @@ export const config = {
     .filter(Boolean),
   // The Kafka tests set their own, so they never take the running service's messages.
   kafkaGroupId: 'notification-service',
+  // Mailpit in development (inbox on :8025). User and password are optional: Mailpit needs neither.
+  smtp: {
+    host: required('NOTIFICATION_SMTP_HOST'),
+    port: Number(required('NOTIFICATION_SMTP_PORT')),
+    user: process.env.NOTIFICATION_SMTP_USER || undefined,
+    pass: process.env.NOTIFICATION_SMTP_PASS || undefined,
+    from: required('NOTIFICATION_SMTP_FROM'),
+  },
+  // Where each recipient's email comes from: GET /internal/users/:userId/contact (#151).
+  userUrl: required('NOTIFICATION_USER_URL').replace(/\/+$/, ''),
+  // Must equal the User Service's USER_INTERNAL_SERVICE_KEY.
+  userServiceKey: required('NOTIFICATION_USER_SERVICE_KEY'),
+  // The button in every email opens this page.
+  frontendUrl: required('NOTIFICATION_FRONTEND_URL'),
 };

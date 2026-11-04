@@ -5,12 +5,16 @@
  *        unreadable events go to notification.order-events.dlt, which is copied into
  *        notification_dead_letters; offsets are stored only after the database write.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Sends the event's emails after it is recorded, duplicates included (#153).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { config } from '../config';
 import { DeadLettersService } from '../dead-letters/dead-letters.service';
 import { OrderEventsService } from '../events/order-events.service';
+import { SenderService } from '../events/sender.service';
 import { KafkaConnection, toInbound } from './kafka.connection';
 import { HEADER, InboundMessage, InvalidMessageError, parseOrderEvent } from './messages';
 import { allTopics, findTopicMismatch, Topics, TOPICS } from './topics';
@@ -26,6 +30,7 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
 
   constructor(
     private readonly events: OrderEventsService,
+    private readonly sender: SenderService,
     private readonly deadLetters: DeadLettersService,
     private readonly connection: KafkaConnection,
     @Inject(TOPICS) private readonly topics: Topics,
@@ -86,8 +91,19 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
       return;
     }
     const outcome = await this.events.handle(event);
+    // Also after a DUPLICATE: if the last delivery crashed before every email was sent, the rest are
+    // sent now. The offset is stored only after this returns.
+    const { sent, failed } = await this.sender.sendPending(event.eventId);
     this.logger.log(
-      JSON.stringify({ event: 'order_event_handled', eventId: event.eventId, orderId: event.orderId, status: event.status, outcome }),
+      JSON.stringify({
+        event: 'order_event_handled',
+        eventId: event.eventId,
+        orderId: event.orderId,
+        status: event.status,
+        outcome,
+        sent,
+        failed,
+      }),
     );
   }
 
