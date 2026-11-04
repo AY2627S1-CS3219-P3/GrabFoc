@@ -3,9 +3,12 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
  * Scope: Generated the email template tests (#153).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Added the account email and USER_SUSPENDED reason tests (#183).
+ * Author review: pending — Jie Yang to record the review.
  */
 // AI-generated (pending review)
-import { renderEmail } from './templates';
+import { renderAccountEmail, renderEmail } from './templates';
 
 const ORDER = '3f2a9c1e-0000-4000-8000-000000000001';
 const URL = 'https://foc.test';
@@ -55,5 +58,36 @@ describe('renderEmail', () => {
 
   it('has no email for a state nobody is told about', () => {
     expect(() => renderEmail({ status: 'PENDING', role: 'REQUESTER', orderId: ORDER, reason: null }, URL)).toThrow();
+  });
+});
+
+describe('USER_SUSPENDED cancellations', () => {
+  it.each(['REQUESTER', 'COURIER'] as const)('tell the %s why', (role) => {
+    const email = renderEmail({ status: 'CANCELLED', role, orderId: ORDER, reason: 'USER_SUSPENDED' }, URL);
+    expect(email.text).toContain('It was cancelled because an account on this order was suspended.');
+  });
+});
+
+describe('renderAccountEmail', () => {
+  it('tells a suspended user, without a reason or a button', () => {
+    const email = renderAccountEmail({ type: 'UserSuspended', previousStatus: null }, URL);
+    expect(email.subject).toBe('Your FoC account has been suspended');
+    expect(email.text).toBe(
+      'Your FoC account has been suspended. Contact an administrator if you think this is a mistake.\n',
+    );
+    expect(email.html).not.toContain('Open FoC');
+  });
+
+  it('tells a reinstated user they can log in again, with the button', () => {
+    const email = renderAccountEmail({ type: 'UserReactivated', previousStatus: 'SUSPENDED' }, URL);
+    expect(email.subject).toBe('Your FoC account has been reinstated');
+    expect(email.text).toContain('You can log in again.');
+    expect(email.html).toContain(`href="${URL}"`);
+  });
+
+  it('tells a user whose deactivated account was reactivated', () => {
+    const email = renderAccountEmail({ type: 'UserReactivated', previousStatus: 'DEACTIVATED' }, URL);
+    expect(email.subject).toBe('Your FoC account has been reactivated');
+    expect(email.text).toContain('Your FoC account has been reactivated.');
   });
 });

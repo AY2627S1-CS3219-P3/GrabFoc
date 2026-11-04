@@ -8,6 +8,9 @@
  * Scope: Added the retry topics, NOTIFICATION_RETRY_DELAYS parsing and their startup check (#154),
  *        copied from credit-service/src/messaging/topics.ts.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Grouped the topics into streams and added the user.events stream (#183).
+ * Author review: pending — Jie Yang to record the review.
  */
 
 export interface RetryTopic {
@@ -15,13 +18,20 @@ export interface RetryTopic {
   delayMs: number;
 }
 
-/** The topics Notification reads and writes. All are listed in infra/kafka/topics.txt; Notification creates none. */
-export interface Topics {
-  orderEvents: string;
+/** A source topic Notification consumes, with its own retry topics and dead-letter topic (rule 6). */
+export interface Stream {
+  source: string;
   /** One per retry, in order: an event's n-th failed send goes to retries[n - 1]. */
   retries: RetryTopic[];
-  /** Notification's own dead-letter topic for order.events (root AGENTS.md §3 Messaging, rule 6). */
-  orderEventsDeadLetter: string;
+  deadLetter: string;
+}
+
+/** The topics Notification reads and writes. All are listed in infra/kafka/topics.txt; Notification creates none. */
+export interface Topics {
+  /** order.events: emails about an order's state (#152). */
+  orders: Stream;
+  /** user.events: emails about the user's own account (#183). */
+  users: Stream;
 }
 
 /** Injection token for the Topics in use. */
@@ -43,20 +53,35 @@ export function parseDelays(spec: string): number[] {
   });
 }
 
-/**
- * The topic names Notification uses; keep them in step with infra/kafka/topics.txt.
- * `prefix` keeps the Kafka tests' topics apart from the real ones.
- */
-export function buildTopics(delaysMs: number[], prefix = ''): Topics {
+/** `notification.<name>.retry.<n>` and `notification.<name>.dlt` (root AGENTS.md §3 Messaging, rule 6). */
+function stream(source: string, name: string, delaysMs: number[], prefix: string): Stream {
   return {
-    orderEvents: `${prefix}order.events`,
-    retries: delaysMs.map((delayMs, i) => ({ topic: `${prefix}notification.order-events.retry.${i}`, delayMs })),
-    orderEventsDeadLetter: `${prefix}notification.order-events.dlt`,
+    source: `${prefix}${source}`,
+    retries: delaysMs.map((delayMs, i) => ({ topic: `${prefix}notification.${name}.retry.${i}`, delayMs })),
+    deadLetter: `${prefix}notification.${name}.dlt`,
   };
 }
 
+/**
+ * The topic names Notification uses; keep them in step with infra/kafka/topics.txt. Both streams use
+ * the same delays. `prefix` keeps the Kafka tests' topics apart from the real ones.
+ */
+export function buildTopics(delaysMs: number[], prefix = ''): Topics {
+  return {
+    orders: stream('order.events', 'order-events', delaysMs, prefix),
+    users: stream('user.events', 'user-events', delaysMs, prefix),
+  };
+}
+
+export const streams = (topics: Topics): Stream[] => [topics.orders, topics.users];
+
 export function allTopics(topics: Topics): string[] {
-  return [topics.orderEvents, ...topics.retries.map((r) => r.topic), topics.orderEventsDeadLetter];
+  return streams(topics).flatMap((s) => [s.source, ...s.retries.map((r) => r.topic), s.deadLetter]);
+}
+
+/** The stream a topic belongs to (its source or one of its retry topics), or undefined. */
+export function streamOf(topic: string, topics: Topics): Stream | undefined {
+  return streams(topics).find((s) => s.source === topic || s.retries.some((r) => r.topic === topic));
 }
 
 /**
@@ -73,9 +98,11 @@ export function findTopicMismatch(topics: Topics, existing: string[]): string | 
       '`docker compose up kafka-init`, or remove the extra entries from NOTIFICATION_RETRY_DELAYS.'
     );
   }
-  const retryPrefix = topics.orderEventsDeadLetter.replace(/dlt$/, 'retry.');
-  const extra = existing
-    .filter((topic) => topic.startsWith(retryPrefix) && !topics.retries.some((r) => r.topic === topic))
+  const extra = streams(topics)
+    .flatMap((s) => {
+      const retryPrefix = s.deadLetter.replace(/dlt$/, 'retry.');
+      return existing.filter((topic) => topic.startsWith(retryPrefix) && !s.retries.some((r) => r.topic === topic));
+    })
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   if (extra.length) {
     return (
