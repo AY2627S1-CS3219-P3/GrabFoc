@@ -4,6 +4,9 @@
  * Scope: Generated the order.events consumer tests against Kafka and PostgreSQL (#152), following
  *        credit-service/src/messaging/wallets.kafka.spec.ts.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Passes the sender, with User and SMTP faked, and checks the emails sent (#153).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Logger } from '@nestjs/common';
@@ -12,8 +15,12 @@ import { Pool } from 'pg';
 import { config } from '../config';
 import { DeadLettersService } from '../dead-letters/dead-letters.service';
 import { OrderEventsService } from '../events/order-events.service';
+import { SenderService } from '../events/sender.service';
+import { Mailer } from '../mail/mailer';
+import { RenderedEmail } from '../mail/templates';
 import { emptyTables, openTestDatabase } from '../test/database';
 import { createTestTopics, testKafkaBrokers, waitFor } from '../test/kafka';
+import { UserClient } from '../users/user.client';
 import { KafkaConnection } from './kafka.connection';
 import { KafkaRunner } from './kafka.runner';
 import { OrderEvent } from './messages';
@@ -37,8 +44,19 @@ class FlakyEvents extends OrderEventsService {
   }
 }
 
+/** Every user's address is their id at foc.test; the mailer only records. */
+const users = { contactEmail: async (userId: string) => `${userId}@foc.test` } as unknown as UserClient;
+const sent: { to: string; email: RenderedEmail }[] = [];
+const mailer = {
+  send: async (to: string, email: RenderedEmail) => {
+    sent.push({ to, email });
+    return null;
+  },
+} as unknown as Mailer;
+
 let pool: Pool;
 let events: FlakyEvents;
+let sender: SenderService;
 let connection: KafkaConnection;
 let admin: KafkaJS.Admin;
 let deleteTopics: () => Promise<void>;
@@ -57,7 +75,8 @@ beforeAll(async () => {
   deleteTopics = await createTestTopics(admin, topics);
   await connection.onModuleInit();
   events = new FlakyEvents(pool);
-  runner = new KafkaRunner(events, new DeadLettersService(pool), connection, topics);
+  sender = new SenderService(pool, users, mailer);
+  runner = new KafkaRunner(events, sender, new DeadLettersService(pool), connection, topics);
   await runner.onApplicationBootstrap();
 });
 afterAll(async () => {
@@ -70,6 +89,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   events.failures = 0;
+  sent.length = 0;
   await emptyTables(pool);
 });
 
@@ -90,6 +110,10 @@ async function eventRow(eventId: string): Promise<{ outcome: string } | undefine
   const { rows } = await pool.query('SELECT outcome FROM notification_events WHERE event_id = $1', [eventId]);
   return rows[0];
 }
+async function handled(eventId: string) {
+  const row = await eventRow(eventId);
+  return row?.outcome === 'HANDLED' && row;
+}
 async function deadLetters(): Promise<{ message_key: string; payload: Buffer; error: string; source_topic: string }[]> {
   return (await pool.query('SELECT message_key, payload, error, source_topic FROM notification_dead_letters ORDER BY id')).rows;
 }
@@ -101,6 +125,24 @@ it('records an event and queues its notification', async () => {
   await waitFor(() => eventRow(accepted.eventId));
   const { rows } = await pool.query('SELECT role FROM notifications WHERE event_id = $1', [accepted.eventId]);
   expect(rows).toEqual([{ role: 'REQUESTER' }]);
+});
+
+it('emails the requester and courier on completion, and not again for a duplicate', async () => {
+  const orderId = randomUUID();
+  const completed = orderEvent(orderId, 'COMPLETED');
+  await send(orderId, completed);
+  await send(orderId, completed);
+  const marker = orderEvent(randomUUID(), 'ACCEPTED');
+  await send(marker.data.orderId, marker);
+
+  await waitFor(() => handled(marker.eventId));
+  await waitFor(() => handled(completed.eventId));
+  const forCompleted = sent.filter((m) => m.email.subject !== 'A courier accepted your order');
+  expect(forCompleted.map((m) => m.to).sort()).toEqual(
+    [`${completed.data.requesterId}@foc.test`, `${completed.data.courierId}@foc.test`].sort(),
+  );
+  const { rows } = await pool.query('SELECT delivery_status FROM notifications WHERE event_id = $1', [completed.eventId]);
+  expect(rows).toEqual([{ delivery_status: 'SENT' }, { delivery_status: 'SENT' }]);
 });
 
 it('handles a duplicated event once', async () => {
@@ -154,7 +196,7 @@ it('reads an event again after the database write failed', async () => {
 it('refuses to start when its dead-letter topic is missing from Kafka', async () => {
   const other = buildTopics(`test-${randomUUID().slice(0, 8)}.`);
   await admin.createTopics({ timeout: 30_000, topics: [{ topic: other.orderEvents, numPartitions: 1 }] });
-  const misconfigured = new KafkaRunner(events, new DeadLettersService(pool), connection, other);
+  const misconfigured = new KafkaRunner(events, sender, new DeadLettersService(pool), connection, other);
   try {
     await expect(misconfigured.onApplicationBootstrap()).rejects.toThrow(/missing.*order-events\.dlt/);
   } finally {
