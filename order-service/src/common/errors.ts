@@ -13,6 +13,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added SERVICE_KEY_INVALID for the /internal routes (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+ * Scope: Added USER_SUSPENDED for a create that a suspension cancelled (Phase D).
+ * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
  */
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -26,6 +29,7 @@ export const ErrorCode = {
   TOKEN_INVALID: 'TOKEN_INVALID',
   SERVICE_KEY_INVALID: 'SERVICE_KEY_INVALID',
   FORBIDDEN: 'FORBIDDEN',
+  USER_SUSPENDED: 'USER_SUSPENDED',
   NOT_FOUND: 'NOT_FOUND',
   // 409
   VERSION_CONFLICT: 'VERSION_CONFLICT',
