@@ -126,7 +126,9 @@ staging and runs the safe Postman checks there; production deploys the tag stagi
 Notification Service and its database were added to the deployment at Jian Bing's request. The four design choices
 (register and update task definitions, Mailpit on host port 8025, smoke and safe flows, plan role may read the
 origin key) were Jian Bing's, from options Claude listed with a recommendation. Restricting Mailpit's forwarding to
-an allowlist was Claude's call, flagged in the plan.
+an allowlist was Claude's call, flagged in the plan. A fresh Claude reviewer then checked the whole branch; its
+four Important findings (emails in the public plan log, a failed register being swallowed, the stability waiter
+passing a broken gateway, and the rollout order) were fixed test-first, and nine Minor findings were deferred.
 
 **Prompts (exact):**
 > is the cd pieplien se tu pas well
@@ -136,6 +138,10 @@ an allowlist was Claude's call, flagged in the plan.
 > sorry, back to the grabfoc, i mistokk this terminal for the kootu one, my peer are asking me if the cd and aws is ready to merge, also part 3 seems okay
 
 > yea fix them, and add the notificaiton too, bascially jsut finish out this whole nice 2 have
+
+> ok continue
+
+> try again now
 
 **Key response:** "Notification's PR chain (#161 to #189) and #178 must reach `main` before this branch does, because
 `push-images.sh` builds `notification-service/`."
