@@ -1,0 +1,55 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: Generated from the deployment plan (deploy part 3, #143, Task 5).
+# Author review: Pending Jian Bing's review.
+# Started by hand, and waits for approval in the production environment. Deploys the tag staging
+# last passed; nothing is rebuilt. Give an older tag to roll back.
+
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to roll back to. Leave empty for the tag staging last passed."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::690084476135:role/foc-github-deploy-production
+          aws-region: ap-southeast-1
+      - name: Choose the tag
+        id: tag
+        env:
+          ROLLBACK_TAG: ${{ inputs.tag }}
+        run: |
+          tag="$ROLLBACK_TAG"
+          if [ -z "$tag" ]; then
+            tag=$(aws ssm get-parameter --name /foc-deploy/staging/passed-tag --query Parameter.Value --output text)
+          fi
+          if ! [[ "$tag" =~ ^[0-9a-f]{7}$ ]]; then
+            echo "not an image tag: $tag" >&2
+            exit 1
+          fi
+          # Every image is pushed for a tag, so one repository answers whether the tag was ever built.
+          aws ecr describe-images --repository-name foc/api-gateway --image-ids imageTag="$tag" > /dev/null
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Roll it onto production
+        run: infra/scripts/deploy-images.sh production "${{ steps.tag.outputs.tag }}"

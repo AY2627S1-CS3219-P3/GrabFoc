@@ -112,6 +112,36 @@ Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
 
+### 2026-11-05 — Delivery and the Notification Service on AWS, deploy part 3 (issue #143)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `.github/workflows/{deploy-staging,deploy-production,terraform}.yml`, `infra/checks/*`,
+`infra/scripts/{deploy-images,run-checks,new-secrets,put-secrets,push-images}.sh`, `infra/scripts/lib/task-definition.sh`,
+`infra/scripts/test/*`, `infra/terraform/{global,envs,modules/services,modules/server}/*`, `infra/terraform/README.md`,
+`infra/secrets/README.md`, `docs/superpowers/specs/2026-10-23-aws-deployment-design.md`,
+`docs/superpowers/plans/2026-10-27-deploy-part3-delivery.md`
+
+**Scenario:** Plan and build continuous delivery: each merge to `main` builds the images once, rolls them onto
+staging and runs the safe Postman checks there; production deploys the tag staging passed, after approval. The
+Notification Service and its database were added to the deployment at Jian Bing's request. The four design choices
+(register and update task definitions, Mailpit on host port 8025, smoke and safe flows, plan role may read the
+origin key) were Jian Bing's, from options Claude listed with a recommendation. Restricting Mailpit's forwarding to
+an allowlist was Claude's call, flagged in the plan.
+
+**Prompts (exact):**
+> is the cd pieplien se tu pas well
+
+> yea sure
+
+> sorry, back to the grabfoc, i mistokk this terminal for the kootu one, my peer are asking me if the cd and aws is ready to merge, also part 3 seems okay
+
+> yea fix them, and add the notificaiton too, bascially jsut finish out this whole nice 2 have
+
+**Key response:** "Notification's PR chain (#161 to #189) and #178 must reach `main` before this branch does, because
+`push-images.sh` builds `notification-service/`."
+
+**Verification:** Pending — Jian Bing to record what he checked.
+
 ### 2026-11-05 — Second Codex review round on the AWS infrastructure (PR #146)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug

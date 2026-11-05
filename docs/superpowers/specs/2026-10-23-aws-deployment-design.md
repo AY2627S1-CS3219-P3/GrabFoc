@@ -8,6 +8,10 @@ Author review: Pending Jian Bing's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 Scope: §3.3 origin key (X-Origin-Key), from Jian Bing's decision after the automated security review.
 Author review: Pending Jian Bing's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+Scope: The Notification Service (Jian Bing's decision, 2026-11-05), the Mailpit allowlist and how the checks and
+       tags work, from the deploy part 3 plan.
+Author review: Pending Jian Bing's review.
 -->
 
 # AWS deployment design (issue #58)
@@ -75,12 +79,13 @@ CloudFront (one distribution per environment; caching off)
 │    :80   everything else → frontend                                                 │
 │    :3003 unchanged, internal only (frontend's server-side calls)                    │
 │                                                                                     │
-│  frontend · user · supplier · credit · order services                               │
-│  user-db · supplier-db · credit-db · order-db (PostgreSQL 17) · user-redis · kafka  │
+│  frontend · user · supplier · credit · order · notification services                │
+│  user-db · supplier-db · credit-db · order-db · notification-db (PostgreSQL 17)     │
+│  user-redis · kafka                                                                 │
 │                                                                                     │
 │  EBS volume mounted at /data ── daily snapshots; daily pg_dump → S3                 │
 └─────────────────────────────────────────────────────────────────────────────────────┘
-Outbound: Gmail SMTP on 587 (User Service email)
+Outbound: Gmail SMTP on 587 (User and Notification Service email)
 ```
 
 ### 3.1 Compute: ECS on EC2 (#102, #106)
@@ -92,9 +97,10 @@ Outbound: Gmail SMTP on 587 (User Service email)
 - **Bridge network mode with ECS Service Connect**, so containers keep their compose names
   (`user-service:3001`, `kafka:9092`, …) and connection strings don't change.
 - One ECS service per compose service: frontend, api-gateway, user-service, supplier-service, credit-service,
-  order-service, user-db, supplier-db, credit-db, order-db, user-redis, kafka.
-- One-shot containers (`kafka-init`, `order-migrate`) become one-off ECS tasks run by the deploy workflow before
-  the services that need them are updated (Claude's call).
+  order-service, notification-service, user-db, supplier-db, credit-db, order-db, notification-db, user-redis,
+  kafka.
+- One-shot containers (`kafka-init`, `order-migrate`) run inside the service tasks that need them, before the app
+  container starts: a standalone task gets no Service Connect names (Claude's call, changed in the 2026-10-25 review).
 - Not deployed: `kafka-ui` (Claude's call). `mailpit` runs in staging only, as a relay (§6).
 - ECS has no cross-service `depends_on`, so every service retries connecting to PostgreSQL, Redis and Kafka on
   start-up instead of exiting.
@@ -159,6 +165,7 @@ Outbound: Gmail SMTP on 587 (User Service email)
   | supplier-db | `/data/supplier-db` |
   | credit-db | `/data/credit-db` |
   | order-db | `/data/order-db` |
+  | notification-db | `/data/notification-db` |
   | user-redis | `/data/redis` |
   | kafka | `/data/kafka` |
 
@@ -188,12 +195,14 @@ Outbound: Gmail SMTP on 587 (User Service email)
 
 - **URL:** the CloudFront `dxxxx.cloudfront.net` name for each environment. No domain.
 - **Email: Gmail SMTP** (app password, port 587; AWS blocks port 25), the same code path as local (Jian Bing's
-  decision). The User Service's existing `USER_SMTP_*` variables choose where mail goes:
+  decision). The User and Notification Services' SMTP variables choose where mail goes:
   - **Production:** straight to Gmail.
   - **Staging:** to Mailpit in **relay mode**, which keeps a copy of every email and forwards it to Gmail
     (Jian Bing's decision, 2026-10-23: real Gmail delivery, with Mailpit kept for debugging and for the automated
-    checks to read OTP codes). Mailpit's relay uses the same Gmail app password from SSM. Its web inbox is not
-    published; the security group already blocks it.
+    checks to read OTP codes). It forwards only the addresses on an allowlist (`mailpit_relay_to`), because the
+    checks sign up random `@u.nus.edu` addresses (Claude's call, 2026-10-27, accepted with the part 3 plan).
+    Mailpit's relay uses the same Gmail app password from SSM. Its web inbox is not published; the security group
+    already blocks it.
 - **One AWS account for both environments** (NUS doesn't allow a second; confirmed by Jian Bing 2026-10-23).
   Staging and production are kept apart by (Claude's call):
   - a separate VPC, server, EBS volume, CloudFront distribution and ECS cluster per environment;
@@ -213,12 +222,14 @@ Outbound: Gmail SMTP on 587 (User Service email)
 
 ## 8. Delivery (#108, #109)
 
-- **Staging:** every merge to `main` builds the images, runs the one-off tasks (`kafka-init`, migrations), and
-  updates the staging services.
-- **Staging checks:** health checks for each service, then the Postman collections run with newman against the
-  staging CloudFront URL. newman runs as a **one-off ECS task on the staging server**, not on GitHub's runner,
-  so it can read OTP codes from Mailpit (which isn't reachable from outside). The deploy workflow starts the task
-  and fails if it fails. A failed check blocks promotion.
+- **Staging:** every merge to `main` builds the images once and updates the staging services, layer by layer. The
+  one-shot containers (`kafka-init`, `order-migrate`) run inside the tasks that need them. The tag each environment
+  runs is recorded in `/foc-deploy/<env>/image-tag`, so a manual `terraform apply` keeps it.
+- **Staging checks:** the safe folders of the gateway Postman collection run with newman against the staging
+  CloudFront URL: the smoke checks, and flows that create their own throw-away users (Jian Bing's decision,
+  2026-10-27). Never the bootstrap admin or password reset. newman runs as a **one-off ECS task on the staging
+  server**, not on GitHub's runner, so it can read OTP codes from Mailpit on host port 8025 (which isn't reachable
+  from outside). The deploy workflow starts the task and fails if it fails. A failed check blocks promotion.
 - **Production:** a manually triggered workflow, only from `main`, behind a GitHub `production` environment that
   needs approval. It deploys the image tags staging passed.
 - **Rollback:** redeploy the previous image tag.
