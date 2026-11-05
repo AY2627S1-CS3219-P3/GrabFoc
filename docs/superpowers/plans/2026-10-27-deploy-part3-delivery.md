@@ -36,6 +36,23 @@ script tests with a fake `aws`, newman, Node's test runner.
   (`mailpit_relay_to`); everything else stays in Mailpit. The checks sign up random `…@u.nus.edu` addresses,
   which must never receive real email.
 
+- **Notification Service (Jian Bing, 2026-11-05):** part of the deployment too ("add the notificaiton too"). It runs
+  in the app layer with its own `notification-db`, and sends through the same path as the User Service: Mailpit on
+  staging, Gmail in production. Notification's PR chain (#161 to #189) and #178 must reach `main` before this branch
+  does, because `push-images.sh` builds `notification-service/`.
+
+## Corrections made while starting (2026-11-05)
+
+- `postman/newman:6.2.1-alpine` doesn't exist; the checks image uses `6.1.3-alpine`.
+- `MP_SMTP_RELAY_MATCHING` confirmed in Mailpit's v1.31.2 source, so Task 1's Docker check isn't needed.
+- One `public_url` module variable replaces `checks_base_url`: both the checks and Notification's email links need it.
+- Mailpit stops before it's replaced: two copies can't share host port 8025 on one server.
+- `run-checks.sh` first registers the checks task definition with the tag under test, or it would run old checks.
+- The deploy roles also need to read `/foc/<env>/*` logs, for `aws logs tail`.
+- `deploy-images.sh` waits up to three rounds of `services-stable` (10 minutes each): a rollout passed 10 minutes on
+  2026-10-27 and still succeeded.
+- `new-secrets.sh --add-missing` adds new generated secrets to an existing file without printing or changing any.
+
 ## Global Constraints
 
 - Region `ap-southeast-1`; account `690084476135`; roles `foc-github-plan`, `foc-github-deploy-staging`,
@@ -121,6 +138,26 @@ script tests with a fake `aws`, newman, Node's test runner.
 
 - [ ] **Step 5: Commit** — `feat(infra): deploy tag parameter, Mailpit allowlist and port, checks task, CD IAM`
 
+### Task 1b: Notification Service in the deployment
+
+**Files:**
+- Modify: `infra/terraform/global/main.tf` (ECR repo), `infra/terraform/modules/services/main.tf`,
+  `infra/terraform/modules/server/user_data.sh.tftpl`, `infra/terraform/envs/*/main.tf`
+- Modify: `infra/scripts/{new-secrets,put-secrets,push-images}.sh` and their tests; `infra/secrets/README.md`
+- Modify: `docs/superpowers/specs/2026-10-23-aws-deployment-design.md`
+
+**Interfaces:**
+- Produces: ECS services `notification-db` (data layer, `/data/notification-db`) and `notification-service` (app
+  layer, runs `kafka-init` first); SSM names `NOTIFICATION_POSTGRES_PASSWORD`, `USER_INTERNAL_SERVICE_KEY` (also
+  given to the User Service, which refuses to start without it from #178).
+
+- [ ] **Step 1: Write the failing tests:** the services, global, server and script tests name the new service,
+  folder, repo and secrets; `NOTIFICATION_FRONTEND_URL` is `var.public_url`.
+- [ ] **Step 2: Run, expect FAIL.**
+- [ ] **Step 3: Implement,** with the values from `notification-service/compose.yaml`.
+- [ ] **Step 4: Run, expect PASS** — `infra/terraform/check.sh`, script tests.
+- [ ] **Step 5: Commit** — `feat(infra): run the Notification Service on AWS`
+
 ### Task 2: The checks image (selected Postman requests + newman)
 
 **Files:**
@@ -144,8 +181,8 @@ script tests with a fake `aws`, newman, Node's test runner.
     the image build instead of silently running fewer checks.
 - [ ] **Step 2: Run, expect FAIL** — `node --test infra/checks/test/select.test.mjs` (module missing).
 - [ ] **Step 3: Implement** `select(collection, paths: string[]) => collection` and a CLI
-  (`node select.mjs <in> <out>`) with the folder list above. The Dockerfile: `FROM postman/newman:6.2.1-alpine`
-  (check the tag exists), copy the collection, run `select.mjs` at build time, `ENTRYPOINT ["/checks/run.sh"]`.
+  (`node select.mjs <in> <out>`) with the folder list above. The Dockerfile: `FROM postman/newman:6.1.3-alpine`
+  (see Corrections), copy the collection, run `select.mjs` at build time, `ENTRYPOINT ["/checks/run.sh"]`.
   `run.sh` runs `newman run` with `--env-var baseUrl=$BASE_URL --env-var mailpitUrl=$MAILPIT_URL`, and fails
   if either variable is empty.
 - [ ] **Step 4: Run, expect PASS** — the select tests; `push-images.test.sh`; then build the image locally and
