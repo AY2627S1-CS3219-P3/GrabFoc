@@ -3,10 +3,11 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 7).
 #        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
+#        2026-11-05 (Claude Code, Claude Opus 5.5): the Notification and checks images (deploy part 3).
 # Author review: Pending Jian Bing's review.
 #
-# One-off manual build and push of every image to ECR, until the CI workflow (deploy part 3) does it.
-#   infra/scripts/push-images.sh "$(git rev-parse --short HEAD)"
+# Builds and pushes every image to ECR; the deploy workflow runs this on each merge to main.
+#   infra/scripts/push-images.sh "$(git rev-parse --short=7 HEAD)"
 # Builds for linux/amd64 (the t3 server), from the same contexts as the compose files. Safe to rerun
 # with the same tag: images already in ECR are skipped.
 set -euo pipefail
@@ -24,9 +25,11 @@ images=(
   "supplier-service|.|supplier-service/Dockerfile"
   "credit-service|credit-service|credit-service/Dockerfile"
   "order-service|order-service|order-service/Dockerfile"
+  "notification-service|notification-service|notification-service/Dockerfile"
   "api-gateway|api-gateway|api-gateway/Dockerfile"
   "frontend|frontend|frontend/Dockerfile"
   "kafka-init|infra/kafka|infra/kafka/Dockerfile.init"
+  "checks|.|infra/checks/Dockerfile"
 )
 for entry in "${images[@]}"; do
   IFS='|' read -r name context dockerfile <<< "$entry"
