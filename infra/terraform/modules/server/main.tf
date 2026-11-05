@@ -89,7 +89,7 @@ resource "aws_iam_role_policy" "server_start_up" {
           "arn:aws:ec2:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:network-interface/*",
         ]
       },
-      { Effect = "Allow", Action = ["ec2:DescribeVolumes", "cloudwatch:PutMetricData"], Resource = "*" },
+      { Effect = "Allow", Action = ["ec2:DescribeVolumes", "ec2:DescribeTags", "cloudwatch:PutMetricData"], Resource = "*" },
     ]
   })
 }
