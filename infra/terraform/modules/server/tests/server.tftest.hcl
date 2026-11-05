@@ -1,7 +1,7 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 4). Plan-only with a mocked AWS provider: the data
-#        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
+#        2026-10-27 and 2026-11-05 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 #        volume has prevent_destroy, so the test never applies (and so never has to destroy) it.
 # Author review: Pending Jian Bing's review.
 
@@ -100,6 +100,15 @@ run "server" {
       strcontains(local.user_data, "[[\"AutoScalingGroupName\", \"path\"]]")
     )
     error_message = "The disk metric and its alarm must be per server group (per environment)."
+  }
+
+  # Codex review on #146: the agent reads the group name from the instance's tags, and instance
+  # metadata tags are off, so without this the metric gets no group dimension and the alarm sees nothing.
+  assert {
+    condition = contains(flatten([
+      for s in jsondecode(aws_iam_role_policy.server_start_up.policy).Statement : s.Action
+    ]), "ec2:DescribeTags")
+    error_message = "The CloudWatch agent needs ec2:DescribeTags to find its server group."
   }
 
   # Final review (2026-10-25), Critical 2: a server whose start-up fails must never join the cluster.
