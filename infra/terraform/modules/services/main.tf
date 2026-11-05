@@ -6,7 +6,8 @@
 # Scope: Gateway edge-listener settings (GATEWAY_EDGE_PORT, FRONTEND_URL); the frontend in its own layer after the gateway (deploy part 1, #141).
 # Author review: Pending Jian Bing's review.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
-# Scope: Deploy part 3 (#143): Mailpit's allowlist and API port, the checks task, the Notification Service.
+# Scope: Deploy part 3 (#143): Mailpit's allowlist and API port, the checks task, the Notification Service,
+#        and a health check for the gateway (deploy-images.sh waits for HEALTHY).
 # Author review: Pending Jian Bing's review.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
@@ -174,6 +175,8 @@ locals {
       port      = 3003
       host_port = 80 # the only port the server publishes; CloudFront's origin
       memory    = 96
+      # Envoy answers /health itself on the internal listener; the image has python3 for render.py.
+      health = ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3003/health', timeout=4)"]
       env = merge({
         GATEWAY_PORT         = "3003"
         USER_SERVICE_URL     = "http://user-service:3001"

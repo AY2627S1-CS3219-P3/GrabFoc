@@ -258,12 +258,16 @@ run "staging" {
   }
 
   # Final review, Important 5: a container that hangs on start-up is restarted, not left "running".
+  # Part 3 final review, I3: deploy-images.sh waits for HEALTHY, so the gateway needs one too.
   assert {
     condition = alltrue([
-      for name, t in aws_ecs_task_definition.service :
-      name == "api-gateway" || can(jsondecode(t.container_definitions)[0].healthCheck.command[0])
+      for name, t in aws_ecs_task_definition.service : can(jsondecode(t.container_definitions)[0].healthCheck.command[0])
     ])
-    error_message = "Every service except Envoy has a container health check."
+    error_message = "Every service has a container health check."
+  }
+  assert {
+    condition     = strcontains(join(" ", jsondecode(aws_ecs_task_definition.service["api-gateway"].container_definitions)[0].healthCheck.command), "http://127.0.0.1:3003/health")
+    error_message = "The gateway's health check asks its own internal listener for /health."
   }
 }
 

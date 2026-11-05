@@ -2,6 +2,7 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Generated from the deployment plan (deploy part 3, #143, Task 4): tests run-checks.sh.
+#        Final review fix: a failed register.
 # Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/run-checks.test.sh   (no AWS access needed; needs jq)
@@ -21,6 +22,7 @@ case "$*" in
   ecs\ describe-task-definition*)
     echo '{"taskDefinitionArn":"arn","revision":1,"family":"foc-staging-checks","containerDefinitions":[{"name":"checks","image":"1.dkr.ecr.ap-southeast-1.amazonaws.com/foc/checks:old0000"}]}' ;;
   ecs\ register-task-definition*)
+    [ -z "${FAKE_REGISTER_FAIL:-}" ] || { echo "Unknown parameter in input" >&2; exit 254; }
     file=$(arg --cli-input-json "$@"); cp "${file#file://}" "$AWS_CALLS.registered.json"
     echo "arn:aws:ecs:ap-southeast-1:1:task-definition/foc-staging-checks:2" ;;
   ecs\ run-task*)
@@ -75,6 +77,11 @@ check "task that never stops fails" '[ $code -ne 0 ] && ! passed'
 : > "$AWS_CALLS"
 out=$(FAKE_LOGS_FAIL=1 "$SCRIPT" staging abc1234 2>&1); code=$?
 check "a log read that fails doesn't change the result" '[ $code -eq 0 ] && passed'
+
+# Final review, I2: a failed register must not run the old checks.
+: > "$AWS_CALLS"
+out=$(FAKE_REGISTER_FAIL=1 "$SCRIPT" staging abc1234 2>&1); code=$?
+check "a failed register runs nothing" '[ $code -ne 0 ] && ! grep -q "run-task" "$AWS_CALLS" && ! passed'
 
 : > "$AWS_CALLS"
 "$SCRIPT" production abc1234 > /dev/null 2>&1; code=$?

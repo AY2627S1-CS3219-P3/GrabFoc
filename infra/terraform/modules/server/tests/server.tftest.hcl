@@ -2,6 +2,7 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 4). Plan-only with a mocked AWS provider: the data
 #        2026-10-27 and 2026-11-05 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
+#        2026-11-05 (Claude Code, Claude Opus 5.5): the /data/notification-db folder (deploy part 3, #143).
 #        volume has prevent_destroy, so the test never applies (and so never has to destroy) it.
 # Author review: Pending Jian Bing's review.
 

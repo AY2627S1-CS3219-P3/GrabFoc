@@ -269,20 +269,29 @@ script tests with a fake `aws`, newman, Node's test runner.
 
 ### Task 6: Live set-up and dry run (stops for Jian Bing's OK at each bullet)
 
-- [ ] **Global apply** (`infra/terraform/global`): the OIDC subject fix from #146 and Task 1's IAM and ECR
-  changes. Show the plan first.
-- [ ] **GitHub settings:** environment `production` with Jian Bing as required reviewer, deployments limited to
-  `main`; repository variables `TF_VAR_alert_emails`, `TF_VAR_mailpit_relay_to`.
-- [ ] **Seed the tag and dry-run with Jian Bing's own credentials:** seed `/foc-deploy/staging/image-tag` =
-  `fc2f431`, then:
-  1. `push-images.sh <HEAD tag>` (pushes the new `checks` image too);
-  2. staging `terraform apply` (Mailpit allowlist and port 8025, the checks task; tag read from the parameter);
-  3. `deploy-images.sh staging <HEAD tag>`;
-  4. `run-checks.sh staging <HEAD tag>`. Expected: newman passes, and `passed-tag` is set.
+Order from the final review (2026-11-05): each step needs the one before it.
+
+- [ ] **GitHub `production` environment** (required reviewer Jian Bing, deployments from `main` only), before the
+  global apply makes the production role's trust live: a job naming an environment that doesn't exist creates it
+  unprotected.
+- [ ] **Global apply** (`infra/terraform/global`): the OIDC subject fix from #146, the `checks` and
+  `notification-service` repos, and Task 1's IAM. Show the plan first.
+- [ ] **Repository secrets** `TF_VAR_alert_emails` and `TF_VAR_mailpit_relay_to` (JSON lists; secrets, because
+  GitHub prints job variables in the public log).
+- [ ] **New secrets:** `new-secrets.sh staging --add-missing`, then `put-secrets.sh staging`. Without them the
+  Notification tasks and the User Service's new deployment can't start.
+- [ ] **Code with Notification in it:** `main` with #161 to #189 and #178 merged into this branch. Until then,
+  `push-images.sh` fails at the Notification build.
+- [ ] **Dry run with Jian Bing's own credentials:**
+  1. `push-images.sh <HEAD tag>`;
+  2. seed `/foc-deploy/staging/image-tag` = `<HEAD tag>`;
+  3. staging `terraform apply` (tag read from the parameter);
+  4. `deploy-images.sh staging <HEAD tag>`;
+  5. `run-checks.sh staging <HEAD tag>`. Expected: newman passes, and `passed-tag` is set.
 - [ ] **Confirm the allowlist** in the checks' logs and Mailpit: the throw-away `…@u.nus.edu` emails stay in
   Mailpit and no relay to them is attempted.
-- [ ] The workflows themselves first run when this stack reaches `main` (the deploy role trusts only `main`). Say
-  so in the PR.
+- [ ] The workflows themselves first run when this stack reaches `main` (the deploy role trusts only `main`), and
+  only after Notification is on `main`. Say so in the PR.
 
 ### Task 7: Docs, usage log, PR
 

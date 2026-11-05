@@ -68,9 +68,9 @@ infra/scripts/push-images.sh "$(git rev-parse --short=7 HEAD)"
 ```bash
 cd infra/terraform/envs/staging
 terraform init -backend-config="bucket=<state_bucket>"
+# alert_emails: disk alarms (confirm the email AWS sends). mailpit_relay_to: staging only, see Delivery.
 terraform apply -var-file=staging.tfvars -var image_tag=<the tag you pushed> \
-  -var 'alert_emails=["you@u.nus.edu"]' \   # disk alarms; confirm the email AWS sends
-  -var 'mailpit_relay_to=["you@u.nus.edu"]'  # staging only: see Delivery
+  -var 'alert_emails=["you@u.nus.edu"]' -var 'mailpit_relay_to=["you@u.nus.edu"]'
 terraform output url                    # https://d….cloudfront.net
 ```
 
@@ -143,8 +143,9 @@ goes to the API, everything else to the website, and only with CloudFront's `X-O
 - **Infrastructure changes** stay manual: the workflows only change image tags. A new setting or
   secret needs `put-secrets.sh` and `terraform apply` **before** the code that reads it reaches `main`.
 - **GitHub set-up (once):** a `production` environment with required reviewers, limited to `main`, and
-  the repository variables `TF_VAR_alert_emails` and `TF_VAR_mailpit_relay_to` as JSON lists. They're
-  variables, not tfvars, because the repository is public.
+  the repository secrets `TF_VAR_alert_emails` and `TF_VAR_mailpit_relay_to` as JSON lists. They're
+  secrets, not tfvars or variables, because the repository and its Actions logs are public.
+- **Staging sign-ups by teammates** get their OTP email only if their address is in `mailpit_relay_to`.
 
 ## Production
 

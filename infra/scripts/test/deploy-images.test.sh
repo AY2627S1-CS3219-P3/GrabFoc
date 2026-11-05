@@ -2,6 +2,7 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Generated from the deployment plan (deploy part 3, #143, Task 3): tests deploy-images.sh.
+#        Final review fixes: failed registers, missing services, health after the rollout.
 # Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/deploy-images.test.sh   (no AWS access needed; needs jq)
@@ -12,13 +13,28 @@ fails=0
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fails=$((fails + 1)); fi; }
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/bin"
-# Fake aws: records each call; saves what's registered; fails waits on FAKE_WAIT_FAIL.
+# Fake aws: records each call and what's registered. Failure switches, each naming one service:
+# FAKE_MISSING (no such service), FAKE_WAIT_FAIL (never stable), FAKE_STUCK (stays on the old
+# revision), FAKE_UNHEALTHY (its task fails the health check); FAKE_REGISTER_FAIL for every register.
 cat > "$work/bin/aws" <<'FAKE'
 #!/usr/bin/env bash
 echo "$*" >> "$AWS_CALLS"
 arg() { local want="$1"; shift; while [ $# -gt 0 ]; do [ "$1" = "$want" ] && { echo "$2"; return; }; shift; done; }
+list() { local want="$1" on=0; shift; for a in "$@"; do case "$a" in "$want") on=1; continue ;; --*) on=0 ;; esac; [ $on = 1 ] && echo "$a"; done; }
+td() { echo "arn:aws:ecs:ap-southeast-1:1:task-definition/foc-staging-$1:$2"; }
+revision() { if [ -f "$AWS_CALLS.updated.$1" ] && [ "$1" != "${FAKE_STUCK:-}" ]; then echo 4; else echo 3; fi; }
 case "$*" in
-  ecs\ describe-services*) echo "arn:aws:ecs:ap-southeast-1:1:task-definition/foc-$(arg --cluster "$@" | cut -d- -f2)-$(arg --services "$@"):3" ;;
+  ecs\ describe-services*)
+    services=""; failures=""
+    for s in $(list --services "$@"); do
+      if [ "$s" = "${FAKE_MISSING:-}" ]; then
+        failures="$failures,{\"arn\":\"arn:aws:ecs:ap-southeast-1:1:service/foc-staging/$s\",\"reason\":\"MISSING\"}"
+        continue
+      fi
+      t=$(td "$s" "$(revision "$s")")
+      services="$services,{\"serviceName\":\"$s\",\"status\":\"ACTIVE\",\"taskDefinition\":\"$t\",\"deployments\":[{\"status\":\"PRIMARY\",\"taskDefinition\":\"$t\"}]}"
+    done
+    echo "{\"services\":[${services#,}],\"failures\":[${failures#,}]}" ;;
   ecs\ describe-task-definition*)
     name=$(arg --task-definition "$@" | sed -E 's/.*foc-staging-//; s/:.*//')
     cat <<JSON
@@ -32,16 +48,28 @@ case "$*" in
 JSON
     ;;
   ecs\ register-task-definition*)
+    [ -z "${FAKE_REGISTER_FAIL:-}" ] || { echo "Unknown parameter in input" >&2; exit 254; }
     file=$(arg --cli-input-json "$@"); file=${file#file://}
     family=$(jq -r .family "$file"); cp "$file" "$AWS_CALLS.$family.json"
     echo "arn:aws:ecs:ap-southeast-1:1:task-definition/$family:4" ;;
+  ecs\ update-service*) touch "$AWS_CALLS.updated.$(arg --service "$@")"; echo '{}' ;;
   ecs\ wait*) case " $* " in *" ${FAKE_WAIT_FAIL:-none} "*) exit 255 ;; esac ;;
+  ecs\ list-tasks*) echo "{\"taskArns\":[\"arn:aws:ecs:ap-southeast-1:1:task/foc-staging/$(arg --service-name "$@")-1\"]}" ;;
+  ecs\ describe-tasks*)
+    tasks=""
+    for t in $(list --tasks "$@"); do
+      s=${t##*/}; s=${s%-1}
+      health=HEALTHY; [ "$s" = "${FAKE_UNHEALTHY:-}" ] && health=UNHEALTHY
+      tasks="$tasks,{\"taskArn\":\"$t\",\"taskDefinitionArn\":\"$(td "$s" "$(revision "$s")")\",\"healthStatus\":\"$health\"}"
+    done
+    echo "{\"tasks\":[${tasks#,}]}" ;;
 esac
 FAKE
 chmod +x "$work/bin/aws"
-export PATH="$work/bin:$PATH" AWS_CALLS="$work/calls"
+export PATH="$work/bin:$PATH" AWS_CALLS="$work/calls" HEALTH_INTERVAL=0 HEALTH_CHECKS=3
+reset() { rm -f "$AWS_CALLS".*; : > "$AWS_CALLS"; }
 
-: > "$AWS_CALLS"
+reset
 out=$("$SCRIPT" staging new1234 2>&1); code=$?
 def="$AWS_CALLS.foc-staging-api-gateway.json"
 check "a clean run succeeds" '[ $code -eq 0 ]'
@@ -66,7 +94,7 @@ check "tag parameter overwrites and is a plain String" 'tail -1 "$AWS_CALLS" | g
 check "every call pins the region" '[ "$(grep -vc -- "--region ap-southeast-1" "$AWS_CALLS")" = 0 ]'
 check "uses the environment's cluster" 'grep -q "update-service --region ap-southeast-1 --cluster foc-staging" "$AWS_CALLS"'
 
-: > "$AWS_CALLS"
+reset
 out=$(FAKE_WAIT_FAIL=api-gateway "$SCRIPT" staging new1234 2>&1); code=$?
 check "failed wait leaves the tag: exits non-zero" '[ $code -ne 0 ]'
 check "failed wait leaves the tag: no parameter written" '! grep -q "put-parameter" "$AWS_CALLS"'
@@ -74,7 +102,29 @@ check "failed wait stops the rollout" '! grep -q "update-service .*--service fro
 check "a slow rollout gets three rounds of waiting" '[ "$(grep -c "^ecs wait .*api-gateway" "$AWS_CALLS")" = 3 ]'
 check "the failure names the layer" 'grep -q "api-gateway" <<<"$out"'
 
-: > "$AWS_CALLS"
+# Final review, I2: a register that fails must stop the deploy, not roll an empty revision.
+reset
+out=$(FAKE_REGISTER_FAIL=1 "$SCRIPT" staging new1234 2>&1); code=$?
+check "a failed register stops the deploy" '[ $code -ne 0 ] && ! grep -q "update-service" "$AWS_CALLS" && ! grep -q "put-parameter" "$AWS_CALLS"'
+
+# Final review, I4: a service the environment doesn't have yet (no terraform apply) stops
+# everything before the first update.
+reset
+out=$(FAKE_MISSING=notification-service "$SCRIPT" staging new1234 2>&1); code=$?
+check "a missing service stops the deploy before any update" '[ $code -ne 0 ] && ! grep -q "update-service" "$AWS_CALLS"'
+check "the missing service is named" 'grep -q "notification-service" <<<"$out"'
+
+# Final review, I3: "stable" only counts running tasks. The new revision must be the one running,
+# and healthy.
+reset
+out=$(FAKE_UNHEALTHY=api-gateway "$SCRIPT" staging new1234 2>&1); code=$?
+check "an unhealthy gateway fails the deploy" '[ $code -ne 0 ] && ! grep -q "put-parameter" "$AWS_CALLS"'
+check "an unhealthy gateway stops the rollout" '! grep -q "update-service .*--service frontend" "$AWS_CALLS"'
+reset
+out=$(FAKE_STUCK=api-gateway "$SCRIPT" staging new1234 2>&1); code=$?
+check "a service left on the old revision fails the deploy" '[ $code -ne 0 ] && ! grep -q "put-parameter" "$AWS_CALLS"'
+
+reset
 "$SCRIPT" nowhere new1234 > /dev/null 2>&1; code=$?
 check "rejects an unknown env" '[ $code -ne 0 ] && [ ! -s "$AWS_CALLS" ]'
 "$SCRIPT" staging > /dev/null 2>&1; code=$?
