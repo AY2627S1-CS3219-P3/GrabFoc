@@ -112,6 +112,25 @@ Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
 
+### 2026-11-05 — Second Codex review round on the AWS infrastructure (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug
+**Files:** `.dockerignore`, `infra/scripts/test/push-images.test.sh`,
+`infra/terraform/modules/server/{main.tf,tests/server.tftest.hcl}`
+
+**Scenario:** Peers asked whether the AWS and CD work was ready to merge. Claude checked both PRs and
+found three new Codex threads. Two were fixed test-first: `infra/secrets` left out of the root build
+context, and `ec2:DescribeTags` added so the CloudWatch agent can find its server group. The third
+(the origin key) is already enforced by PR #156. `main` was merged in.
+
+**Prompts (exact):**
+> sorry, back to the grabfoc, i mistokk this terminal for the kootu one, my peer are asking me if the cd and aws is ready to merge, also part 3 seems okay
+
+> yea fix them, and add the notificaiton too, bascially jsut finish out this whole nice 2 have
+
+**Key response:** "No, neither is ready to merge yet. Merging AWS is close, but CD isn't built: part 3
+only has a plan, on a local branch."
+
 ### 2026-10-27 — Edge routing: the website through CloudFront, deploy part 1 (issue #141)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain, generate
