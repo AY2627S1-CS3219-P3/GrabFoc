@@ -2,6 +2,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 1).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: Deploy part 3 (#143): the checks and notification-service repos, the plan role's parameter
+#        exceptions, and the deploy roles' tag parameters and log reads.
+# Author review: Pending Jian Bing's review.
 
 # One stack per account (staging and production share the NUS-managed account, spec §6). It keeps
 # local state because it creates the bucket every other stack stores its state in.
@@ -10,7 +14,13 @@ data "aws_caller_identity" "current" {}
 
 locals {
   account_id = data.aws_caller_identity.current.account_id
-  images     = ["user-service", "supplier-service", "credit-service", "order-service", "api-gateway", "frontend", "kafka-init"]
+  images = [
+    "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
+    "api-gateway", "frontend", "kafka-init", "checks",
+  ]
+
+  # terraform plan refreshes this SecureString; its value is already in the state file plan reads.
+  origin_key_arns = "arn:aws:ssm:*:${local.account_id}:parameter/foc/*/CLOUDFRONT_ORIGIN_KEY"
 
   # Who may assume each GitHub role: the OIDC token's "sub" claim.
   github_roles = {
@@ -87,8 +97,9 @@ resource "aws_iam_role" "github" {
   })
 }
 
-# Pull requests only run "terraform plan": read infrastructure, never secret values, and write
-# nothing but the two environments' state lock files. (Fork pull requests get no OIDC token.)
+# Pull requests only run "terraform plan": read infrastructure, no secret value except CloudFront's
+# origin key (team decision, 2026-10-27), and write nothing but the two environments' state lock
+# files. (Fork pull requests get no OIDC token.)
 resource "aws_iam_role_policy_attachment" "plan_read_only" {
   role       = aws_iam_role.github["plan"].name
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
@@ -106,13 +117,29 @@ resource "aws_iam_role_policy" "plan_state_lock" {
         Resource = [for env in ["staging", "production"] : "${aws_s3_bucket.state.arn}/${env}/terraform.tfstate.tflock"]
       },
       {
-        # ReadOnlyAccess would otherwise let a pull request read our SecureStrings. Only /foc/ is
-        # denied: plan still reads AWS's public parameters (the ECS-optimised AMI ID).
-        Effect   = "Deny"
-        Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath", "ssm:GetParameterHistory"]
-        Resource = "arn:aws:ssm:*:${local.account_id}:parameter/foc/*"
+        # ReadOnlyAccess would otherwise let a pull request read our SecureStrings. Plan still reads
+        # AWS's public parameters (the ECS-optimised AMI ID), the deployed tag and the origin key.
+        Effect = "Deny"
+        Action = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath", "ssm:GetParameterHistory"]
+        NotResource = [
+          "arn:aws:ssm:*::parameter/aws/service/*",
+          "arn:aws:ssm:*:${local.account_id}:parameter/foc-deploy/*",
+          local.origin_key_arns,
+        ]
       },
-      { Effect = "Deny", Action = ["secretsmanager:GetSecretValue", "kms:Decrypt"], Resource = "*" },
+      { Effect = "Deny", Action = ["secretsmanager:GetSecretValue"], Resource = "*" },
+      {
+        Effect    = "Deny"
+        Action    = ["kms:Decrypt"]
+        Resource  = "*"
+        Condition = { StringNotLike = { "kms:EncryptionContext:PARAMETER_ARN" = local.origin_key_arns } }
+      },
+      {
+        Effect    = "Allow"
+        Action    = ["kms:Decrypt"]
+        Resource  = "*"
+        Condition = { StringLike = { "kms:EncryptionContext:PARAMETER_ARN" = local.origin_key_arns } }
+      },
     ]
   })
 }
@@ -125,7 +152,7 @@ resource "aws_iam_role_policy" "deploy" {
   role     = aws_iam_role.github[each.key].id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       { Effect = "Allow", Action = ["ecr:GetAuthorizationToken"], Resource = "*" },
       {
         Effect = "Allow"
@@ -155,7 +182,26 @@ resource "aws_iam_role_policy" "deploy" {
         Resource  = "arn:aws:iam::${local.account_id}:role/foc-${each.value}-*"
         Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
-    ]
+      # The tag this environment runs, and for staging the tag its checks passed.
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter", "ssm:PutParameter"]
+        Resource = "arn:aws:ssm:ap-southeast-1:${local.account_id}:parameter/foc-deploy/${each.value}/*"
+      },
+      # run-checks.sh prints the checks' output into the workflow log.
+      {
+        Effect   = "Allow"
+        Action   = ["logs:FilterLogEvents", "logs:DescribeLogGroups"]
+        Resource = "arn:aws:logs:ap-southeast-1:${local.account_id}:log-group:/foc/${each.value}/*"
+      },
+      ], each.value == "production" ? [
+      # Production deploys only what staging's checks passed.
+      {
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = "arn:aws:ssm:ap-southeast-1:${local.account_id}:parameter/foc-deploy/staging/passed-tag"
+      },
+    ] : [])
   })
 }
 

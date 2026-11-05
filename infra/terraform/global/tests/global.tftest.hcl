@@ -3,6 +3,10 @@
 # Scope: Generated from the deployment plan (Task 1). Runs with a mocked AWS provider: no credentials needed.
 #        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: Deploy part 3 (#143): the checks and notification-service repos, the plan role's parameter
+#        exceptions, and the deploy roles' tag parameters and log reads.
+# Author review: Pending Jian Bing's review.
 
 mock_provider "aws" {
   mock_data "aws_caller_identity" {
@@ -36,16 +40,17 @@ run "global" {
     error_message = "State bucket must block all public access."
   }
   assert {
-    condition = length(aws_ecr_repository.service) == 7 && alltrue([
+    condition = length(aws_ecr_repository.service) == 9 && alltrue([
       for r in aws_ecr_repository.service : r.image_tag_mutability == "IMMUTABLE"
     ])
-    error_message = "Seven immutable ECR repositories expected."
+    error_message = "Nine immutable ECR repositories expected."
   }
   assert {
     condition = toset(keys(output.ecr_repository_urls)) == toset([
-      "user-service", "supplier-service", "credit-service", "order-service", "api-gateway", "frontend", "kafka-init",
+      "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
+      "api-gateway", "frontend", "kafka-init", "checks",
     ])
-    error_message = "ecr_repository_urls must be keyed by the seven image names."
+    error_message = "ecr_repository_urls must be keyed by the nine image names."
   }
   assert {
     condition     = jsondecode(aws_iam_role.github["deploy-production"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AY2627S1-CS3219-P3@326464642/GrabFoc@1361285513:environment:production"
@@ -129,14 +134,77 @@ run "least_privilege" {
 }
 
 # Final review, Important 7: the Deny must not block the public ECS AMI parameter that plan reads.
-run "plan_can_read_public_parameters" {
+# Deploy part 3: plan also reads the deployed tag and the origin key, and nothing else under /foc/.
+run "plan_parameter_exceptions" {
   command = apply
 
   assert {
     condition = alltrue([
       for st in jsondecode(aws_iam_role_policy.plan_state_lock.policy).Statement :
-      st.Effect != "Deny" || !contains(st.Action, "ssm:GetParameter") || st.Resource == "arn:aws:ssm:*:111122223333:parameter/foc/*"
+      toset(st.NotResource) == toset([
+        "arn:aws:ssm:*::parameter/aws/service/*",
+        "arn:aws:ssm:*:111122223333:parameter/foc-deploy/*",
+        "arn:aws:ssm:*:111122223333:parameter/foc/*/CLOUDFRONT_ORIGIN_KEY",
+      ])
+      if st.Effect == "Deny" && contains(flatten([st.Action]), "ssm:GetParameter")
     ])
-    error_message = "Deny SSM reads only under /foc/, not on every parameter."
+    error_message = "Plan may read AWS's public parameters, the deploy tags and the origin key; no other parameter."
+  }
+  assert {
+    condition = length([
+      for st in jsondecode(aws_iam_role_policy.plan_state_lock.policy).Statement : st
+      if st.Effect == "Allow" && contains(flatten([st.Action]), "kms:Decrypt") &&
+      st.Condition.StringLike["kms:EncryptionContext:PARAMETER_ARN"] == "arn:aws:ssm:*:111122223333:parameter/foc/*/CLOUDFRONT_ORIGIN_KEY"
+    ]) == 1
+    error_message = "Plan may decrypt only the origin key."
+  }
+  assert {
+    condition = length([
+      for st in jsondecode(aws_iam_role_policy.plan_state_lock.policy).Statement : st
+      if st.Effect == "Deny" && contains(flatten([st.Action]), "kms:Decrypt") &&
+      st.Condition.StringNotLike["kms:EncryptionContext:PARAMETER_ARN"] == "arn:aws:ssm:*:111122223333:parameter/foc/*/CLOUDFRONT_ORIGIN_KEY"
+    ]) == 1
+    error_message = "Every other decrypt stays denied."
+  }
+}
+
+# Deploy part 3: each deploy role keeps its own environment's tags and reads its own logs.
+run "deploy_role_tags_and_logs" {
+  command = apply
+
+  assert {
+    condition = alltrue([
+      for env in ["staging", "production"] : anytrue([
+        for s in jsondecode(aws_iam_role_policy.deploy["deploy-${env}"].policy).Statement :
+        contains(flatten([s.Action]), "ssm:PutParameter") && contains(flatten([s.Action]), "ssm:GetParameter") &&
+        s.Resource == "arn:aws:ssm:ap-southeast-1:111122223333:parameter/foc-deploy/${env}/*"
+      ])
+    ])
+    error_message = "A deploy role reads and writes only its own environment's tag parameters."
+  }
+  assert {
+    condition = anytrue([
+      for s in jsondecode(aws_iam_role_policy.deploy["deploy-production"].policy).Statement :
+      s.Action == "ssm:GetParameter" && s.Resource == "arn:aws:ssm:ap-southeast-1:111122223333:parameter/foc-deploy/staging/passed-tag"
+    ])
+    error_message = "Production reads the tag staging passed."
+  }
+  assert {
+    condition = !anytrue(flatten([
+      for s in jsondecode(aws_iam_role_policy.deploy["deploy-staging"].policy).Statement : [
+        for r in flatten([s.Resource]) : strcontains(r, "foc-deploy/production")
+      ]
+    ]))
+    error_message = "Staging has no access to production's tags."
+  }
+  assert {
+    condition = alltrue([
+      for env in ["staging", "production"] : anytrue([
+        for s in jsondecode(aws_iam_role_policy.deploy["deploy-${env}"].policy).Statement :
+        contains(flatten([s.Action]), "logs:FilterLogEvents") &&
+        s.Resource == "arn:aws:logs:ap-southeast-1:111122223333:log-group:/foc/${env}/*"
+      ])
+    ])
+    error_message = "A deploy role reads only its own environment's logs."
   }
 }

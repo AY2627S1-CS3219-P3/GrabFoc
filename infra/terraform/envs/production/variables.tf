@@ -5,6 +5,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 # Scope: edge_container_port defaults to 8080, the edge listener (deploy part 1, #141).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: image_tag is optional; the staging allowlist (deploy part 3, #143).
+# Author review: Pending Jian Bing's review.
 
 variable "env" {
   description = "Environment name, used in every resource name (foc-<env>-…)."
@@ -18,8 +21,9 @@ variable "instance_type" {
 }
 
 variable "image_tag" {
-  description = "Image tag (the commit SHA) every service runs."
+  description = "Image tag (the commit SHA) every service runs. Leave unset to keep the tag in /foc-deploy/<env>/image-tag."
   type        = string
+  default     = null
 }
 
 variable "edge_container_port" {

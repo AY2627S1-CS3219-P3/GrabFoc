@@ -76,7 +76,7 @@ run "server" {
   }
   assert {
     condition = strcontains(local.user_data, "ECS_CLUSTER=foc-staging") && strcontains(
-      local.user_data, "mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/redis /data/kafka"
+      local.user_data, "mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/notification-db /data/redis /data/kafka"
     ) && strcontains(local.user_data, "chown 1000:1000 /data/kafka")
     error_message = "User data must join the cluster and prepare the /data folders."
   }
