@@ -30,6 +30,9 @@
  * Scope: Added the cases for a top-level `__proto__` metadata field, which Zod dropped before the
  *        walkers could reach it (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Added the cases for a key that carries a code rather than naming a field (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, redactDeep, toRow } from './line.schema';
 
@@ -578,5 +581,52 @@ describe('a top-level __proto__ metadata field', () => {
       attempt: { '[key 0: 9 chars]': { x: 1 } },
       tries: 2,
     });
+  });
+});
+
+/**
+ * Redaction matches field *names*, so a secret in the *key* position has no name to match on:
+ * `{ attempts: { "123456": true } }` carries a six-digit OTP that `isSensitive` cannot see and the
+ * safe alphabet happily admitted. The rule added for it is structural rather than a guess at
+ * content: a key is a *name*, a name starts with a letter, and something that is not a name and is
+ * long enough to hold a code is data. Short non-names stay, because a three-character value is a
+ * bucket label - `{ status: { "403": 12 } }` - and not a credential (PR #129 review).
+ */
+describe('a key that carries a code rather than naming a field (store)', () => {
+  const keysOf = (extra: Record<string, unknown>) =>
+    Object.keys((redactDeep(extra) as Record<string, Record<string, unknown>>)[Object.keys(extra)[0]]);
+
+  it.each([
+    ['a six-digit OTP', '123456'],
+    ['an eight-digit phone number', '81234567'],
+    ['an epoch timestamp', '1762387200000'],
+    ['a four-digit code', '2026'],
+    ['a dashed code', '12-3456'],
+  ])('replaces %s used as a key', (_why, key) => {
+    expect(keysOf({ attempts: { [key]: true } })).toEqual(['[key 0: ' + key.length + ' chars]']);
+  });
+
+  // Keyed `buckets`, not `status`: `status` is an envelope field, so the shipper destructures it
+  // and it never reaches the metadata walk at all - which is what the first draft of this test got
+  // wrong, and the store-side copy did not, because only one of the two has an envelope.
+  it.each([
+    ['a status code', '403'],
+    ['a small index', '7'],
+    ['a two-digit bucket', '12'],
+  ])('keeps %s, which labels a bucket rather than carrying one', (_why, key) => {
+    expect(keysOf({ buckets: { [key]: 12 } })).toEqual([key]);
+  });
+
+  it.each(['requestId', 'a1', 'x', 'orderCount', 'order.events', 'a123456'])(
+    'keeps %s, which reads as a field name',
+    (key) => {
+      expect(keysOf({ meta: { [key]: 1 } })).toEqual([key]);
+    },
+  );
+
+  it('leaves a marker it has already written alone', () => {
+    // Still a fixed point: the marker starts with `[`, so without this it would be replaced again
+    // on every pass and report its own length instead of the key's.
+    expect(keysOf({ attempts: { '[key 0: 6 chars]': true } })).toEqual(['[key 0: 6 chars]']);
   });
 });

@@ -42,6 +42,8 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
  * Scope: Keep a top-level `__proto__` metadata field, which Zod's own object build dropped before
  *        the walkers could rename it (PR #129 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Replace a key that carries a code rather than naming a field (PR #129 review).
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -316,6 +318,30 @@ const REDACTED = '[REDACTED]';
 // list above, so the usual shapes - `{ otp: { ... } }` - are caught by the parent name.
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
 /**
+ * A key that reads as a field *name*, which is to say it starts with a letter.
+ *
+ * Redaction matches names, so a secret in the *key* position has no name to match on:
+ * `{ attempts: { "123456": true } }` carries a six-digit OTP that `isSensitive` cannot see, and
+ * the safe alphabet above admitted it because its characters are unremarkable (PR #129 review).
+ * The test is deliberately structural rather than a guess at content - no entropy, no "looks like
+ * a token" - because this component cannot tell a secret from a number by looking at it. What it
+ * can tell is that a *name* is not a bare number, and that something which is not a name and is
+ * long enough to hold a code is data someone put in the key position.
+ */
+const NAMED_KEY = /^[A-Za-z]/;
+/**
+ * How long a key that is not a name may be before it is replaced.
+ *
+ * Three keeps the bucket labels that carry real diagnostic value - `{ counts: { "403": 12 } }`,
+ * small indices - and replaces the shortest credential this product has. The OTP length is still
+ * being settled (the mockup shows 4, the proposal is 6, root AGENTS.md section 10), so it is set
+ * to the *shorter* of the two: choosing 6 would leave the guard silently useless if the 4-digit
+ * mockup wins the argument. The cost is that a key like `2026` is replaced, which is a visible
+ * loss in a line rather than a silent one, and this is the number to change if that cost turns
+ * out to matter more than the codes it catches.
+ */
+const MAX_UNNAMED_KEY = 3;
+/**
  * The replacement below, recognised on sight. A key is sanitised more than once on its way into a
  * stored row - by the shipper, then by this side's own pass over the same object, then by the
  * dead-letter shape if the line is parked - and the marker does not match SAFE_KEY, so each pass
@@ -335,7 +361,13 @@ function safeKey(key: string, index: number): string {
   // inbound schema builds its own object through Zod, which does drop that name, so it is
   // replaced here rather than shipped and the two sides cannot disagree (PR #129 review).
   if (KEY_MARKER.test(key)) return key;
-  return SAFE_KEY.test(key) && key !== '__proto__' ? key : `[key ${index}: ${key.length} chars]`;
+  // A name, or short enough that it cannot be carrying anything. A credential that does start
+  // with a letter still passes, and nothing here can catch that: the rule that covers it is the
+  // one in AGENTS.md about what may go in key position at all.
+  const named = NAMED_KEY.test(key) || key.length <= MAX_UNNAMED_KEY;
+  return SAFE_KEY.test(key) && named && key !== '__proto__'
+    ? key
+    : `[key ${index}: ${key.length} chars]`;
 }
 const TRUNCATED = '[TRUNCATED]';
 const MAX_DEPTH = 6;

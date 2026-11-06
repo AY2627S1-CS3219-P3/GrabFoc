@@ -226,6 +226,16 @@ _Origin: AI doc, from the plan Cole Lin approved_
     these numbers, so a bound added to the schema and forgotten here fails a test instead of
     quietly costing lines. Only the spec imports it; the shipper is copied into every service and
     stays free of logging-service imports.
+- **A key is a name, and something that is not a name is data.** A key that does not start with a
+  letter is replaced unless it is at most 3 characters: `{ attempts: { "123456": true } }` put a
+  six-digit OTP in key position, where `isSensitive` has no name to match on and the safe alphabet
+  admitted it because its characters are unremarkable (PR #129 review). The test is structural, not
+  a guess at content - this component cannot tell a secret from a number by looking at it. Short
+  non-names stay, because `{ counts: { "403": 12 } }` is a bucket label and carries real diagnostic
+  value. The bound is 3 rather than 5 because the OTP length is still being settled (the mockup
+  shows 4, the proposal 6): the shorter choice is the one that does not go silently useless if the
+  mockup wins. **A credential that starts with a letter still passes**, and nothing here can catch
+  that - the rule that covers it is the one below about what may go in an `event` or a key at all.
 - **Field *names* are sanitised as well as values.** Redaction only ever looked at values, so
   data used as a key — `{ recipients: { "alice@nus.edu.sg": true } }` — travelled untouched
   into stdout, Kafka and the `extra` column (PR #129 review). A name outside

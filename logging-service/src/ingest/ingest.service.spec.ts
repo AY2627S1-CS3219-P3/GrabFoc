@@ -16,6 +16,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-28
  * Scope: Added the case for a field name the producer had already replaced (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Added the cases for a key that carries a code rather than naming a field (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Logger } from '@nestjs/common';
 import { config } from '../config';
@@ -247,6 +250,18 @@ describe('handling a message', () => {
     const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
     await consumer.deliver(JSON.stringify({ lineId: 'nope', [marker]: 'x' }));
     expect(parked[0].body).toContain(marker);
+  });
+
+  /**
+   * The parked shape is the third pass over a key and has to apply the same rule as the other two:
+   * a key that is not a name and is long enough to hold a code is data, not a field (PR #129).
+   */
+  it('replaces a code used as a field name, and keeps a short bucket label', async () => {
+    await consumer.deliver(JSON.stringify({ lineId: 'nope', '123456': 'x', '403': 'y' }));
+    const body = JSON.parse(parked[0].body as string) as Record<string, unknown>;
+    expect(Object.keys(body)).toContain('[key 1: 6 chars]');
+    expect(Object.keys(body)).toContain('403');
+    expect(Object.keys(body)).not.toContain('123456');
   });
 
   it('keeps ordinary field names, including ones redaction would blank', async () => {
