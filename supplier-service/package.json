@@ -16,7 +16,7 @@
   "dependencies": {
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
-    "@nestjs/platform-express": "^12.3.2",
+    "@nestjs/platform-express": "^11.2.8",
     "csv-parse": "^7.0.2",
     "pg": "^8.13.0",
     "reflect-metadata": "^0.2.2",
@@ -54,5 +54,8 @@
       "/node_modules/",
       "\\.int\\.spec\\.ts$"
     ]
+  },
+  "overrides": {
+    "multer": "2.5.0"
   }
 }
