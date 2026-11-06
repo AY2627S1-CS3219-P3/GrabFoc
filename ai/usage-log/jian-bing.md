@@ -154,7 +154,8 @@ build failed with three TS errors before the fix). `npm ls` shows multer 2.5.0 o
 not run. For the Codex comment, Claude reproduced the EUSAGE failure with npm 11.4.2 (main's lockfile from before
 Dependabot fails the same way), added only the missing nested `typescript` entry (regenerating with 11.4.2 would have
 dropped the `libc` fields newer npm uses), and ran `npm ci` with npm 11.4.2, 11.6.2 and 11.19.1: all three pass. My
-own check: pending — Jian Bing to record what he checked.
+own check (2026-11-06): I went through the change with Claude Code's walkthrough and understood it; CI
+passed (user-service and supplier-service tests and builds). Approved and merged by Deanson Choo (#193).
 
 
 ### 2026-10-23 — AWS deployment design and spec (issue #58)

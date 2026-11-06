@@ -1,5 +1,5 @@
 {
-  "_disclosure": "AI Assistance Disclosure:\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06\nScope: @nestjs/platform-express back to ^11.2.8, and an override keeping multer at 2.5.0 (GHSA-q7qp-rjg7-q26m) (PR #193). package-lock.json is npm's output for that change, plus one nested typescript entry added by hand so npm 11.4.2 accepts it.\nAuthor review: Pending Jian Bing's review.",
+  "_disclosure": "AI Assistance Disclosure:\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06\nScope: @nestjs/platform-express back to ^11.2.8, and an override keeping multer at 2.5.0 (GHSA-q7qp-rjg7-q26m) (PR #193). package-lock.json is npm's output for that change, plus one nested typescript entry added by hand so npm 11.4.2 accepts it.\nAuthor review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it; CI passed (user-service and supplier-service tests and builds). Approved and merged by Deanson Choo (#193).",
   "name": "user-service",
   "version": "0.0.1",
   "description": "",
