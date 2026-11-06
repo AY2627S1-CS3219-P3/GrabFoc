@@ -98,12 +98,60 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-23
 Scope: Wrote the 2026-10-23 AWS deployment design entry (issue #58) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 broken-main dependency entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-06 — Main's CI broken by two Dependabot major bumps (NestJS platform-express 12, Zod 4)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `user-service/package.json`, `user-service/package-lock.json`, `supplier-service/package.json`,
+`supplier-service/package-lock.json`, `supplier-service/src/locations/location.schemas.ts`,
+`order-service/src/common/zod-validation.pipe.ts`
+
+**Scenario:** The user-service and supplier-service CI jobs failed on my PRs #146 and #156 after I merged main into
+them. Claude found that main itself had been red since 2026-11-02 and fixed it in a separate PR. In the same session
+Claude also merged main into `fix/soclaas-timeout` (#133) to clear its usage-log conflict, keeping both entries.
+
+**Prompts (exact, in order):**
+> [Image #11], ci cd fail, and [Image #12] thsi also failed, and also [Image #13] emrge conflict
+
+(Screenshots of the failing checks on #146 and #156, and the conflict on #133.)
+
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answers to Claude's questions: "Keep Zod 4, fix code (Recommended)", "Fix 4, explain 1 (Recommended)",
+"Record the chat OK now (Recommended)", "Walk me through it".
+
+> [Image #14]
+
+(Screenshot of Codex's comment on #193: `npm ci` with npm 11.4.2 fails with `Missing: typescript@ from lock file`.)
+
+**What it produced:** The cause: Dependabot PRs #163 and #164 moved `@nestjs/platform-express` to 12 while the rest
+of NestJS is 11, so `npm ci` stops with ERESOLVE before any test runs. That hid a second break: #173 and #174 moved
+supplier-service and order-service to Zod 4, where `ZodTypeDef` is gone and `.default()` no longer runs the
+transform (supplier's `page` came back as the text `"1"`). The fix: platform-express back to `^11.2.8`, with an npm
+override that keeps multer at 2.5.0, because 11.2.8 pins multer 2.4.0, which has GHSA-q7qp-rjg7-q26m (high); Zod 4
+kept, with `.prefault()` for the two defaults and `ZodType<Output, Input>` in the two validation helpers.
+
+**What I changed or rejected:** I rejected going back to Zod 3, because every Zod 3 version has
+GHSA-mrhx-c7xc-m3w5 (high) and 3.x has no patch. Moving all of NestJS to 12 was not attempted; that is for the
+service owners.
+
+**Verification:** Claude reproduced the ERESOLVE failure locally on main, then on Node 24 (CI's version for
+user-service) ran `npm ci`, `npm test` and `npm run build`: user-service passed (4 test files, 1 skipped),
+supplier-service 178/178 (the two default-value tests failed before `.prefault()`), and order-service 13/13 (its
+build failed with three TS errors before the fix). `npm ls` shows multer 2.5.0 overridden. Integration tests were
+not run. For the Codex comment, Claude reproduced the EUSAGE failure with npm 11.4.2 (main's lockfile from before
+Dependabot fails the same way), added only the missing nested `typescript` entry (regenerating with 11.4.2 would have
+dropped the `libc` fields newer npm uses), and ran `npm ci` with npm 11.4.2, 11.6.2 and 11.19.1: all three pass. My
+own check: pending — Jian Bing to record what he checked.
 
 
 ### 2026-10-23 — AWS deployment design and spec (issue #58)
