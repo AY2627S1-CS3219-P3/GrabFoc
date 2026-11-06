@@ -12,6 +12,10 @@ Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
 Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+Scope: Added logging-service/ to the repository layout, and recorded the three N2Hs whose GitHub
+assignees differ from the Gantt chart (issue #52 to Cole Lin; #57 and #58 to Jian Bing).
+Author review: Cole Lin, read and approved.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
 Scope: §3 Communication: HTTP for reserve only; transfer and release as credit.commands (Zi Yi's direction).
 Author review: Reviewed
@@ -179,6 +183,7 @@ The repo follows the template's **one-service-per-folder** rule (see `README.md`
 ├── credit-service/        # core (template)
 ├── api-gateway/           # extra service, same level
 ├── notification-service/  # extra service, same level
+├── logging-service/       # N2H (issue #52), same level
 ├── frontend/
 ├── data/
 │   ├── csv/supplier-seed-data.csv   # Supplier seed data (from the template)
@@ -190,7 +195,7 @@ The repo follows the template's **one-service-per-folder** rule (see `README.md`
 
 - Each service folder has its own `Dockerfile`, `README.md` and `AGENTS.md`. Put service-specific agent notes in that service's `AGENTS.md`.
 - Each service folder also has its own `compose.yaml`: the service plus the containers only it uses, including its own database. The root `compose.yaml` only `include`s them, so `docker compose up` from the root still starts everything.
-- Any N2H that needs its own service (e.g. centralized logging, real-time chat) gets a new top-level folder, following the same structure.
+- Any N2H that needs its own service (e.g. centralized logging, real-time chat) gets a new top-level folder, following the same structure. `logging-service/` is the first of these.
 - Agent configs, prompts and skills may be added, but core code must stay inside the service folders.
 
 ### Ownership
@@ -215,6 +220,12 @@ Overall plan (from the Gantt chart):
 | Order acceptance/lifecycle/history, containerisation, Real-time chat | Jie Yang |
 | Credit Service, service integration, Admin dashboard | Zi Yi |
 | User Service, UI mockup | Deanson |
+
+Since the Gantt chart was drawn, GitHub assignments have moved three of these N2Hs (checked
+2026-10-21; the rows above stay as the original plan):
+
+- **Centralized Logging** → Cole Lin (issue #52, opened by Zi Yi).
+- **CI** → Jian Bing (#57, closed) and **cloud deployment / CD** → Jian Bing (#58).
 
 **[Open]** Deanson has no N2H assigned yet (every member needs one).
 
