@@ -6,9 +6,12 @@
 # Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
 #   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
 #   the admin locations page load).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: the Notification and checks images (deploy part 3).
+# Author review: Pending Jian Bing's review.
 #
-# One-off manual build and push of every image to ECR, until the CI workflow (deploy part 3) does it.
-#   infra/scripts/push-images.sh "$(git rev-parse --short HEAD)"
+# Builds and pushes every image to ECR; the deploy workflow runs this on each merge to main.
+#   infra/scripts/push-images.sh "$(git rev-parse --short=7 HEAD)"
 # Builds for linux/amd64 (the t3 server), from the same contexts as the compose files. Safe to rerun
 # with the same tag: images already in ECR are skipped.
 # AI-generated (Claude Code).
@@ -27,9 +30,11 @@ images=(
   "supplier-service|.|supplier-service/Dockerfile"
   "credit-service|credit-service|credit-service/Dockerfile"
   "order-service|order-service|order-service/Dockerfile"
+  "notification-service|notification-service|notification-service/Dockerfile"
   "api-gateway|api-gateway|api-gateway/Dockerfile"
   "frontend|frontend|frontend/Dockerfile"
   "kafka-init|infra/kafka|infra/kafka/Dockerfile.init"
+  "checks|.|infra/checks/Dockerfile"
 )
 for entry in "${images[@]}"; do
   IFS='|' read -r name context dockerfile <<< "$entry"

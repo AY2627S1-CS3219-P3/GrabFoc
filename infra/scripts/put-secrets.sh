@@ -6,6 +6,9 @@
 # Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
 #   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
 #   the admin locations page load).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: Notification's secrets (deploy part 3).
+# Author review: Pending Jian Bing's review.
 #
 # Loads one environment's secrets into SSM Parameter Store as SecureStrings under /foc/<env>/.
 #   infra/scripts/put-secrets.sh staging      # reads infra/secrets/staging.env (git-ignored)
@@ -29,9 +32,10 @@ file="$root/infra/secrets/$env.env"
 # built below.
 required=(
   POSTGRES_PASSWORD SUPPLIER_POSTGRES_PASSWORD CREDIT_POSTGRES_PASSWORD ORDER_DB_PASSWORD
+  NOTIFICATION_POSTGRES_PASSWORD
   USER_AES_KEY USER_EMAIL_HMAC_KEY USER_OTP_HMAC_KEY USER_JWT_PRIVATE_KEY USER_JWT_KID
   USER_SMTP_USER USER_SMTP_PASS USER_SMTP_FROM USER_BOOTSTRAP_ADMIN_EMAIL
-  CREDIT_SERVICE_KEY ORDER_SERVICE_KEY
+  CREDIT_SERVICE_KEY ORDER_SERVICE_KEY USER_INTERNAL_SERVICE_KEY
 )
 
 # Works on macOS's bash 3.2 too (no associative arrays): look a name up in the file each time.

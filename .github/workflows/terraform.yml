@@ -4,8 +4,11 @@
 # Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
 #   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
 #   the admin locations page load).
-# Terraform and deployment-script checks on pull requests that touch the infrastructure (issue #100). "terraform plan"
-# against AWS is added with the deploy workflows (part 3, #143), once the OIDC roles exist.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: The plan job, and the deploy scripts' and checks image's tests (deploy part 3, #143).
+# Author review: Pending Jian Bing's review.
+# Terraform and deployment-script checks on pull requests that touch the infrastructure (issue #100),
+# then "terraform plan" against staging.
 # AI-generated (Claude Code).
 
 name: Terraform
@@ -15,6 +18,8 @@ on:
     paths:
       - "infra/terraform/**"
       - "infra/scripts/**"
+      - "infra/checks/**"
+      - "api-gateway/postman/**" # a renamed folder would fail the checks image
       - ".github/workflows/terraform.yml"
 
 permissions:
@@ -28,7 +33,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~1.15.0"
@@ -40,3 +45,42 @@ jobs:
           infra/scripts/test/put-secrets.test.sh
           infra/scripts/test/new-secrets.test.sh
           infra/scripts/test/push-images.test.sh
+          # AI-generated (Claude Code); review pending.
+          infra/scripts/test/deploy-images.test.sh
+          infra/scripts/test/run-checks.test.sh
+          infra/scripts/test/repo-checks.test.sh
+      - name: test the checks selection
+        run: node --test infra/checks/test/select.test.mjs
+
+  plan:
+    needs: check
+    # Fork pull requests get no OIDC token.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    # Secrets, not variables: GitHub prints a job's env in this public log and masks only secrets.
+    env:
+      TF_VAR_alert_emails: ${{ secrets.TF_VAR_alert_emails }}
+      TF_VAR_mailpit_relay_to: ${{ secrets.TF_VAR_mailpit_relay_to }}
+    defaults:
+      run:
+        working-directory: infra/terraform/envs/staging
+        shell: bash # with pipefail, so a failed plan isn't hidden by sed
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15.0"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::690084476135:role/foc-github-plan
+          aws-region: ap-southeast-1
+      - run: terraform init -input=false -backend-config="bucket=foc-terraform-state-690084476135"
+      # The plan shows single addresses from those lists, which the secret masking doesn't cover.
+      - name: terraform plan
+        run: |
+          terraform plan -input=false -no-color -var-file=staging.tfvars 2>&1 |
+            sed -E 's/[A-Za-z0-9._%+\\-]+@[A-Za-z0-9\\.-]+/<email>/g'

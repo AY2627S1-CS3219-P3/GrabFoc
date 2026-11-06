@@ -105,6 +105,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Wrote the 2026-10-26 staging apply and 2026-10-27 edge routing (deploy part 1) entries from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 deploy part 3 review-fix entry (PR #191) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 gateway .env.example entry (PR #156) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
@@ -128,6 +131,37 @@ Author review: pending — Jian Bing to record what he checked.
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-06 — Codex review fixes on deploy part 3 (PR #191)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `infra/scripts/deploy-images.sh`, `infra/scripts/test/deploy-images.test.sh`,
+`infra/scripts/test/repo-checks.test.sh`, `.github/workflows/deploy-production.yml`,
+`.github/workflows/deploy-staging.yml`, plus an inline marker in each file this PR generated or changed
+
+**Scenario:** Codex left four threads on #191. Three were real: a rollback tag was checked in one image repository
+only; the job timeouts were shorter than the scripts' own retries; and the generated code had no inline AI markers.
+The fourth (the Notification Service is not on main yet) is the known dependency on #161 to #189.
+
+**Prompts (exact, in order):**
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answer to Claude's question about the new Codex threads: "Fix 4, explain 1 (Recommended)".
+
+**What it produced:**
+- `deploy-images.sh` now checks, before changing anything, that every `foc/` image the services' task definitions
+  use exists on the tag. The production workflow's one-repository check is removed.
+- The production job's timeout went from 60 to 150 minutes, and staging's from 120 to 210, above the scripts'
+  slowest runs (about 132 and 187 minutes).
+- A marker under the header of each generated file, and above each added block of three or more code lines in the
+  files this PR changed.
+
+**What I changed or rejected:** Lowering the retry budget instead of raising the timeouts was not taken.
+
+**Verification:** Claude watched the new tests fail first (4 in `deploy-images.test.sh`, 2 in
+`repo-checks.test.sh`), then ran all six script tests (0 failed each), `infra/terraform/check.sh` (19 test runs
+passed, every stack valid), `node --test infra/checks/test/select.test.mjs` (6 passed) and `actionlint`. My own
+check: pending — Jian Bing to record what he checked.
 
 ### 2026-11-06 — Recording my review of the AWS infrastructure (PR #146)
 
@@ -285,6 +319,42 @@ them; the next commit removed them.
 
 **Verification:** `python3 -I -m unittest discover -s .github/scripts`: 4 passed after the merge. My own check: the
 walkthroughs above.
+
+### 2026-11-05 — Delivery and the Notification Service on AWS, deploy part 3 (issue #143)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `.github/workflows/{deploy-staging,deploy-production,terraform}.yml`, `infra/checks/*`,
+`infra/scripts/{deploy-images,run-checks,new-secrets,put-secrets,push-images}.sh`, `infra/scripts/lib/task-definition.sh`,
+`infra/scripts/test/*`, `infra/terraform/{global,envs,modules/services,modules/server}/*`, `infra/terraform/README.md`,
+`infra/secrets/README.md`, `docs/superpowers/specs/2026-10-23-aws-deployment-design.md`,
+`docs/superpowers/plans/2026-10-27-deploy-part3-delivery.md`
+
+**Scenario:** Plan and build continuous delivery: each merge to `main` builds the images once, rolls them onto
+staging and runs the safe Postman checks there; production deploys the tag staging passed, after approval. The
+Notification Service and its database were added to the deployment at Jian Bing's request. The four design choices
+(register and update task definitions, Mailpit on host port 8025, smoke and safe flows, plan role may read the
+origin key) were Jian Bing's, from options Claude listed with a recommendation. Restricting Mailpit's forwarding to
+an allowlist was Claude's call, flagged in the plan. A fresh Claude reviewer then checked the whole branch; its
+four Important findings (emails in the public plan log, a failed register being swallowed, the stability waiter
+passing a broken gateway, and the rollout order) were fixed test-first, and nine Minor findings were deferred.
+
+**Prompts (exact):**
+> is the cd pieplien se tu pas well
+
+> yea sure
+
+> sorry, back to the grabfoc, i mistokk this terminal for the kootu one, my peer are asking me if the cd and aws is ready to merge, also part 3 seems okay
+
+> yea fix them, and add the notificaiton too, bascially jsut finish out this whole nice 2 have
+
+> ok continue
+
+> try again now
+
+**Key response:** "Notification's PR chain (#161 to #189) and #178 must reach `main` before this branch does, because
+`push-images.sh` builds `notification-service/`."
+
+**Verification:** Pending — Jian Bing to record what he checked.
 
 ### 2026-11-05 — Second Codex review round on the AWS infrastructure (PR #146)
 

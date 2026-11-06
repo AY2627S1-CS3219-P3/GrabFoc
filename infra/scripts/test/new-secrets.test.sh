@@ -4,6 +4,9 @@
 # Scope: Tests new-secrets.sh (deploy part 2, first live apply).
 #        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 # Author review (Jian Bing, 2026-11-06): Not read line by line; these tests pass in CI (terraform.yml).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: Notification's secrets and --add-missing (deploy part 3).
+# Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/new-secrets.test.sh
 # AI-generated (Claude Code).
@@ -20,7 +23,7 @@ out=$(FOC_REPO_ROOT="$work" "$HERE/../new-secrets.sh" staging 2>&1); code=$?
 check "creates the file" '[ $code -eq 0 ] && [ -f "$file" ]'
 # ls, not stat: BSD and GNU stat take different flags (Codex review on #146).
 check "file is private (600)" '[ "$(ls -l "$file" | cut -c1-10)" = "-rw-------" ]'
-for n in POSTGRES_PASSWORD SUPPLIER_POSTGRES_PASSWORD CREDIT_POSTGRES_PASSWORD ORDER_DB_PASSWORD CREDIT_SERVICE_KEY ORDER_SERVICE_KEY USER_JWT_KID; do
+for n in POSTGRES_PASSWORD SUPPLIER_POSTGRES_PASSWORD CREDIT_POSTGRES_PASSWORD ORDER_DB_PASSWORD NOTIFICATION_POSTGRES_PASSWORD CREDIT_SERVICE_KEY ORDER_SERVICE_KEY USER_INTERNAL_SERVICE_KEY USER_JWT_KID; do
   check "$n generated" '[ -n "$(val '"$n"')" ]'
 done
 for n in USER_AES_KEY USER_EMAIL_HMAC_KEY USER_OTP_HMAC_KEY; do
@@ -36,6 +39,26 @@ check "no generated value printed" '! grep -qF "$(val POSTGRES_PASSWORD)" <<<"$o
 before=$(cat "$file")
 FOC_REPO_ROOT="$work" "$HERE/../new-secrets.sh" staging >/dev/null 2>&1; code=$?
 check "refuses to overwrite an existing file" '[ $code -ne 0 ] && [ "$(cat "$file")" = "$before" ]'
+
+# AI-generated (Claude Code); review pending.
+# --add-missing: an environment created before a secret existed gets it, and nothing else changes.
+grep -v '^NOTIFICATION_POSTGRES_PASSWORD=\|^USER_INTERNAL_SERVICE_KEY=' "$file" > "$file.new"
+printf '%s' "$(cat "$file.new")" > "$file" # no newline at the end of the file
+rm "$file.new"
+before=$(cat "$file")
+out=$(FOC_REPO_ROOT="$work" "$HERE/../new-secrets.sh" staging --add-missing 2>&1); code=$?
+check "--add-missing succeeds" '[ $code -eq 0 ]'
+check "--add-missing keeps every existing line" '[ "$(head -c ${#before} "$file")" = "$before" ]'
+check "--add-missing adds the new names" '[ "$(val USER_INTERNAL_SERVICE_KEY | wc -c)" -gt 32 ] && [ -n "$(val NOTIFICATION_POSTGRES_PASSWORD)" ]'
+check "--add-missing starts them on their own lines" '[ "$(grep -c "^USER_INTERNAL_SERVICE_KEY=" "$file")" = 1 ]'
+check "--add-missing prints names, not values" 'grep -q "added USER_INTERNAL_SERVICE_KEY" <<<"$out" && ! grep -qF "$(val USER_INTERNAL_SERVICE_KEY)" <<<"$out"'
+check "--add-missing keeps the file private" '[ "$(ls -l "$file" | cut -c1-10)" = "-rw-------" ]'
+after=$(cat "$file")
+FOC_REPO_ROOT="$work" "$HERE/../new-secrets.sh" staging --add-missing >/dev/null 2>&1; code=$?
+check "--add-missing twice changes nothing" '[ $code -eq 0 ] && [ "$(cat "$file")" = "$after" ]'
+rm "$file"
+FOC_REPO_ROOT="$work" "$HERE/../new-secrets.sh" staging --add-missing >/dev/null 2>&1; code=$?
+check "--add-missing needs an existing file" '[ $code -ne 0 ] && [ ! -e "$file" ]'
 
 echo "$fails failed"
 [ "$fails" -eq 0 ]

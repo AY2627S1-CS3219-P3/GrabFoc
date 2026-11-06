@@ -2,6 +2,7 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 4). Plan-only with a mocked AWS provider: the data
 #        2026-10-27 and 2026-11-05 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
+#        2026-11-05 (Claude Code, Claude Opus 5.5): the /data/notification-db folder (deploy part 3, #143).
 #        volume has prevent_destroy, so the test never applies (and so never has to destroy) it.
 # Author review (Jian Bing, 2026-11-06): Not read line by line; ran infra/terraform/check.sh, which runs these
 #   tests (all passed).
@@ -78,7 +79,7 @@ run "server" {
   }
   assert {
     condition = strcontains(local.user_data, "ECS_CLUSTER=foc-staging") && strcontains(
-      local.user_data, "mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/redis /data/kafka"
+      local.user_data, "mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/notification-db /data/redis /data/kafka"
     ) && strcontains(local.user_data, "chown 1000:1000 /data/kafka")
     error_message = "User data must join the cluster and prepare the /data folders."
   }

@@ -5,29 +5,48 @@
 # Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
 #   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
 #   the admin locations page load).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: Notification's secrets and --add-missing (deploy part 3).
+# Author review: Pending Jian Bing's review.
 #
 # Creates infra/secrets/<env>.env (git-ignored, mode 600) with fresh random values for every
 # generated secret, the same formats as .env.example asks for. It never prints a value and never
 # overwrites an existing file. Fill in the four Gmail/admin lines yourself, then run put-secrets.sh.
 #   infra/scripts/new-secrets.sh staging
+# For an environment created before a secret existed, this appends only the missing ones:
+#   infra/scripts/new-secrets.sh staging --add-missing
 # AI-generated (Claude Code).
 set -euo pipefail
 
 env="${1:-}"
+mode="${2:-}"
 case "$env" in
   staging | production) ;;
-  *) echo "usage: $0 staging|production" >&2; exit 2 ;;
+  *) echo "usage: $0 staging|production [--add-missing]" >&2; exit 2 ;;
 esac
 
 root="${FOC_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 file="$root/infra/secrets/$env.env"
+
+# AI-generated (Claude Code); review pending.
+hex() { openssl rand -hex 32; }
+key32() { openssl rand -base64 32; }
+
+if [ "$mode" = "--add-missing" ]; then
+  [ -f "$file" ] || { echo "$file doesn't exist; run without --add-missing first" >&2; exit 1; }
+  for name in NOTIFICATION_POSTGRES_PASSWORD USER_INTERNAL_SERVICE_KEY; do
+    grep -q "^$name=" "$file" && continue
+    [ -z "$(tail -c 1 "$file")" ] || echo >> "$file" # the file may not end in a newline
+    echo "$name=$(hex)" >> "$file"
+    echo "added $name"
+  done
+  exit 0
+fi
+
 if [ -e "$file" ]; then
   echo "$file already exists; not touching it" >&2
   exit 1
 fi
-
-hex() { openssl rand -hex 32; }
-key32() { openssl rand -base64 32; }
 
 umask 077
 {
@@ -36,8 +55,10 @@ umask 077
   echo "SUPPLIER_POSTGRES_PASSWORD=$(hex)"
   echo "CREDIT_POSTGRES_PASSWORD=$(hex)"
   echo "ORDER_DB_PASSWORD=$(hex)"
+  echo "NOTIFICATION_POSTGRES_PASSWORD=$(hex)"
   echo "CREDIT_SERVICE_KEY=$(hex)"
   echo "ORDER_SERVICE_KEY=$(hex)"
+  echo "USER_INTERNAL_SERVICE_KEY=$(hex)"
   echo "USER_AES_KEY=$(key32)"
   echo "USER_EMAIL_HMAC_KEY=$(key32)"
   echo "USER_OTP_HMAC_KEY=$(key32)"
