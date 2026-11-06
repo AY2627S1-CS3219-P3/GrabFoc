@@ -84,6 +84,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
  * Scope: Replace a key that carries a code rather than naming a field, so a credential in key
  *        position is not treated as safe because its characters are (PR #129 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Charge a batch that is still being published against the buffer limits, so the
+ *        documented bound is the real ceiling (PR #129 review).
  */
 import { randomUUID } from 'node:crypto';
 
@@ -548,6 +551,18 @@ function boundedInt(value: unknown, min: number, max: number): number | undefine
 
 export class LogShipper {
   private readonly buffer: OutboundLine[] = [];
+  /**
+   * Lines and bytes handed to a publish that has not settled yet.
+   *
+   * They have left `buffer`, but the closure in `flush` still holds the batch, so they are still
+   * in memory and still have to be counted. Releasing the budget on splice let `emit()` fill a
+   * second complete buffer while the first was in flight: 2,000 lines and 8 MB retained against
+   * documented bounds of 1,000 and 4 MB (PR #129 review). The comment that used to sit on that
+   * line argued the opposite - "once the batch is out of it the budget is free again" - and it was
+   * wrong about where the memory is, not about what the policy should be.
+   */
+  private inFlightLines = 0;
+  private inFlightBytes = 0;
   private readonly maxBuffer: number;
   private readonly maxBufferBytes: number;
   private readonly maxLineBytes: number;
@@ -662,7 +677,11 @@ export class LogShipper {
       this.counts.oversize += 1;
       return;
     }
-    if (this.buffer.length >= this.maxBuffer || this.bufferedBytes + bytes > this.maxBufferBytes) {
+    // Both halves count what is retained, which is the buffer plus whatever a pending publish is
+    // still holding (PR #129 review).
+    const lines = this.buffer.length + this.inFlightLines;
+    const retained = this.bufferedBytes + this.inFlightBytes;
+    if (lines >= this.maxBuffer || retained + bytes > this.maxBufferBytes) {
       this.counts.dropped += 1;
       return;
     }
@@ -811,8 +830,12 @@ export class LogShipper {
     if (this.publishing) return this.publishing;
     if (!this.publisher || !this.buffer.length) return;
     const batch = this.buffer.splice(0, this.buffer.length);
-    // The buffer is what holds the memory; once the batch is out of it the budget is free again,
-    // whether or not the publish then succeeds. Lines are never put back - they are on stdout.
+    // Moved from one account to the other rather than written off: the batch is still held by the
+    // closure below until the publish settles. Lines are never put back - they are on stdout - so
+    // this is about what is in memory now, not about retrying them.
+    const batchBytes = this.bufferedBytes;
+    this.inFlightLines += batch.length;
+    this.inFlightBytes += batchBytes;
     this.bufferedBytes = 0;
     const publisher = this.publisher;
     const pending = (async () => {
@@ -834,6 +857,10 @@ export class LogShipper {
       // settled promise in place would make every later flush() a no-op, disabling shipping for
       // the life of the process.
       if (this.publishing === pending) this.publishing = undefined;
+      // By this batch's own numbers, not reset to zero: only one publish is in flight at a time
+      // today, and subtracting what this one added stays correct if that ever stops being true.
+      this.inFlightLines -= batch.length;
+      this.inFlightBytes -= batchBytes;
     }
   }
 

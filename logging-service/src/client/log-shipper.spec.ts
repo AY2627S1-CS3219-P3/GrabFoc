@@ -61,6 +61,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
  * Scope: Added the cases for a key that carries a code rather than naming a field (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Added the cases for a batch still in flight counting against the bounds (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -1223,5 +1226,66 @@ describe('a key that carries a code rather than naming a field (shipper)', () =>
     const parsed = inboundLineSchema.safeParse(JSON.parse(written[written.length - 1]));
     expect(parsed.success).toBe(true);
     expect(toRow(parsed.data as never).extra).toEqual({ attempts: { '[key 0: 6 chars]': true } });
+  });
+});
+
+/**
+ * A batch handed to a pending publish has left `buffer` but is still held by the closure that is
+ * publishing it, so it is still in memory. Releasing the budget when it left the buffer let
+ * `emit()` fill a second complete buffer underneath it - twice the documented bound, in the one
+ * component whose justification for dropping lines at all is that its memory is bounded
+ * (PR #129 review). A line is 339 bytes with a 200-byte blob, as the byte-budget test above
+ * measures it.
+ */
+describe('a batch that is still being published', () => {
+  it('still counts against the line bound', () => {
+    const log = shipper(neverSettles, 2);
+    log.emit({ level: 'info', event: 'a' });
+    log.emit({ level: 'info', event: 'b' });
+    // Not awaited: this publisher never settles, which is the condition being tested.
+    void log.flush();
+    log.emit({ level: 'info', event: 'c' });
+    log.emit({ level: 'info', event: 'd' });
+    expect(log.counts.dropped).toBe(2);
+    // All four reached stdout, which is what makes dropping them acceptable.
+    expect(written).toHaveLength(4);
+  });
+
+  it('still counts against the byte bound', () => {
+    const log = shipper(neverSettles, 1000, { maxBufferBytes: 1100, maxLineBytes: 400 });
+    for (let i = 0; i < 3; i += 1) log.emit({ level: 'info', event: 'e', blob: 'x'.repeat(200) });
+    void log.flush();
+    for (let i = 0; i < 3; i += 1) log.emit({ level: 'info', event: 'e', blob: 'x'.repeat(200) });
+    expect(log.counts.dropped).toBe(3);
+    expect(written).toHaveLength(6);
+  });
+
+  it('releases the budget once the publish settles', async () => {
+    // The other side of the same rule, and the behaviour the old comment was reaching for: a
+    // settled publish frees the budget, so this must keep working.
+    const log = shipper(collecting, 2);
+    log.emit({ level: 'info', event: 'a' });
+    log.emit({ level: 'info', event: 'b' });
+    await log.flush();
+    log.emit({ level: 'info', event: 'c' });
+    log.emit({ level: 'info', event: 'd' });
+    expect(log.counts.dropped).toBe(0);
+    expect(published).toHaveLength(2);
+  });
+
+  it('frees the budget even when the publish fails', async () => {
+    // Failure is counted, not retained: the lines are on stdout and the batch is gone either way.
+    const failing: LinePublisher = {
+      publish: async () => {
+        throw new Error('nope');
+      },
+    };
+    const log = shipper(failing, 2);
+    log.emit({ level: 'info', event: 'a' });
+    log.emit({ level: 'info', event: 'b' });
+    await log.flush();
+    log.emit({ level: 'info', event: 'c' });
+    expect(log.counts.dropped).toBe(0);
+    expect(log.counts.failed).toBe(2);
   });
 });
