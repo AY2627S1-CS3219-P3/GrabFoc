@@ -100,9 +100,12 @@ Scope: Wrote the 2026-10-23 AWS deployment design entry (issue #58) from Jian Bi
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote the 2026-10-22 SoCLaaS timeout entry from Jian Bing's prompts.
-Author review: pending — Jian Bing to record what he checked.
+Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it; the 4 tests pass.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 broken-main dependency entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 review-recording entry (PRs #193 and #133) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -110,6 +113,38 @@ Author review: pending — Jian Bing to record what he checked.
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-06 — Recording my reviews of #193 and #133, and bringing #133 up to date
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `.gitignore`, `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, the four
+files #193 changed, this log
+
+**Scenario:** Deanson merged #193 before its review lines were filled in, so they are recorded here, on #133, which
+also needed main merged in. Claude walked me through the #193 and #133 changes and wrote my review lines in the
+wording I confirmed. While merging, it found that the original #133 commit had committed two Python bytecode
+caches, removed them and ignored `__pycache__/` everywhere.
+
+**Prompts (exact, in order):**
+> okay i understood everything, but my peer alreayd reviewed and emrged 193, so can uadd the authro review to another branch like 143 by merging main into it and then letting me add the remaing missing author reviewe comments
+
+> lets marge 133 too
+
+> lets marge 133 actually first instead of 143
+
+My answers to Claude's questions: "Use this wording (Recommended)" (the #193 review line) and "Walk me through it"
+(for #133).
+
+> yep males sense
+
+**What it produced:** The merge of main (both sides of the usage-log conflict kept), the cache removal, and the
+review lines. Claude's first removal commit (d396ebe) re-added the caches, because the test run before it rebuilt
+them; the next commit removed them.
+
+**What I changed or rejected:** I chose #133 over the AWS PRs for these lines, since it can merge sooner.
+
+**Verification:** `python3 -I -m unittest discover -s .github/scripts`: 4 passed after the merge. My own check: the
+walkthroughs above.
 
 ### 2026-11-06 — Main's CI broken by two Dependabot major bumps (NestJS platform-express 12, Zod 4)
 
@@ -371,7 +406,8 @@ request gets 240 s and one retry after a timeout or a 503; stdlib tests against 
 only PRs that target main was offered and not taken.
 
 **Verification:** Test-first: the timeout test failed with "could not be reached", then the four
-tests passed (`python3 -I -m unittest discover -s .github/scripts`).
+tests passed (`python3 -I -m unittest discover -s .github/scripts`). My own check (2026-11-06): I went through
+the change with Claude Code's walkthrough and understood it; the 4 tests pass.
 
 ### 2026-10-22 — Recording Zi Yi's and the mentor's approvals (PR #97)
 

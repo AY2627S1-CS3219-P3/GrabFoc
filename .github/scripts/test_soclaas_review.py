@@ -2,7 +2,7 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 # Scope: Generated tests for the SoCLaaS timeout message and the review request's retry,
 #   against a local HTTP server that stalls or answers 503.
-# Author review: pending — Jian Bing to record what he checked.
+# Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it; the 4 tests pass.
 """Run with: python3 -I -m unittest discover -s .github/scripts"""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
