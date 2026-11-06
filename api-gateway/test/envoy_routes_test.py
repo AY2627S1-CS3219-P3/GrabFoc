@@ -2,11 +2,18 @@
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Verify route-file discovery, malformed authentication configuration, and environment-configurable Envoy settings.
 Author review: Pending human review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added ORDER_SERVICE_URL to the base environment and a check that the Order routes render as protected routes to the order cluster.
+Author review: Pending review by Deanson.
+Scope: Added CREDIT_SERVICE_URL to the test environment and a test that only Credit's balance and
+history reads are routed, with JWT required (#61).
+Author review: pending — Jie Yang to record the review.
 """
 # AI-generated; review pending.
 import importlib.util
 import json
 from pathlib import Path
+import re
 import shutil
 import tempfile
 import unittest
@@ -24,10 +31,30 @@ class RouteFilesTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("isolated_renderer", self.root / "render.py")
         self.renderer = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.renderer)
-        self.env = {"USER_SERVICE_URL": "http://user:3001", "SUPPLIER_SERVICE_URL": "http://supplier:3002"}
+        self.env = {"USER_SERVICE_URL": "http://user:3001", "SUPPLIER_SERVICE_URL": "http://supplier:3002",
+                    "ORDER_SERVICE_URL": "http://order:3005", "CREDIT_SERVICE_URL": "http://credit:3004"}
 
     def write_service(self, definition):
         (self.root / "routes" / "30-extra.routes.json").write_text(json.dumps(definition))
+
+    def test_credit_routes_expose_only_balance_and_history_reads(self):
+        config = self.renderer.configuration(self.env)
+        hcm = config["static_resources"]["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
+        routes = [r for r in hcm["route_config"]["virtual_hosts"][0]["routes"]
+                  if r.get("route", {}).get("cluster") == "credit"]
+        self.assertEqual(len(routes), 2)
+        for route in routes:
+            self.assertEqual(route["match"]["headers"][0]["string_match"]["exact"], "GET")
+            self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"], "user_token")
+        patterns = [route["match"]["safe_regex"]["regex"] for route in routes]
+        routed = lambda path: any(re.fullmatch(pattern, path) for pattern in patterns)
+        user = "780419c1-46d6-4046-8f8c-73851d35c07e"
+        self.assertTrue(routed(f"/credits/{user}"))
+        self.assertTrue(routed(f"/credits/{user}/transactions"))
+        for path in ("/credits", "/internal/credits/reserve", "/admin/credits/dead-letters",
+                     f"/credits/{user}/transactions/extra"):
+            with self.subTest(path=path):
+                self.assertFalse(routed(path))
 
     def test_new_file_adds_upstream_and_protected_route(self):
         self.write_service({"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",
@@ -43,6 +70,24 @@ class RouteFilesTest(unittest.TestCase):
         self.assertEqual(route["route"]["cluster"], "extra")
         self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"], "user_token")
         self.assertEqual(routes[-1]["direct_response"]["status"], 404)
+
+    # AI-generated (Claude Code, 2026-10-22; pending review by Deanson)
+    def test_order_routes_are_protected_and_never_internal(self):
+        config = self.renderer.configuration(self.env)
+        resources = config["static_resources"]
+        hcm = resources["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
+        routes = [r for r in hcm["route_config"]["virtual_hosts"][0]["routes"]
+                  if r.get("route", {}).get("cluster") == "order"]
+        self.assertEqual(len(routes), 14)
+        for route in routes:
+            self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"], "user_token")
+            path = route["match"].get("path") or route["match"]["safe_regex"]["regex"]
+            self.assertTrue(path.startswith("/orders"))
+        static = [r["match"]["path"] for r in routes if "path" in r["match"]]
+        self.assertEqual(static, ["/orders/available", "/orders/mine", "/orders/assigned", "/orders"])
+        order = next(c for c in resources["clusters"] if c["name"] == "order")
+        endpoint = order["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
+        self.assertEqual(endpoint["address"]["socket_address"], {"address": "order", "port_value": 3005})
 
     def test_invalid_definitions_fail_instead_of_disabling_authentication(self):
         valid = {"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",

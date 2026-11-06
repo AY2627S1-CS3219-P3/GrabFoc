@@ -3,6 +3,11 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-28
 Scope: Serialized cookie-backed BFF requests and session mutations across browser tabs; exposed the validated session role for location controls on 2026-09-29.
 Author review: Jie Yang reviewed this file.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added userId to the session state.
+Author review: Pending review by Deanson.
 */
 'use client';
 
@@ -12,7 +17,7 @@ export async function withSessionMutation<T>(action: () => Promise<T>): Promise<
   return navigator.locks.request('foc-refresh', action);
 }
 
-export type SessionState = { authenticated: false } | { authenticated: true; role?: 'ADMIN' | 'USER' };
+export type SessionState = { authenticated: false } | { authenticated: true; role?: 'ADMIN' | 'USER'; userId?: string };
 
 export async function getSession(): Promise<SessionState> {
   return withSessionMutation(async () => {
@@ -23,7 +28,8 @@ export async function getSession(): Promise<SessionState> {
     if (!data || typeof data !== 'object' || !('authenticated' in data) || data.authenticated !== true)
       throw new Error('Invalid session response');
     const role = 'role' in data && (data.role === 'ADMIN' || data.role === 'USER') ? data.role : undefined;
-    return { authenticated: true, role };
+    const userId = 'userId' in data && typeof data.userId === 'string' ? data.userId : undefined;
+    return { authenticated: true, role, userId };
   });
 }
 

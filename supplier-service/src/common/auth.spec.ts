@@ -5,6 +5,14 @@
  *        the dev-auth header fallback and the access_denied log.
  * Author review (Jian Bing): Ran `npm test` on 2026-10-01 (157 passed) and verified each test
  *        case in this file by hand.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
+ * Scope: Added requestId to the two access_denied expectations after the log line gained
+ *        that field; no other change. The field itself is tested in request-id.spec.ts.
+ * Author review (Cole Lin): Checked the change is only the added field.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: The denial line now goes through the shipper rather than Nest's logger, so these
+ *        read the shipped line and assert the fields it adds (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -48,7 +56,9 @@ async function outcome(req: AuthedRequest, handler: 'open' | 'adminOnly' = 'open
 }
 
 const bearer = (claims: Record<string, unknown>) => ({ Authorization: `Bearer ${signToken(key, claims)}` });
-let warn: jest.SpyInstance;
+// The shipper writes the line itself, so the machine-readable JSON is not wrapped in Nest's
+// human-readable prefix: capturing console.log is capturing the real output.
+let shipped: jest.SpyInstance;
 
 beforeAll(() => stub.start());
 afterAll(() => stub.stop());
@@ -58,7 +68,8 @@ beforeEach(() => {
   resetJwksCache();
   config.jwksUrl = stub.url;
   config.devAuth = false;
-  warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  shipped = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
   jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 });
 
@@ -98,26 +109,56 @@ describe('with a bearer token', () => {
 });
 
 describe('the access_denied log', () => {
-  const logged = () => warn.mock.calls.map(([line]) => JSON.parse(line as string));
+  const logged = () => shipped.mock.calls.map(([line]) => JSON.parse(line as string));
 
+  // An anonymous denial has no caller, so userId and role are absent rather than null: those
+  // columns are nullable, and a line carries only what the event had.
   it('records a 401 with the method and path but no caller', async () => {
     await outcome(request());
     expect(logged()).toEqual([
-      { event: 'access_denied', status: 401, method: 'GET', path: '/locations', userId: null, role: null },
+      {
+        lineId: expect.any(String),
+        ts: expect.any(String),
+        service: 'supplier',
+        level: 'warn',
+        event: 'access_denied',
+        requestId: expect.any(String),
+        status: 401,
+        method: 'GET',
+        path: '/locations',
+      },
     ]);
   });
 
   it('records a 403 with the caller', async () => {
     await outcome(request(bearer({ sub: 'u-9', role: 'USER' })), 'adminOnly');
     expect(logged()).toEqual([
-      { event: 'access_denied', status: 403, method: 'GET', path: '/locations', userId: 'u-9', role: 'USER' },
+      {
+        lineId: expect.any(String),
+        ts: expect.any(String),
+        service: 'supplier',
+        level: 'warn',
+        event: 'access_denied',
+        requestId: expect.any(String),
+        status: 403,
+        method: 'GET',
+        path: '/locations',
+        userId: 'u-9',
+        role: 'USER',
+      },
     ]);
+  });
+
+  it('stamps the line with a timestamp the store will accept', async () => {
+    await outcome(request());
+    const { ts } = logged()[0];
+    expect(new Date(ts).toISOString()).toBe(ts);
   });
 
   it('never includes the token', async () => {
     const headers = bearer({ role: 'USER' });
     await outcome(request(headers), 'adminOnly');
-    expect(warn.mock.calls.flat().join(' ')).not.toContain(headers.Authorization.slice(7));
+    expect(shipped.mock.calls.flat().join(' ')).not.toContain(headers.Authorization.slice(7));
   });
 });
 

@@ -19,6 +19,9 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 Scope: Ticked the Phase E test items in §8 and updated the §6 edge-case statuses they cover.
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+Scope: Recorded the UserSuspended consumer (§5 payload, §6 table, §8 Phase D) at Zi Yi's direction.
+Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
 -->
 
 # GrabFoC Order Service — Implementation Plan
@@ -234,7 +237,7 @@ Settlement does not use `order.events` (Zi Yi, 2026-10-17): Credit reads only it
 - For `OrderCompleted`: `data` includes `orderId`, `requesterId`, `courierId`; Notification reads it; Credit settles from `TransferCredits` and uses the saved reservation amount.
 - For `OrderAccepted`, `OrderPickedUp`, `OrderInProgress`, `OrderArrived`: same order/participant identifiers (courier non-null once accepted).
 - For `OrderCancelled`: `reason` may be `REQUESTER_CANCELLED`, `MUTUAL_CANCELLATION`, `EXPIRED`, `USER_SUSPENDED`, or `SUPPLIER_DEACTIVATED`; `courierId` can be null for a never-accepted order.
-- For `UserSuspended`: `{ "eventId": "uuid", "eventType": "UserSuspended", "occurredAt": "ISO-8601", "data": { "userId": "uuid" } }`.
+- For `UserSuspended`: the User Service's own flat shape, `{ "type": "UserSuspended", "eventId": "uuid", "userId": "uuid", "occurredAt": "ISO-8601" }` (`user-service/AGENTS.md`; the owner defines it, root §3 Messaging rule 3). Order skips other `type`s and parks unreadable events on `order.user-events.dlt`.
 - For `SupplierDeactivated`: same envelope, `data: { "locationId": 12 }` (use Supplier's actual location ID, **not** a separate supplier-account ID).
 
 **`order.events` (Zi Yi, 18 October 2026):** `data` also carries `status`, the new state (root §10). `order_history` is the outbox: the history entry is saved in the same transaction as the state change, and a job publishes unpublished entries every second and sets `published_at` once Kafka stores each, so a Kafka outage delays events instead of losing them; `eventId` is the history entry's ID, so a resend keeps it. This replaces "no transactional outbox now" below for `order.events`. Contract: `order-service/AGENTS.md` "History and events".
@@ -263,7 +266,8 @@ Settlement does not use `order.events` (Zi Yi, 2026-10-17): Credit reads only it
 | Simultaneous responses to same confirmation | Handled; tested | Lock order/confirmation in one transaction, recheck pending status, finalize once |
 | Two different pending proposals on same order | DB enforced | Existing `order_confirmations_one_pending_idx` |
 | Expiry races with acceptance or timing approval | Handled; tested | Conditional updates/transactional locks; `now >= stored window_end` wins when eligible |
-| Supplier/User deactivation event delivered twice | Handler needed | Cancel only nonterminal orders, do not repeat state/event for already cancelled orders |
+| Supplier/User deactivation event delivered twice | User: handled; tested. Supplier: handler needed | Lock and recheck each order; only unfinished orders are cancelled, so a repeat adds no state, history or event |
+| Suspension while Credit reserves a new order | Handled; tested (Zi Yi, 21 October 2026) | The suspension cancels the `AWAITING_CREDIT` order; the create's guarded update to `PENDING` fails and returns 403 `USER_SUSPENDED`; `settleCredits` releases the hold |
 | TransferCredits/ReleaseCredits delivered or sent twice | Credit owner | Credit hold keyed by order and idempotent terminal state handling |
 | Order DB commits but Kafka publish fails | Handled; tested | `order_history` is the outbox: unpublished entries are resent (Zi Yi, 18 October 2026) |
 | Same order creation POST is retried | **Out of scope** | No creation-idempotency implementation now |
@@ -331,7 +335,7 @@ Keep modules thin: controllers authenticate/validate; services enforce rules; re
 - [x] Obtain broker bootstrap address, topic names, and access/configuration details from the teammate responsible for Kafka setup (`infra/kafka/`); do not set up the broker as part of Order Service work.
 - [x] Credit settlement: `TransferCredits` / `ReleaseCredits` on `credit.commands` from the settlement job (outbox on `credit_settled_at`).
 - [x] Kafka producer for `order.events` (Notification); add the topic to `infra/kafka/topics.txt`.
-- [ ] `UserSuspended` and `SupplierDeactivated` consumers; cancel affected nonterminal orders and supersede pending confirmations.
+- [ ] `UserSuspended` and `SupplierDeactivated` consumers; cancel affected nonterminal orders and supersede pending confirmations. (`UserSuspended` done 21 October 2026, `AWAITING_CREDIT` included; `SupplierDeactivated` waits on Supplier.)
 - [x] 60-second expiry worker (`expireOrders`).
 - [x] Publish `OrderCancelled` for successful expirations (with the `order.events` producer).
 - [x] Internal active-order lookup for User Service deactivation guard (the User Service does not call it yet).

@@ -2,11 +2,20 @@
 AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Wrote this README for the shared Kafka setup.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: topics.txt is the one list, retry topics included (K10 revised); how to retire a retry
 delay safely (PR #85 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Host broker address localhost:9094 → 127.0.0.1:9094, so clients don't try IPv6 first (PR #96).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #96).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 -->
 
 # Kafka (shared message broker)
@@ -17,7 +26,7 @@ Started by the root `docker compose up`; only Kafka: `docker compose up -d kafka
 | What | Where |
 |---|---|
 | Broker, from containers | `kafka:9092` |
-| Broker, from the host | `localhost:9094` |
+| Broker, from the host | `127.0.0.1:9094` |
 | Kafka UI | http://localhost:8085 |
 
 **Topics** are never auto-created. `topics.txt` is the one list of every topic, Credit's retry topics

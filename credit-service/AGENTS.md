@@ -3,37 +3,73 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-11
 Scope: Wrote this file from Jian Bing's Credit Service design (learning-mode session) and the
        details Claude Code proposed and he approved in the implementation plan.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Documented the balance route, JWT verification and error codes (redesign Phase 1).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Added the Messaging section for redesign Phase 2 (wallets from UserRegistered over Kafka).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: Documented Phase 3: credit commands, retries, the dead-letter table and the admin routes.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Documented the dead letters' source position and payload hash (PR #85 and security reviews);
 key check, byte payloads, replay claims and retiring retry delays (second PR #85 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: A repeated reserve returns the hold's current state (PR #48 review); only the /internal
 routes need the service key (PR #73 review).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — manually tested Credit and Kafka: unit, integration and Kafka suites pass; a UserRegistered event (CLI and Kafka UI) creates a 10-credit wallet once and repeats change nothing; balance gives 401 with no token and 404 with no wallet; messages checked in Kafka UI.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
 Scope: Added the open item on releases for unknown orders, from the Order Service Phase D work; the
 Design bullet now says transfer and release are commands.
 Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented credit_transactions (PR #48 review; design decided by Jian Bing).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: No lazy wallet creation: reserve and transfer fail with WALLET_NOT_FOUND (#79; decided by Jian Bing).
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented that old wallets are purged, not backfilled (PR #93 review; decided by Jian Bing).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Documented GET /credits/:userId/transactions (route decided by Jian Bing).
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Host broker address is 127.0.0.1:9094 (quieter logs).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #96).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Dead letters use a generic envelope: message_key / message_type (decided by Jian Bing).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Documented the replay key (PR #95 review).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #95).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Removed the HTTP transfer/release routes from the API table (team consensus).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Brought the Design section and the reserve-only API wording in line with Kafka-only transfer and release (PR #94 review).
+Author review: Jian Bing, 2026-10-22 — ran it locally in Docker, ran the npm test suites, checked the Kafka messages and their structure in Kafka UI, and reviewed the changed files on GitHub; it works as intended.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 Author review text above from Jian Bing's account of what he checked (PR #94).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Recorded Zi Yi's approval of the dead-letter migration and the mentor's validation of the route removal (PR #97 review).
+Author review: Jian Bing supplied the approval it records; the wording is Claude's.
 -->
 
 # AGENTS.md — Credit Service
@@ -41,7 +77,10 @@ Author review: pending — Jian Bing to record what he checked.
 Read the root `AGENTS.md` first. This file holds Credit-specific rules only.
 
 **Owner:** Zi Yi (Gantt). This first version was designed and built by Jian Bing, so everything
-below is **[Proposed]** until Zi Yi confirms it.
+below is **[Proposed]** until Zi Yi confirms it. Confirmed so far: the generic dead-letter envelope
+and its start-up migration (`message_key` / `message_type`), approved by Zi Yi (recorded 2026-10-22);
+reserve over HTTP with transfer and release as Kafka commands (Zi Yi, 2026-10-17; validated by the
+mentor, recorded 2026-10-22).
 
 ## What it does
 
@@ -61,7 +100,7 @@ _Origin: Team (Jian Bing, 2026-10-11)_
 
 - The **Order Service is the only caller** of reserve, transfer and release: reserve over synchronous
   HTTP; transfer and release as `credit.commands` messages (see Messaging; root `AGENTS.md` §3,
-  Zi Yi, 2026-10-17). The HTTP transfer and release routes stay until #79 removes them.
+  Zi Yi, 2026-10-17).
 - **One hold per order**, unique on the order id. Its state moves `RESERVED → TRANSFERRED` or
   `RESERVED → RELEASED`; both are final.
 - **Idempotency key = order id + action.** The amount is stored data, not part of the key. A repeat
@@ -113,11 +152,11 @@ credit_transactions (                           -- every balance change, append-
 credit_dead_letters (                           -- copied from Credit's dead-letter topics
     id                BIGSERIAL PRIMARY KEY,
     event_id          UUID,                     -- null when the message was unreadable
-    order_id          UUID,
+    message_key       TEXT,                     -- the Kafka key: orderId for commands, userId for events
     source_topic      TEXT NOT NULL,            -- credit.commands or user.events
     source_partition  INTEGER,                  -- where the original message sat in source_topic
     source_offset     BIGINT,
-    command_type      TEXT,                     -- the message's type field
+    message_type      TEXT,                     -- the message's type (event or command)
     payload           BYTEA NOT NULL,           -- exact bytes (TEXT can't hold e.g. NUL)
     error             TEXT NOT NULL,
     error_code        TEXT,
@@ -157,22 +196,24 @@ UNIQUE INDEX credit_dead_letters_source_message
 ## API [Proposed]
 
 _Origin: AI doc (paths and status codes proposed by Claude Code, approved by Jian Bing)._
-The three `/internal/credits/*` routes need `X-Service-Key`; the balance and admin dead-letter routes
+`POST /internal/credits/reserve` needs `X-Service-Key`; the balance and admin dead-letter routes
 need a user JWT (neither credential opens the other's routes); bodies are strict (unknown fields → 400). Errors use Problem
 Details (`application/problem+json`), as in the Supplier Service.
 
 | Route | Body | Success | Errors |
 |---|---|---|---|
-| `POST /internal/credits/reserve` | `{orderId, requesterId, amount}` | **201** new hold; **200** for a repeat, with the hold as it is now (its `state` may have moved on to `TRANSFERRED` or `RELEASED`) | 409 insufficient credits (nothing kept); 409 same order with a different requester or amount |
-| `POST /internal/credits/transfer` | `{orderId, courierId}` | **200**, also for a repeat to the same courier | 404 unknown order; 409 already released, already paid to a different courier, or courier is the requester |
-| `POST /internal/credits/release` | `{orderId}` | **200**, also for a repeat | 404 unknown order; 409 already transferred |
+| `POST /internal/credits/reserve` | `{orderId, requesterId, amount}` | **201** new hold; **200** for a repeat, with the hold as it is now (its `state` may have moved on to `TRANSFERRED` or `RELEASED`) | 409 `WALLET_NOT_FOUND` the requester has no wallet (nothing kept); 409 insufficient credits (nothing kept); 409 same order with a different requester or amount |
 | any, wrong or missing key | | | 401, logged as `access_denied` without the key |
 | `GET /credits/:userId` (user JWT; through the gateway once PR #69's Envoy route is added) | — | **200** `{userId, available, reserved}` | 400 path id not a UUID; 401 no/invalid token; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
 | `GET /credits/:userId/transactions?limit=&before=` (user JWT) | — | **200** `{items: [{id, orderId, type, availableChange, reservedChange, createdAt}], nextBefore}`, newest first; `limit` 1–100 (default 20); `before` is the `nextBefore` from the previous page; `nextBefore` is `null` on the last page | 400 path id not a UUID, a bad `limit`/`before`, or an unknown parameter; 401; 403 a USER asking for another user (logged); 404 `WALLET_NOT_FOUND`; 503 JWKS unreachable |
 | `GET /admin/credits/dead-letters?status=open\|replayed\|all` (ADMIN JWT; default `open`) | — | **200** `{items: [...]}`, newest first, at most 100 | 400 unknown status; 401; 403 a USER (logged, checked before validation) |
 | `POST /admin/credits/dead-letters/:eventId/replay` (ADMIN JWT) | — | **200** the dead letter, `replayedAt` set; the command is republished to `credit.commands` with a fresh attempt count | 400 id not a UUID; 401; 403 a USER (logged); 404 `DEAD_LETTER_NOT_FOUND`; 409 `ALREADY_REPLAYED`; 409 `NOT_REPLAYABLE` (a user-event dead letter: fix and re-publish it from the User Service) |
 
-The three internal routes return the hold: `{orderId, requesterId, courierId, amount, state}`.
+Transfer and release are **not** HTTP routes: they are the Kafka commands `TransferCredits` and
+`ReleaseCredits` on `credit.commands` (team consensus, 2026-10-18; see Messaging). The Order Service
+only calls reserve over HTTP.
+
+The reserve route returns the hold: `{orderId, requesterId, courierId, amount, state}`.
 
 Errors carry a machine-readable `code` (`INSUFFICIENT_CREDITS`, `WALLET_NOT_FOUND`, `HOLD_MISMATCH`,
 `ALREADY_TRANSFERRED`, `ALREADY_RELEASED`, `COURIER_IS_REQUESTER`, `HOLD_NOT_FOUND`,
@@ -186,7 +227,7 @@ and neither credential opens the other's routes. The balance route never creates
 _Origin: Team (Jian Bing's decisions K1–K13 in the redesign spec §9); AI doc (details proposed by
 Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3 "Messaging (Kafka)"._
 
-- **Broker:** the shared Kafka in `infra/kafka/` (`kafka:9092` in Compose, `localhost:9094` from
+- **Broker:** the shared Kafka in `infra/kafka/` (`kafka:9092` in Compose, `127.0.0.1:9094` from
   the host). `kafka-init` creates every topic; Credit creates none.
 - **Consumer group** `credit-service`, starting from the oldest message the first time. An offset
   is stored only after its message's work is saved; a crash re-reads it, which is safe because every
@@ -200,7 +241,11 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
     `x-dead-lettered-at`, and is logged as `user_event_dead_lettered`. It can't be replayed from
     Credit: the User Service fixes and re-publishes it.
   - An unexpected error (e.g. the database is down) pauses the partition for 5 s and retries.
-- Lazy wallet creation (`ensureAccount`) stays until the User Service publishes (#79).
+- **Wallets come only from `UserRegistered`** (spec D6, #79). Reserve and transfer never create
+  one: a reserve with no wallet answers 409 `WALLET_NOT_FOUND` and stores nothing; a transfer
+  command to a courier with no wallet is retried, then dead-lettered, and can be replayed once the
+  wallet exists. A transfer that could never apply (no hold, already released or paid) reports its
+  own code instead, so it is not retried.
 - **Local setup:** Node 24 (`.nvmrc`; the Kafka client has prebuilt binaries for Node 18–24),
   `npm run test:kafka` against the Compose broker. The client's install script is approved in
   `package.json` (`allowScripts`), because npm 11 skips dependency install scripts by default.
@@ -208,7 +253,8 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
   keyed by `orderId` (a command keyed by anything else is dead-lettered, since order holds only per
   key); Credit owns their shape and checks it strictly:
   `{type: "TransferCredits", eventId, orderId, courierId}`, `{type: "ReleaseCredits", eventId, orderId}`.
-  They run the same `transfer` / `release` code as the HTTP routes, so a repeat is a no-op.
+  Both are idempotent (`CreditsService.transfer` / `release`), so a repeat is a no-op. To send one
+  by hand, publish it in Kafka UI with the **key set to its `orderId`**.
   - **Retryable** failures (`WALLET_NOT_FOUND`, or an unexpected error such as the database being
     down) step aside to `credit.commands.retry.<n>`, one topic per entry in `CREDIT_RETRY_DELAYS`
     (default `1s,5s,30s,2m,10m`), with headers `x-attempt` and `x-due-at`. The retry topics are
@@ -220,9 +266,12 @@ Claude Code and confirmed by him). Rules for every service: root `AGENTS.md` §3
     `x-error`, `x-error-code`, `x-source-topic`, `x-dead-lettered-at`, logged at `error` as
     `credit_command_dead_lettered` (ids only).
 - **Dead letters:** Credit copies both DLTs into `credit_dead_letters`; admins list and replay them
-  through the admin routes (API above). Only credit commands can be replayed. A replay claims its row
+  through the admin routes (API above). Only credit commands can be replayed. The table is a generic envelope: `message_key` (the Kafka
+  key), `message_type`, where the message came from, why it failed, and the raw `payload`, so a new
+  kind of event or command needs no schema change. A replay claims its row
   (`replay_claimed_at`), sends, then sets `replayed_at`; a claim left by a crash can be retaken after
-  6 minutes. The replay route takes no request body (any body is a 400).
+  6 minutes. The replay route takes no request body (any body is a 400). A replay is keyed by the command's `orderId`, so a command
+  dead-lettered for a wrong key can still be recovered; `messageKey` keeps the key it arrived with.
 - The database pool has connection (5 s) and query (10 s) timeouts, so an unreachable database
   becomes an error the consumer retries instead of a hang.
 
@@ -242,8 +291,8 @@ _Origin: AI doc_
 - Confirm this design with Zi Yi (owner).
 - Gateway route for `GET /credits/:userId`: waiting for PR #69 (Envoy); add
   `api-gateway/envoy/routes/30-credit.routes.json` and `CREDIT_SERVICE_URL` then.
-- #79: remove lazy wallet creation and the HTTP transfer/release routes once the User Service
-  publishes `UserRegistered` (#54) and the Order Service sends the commands (#53, #56).
+- #79: lazy wallet creation is removed; the User Service publishes `UserRegistered` (#54). After
+  merging, purge local Credit data (`docker compose down -v`). The Order Service sends the commands (#53, #56).
 - Gateway routes for `GET /credits/:userId` and `/admin/credits/**` (#60).
   Spec: `docs/superpowers/specs/2026-10-14-credit-service-redesign-design.md` §9.
 - Confirm Kafka and root `AGENTS.md` §3 "Messaging (Kafka)" with the whole team.

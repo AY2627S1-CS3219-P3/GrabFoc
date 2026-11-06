@@ -10,6 +10,20 @@ Author review: Jian Bing checked the logs locally against the AI usage-log guide
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-10-21 — Supplier: correlation ids, and producing log lines for the Logging Service (issue #52)
+
+- Tool and mode: Claude Code (Claude Opus 5), generate, debug and review.
+- Usage scenario: Start the Centralized Logging N2H by closing the gap underneath it. The gateway mints an `x-request-id` per request and forwards it, but no service downstream read it, so log lines from different services could not be matched to one request at all.
+- Prompts (exact):
+  - "I want to start work on the logging service. Ask any questions you need, and if these questions require other services input, let me know as well as I need to coordinate with my team on when they are doing these parts."
+  - "explain this more" / "will I have to do this for the other services" / "yea go ahead"
+  - "ok I actually now want to be able to test supplier alone" (earlier decision this builds on: the service must stay runnable with no other service up)
+  - "do 1, 2 and 4 and the doc fix" — after the automated reviews on the first pull request
+  - "do 1 to 4 and split the PRs"
+- Key response: `src/common/request-id.ts` (validate the caller's id, mint one when absent, echo it back, strip the query string from the logged path), `requestId` on the denial line, structured lines for the JWKS 503 and the unhandled 500, and later the same lines emitted through a copy of the Logging Service's shipper so they carry `lineId`, `ts` and `service`.
+- What I changed or rejected: Chose to replace a malformed or over-long `x-request-id` rather than reject the request — a diagnostic header must not turn a working call into a 400. Had the failure message dropped from the structured 500 line after seeing that it can carry a connection string and these lines are headed for a store anyone with access can query; the message and the stack stay in the local log instead. Rejected switching this service to Nest's JSON logger as part of this change (it affects every service); the shipper writes the line itself, which settles it for this one. Declined to add the shipper to the other four services: User and Order had just landed without it, so each owner retrofits their own.
+- Verification: Read it in full. `npm test` (177 passed) and `npm run test:int` against the `supplier-db` container (51 passed), plus `npm run build`. Checked by hand that a supplied id, a minted one and a rejected one each reach the log line and the response header, that a query string never appears in a logged path, and that no token or failure message appears in a shipped line. The automated reviews on the first pull request found three real problems — query strings reaching the logs, the JWKS message in the structured line, and 500s raised as an `HttpException` logging nothing — all fixed before this split.
+
 ### 2026-09-29 — Coordinate search, dev-mode fix and these log entries (PR #33)
 
 - Tool and mode: Claude Code (Claude Opus 5), generate and debug.

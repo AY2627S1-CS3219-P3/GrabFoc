@@ -310,3 +310,103 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .manage-form textarea { min-height: 82px; resize: vertical; }
 .manage-form-pair { gap: 12px; }
 .manage-form .text-button { margin: 0 0 12px; }
+
+/*
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Styles for the order pages: buttons, modal, order form, order cards, lifecycle line, proposal box and the detail layout. Reuses the existing colour variables.
+Author review: Pending review by Deanson.
+*/
+/* AI-generated (pending review by Deanson) */
+.home-heading-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 10px; }
+.primary-button, .secondary-button, .danger-button { min-height: 38px; padding: 0 14px; border-radius: 7px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.primary-button { border: 0; background: var(--auth-blue); color: #fff; }
+.primary-button:hover:not(:disabled) { background: #225ed6; }
+.secondary-button { border: 1px solid #a8c0ee; background: #fff; color: var(--auth-blue); }
+.secondary-button:hover:not(:disabled) { background: #f2f6ff; }
+.danger-button { border: 1px solid #f1b5b0; background: #fff; color: #b42318; }
+.danger-button:hover:not(:disabled) { background: #fff4f2; }
+.primary-button:disabled, .secondary-button:disabled, .danger-button:disabled, .icon-button:disabled { opacity: .5; cursor: not-allowed; }
+.icon-button { width: 34px; height: 34px; display: inline-grid; place-items: center; border: 1px solid #a8c0ee; border-radius: 7px; background: #fff; color: var(--auth-blue); font-size: 15px; cursor: pointer; }
+.icon-button--danger { border-color: #f1b5b0; color: #b42318; }
+
+.order-modal { width: min(520px, calc(100vw - 32px)); max-height: calc(100svh - 32px); padding: 20px; border: 1px solid #dce2ec; border-radius: 10px; color: var(--auth-text); box-shadow: 0 16px 40px rgb(18 21 28 / 18%); }
+.order-modal::backdrop { background: rgb(18 21 28 / 40%); }
+.order-modal-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.order-modal-heading h2 { margin: 0; font-size: 17px; }
+.order-modal-close { border: 0; background: transparent; color: var(--auth-muted); font-size: 22px; line-height: 1; cursor: pointer; }
+.order-modal-text { margin: 0 0 18px; color: #526078; font-size: 13px; line-height: 1.5; }
+.order-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+
+.order-form { display: grid; gap: 14px; }
+.order-form label { display: flex; flex-direction: column; gap: 6px; color: #374151; font-size: 12px; font-weight: 700; }
+.order-form input, .order-form select, .order-form textarea { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--auth-border); border-radius: 7px; background: #fff; color: var(--auth-text); font: inherit; font-weight: 400; }
+.order-form textarea { min-height: 82px; resize: vertical; }
+.order-form input:read-only { background: #f4f6fa; color: #526078; }
+.order-form input:focus, .order-form select:focus, .order-form textarea:focus { border-color: var(--auth-blue); outline: none; }
+.order-form [aria-invalid="true"] { border-color: #d92d20; }
+.order-form-note { color: var(--auth-muted); font-weight: 400; }
+.order-form-pair { gap: 12px; }
+
+.order-grid { gap: 14px; }
+.order-card { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; padding: 14px; border: 1px solid #dce2ec; border-radius: 9px; background: #fff; }
+.order-card-link { display: block; color: inherit; text-decoration: none; }
+.order-card-link:hover h3 { color: var(--auth-blue); }
+.order-card-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.order-card h3 { margin: 0; font-size: 15px; line-height: 20px; overflow-wrap: anywhere; }
+.order-card p { margin: 7px 0 0; color: #526078; font-size: 12px; line-height: 17px; }
+.order-card p span { display: inline-block; min-width: 62px; color: var(--auth-muted); font-weight: 700; }
+.order-card .order-card-credits { color: var(--auth-text); font-weight: 700; }
+.order-card-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.order-success { display: flex; align-items: center; gap: 8px; margin: 18px 0 0; padding: 10px 12px; border: 1px solid #b7e1c3; border-radius: 8px; background: #f3fbf5; color: #1d6b35; font-size: 13px; }
+.order-success a { color: inherit; font-weight: 700; }
+.order-success button { margin-left: auto; border: 0; background: transparent; color: inherit; font-size: 18px; cursor: pointer; }
+
+.order-detail { gap: 20px; margin-top: 24px; }
+.order-panel { min-width: 0; padding: 20px; border: 1px solid #dce2ec; border-radius: 9px; background: #fff; }
+.order-panel h2 { margin: 0 0 16px; font-size: 17px; overflow-wrap: anywhere; }
+.order-lifecycle { display: flex; margin: 0 0 18px; padding: 0; list-style: none; overflow-x: auto; }
+.order-lifecycle li { position: relative; flex: 1 0 64px; padding-top: 18px; color: #9aa1ac; font-size: 10.5px; text-align: center; }
+.order-lifecycle li::before { content: ""; position: absolute; top: 4px; left: 50%; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: #d2d9e5; }
+.order-lifecycle li::after { content: ""; position: absolute; top: 8px; left: calc(50% + 7px); width: calc(100% - 14px); height: 2px; background: #d2d9e5; }
+.order-lifecycle li:last-child::after { display: none; }
+.order-lifecycle li.is-done { color: #526078; }
+.order-lifecycle li.is-done::before, .order-lifecycle li.is-done::after, .order-lifecycle li.is-current::before { background: var(--auth-blue); }
+.order-lifecycle li.is-current { color: var(--auth-blue); font-weight: 700; }
+.order-panel-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.order-panel-heading h2 { margin: 0; }
+.order-panel-heading .status-pill { flex: none; }
+.order-facts { display: grid; gap: 10px; margin: 0; }
+.order-facts div { display: grid; grid-template-columns: 96px 1fr; gap: 10px; font-size: 13px; }
+.order-facts dt { color: var(--auth-muted); font-weight: 700; }
+.order-facts dd { margin: 0; overflow-wrap: anywhere; }
+.proposal-box { margin-top: 18px; padding: 12px 14px; border: 1px solid #dce2ec; border-radius: 8px; background: #f8faff; font-size: 13px; }
+.proposal-box--action { border-color: #f5c46b; background: #fffaf0; }
+.proposal-box strong { font-size: 11px; letter-spacing: .04em; }
+.proposal-box p { margin: 6px 0 0; color: #526078; line-height: 1.5; }
+.proposal-box .order-actions { margin-top: 10px; }
+.order-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
+.order-hint { flex-basis: 100%; margin: 0; color: var(--auth-muted); font-size: 12px; }
+.order-chat .home-empty { min-height: 160px; }
+@media (max-width: 639px) {
+  .home-heading { flex-direction: column; align-items: stretch; }
+  .home-heading-actions { justify-content: space-between; }
+  .order-actions > button { flex: 1 1 auto; }
+}
+
+/*
+AI Assistance Disclosure update:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Styles for the Orders page's Active / Completed / Cancelled sections.
+Author review: Pending review by Deanson.
+*/
+/* AI-generated (pending review by Deanson) */
+.order-section h2 { display: flex; align-items: center; gap: 8px; }
+.order-section-count { min-width: 22px; padding: 2px 7px; border-radius: 999px; background: #eef3ff; color: #315ba8; font-size: 11px; text-align: center; }
+details.order-section summary { display: flex; align-items: center; gap: 8px; list-style: none; cursor: pointer; }
+details.order-section summary::-webkit-details-marker { display: none; }
+details.order-section summary::before { content: "▸"; color: var(--auth-muted); font-size: 12px; }
+details.order-section[open] summary::before { content: "▾"; }
+details.order-section summary h2 { margin: 0; }
+details.order-section[open] summary { margin-bottom: 18px; }
+.order-section-empty { margin: 12px 0 0; color: var(--auth-muted); font-size: 12px; }

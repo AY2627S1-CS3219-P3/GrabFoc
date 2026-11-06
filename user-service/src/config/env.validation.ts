@@ -10,6 +10,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: Added USER_ORDER_URL and USER_ORDER_SERVICE_KEY (#71).
  * Author review: Reviewed by Zi Yi, 2026-10-20.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+ * Scope: Host-side broker example localhost:9094 → 127.0.0.1:9094, matching the shared broker (PR #96 review).
+ * Author review: pending — Jian Bing to record what he checked.
  */
 // AI-generated (reviewed by Deanson)
 import { z } from 'zod';
@@ -62,9 +65,9 @@ const EnvSchema = z.object({
   USER_ORDER_URL: z.url('required, e.g. http://order-service:3005 in compose'),
   USER_ORDER_SERVICE_KEY: z.string().min(32, 'required; must equal ORDER_SERVICE_KEY (at least 32 characters)'),
 
-  // Kafka for the outbox relay: kafka:9092 in compose, localhost:9094 from the host. The
+  // Kafka for the outbox relay: kafka:9092 in compose, 127.0.0.1:9094 from the host. The
   // service starts even if no broker answers; the relay keeps retrying.
-  USER_KAFKA_BROKERS: z.string().min(1, 'required, e.g. kafka:9092 in compose or localhost:9094'),
+  USER_KAFKA_BROKERS: z.string().min(1, 'required, e.g. kafka:9092 in compose or 127.0.0.1:9094'),
   // How often the relay polls the outbox, and the ceiling its backoff doubles up to.
   USER_OUTBOX_POLL_MS: z.coerce.number().int().positive().default(1000),
   USER_OUTBOX_MAX_BACKOFF_MS: z.coerce.number().int().positive().default(30000),

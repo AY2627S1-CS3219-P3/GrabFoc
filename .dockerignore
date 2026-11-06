@@ -2,7 +2,10 @@
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28
 # Scope: Generated this file so builds whose context is the repository root (supplier-service)
 #        don't send node_modules, build output or secrets to the Docker daemon.
-# Author review: pending — to be completed by the reviewing team member.
+# Author review: reviewed by Jian Bing, 2026-10-18 — read and checked; it is what we want.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+# Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+# Author review: Jian Bing supplied what it states; the wording is Claude's.
 
 **/node_modules
 **/dist

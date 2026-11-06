@@ -3,40 +3,233 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Deanson's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Condensed every entry to the template fields (scenario, prompts, output, decisions, verification); prompt text left unchanged.
+Author review: Pending Deanson's review.
 -->
 
 # AI Usage Log — Deanson
 
-Deanson's entries for the FoC AI usage log. The template and rules are in
-[`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+Deanson's entries, newest first. The template and rules (Appendix 2 of the project document) are in
+[`ai/usage-log.md`](../usage-log.md): exact prompts, summarised responses, what was changed or
+rejected, and how it was verified.
 
-Follows the template in the repo-root `ai/usage-log.md` (Appendix 2 of the project document):
-exact prompts, summarised responses, what was changed or rejected, and how it was verified.
-Newest entry first. 
+### 2026-10-22 — Condense this log
 
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `ai/usage-log/deanson.md`
 
-## AI design input and who decided
+**Scenario:** the log had grown excessively; I had the AI shorten it to the template fields.
 
-## Deanson
+**Prompts (exact, in order):**
+> can you concise deanson-log.md based on the AI policy requirements. clarify before prcoeeding
+
+> *(answers)* Scope: Whole file. Prompts: Keep every prompt verbatim. Depth: Template fields, short bullets.
+
+**What it produced:** every entry rewritten as short bullets under the template headings; stray headings and the duplicate intro removed.
+**What I changed or rejected:** —
+**Verification:** a script diffed every `>` prompt line before and after (no differences); the entry count is unchanged. Still to do (me): read the rendered file.
+
+### 2026-10-22 — Colour-coded status badges
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, verify
+**Files:** `frontend/lib/orders.ts`, `frontend/app/components/order-card.tsx`, `frontend/app/orders/[id]/page.tsx`, `frontend/app/globals.css`, `docs/orders/frontend-integration-plan.md`
+
+**Prompts (exact, in order):**
+> For the frontend, can status badges be color coded. awaiting -> gray pending -> light blue accepted -> blue pciked up -> blue in_progress -. blue arrived -> blue completed -> green cancelled -> red create a constants table or constants file to store these values. clarify befoer prcoeeding
+
+> *(answers)* File: inside lib/orders.ts. Colours: hex values in the TS constants. Scope: order cards and the order detail page. Shades: the soft palette.
+
+**Who decided:**
+- **Me:** the colour for each status; the constants go in `lib/orders.ts`; inline hex values; badges on the cards and the detail page.
+- **AI proposal I accepted:** the soft palette (gray, light blue, blue, green and red background/text pairs).
+- **AI implementation details:** a shared `StatusBadge`; on the detail page it replaces the "Awaiting credit" pill.
+
+**Verification:** `tsc`, lint and build pass; route tests 40/40. After a rebuild, headless Chrome screenshots of the cards and the detail page showed the expected colours, using a temporary `PENDING` order that was then cancelled.
+
+### 2026-10-22 — Endpoint questions, and Orders page sections
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate, verify
+**Files:** `frontend/app/orders/page.tsx`, `frontend/lib/orders.ts`, `frontend/app/globals.css`, `docs/orders/frontend-integration-plan.md`
+
+**Scenario:** I asked about problems and plan divergences, then about several endpoints. Then I split the Orders page into three sections.
+
+**Prompts (exact, in order):**
+> Any issues you encounted or design choices diversion from plan?
+
+> Can i check that u logged my latest ai-usage already
+
+> List all supplier endpoints, short description of what they do, and the response returned
+
+> does pickup location and dropoff location in the create orders form currently use the data from GET /locations?
+
+> endpoint for GET orders
+
+> GET /orders/:orderId/history what does this endpoint return??
+
+> how to call it using postman GET /orders/mine
+
+> how to check credits of a particular user?
+
+> List all GET endpoints for order-service and their responses
+
+> for the frontend, is it currently filtering out completed and cancelled orders?
+
+> Do this instead: for both tabs, section them into: 1. Active 2. Completed 3. Cancelled clarify before prcoeeding
+
+> *(answers)* Data: Fetch all, group locally. Layout: Stacked, history collapsed. Card click: Not clickable. Credit fail: Show them.
+
+**Key responses:**
+- Issues: Edge isn't installed, so tests ran on a Chrome copy; the build's `tsconfig.json` edit was reverted; the gateway test ports changed; a create-redirect bug was fixed. It also listed 13 divergences from the plan.
+- Endpoint answers explained existing code only (Supplier endpoints, form dropdowns from `GET /locations?pageSize=100`, Order GET endpoints, Postman steps, `GET /credits/:userId`).
+- It flagged a backend status filter as an API change under the AI policy. I chose a frontend-only change.
+
+**Who decided:**
+- **Me:** three sections, fetching all orders and grouping them locally, history collapsed, finished cards not clickable, credit-cancelled orders shown.
+- **AI implementation details:** at most 10 pages of 100, duplicates removed by `id`, native `<details>`, counts in the headings.
+
+**Verification:** `tsc`, lint and build pass; route tests 40/40. After a rebuild, headless Chrome on test account A showed Active 0 / Completed 1 / Cancelled 2 with history collapsed, at 1280 px and 390 px. Still to do (me): check it in my own browser.
+
+### 2026-10-22 — Order Service ↔ frontend integration (implementation)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, verify
+**Files:**
+- `api-gateway/`: new `envoy/routes/30-order.routes.json`; changed `compose.yaml`, `.env.example`, `README.md`, `envoy/README.md`, `AGENTS.md`, two tests
+- `frontend/`: new order proxy route, `providers.tsx`, `orders/` pages, four components, `lib/orders.ts`; changed home, layout, app shell, session status, `session-client.ts`, `locations.ts`, `globals.css`, route tests, `package.json` (`@tanstack/react-query` 5.104.5)
+- `docs/orders/frontend-integration-plan.md`
+
+**Scenario:** implement §7 of my integration plan.
+
+**Prompts (exact, in order):**
+> Read docs/orders/frontend-intergration-plan.md and calrify before proceeding
+
+> *(answers)* After accept: Open /orders/:id. Card click: Not clickable. Awaiting: Show with status. Manual test: "elaborate", then "A: I do API, you do browser".
+
+> *(rejected the plan-approval prompt)* Can you write down order-service endpoints that are not currently being implemented in the plan too (under deferred decisions)? after that start implementation plan based on the plan layed out in frontend-integration-plan.md
+
+**Who decided:**
+- **Me:** everything in the plan, plus the four answers above.
+- **AI implementation choices, flagged for my review:** optional catch-all proxy; redirect to `/home?notice=order-unavailable` on 400/403/404; "View order" link after create; shared `useSession`; no retries on 4xx; native `<dialog>`; heading stacks on phones.
+- No API, schema or event changes. Jie Yang approved the gateway route on 2026-10-22.
+
+**Verification:**
+- Lint and build pass. Route tests 40/40 (3 new). Gateway tests 5/5 and 20/20.
+- A scripted two-user run through the gateway passed 35 checks across the order lifecycle, 401 and `/internal` not routed.
+- Still to do (me): the two-browser UI pass, the phone-width check, and the "Author review" lines.
+
+### 2026-10-22 — Order Service ↔ frontend integration plan
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** new: `docs/orders/frontend-integration-plan.md`
+
+**Scenario:** before connecting the frontend to the Order Service, I asked how the endpoints and the frontend behave. Then I dictated the screen requirements, and the AI wrote them up as a plan.
+
+**Prompts (exact, in order):**
+> GET /orders/mine whats the response?
+
+> Is there currently redis attached to the order-service
+
+> docs/order-service-plan.md lists "Redis for Order Service" as deferred what was the reason for deferring?
+
+> From now on, if any request that i made violate the AI policy, please give me a warning and do not proceed unless i explictly say so.
+
+> For the home page, what is it doing currently on the frontend? is there any logic that does errand creaiton?
+
+> what does POST /orders expect in its body
+
+> what does GET /supplier return in terms of response
+
+> GET /orders/:orderId what does this endpoint return?
+
+> Can you create a plan under docs. I am planning to integrate orders-service backend with frontend. I will give the details
+
+> *(answers)* Scope: "I will say, u adjust later". File: `docs/orders/frontend-integration-plan.md`.
+
+> *(pasted my screen requirements: Home page (remove the active/accepted sections, a create
+> button and modal, POST /orders, poll GET /orders/available every 10 s with React Query, accept
+> button); Orders page (requester/courier tabs polling /orders/mine and /orders/assigned, cards,
+> pencil edit and red-cross cancel for PENDING); /orders/:id page (poll, "viewing as", a lifecycle
+> line, details on the left, chat placeholder on the right); deferred: window logic and backend
+> caching with Redis)* Write these points in the plan first. I will add on proposal / state transitions later
+
+> *(answers)* Dropdowns: Locations. Wording: Create Order.
+
+> *(quoted the two items needing confirmation: the gateway route and the user id in session status)* checked and approved
+
+> List all relevant endpoints from Accepted State onwards that is involved in state transitions / proposals. For each endpoint, include a short desciprtion, its expected input if any (body, params, queries) , who can call it and the response it outputs
+
+> Add to plan for orders/:id page, if status is cancelled, redirect user back to home pqage
+
+> does GET /orders/:orderId/confirmations list rejected proposals too..
+
+> does GET/orders/mine or GET/orders/assigned return canceleld or completed orders too?
+
+> add these to plan: - only display those orders that are not COMPLETED or not CANCELLED
+
+> *(answer)* Filtering: Filter in frontend. The AI had pointed out that a backend `status` filter would be an API change under the AI policy.
+
+> *(pasted my /orders/:id proposal and action requirements: poll confirmations every 10 s,
+> showing only pending; a proposal box at the bottom of the left column with WAITING /
+> NEEDS YOUR RESPONSE and accept/decline via respond; redirect home on cancellation or
+> completion; courier Action/Cancel buttons by status (pick-up, start-delivery, arrive, and an
+> automatic completion proposal at arrived); requester Cancel proposal for accepted to arrived;
+> deferred: window adjustment and Redis caching of proposals)* Add these to plan. Noting down any potential design gaps (within AI policy)
+
+- AI: `POST /confirmations` isn't idempotent (409 while a proposal is pending). It added the proposal UI to the plan, fixed `/pickup` → `/pick-up`, and listed 10 design gaps as questions without deciding any.
+
+> 2. just dissappear, it's fine (note as a deferred decision for now) 3. continue as normal 4. elaborate 5. yes, confirm before cancelling 6. detail page also fofers ccancel for pending, but we disable polls for the confirmation endpoint (since it's irrelevant in pending state) 7. elbaorte. what happesn to order status and actions once window expires 8. no need to consider for now 9. only notification in this page. note down having notifications via bell icon as a deferred decision 10. use 'reject'
+
+- Me: gaps 2, 3, 5, 6, 8, 9, 10. AI explained gaps 4 and 7 from the code; a withdraw endpoint was flagged as an API change and not planned.
+
+> 1. instead of automatic completion proposal. instead we adopt the logic of other buttons. if arrived. change action button to 'Request Completion' and call the correponsindg proposal endpoint 4a 7. leave this as a serious gap to address in the later phase
+
+- Me: gap 1 (a manual Request Completion button), gap 4a (disable Cancel while a proposal is pending), gap 7 left for later. AI asked whether Request Completion should also be disabled.
+
+> if we get 409 or there already exist a confirmation proposal (since we fetcched it), disable the request completion button
+
+- Me: that rule. AI added a refetch on 409.
+
+> Decision 3 hasn't changed: Pick up, Start delivery and Arrived stay enabled while a proposal is pending. That is okay. the courier can continue doing his task while a proposal is pending
+
+> Is there anything you need to clarify before implementing the plan
+
+> *(answers)* UI library: Match existing style. Branch: New branch from here. Delivery: All at once.
+
+> *(rejected the plan-approval prompt)* write this plan under docs/orders, i'll do it anotehr day
+
+> *(answer)* Append to integration plan
+
+**What it produced:** endpoint answers (no Redis in the Order Service; the AI declined to invent a reason for the deferral); the gaps found (no Order proxy or gateway route, no React Query, no user id in the session status); the plan, including §7 "Implementation steps".
+
+**Who decided:**
+- **Me:** every screen requirement, 10 s polling, the deferrals, list locations in the dropdowns, "Create Order".
+- **AI proposals approved on 2026-10-22:** the `/orders/**` gateway route (checked with Jie Yang) and `sub` in `/api/session/status`.
+- **AI implementation details:** the proxy route copied from Supplier's, query keys, error handling, testing steps.
+
+**Verification:** the AI checked endpoints, bodies and error codes against `order-service/src/orders/*`, `supplier-service/src/locations/*` and the frontend. Still to do (me): review the doc.
+
+### 2026-10-21 — Order Service explained, and an order lifecycle doc
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** new: `docs/orders/order-lifecycle.md`
+
+**Scenario:** to understand the Order Service my teammates built, then turn its lifecycle into a team reference.
+
+**Prompts (exact, in order):**
+> Read the current order service implemntation and explain to me the following: 1) Brief description of what the order-service does 2) The lifecycle of an order including relevant states and possible transitions from state to state 3) Every endpoint, brief description of endpoint, relevant payload / queries / params
+
+> For point 2, can you create a markdown under /docs/orders referencing a order lifecycle
+
+**What it produced:** an explanation in chat; the doc, with a states table, a Mermaid diagram, the transitions, rules, proposals, expiry, credits and events.
+**Who decided:** no design; the doc describes existing code.
+**Verification:** the AI checked the doc against `orders.service.ts`, `confirmations.service.ts`, `orders.schemas.ts` and `001_init.sql`. Still to do (me): review it and preview the diagram.
 
 ### 2026-10-19 — `UserRegistered` through a transactional outbox
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate, verify
-**Files:** in `user-service/`:
-- new: `db/migrations/002_outbox.sql`, `src/infra/outbox/outbox.repository.ts`,
-  `src/infra/outbox/outbox.relay.ts`, `src/infra/kafka/kafka.producer.ts`,
-  `src/users/user-events.ts`, `AGENTS.md`, three spec files;
-- changed: `src/auth/auth.service.ts` (`verify`), `src/users/users.service.ts` (bootstrap),
-  `src/infra/infra.module.ts`, `src/config/env.validation.ts`, `src/common/logging/logger.ts`,
-  `compose.yaml`, `package.json`, `package-lock.json`, `postman/user-service.postman_collection.json`,
-  `ai/open_decisions.md`.
+**Files:** `user-service/`: new outbox migration, `outbox.repository.ts`, `outbox.relay.ts`, `kafka.producer.ts`, `user-events.ts`, `AGENTS.md`, 3 specs; changed `auth.service.ts`, `users.service.ts`, `infra.module.ts`, `env.validation.ts`, `logger.ts`, `compose.yaml`, `package*.json`, the Postman collection, `ai/open_decisions.md`; root `.env.example`
 
-Outside it: the root `.env.example`.
-
-**Scenario:** the Credit Service already consumes `UserRegistered` from `user.events`, but nothing
-published it (#54). First I asked how Kafka, retries and the Credit ↔ User contract work. Then I
-designed the publisher (a transactional outbox and a polling relay) and had the AI fill in
-details and find gaps before implementing.
+**Scenario:** Credit consumes `UserRegistered`, but nothing published it (#54). I asked about Kafka first, then designed the outbox and relay myself, with the AI filling in details and finding gaps.
 
 **Prompts (exact, in order):**
 > Check the project for the following: 1) How is kafka being implemented currently? 2) What event does order service consume from the user service and how it does it?
@@ -75,69 +268,23 @@ details and find gaps before implementing.
 
 > *(plan approval)* Approved the plan but add two new tests to postman collection too: 1. /register and /get credits, on registration, user should have credits 2. check credits of bootsrapped admin
 
-**AI design input and who decided:**
-- **My decisions:**
-  - the outbox pattern, polling, and the table's lean columns;
-  - the payload `{type, eventId, userId, occurredAt}`;
-  - the bootstrap admin publishes too;
-  - no backfill;
-  - the service starts with Kafka down;
-  - a new `user-service/AGENTS.md`;
-  - failures go to a future logging service, with exponential backoff.
-- **Proposed by the AI, and I accepted each:**
-  - no Compose `depends_on` on Kafka (it would contradict "start with Kafka down");
-  - client-level delivery and connect timeouts instead of `Promise.race`;
-  - a fresh producer after any failure;
-  - one batched send per tick;
-  - `reportRelayFailure` with a 60 s stale warning;
-  - wait for the in-progress tick on shutdown;
-  - the always-reschedule `finally`, the one gap that would have stopped the relay silently.
-- **Proposed by the AI and rejected:** failure columns (`attempts`, `last_error`,
-  `next_attempt_at`), and a backfill in the migration.
+**What it produced:** the migration, `OutboxRepository` (`SKIP LOCKED`), `KafkaProducer`, `OutboxRelay` (backoff 1 s → 30 s, failure and stale logs), outbox writes in `verify()` and the bootstrap, the `user.events` contract in `AGENTS.md`, 14 tests, and 2 Postman credit checks.
 
-**What it produced:** the outbox migration; `OutboxRepository` (add, claim with
-`FOR UPDATE SKIP LOCKED`, mark published); `KafkaProducer` (lazy, idempotent, 10 s message
-timeout, reset); `OutboxRelay` (the loop, backoff 1 s → 30 s, `OUTBOX_RELAY_FAILED` /
-`OUTBOX_BACKLOG_STALE`, `TODO(logging-service)`); the outbox writes in `verify()` and the
-bootstrap; the env variables; the `user.events` contract in `AGENTS.md`; 14 tests; and the two
-Postman credit checks.
-
-**What I changed or rejected:** see "who decided" above.
+**Who decided:**
+- **Me:** outbox + polling, a lean table, payload `{type, eventId, userId, occurredAt}`, bootstrap admin publishes, no backfill, start with Kafka down, failures go to future logging, exponential backoff.
+- **AI proposals I accepted:** no `depends_on` on Kafka, client timeouts, reset the producer after a failure, one batch per tick, a 60 s stale warning, wait for the tick on shutdown, always reschedule in `finally`.
+- **AI proposals I rejected:** failure columns in the outbox table; a backfill in the migration.
 
 **Verification:**
-- `npm run build` and `npm run lint` pass.
-- `npx vitest run`: 14 tests pass. The 3 PostgreSQL tests ran against the compose `user-db`,
-  reached through a temporary socat forward on port 55432, because a local Postgres holds 5432.
-- Full stack (`docker compose up --build -d`):
-  - `Applied 002_outbox.sql`.
-  - Register + verify: the outbox row was published, the Kafka message on `user.events` is keyed
-    by `userId`, Credit logged `wallet_created` with the same `eventId`, and
-    `GET :3004/credits/<userId>` returned `available: 10, reserved: 0`.
-  - Credit only started with a `CREDIT_SERVICE_KEY` passed from the shell, because my local
-    `.env` lacks it. `.env` was not changed.
-- **Kafka down** (`docker compose stop kafka`):
-  - Register + verify still returned 201/200, and the row stayed pending.
-  - **Problem found and fixed:** with the client's defaults, one connect took about 95 s
-    (1 s + 10 s per attempt, retried 5 times), holding the tick's transaction open. librdkafka
-    also logged a resolve error every ~150 ms. The AI changed the producer to one connect attempt
-    of about 6 s per tick (`retry.retries: 0`, delivery `retries` kept at 5), and sent the
-    client's own logs to `debug`.
-  - After the fix: `OUTBOX_RELAY_FAILED` with `nextRetryMs` 2000 → 4000 → 8000 → 16000 → 30000,
-    and `OUTBOX_BACKLOG_STALE` once the row was over 60 s old.
-  - `docker compose start kafka`: the pending row published with no restart, and Credit logged
-    `wallet_created` with the same `eventId`.
-- Not run yet: the bootstrap-admin path and the newman collection, including the two new credit
-  checks. Both need a fresh `user-db` volume, which deletes local accounts. The rolled-back
-  verify case is covered by the PostgreSQL test, not end to end.
+- Build, lint, and 14/14 tests pass (the PostgreSQL tests ran against the compose `user-db`).
+- Full stack: register + verify published the event; Credit created a 10-credit wallet with the same `eventId`.
+- Kafka down: register still worked and the row stayed pending. **Bug found:** a connect hung about 95 s. The AI cut it to about 6 s per tick. Backoff and the stale warning were then confirmed, and the row published once Kafka restarted.
+- Not run yet: the bootstrap-admin path and newman (both need a fresh `user-db` volume).
 
 ### 2026-10-16 — Swap the refactored service in as `user-service/`
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, refactor
-**Files:** folder renames (`user-service/` → `old-user-service/`, `refactored-user-service/` →
-`user-service/`); in this folder: `compose.yaml`, `Dockerfile`, `API.md`, `package.json`,
-`package-lock.json` (package name), the Postman collection description, `ai/open_decisions.md`
-(items 3 and 8 done, item 11 added). Outside it, each approved by Deanson first:
-root `compose.yaml` (disclosure line only) and `.github/workflows/ci.yml` (user-service on Node 24).
+**Files:** folder renames (`user-service/` → `old-user-service/`, `refactored-user-service/` → `user-service/`); `compose.yaml`, `Dockerfile`, `API.md`, `package*.json`, Postman description, `ai/open_decisions.md`; outside the folder, approved first: root `compose.yaml` (disclosure line), `.github/workflows/ci.yml` (Node 24)
 
 **Scenario:** carry out steps 1–6 of `ai/plan.md`.
 
@@ -146,46 +293,16 @@ root `compose.yaml` (disclosure line only) and `.github/workflows/ci.yml` (user-
 
 > Execute the plan (steps 1 - 6). However, if you end up changing anything outside of the user service scope, inform me first. Clarify before proceeding
 
-**Clarifications answered:**
-- Approved: the root `compose.yaml` disclosure line, the `ci.yml` Node 24 change, and stopping
-  and restarting the whole stack.
-- Also remove the leftover `foc-refactored_user-db-data` / `foc-refactored_user-redis-data`
-  volumes.
-
-**What it produced:** the renames and text edits above; `package.json` now has
-`"test": "vitest run --passWithNoTests"` and `"engines": { "node": ">=24" }`.
-
-**Blocked actions, run by Deanson:** Claude Code's auto-mode safety check blocked two commands,
-so Deanson ran them: deleting the two scaffold specs (`auth.controller.spec.ts`,
-`auth.service.spec.ts`), and `docker volume rm` for `foc_user-db-data`, `foc_user-redis-data` and
-the two `foc-refactored_*` volumes. `foc_supplier-db-data` was kept.
-
-**Verification:**
-- **CI, simulated in `node:24-alpine`:** `npm ci`, `npm test` and `npm run build` all pass.
-  `npm test` failed before the specs were deleted (`ReferenceError: describe is not defined`).
-- **Full stack** (`docker compose up --build -d` from the root): all eight containers up.
-  - `user-db` has `schema_migrations`, `users` and `refresh_tokens`, and one ACTIVE ADMIN (the
-    bootstrap admin).
-  - `GET :3001/health` returns 200.
-  - Supplier: "Locations already exist; seed skipped." Gateway and frontend: started.
-- **newman, direct on :3001:** 135 requests, 349 assertions, 0 failures.
-- **newman, via the gateway on :3003:** 135 requests, 1 failed assertion out of 349.
-  - The failure: "401 logout without a token". The gateway rejects it before it reaches the User
-    Service, with `{"error":"Unauthorized"}` and no `code` field. That is gateway behaviour.
-  - Health returned 200 through the gateway.
-- **Mishap:** the first `up` ran inside `user-service/` (a parallel command had changed
-  directory), so the root `.env` wasn't read and the service exited with "Invalid environment".
-  Re-running from the root fixed it; no files were changed.
+**Clarifications answered:** I approved the root and CI edits and a full stack restart, and asked for the leftover `foc-refactored_*` volumes to be removed.
+**What it produced:** the renames and edits above, plus `test`/`engines` in `package.json`. Auto mode blocked two deletions (2 scaffold specs, old volumes), so I ran them myself.
+**Verification:** CI simulated in `node:24-alpine` passes. The full stack came up (8 containers, bootstrap admin, health 200). newman direct: 0/349 failures. Via the gateway: 1 failure (logout without a token gets the gateway's 401 shape).
 
 ### 2026-10-16 — Password reset keeps the OTP until the password is saved
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate, debug
-**Files:** `src/auth/auth.service.ts` (`resetPassword`), `postman/user-service.postman_collection.json`
-(new request "400 reset to the current password"), `API.md`, `ai/open_decisions.md` (item 10)
+**Files:** `src/auth/auth.service.ts`, the Postman collection, `API.md`, `ai/open_decisions.md`
 
-**Scenario:** check how each password endpoint treats the OTP, record the OTP rate-limit issue, then
-make `/auth/password/reset` keep its code on a "same as current password" rejection, as
-`/users/me/password` already does.
+**Scenario:** compare how the password endpoints spend the OTP, then make `/auth/password/reset` keep the code on a "same as current" rejection, as `/users/me/password` does.
 
 **Prompts:**
 > I found these two facts:
@@ -202,82 +319,32 @@ make `/auth/password/reset` keep its code on a "same as current password" reject
 
 > Is it possible for /auth/password/reset to mimic the logic of /users/me/password which keeps the OTP code instead of consuming it immediately? Clarify before you proceed
 
-**Clarifications answered:**
-- **AI-policy warning:** the AI flagged this as a security trade-off on a public endpoint and a
-  departure from the old service. Deanson chose to make the change.
-- **Verification chosen:** `npm run build`, a new Postman case, and a redeploy plus a newman run.
-
-**What it produced:**
-- Answers:
-  - fact 1 is false for bad formatting (the DTO rejects it before the code is touched), but true
-    for a new password equal to the current one;
-  - fact 2 is true (one shared bucket per user, and an email change counts twice).
-- `ai/open_decisions.md` item 10, on the shared OTP request bucket.
-- `resetPassword`: checks the code with `consume: false` and deletes it only after the new password
-  is saved. On the unreachable "no active account" branch the code is still deleted.
-  Wrong guesses still count against the code's 3 attempts.
-- The new Postman request: reset with the current password expects 400, and then "Reset password"
-  succeeds with the same code.
-
-**Problems during verification** (caused by the AI, and its mistakes):
-- It ran newman a second time with the output hidden, then sent a manual forgot-password `curl`.
-  The curl was the admin address's 4th OTP request, which started a 15-minute block. The AI
-  deleted that one `otpblock` key in the test Redis.
-- The admin steps still failed. The cause is not the code change: no account has the configured
-  `adminEmail` any more (the logs show `PASSWORD_RESET_NOT_SENT reason: NO_ACCOUNT`). The
-  bootstrap admin had been renamed and its email changed during manual testing.
-
-**Follow-up prompts:**
 > *(choice)* Wipe the test DB (down -v)
 
 > just to double confirm, u already updated usage-log?
 
-**What I changed or rejected:** chose to wipe the `foc-refactored` test volumes (`down -v`) to get
-a clean bootstrap admin. This deleted the accounts created during manual testing.
-**Verification:**
-- `npm run build` passes; the `user-service` container was rebuilt and is healthy.
-- **Before the wipe:** newman ran 135 requests. The Password reset folder passed, including the new
-  case (400, then 204 with the same code). All 29 failing requests were the admin knock-on effect
-  described above.
-- **After the wipe:** the logs show `Applied 001_init.sql`, `Database ready` and
-  `ADMIN_BOOTSTRAPPED`. One newman run: **135 requests, 349 assertions, 0 failures**.
-  - "400 reset to the current password" returned 400, then "Reset password" returned 204 with
-    the same code.
-  - The count checks out: 119 collection requests + 12 Mailpit lookups + 4 lockout logins = 135.
+**What it produced:** fact 1 is false for bad formatting but true for the same password; fact 2 is true. It added open decision 10, a `resetPassword` that deletes the code only after a save, and a new Postman case.
+**Who decided:** the AI flagged a security trade-off under the AI policy, and I chose to make the change. AI mistake: an extra OTP request during testing triggered a block, and testing showed the admin email had changed. I chose to wipe the test volumes.
+**Verification:** build passes. After the wipe, newman: 135 requests, 0/349 failures. The new case returned 400, then 204 with the same code.
 
 ### 2026-10-16 — API reference and manual Postman guide
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, explain
 **Files:** `API.md` (new)
 
-**Scenario:** document the refactored service's endpoints for the team, and explain how to test
-it by hand in Postman.
-
 **Prompts:**
 > Can you write me an api reference markdown file for this refactored user service and tell me how to manually test my program via postman with the base_url and port?
 
-**What it produced:**
-- `API.md`, written from the current controllers, DTOs, `fields.ts` and services:
-  - the base URL (`http://localhost:3001`, or the gateway on `:3003` in the full stack);
-  - authentication, the error envelope and every error code;
-  - field rules and limits;
-  - every endpoint, with its request body, response and errors.
-- A manual Postman walkthrough: setup, the main flow step by step, error cases, claiming the
-  bootstrap admin, and the automated collection.
-
+**What it produced:** `API.md`, written from the code (base URL, auth, error codes, field rules, every endpoint), and a manual Postman walkthrough.
 **What I changed or rejected:** —
-**Verification:** pending Deanson's review.
+**Verification:** pending my review.
 
 ### 2026-10-16 — Restructure plan, steps 4–7 (port, Docker, Postman, attribution)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, refactor, debug
-**Files:** every file under `src/` except `common/validation/fields.ts` and `auth/dto/*`
-(removed `src/auth/auth.repository.ts`); `db/migrations/001_init.sql` (copied unchanged);
-`Dockerfile`, `.dockerignore`, `compose.yaml`; `postman/user-service.postman_collection.json`;
-`tsconfig.json`; `ai/plan.md` (Docker row), `ai/open_decisions.md` (item 9)
+**Files:** all of `src/` except `fields.ts` and `auth/dto/*`; `001_init.sql` (copied); `Dockerfile`, `.dockerignore`, `compose.yaml`; the Postman collection; `tsconfig.json`; `ai/plan.md`, `ai/open_decisions.md`
 
-**Scenario:** port the old User Service into the agreed structure, then prove it builds, boots
-in Docker and passes the Postman collection.
+**Scenario:** port the old User Service into the agreed structure, then show that it builds, runs in Docker and passes Postman.
 
 **Prompts:**
 > - Yes i agree with your changes
@@ -287,87 +354,28 @@ in Docker and passes the Postman collection.
 >
 > Clarify before proceeding.
 
-**Clarifications answered:**
-- **Docker:** Deanson starts Docker and the AI stops the old stack. No old stack was running.
-- **Postman runner:** `npx newman`, with nothing saved to `package.json`.
-- **"New Postman tests":** for each endpoint, test validation such as bad OTP format, missing
-  field, weak password and bad email, since the DTOs and `fields.ts` redefine the schemas.
-- **File structure:** the `plan.md` tree is enough.
-
-**What it produced:**
-- Ported `common/`, `config/`, `infra/`, `security/`, `users/`, `auth/` and `utils/` following
-  `ai/plan.md`. Behaviour, routes, status codes, error codes and messages come from the old
-  `user-service/src`.
-- One planned rule change: `reactivate` re-checks in the database that the caller is an ACTIVE
-  ADMIN.
-- New file headers say which old file each one was adapted from, with the original disclosure.
-- The Docker files are drop-in copies of the old ones.
-- Postman:
-  - the old collection is copied with no request or assertion changed; each was checked against
-    the new rules and still holds;
-  - a new **Validation** folder adds 63 requests, one 400 case per field rule for every endpoint.
-- **Deviations found while testing:**
-  - The base image is `node:24-alpine`, not node:22: npm 10 rejects the lock file under `npm ci`.
-  - Removed `"incremental"` from tsconfig: with Nest's `deleteOutDir`, a rebuild with no changes
-    left `dist/` without `main.js`.
-  - For the test run only, a scratchpad override published `user-db` on host port 55432, because
-    a local Postgres already holds 5432. `compose.yaml` keeps `5432:5432`.
-- **Found, not changed:** audit lines redact the error `code` field. The old service does the
-  same; it is logged as open decision 9.
-
-**What I changed or rejected:** —
-**Verification:**
-- `npm run build` passes, also when rebuilding with no changes.
-- `docker compose -p foc-refactored -f refactored-user-service/compose.yaml --env-file .env up --build`
-  on a fresh volume:
-  - the logs show `Applied 001_init.sql`, `Database ready` and `ADMIN_BOOTSTRAPPED`;
-  - `GET /health` returns `{"status":"ok"}`.
-- `npx newman@6 run postman/user-service.postman_collection.json --env-var adminEmail=<bootstrap email>`:
-  133 requests, 347 assertions, 0 failures.
-- The service log has no `ERROR` lines and no email addresses.
+**Clarifications answered:** I start Docker; newman via `npx`; new Postman tests check every field rule; the `plan.md` tree is enough.
+**What it produced:** the port, with behaviour copied from the old service plus one planned change (`reactivate` re-checks ADMIN in the database); file headers that name the source file; 63 new Validation requests in Postman. Deviations: `node:24-alpine`, `incremental` removed from tsconfig, a temporary host port for testing. Logged as open decision 9: audit lines redact `code`.
+**Verification:** build passes. On a fresh volume the service boots and `/health` returns ok. newman: 133 requests, 0/347 failures. No `ERROR` lines and no emails in the logs.
 
 ### 2026-10-16 — Restructure plan, steps 1–3 (open decisions, instructions, CommonJS setup)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, refactor
-**Files:** `ai/open_decisions.md`, `ai/instructions.md`, `ai/plan.md` (one row), `package.json`,
-`package-lock.json`, `tsconfig.json`, and every `src/` file with relative imports (suffix strip only)
-
-**Scenario:** start executing the agreed restructure plan (`ai/plan.md`), limited to the docs and
-project setup before any code is ported.
+**Files:** `ai/open_decisions.md`, `ai/instructions.md`, `ai/plan.md`, `package*.json`, `tsconfig.json`, and every `src/` file with relative imports
 
 **Prompts:**
 > read refactored-user-service/ai/plan.md and understand the task at hand. Clarify with me that u understand before proceeding.
 
 > Yes correct. Implement steps 1 to 3 first.
 
-**What it produced:**
-- `open_decisions.md`: the 8 deferred items from plan step 1, each with its current behaviour
-  and what is still open.
-- `instructions.md`: the target tree and rules, updated to the plan's decisions (AuthGuard,
-  `USER`/`ADMIN`, synchronous mail with no BullMQ, `config/`, `utils/`, `errors/`, `logging/`,
-  full ports instead of TODO stubs).
-- CommonJS switch:
-  - removed `"type":"module"`;
-  - stripped the `.js` suffixes from the 30 relative imports;
-  - replaced `await bootstrap()` with `void bootstrap()`;
-  - added a `migrate` script.
-- Installed `@nestjs/config`, `@nestjs/jwt`, `pg`, `ioredis@^6` (same major as the old service),
-  `bcryptjs`, `nodemailer`, `@types/pg` and `@types/nodemailer`.
-- **Deviation from the plan:** TypeScript 6 rejects `moduleResolution: node` (TS5107, deprecated).
-  The AI used `module`/`moduleResolution: nodenext` instead, which emits CommonJS when
-  package.json has no `"type"`. The plan row was updated to match.
+**What it produced:** 8 open decisions; `instructions.md` updated to the plan; a switch to CommonJS (`.js` suffixes stripped, `void bootstrap()`, a `migrate` script); the dependencies installed. Deviation: TS 6 rejects `moduleResolution: node`, so it uses `nodenext`.
+**What I changed or rejected:** I approved the `nodenext` deviation.
+**Verification:** build passes; `dist/main.js` is CommonJS; the app boots and maps `/auth`.
 
-**What I changed or rejected:** approved the `nodenext` deviation and the other changes as made.
-**Verification:**
-- `npm run build` passes.
-- `dist/main.js` uses `require` (CommonJS).
-- The built app boots and maps the `/auth` routes.
 ### 2026-10-15 — Session logs and file headers
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
-**Files:** `ai/usage-log.md`, `ai/sessions.md`, AI disclosure headers on the code files listed in the entries below
-
-**Scenario:** record this session under the AI policy before continuing the refactor.
+**Files:** `ai/usage-log.md`, `ai/sessions.md`, disclosure headers on the AI-written code files
 
 **Prompts:**
 > 1. Log the current session based on the AI policy under refactored-user-service/ai/usage-log.md
@@ -375,18 +383,13 @@ project setup before any code is ported.
 >
 > Clarify before proceeding
 
-**What it produced:** this log, `sessions.md`, and a 4-line disclosure header on each
-AI-written or AI-edited code file.
-**What I changed or rejected:** —
-**Verification:** I read both logs and every header in full.
+**What it produced:** both logs and a 4-line disclosure header on each AI-touched file.
+**Verification:** I read both logs and every header.
 
 ### 2026-10-15 — Install Zod and `nestjs-zod`, global validation pipe, error shape
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug, explain
-**Files:** `package.json`, `package-lock.json`, `src/app.module.ts`
-
-**Scenario:** make the Zod DTOs actually validate requests, and decide what a validation error
-looks like to the frontend.
+**Files:** `package*.json`, `src/app.module.ts`
 
 **Prompts:**
 > install zod and nestjs-zod in the project;
@@ -411,49 +414,16 @@ looks like to the frontend.
 
 > what are you porting over and where are u placing them?
 
-**What it produced:**
-- Found that `nestjs-zod` 5.5.0 only supports Nest 10/11, while the scaffold was Nest 12.1.2.
-  Explained that Zod 4 was not the problem.
-- Downgraded every `@nestjs/*` package in this folder only to 11.x (common/core/platform-express/testing 11.2.7,
-  cli 11.0.24, schematics 11.1.0). Installed `zod` 4.6.7 and `nestjs-zod` 5.5.0 with no peer conflicts.
-- Registered `nestjs-zod`'s `ZodValidationPipe` as `APP_PIPE` in `app.module.ts`.
-- Explained the old service's error shape (pipe → `AppError` with `{ field, message }` list;
-  global `ErrorFilter` → `{ error: { code, message, details } }`) and why a filter, not an
-  interceptor, is the right place.
-- Proposed a file-by-file port of `AppError`, `error-codes.ts`, `ErrorFilter` and the audit
-  helpers.
+**What it produced:** found that `nestjs-zod` needs Nest ≤ 11; downgraded `@nestjs/*` to 11.x; installed `zod` 4.6.7 and `nestjs-zod` 5.5.0; registered `ZodValidationPipe` as `APP_PIPE`; explained the old error shape and proposed a port.
+**What I changed or rejected:** I chose the Nest 11 downgrade over the AI's peer-override recommendation, and **rejected the error-envelope port for now** (it is noted in `sessions.md`).
+**Verification:** `tsc` shows only the 8 expected errors. A scratch Nest app confirmed the pipe normalises valid bodies and returns 400 with every error.
 
-**What I changed or rejected:**
-- Chose the Nest 11 downgrade instead of the AI's recommended peer-dependency override.
-- **Rejected implementing the error-envelope port for now** ("let's keep this an open note for
-  now, skip this"). It is recorded as an open item in `sessions.md`. Nothing was written.
-
-**Verification:**
-- `tsc --noEmit` reports only the 8 expected errors (controller calls `AuthService` methods not
-  written yet).
-- A throwaway Nest app in a scratch folder, using the real `RegisterDto` and the same global
-  pipe:
-  - a valid messy body reached the controller normalised (201);
-  - a bad email + landline + extra `role` returned 400 with all three errors.
-
-### 2026-09-28 — Step 13: admin reactivation (branch `feature/user-service-protected-endpoints`, PR not yet opened)
+### 2026-09-28 — Step 13: admin reactivation (branch `feature/user-service-protected-endpoints`)
 
 **Tool:** Claude Code (Claude Sonnet 5) · **Mode:** explain, generate, verify
+**Files:** `user-service/src/users/{users.repository,admin.service,admin.controller,admin.service.spec}.ts`, `user-service/AGENTS.md`, `README.md`, the Postman collection, `/ai/usage-log.md`
 
-**Files:** `user-service/src/users/users.repository.ts`, `user-service/src/users/admin.service.ts`,
-`user-service/src/users/admin.controller.ts`, `user-service/src/users/admin.service.spec.ts`,
-`user-service/AGENTS.md`, `user-service/README.md`,
-`user-service/postman/user-service.postman_collection.json`, `/ai/usage-log.md`
-
-**Scenario.** Continuing Person B's track after Step 12: `POST
-/admin/users/:userId/reactivate`, the admin-side reverse of Step 12's self-deactivate. Had it
-read `AGENTS.md`, `README.md` and the existing admin/users code first, then plan before writing
-anything. It surfaced one implementation question `AGENTS.md` doesn't answer — whether
-reactivate should re-verify the caller's admin status fresh from the database (the way
-`changeRole`/`deactivateSelf` do via `AdminLockService`, per `roles.guard.ts`'s note that a
-demoted admin's token stays valid up to 15 minutes) — as a multiple-choice question rather than
-assuming an answer. I also separately decided to defer Step 14 (`GET /internal/users/:userId`)
-since its only caller, the Notification Service, doesn't exist yet.
+**Scenario:** `POST /admin/users/:userId/reactivate`, after reading the docs and planning first.
 
 **Prompts (exact):**
 
@@ -484,55 +454,18 @@ since its only caller, the Notification Service, doesn't exist yet.
 > Step 13 looks all good to me. Update the relevant files such as usage-log.md,
 > user-service/AGENTs.md as well as other relevant files.
 
-(The choice of whether to re-verify the caller's admin status inside a lock was resolved
-through a multiple-choice question rather than free text — recorded under "Decisions I made"
-below, not paraphrased here as a prompt.)
+(One choice was made through a multiple-choice question; it is under "Who decided".)
 
-**What it produced:** `UsersRepository.reactivate`, `AdminService.reactivate` (404 `NOT_FOUND`,
-409 `NOT_DEACTIVATED`, `ADMIN_ACTION` audit log), the `POST :userId/reactivate` route, three new
-`admin.service.spec.ts` tests (happy path, 404, 409), the `AGENTS.md`/`README.md` build-order
-and endpoint-table updates, and a "Reactivate user (admin)" Postman request plus fixes to two
-other descriptions in that collection that referenced Step 13 as not-yet-built.
+**What it produced:** `reactivate` in the repository, service and route (404, 409, audit log), 3 tests, doc updates, and a Postman request.
+**Who decided:** the AI gave 3 options for re-checking the caller's admin status. I chose to trust `RolesGuard` only, because reactivation can't break the last-admin rule. I deferred Step 14 until Notification exists.
+**Verification:** build passes and tests pass 271/271. I tested it in Postman: 409, 403, 404, 401 and the happy path all matched the specs.
 
-**Decisions I made, which it did not:**
-
-- **No re-verification of the caller's admin status inside a lock for `reactivate`.** It laid
-  out three options (reuse `AdminLockService.run` for consistency at the cost of locking every
-  active-admin row unnecessarily; a lighter fresh re-read of just the caller's row; or trusting
-  `RolesGuard`'s token-based check only, same as `GET /admin/users`). I picked the third: this
-  endpoint only ever activates someone, so it can never break the last-admin invariant, and a
-  demoted admin's stale token reactivating an account for up to 15 minutes isn't the same class
-  of risk as a stale token demoting or promoting someone.
-- **Step 14 deferred**, not built now — its only consumer doesn't exist yet.
-
-**Verification:** `npm run build` (clean) and `npm test` (271/271, no regressions) after the
-code change. I then manually verified `POST /admin/users/:userId/reactivate` via Postman
-against the compose stack myself: reactivating an already-ACTIVE account is rejected with 409;
-calling it with a USER-role token is rejected with 403; an unknown `targetUserId` gets 404; no
-access token gets 401 (`TOKEN_INVALID`, "the token is invalid or has expired"); and the happy
-path (a DEACTIVATED account becomes ACTIVE again) works. All five matched what
-`admin.service.spec.ts` asserts.
-
----
-
-### 2026-09-28 — Step 12: the six OTP-protected self-service endpoints (branch `feature/user-service-self-profile`, PR not yet opened)
+### 2026-09-28 — Step 12: the six OTP-protected self-service endpoints (branch `feature/user-service-self-profile`)
 
 **Tool:** Claude Code (Claude Sonnet 5) · **Mode:** explain, generate, debug, verify
-**Files:** `user-service/src/auth/auth.schemas.ts`, `user-service/src/users/users.schemas.ts`,
-`user-service/src/users/users.repository.ts`, `user-service/src/users/users.service.ts`,
-`user-service/src/users/users.controller.ts`, `user-service/src/users/users.service.spec.ts`,
-`user-service/src/otp/otp.scripts.ts`, `user-service/src/otp/otp.service.ts`,
-`user-service/src/otp/otp.service.int.spec.ts` (all existing files, no new ones — see "What I
-changed or rejected" on file organisation), `user-service/AGENTS.md`, `user-service/README.md`,
-`user-service/postman/user-service.postman_collection.json`
+**Files:** `user-service/src/{auth/auth.schemas,users/users.schemas,users/users.repository,users/users.service,users/users.controller,users/users.service.spec,otp/otp.scripts,otp/otp.service,otp/otp.service.int.spec}.ts`, `AGENTS.md`, `README.md`, the Postman collection
 
-**Scenario.** Continuing Person B's track after Step 11: `POST /users/me/otp`, `POST
-/users/me/email` + `/email/verify`, `PATCH /users/me/mobile`, `POST /users/me/password`, `POST
-/users/me/deactivate`. Had it read the existing code and explain the OTP storage/consumption
-mechanics before any code was written, settled two design points as clarifying questions, then
-implemented and manually verified — then, in a follow-up review of exactly when each code is
-spent, the literal version of a change I asked for turned out to open a security hole, which
-got caught and redesigned before I implemented it.
+**Scenario:** OTP request, email change and verify, mobile, password, and deactivate. While reviewing when each code is spent, my literal request turned out to open a security hole, which was redesigned before any code was written.
 
 **Prompts (exact):**
 
@@ -588,82 +521,22 @@ got caught and redesigned before I implemented it.
 > corresponding files including usage-log.md, agents.md and other relevnt files to reflect this
 > progress
 
-(Two design points were resolved through a multiple-choice question rather than free text —
-recorded under "Decisions I made" below, not paraphrased here as prompts.)
+(Two design points were settled through multiple-choice questions; they are under "Who decided".)
 
-**What it produced:** the six endpoints and their Zod schemas, repository methods
-(`updateEmail` — including translating the Postgres 23505 unique-violation into 409
-`EMAIL_TAKEN` — `updateMobile`, `deactivate`), the constructor wiring, a full rewrite of
-`users.service.spec.ts`'s mocks and new test coverage, two Postman flow walkthroughs (email
-change vs. registration) on request, and — after I asked when each OTP is spent and then asked
-to defer that point past validation — a new non-consuming check primitive in `OtpService`
-(`check`/`checkRecord`, backed by a new `CHECK_OTP_LUA`) plus the redesigned
-`requestEmailChange`/`changePassword` methods and their disclosure headers.
+**What it produced:** the six endpoints and their schemas; repository methods (409 `EMAIL_TAKEN` on a unique violation); rewritten spec mocks and new tests; walkthroughs of the email-change and registration flows; a non-consuming `OtpService.check`/`checkRecord` (`CHECK_OTP_LUA`) and the redesigned `requestEmailChange`/`changePassword`.
 
-**Decisions I made, which it did not:**
+**Who decided:**
+- **Me:** the self-profile shape for mobile and email-verify; fold everything into the existing users files; "must differ from current" also applies to `changePassword`; don't spend the code when a business check fails; the OTP rate-limit note in AGENTS.md.
+- **AI proposal I adopted:** "verify, then consume only on success". My literal reorder would have let a leaked token use `changePassword` to guess passwords with no limit. Applied to both endpoints.
+- **AI finding:** Step 10's admin requests were never in the Postman collection, so I had both steps added.
 
-- **Self profile shape for `PATCH /users/me/mobile` and `POST /users/me/email/verify`** —
-  resolving the `[Open]` item AGENTS.md had left for exactly this, in favour of consistency with
-  Step 11 over the endpoint table's literal (admin-facing) shape.
-- **Fold everything into the existing `users.controller.ts`/`users.service.ts`/
-  `users.schemas.ts`** rather than the separate `self-service.*` pair it first proposed —
-  simpler file layout, at the cost of those two files now covering both Step 11 and Step 12.
-- **Extend the "must differ from current password" check to `changePassword`**, even though
-  AGENTS.md only documents that rule for password *reset* — for consistency between the two
-  places a password gets set.
-- **Defer spending the `EMAIL_CHANGE`/`PASSWORD_CHANGE` code until after the endpoint's own
-  business check passes**, so a rejected `EMAIL_TAKEN`/"must differ" doesn't cost the user their
-  code — the request that started the security discussion below.
-- Given the choice, once the risk was flagged (below): **"verify-then-conditionally-consume"
-  over a plain reorder**, and applied it to *both* endpoints for consistency rather than only
-  the higher-risk one (password).
-- Added the OTP-rate-limit note to AGENTS.md's `Open` section myself, having noticed the
-  three-per-ten-minutes bucket is shared across every Step 12 purpose and a user changing
-  several fields in one sitting could hit it legitimately.
+**What I changed or rejected:** the literal form of my own OTP request, which was revised before any code was written.
+**Verification:** build passes; unit tests 267/267; integration tests 50/50 against real Redis (including `check`/`discard`). I tested all six endpoints in Postman.
 
-**AI-proposed, and I adopted after reading the reasoning:**
-
-- **The whole "verify-then-conditionally-consume" design** (`OtpService.check`/`checkRecord`,
-  `CHECK_OTP_LUA`, explicit `discard()`). I'd asked for the literal version — move the business
-  check before the OTP check — and it flagged that this would let anyone holding a valid access
-  token (including a leaked one) probe `changePassword`'s reuse check as a free
-  password-guessing oracle, with no rate limit and no lockout, since `changePassword` calls no
-  request-limiter of its own. It proposed keeping the correctness check first (closing that
-  hole) but not deleting the record on a match until the business check also passes, so I still
-  get "a rejected check doesn't cost a code" without the oracle. I confirmed this via its
-  AskUserQuestion for both the password and (for consistency) the email endpoint.
-- **Flagged that Step 10's admin endpoints were never actually in the Postman collection**,
-  despite `admin.controller.ts`/`admin.service.ts`'s own disclosure headers claiming they were
-  Postman-verified — the verification evidently happened with ad hoc requests that were never
-  saved back into the shared file. I asked it to add both Step 10 and Step 12 to close the gap.
-
-**What I changed or rejected:** the literal form of my own OTP-consumption request (see above) —
-not code the AI generated unprompted, but a design I asked for that got substantively revised
-after it identified the oracle risk, before any code was written against it.
-
-**Verification.**
-- `npm run build` (clean) and `npm test` (267/267, 19 suites).
-- `npm run test:int` (50/50) against a real Redis (`docker compose up -d user-redis`), including
-  new coverage for `check()`/`discard()`: a correct code survives a `check()` without being
-  deleted, the same code can be checked again, `discard()` is what actually removes it, and the
-  attempt cap/`KEEPTTL` behaviour on a wrong guess is unchanged from `verify()`.
-- I tested all six Step 12 endpoints via Postman against the compose stack myself and confirmed
-  they work as expected.
-
-### 2026-09-28 — Step 11: GET /users/me, PATCH /users/me (branch `feature/user-service-admin-endpoints`, PR not yet opened)
+### 2026-09-28 — Step 11: GET /users/me, PATCH /users/me (branch `feature/user-service-admin-endpoints`)
 
 **Tool:** Claude Code (Claude Sonnet 5) · **Mode:** explain, generate, debug, verify
-**Files:** `user-service/src/users/profile.mapper.ts`,
-`user-service/src/users/profile.mapper.spec.ts` (new), `user-service/src/users/users.repository.ts`,
-`user-service/src/users/users.schemas.ts`, `user-service/src/users/users.controller.ts` (new),
-`user-service/src/users/users.service.ts` (new), `user-service/src/users/users.service.spec.ts`
-(new), `user-service/src/users/users.module.ts`, `user-service/AGENTS.md`,
-`user-service/README.md`, `user-service/postman/user-service.postman_collection.json`
-
-**Scenario.** Continuing Person B's track after Step 10: Step 11 (`GET /users/me`,
-`PATCH /users/me`), the first of the self-service profile endpoints. Had it read the existing
-code first, then discussed and settled two response-shape/auth points before any code was
-written, then implemented, then manually verified.
+**Files:** `user-service/src/users/`: `profile.mapper.ts`, `profile.mapper.spec.ts` (new), `users.repository.ts`, `users.schemas.ts`, `users.controller.ts` (new), `users.service.ts` (new), `users.service.spec.ts` (new), `users.module.ts`; `AGENTS.md`, `README.md`, the Postman collection
 
 **Prompts (exact):**
 
@@ -704,55 +577,15 @@ written, then implemented, then manually verified.
 > I ran tests through Postman, step 11 looks good. Edit usage-log.md, agents.MD and other
 > relevant files accordingly.
 
-**What it produced:** a walkthrough of the existing codebase and design questions before any
-code; then, once the two shape/auth questions below were settled, the implementation —
-`toSelfProfileResponse`/`SelfProfileResponse` in `profile.mapper.ts` (with `toProfileResponse`
-refactored to build on it rather than duplicate the decrypt calls), `UsersRepository.
-updateDisplayName`, `UpdateSelfProfileSchema`, the new `UsersController`/`UsersService` pair,
-module wiring, two new spec files, the AGENTS.md/README updates, and two new Postman requests.
+**What it produced:** `toSelfProfileResponse` (with `toProfileResponse` built on it), `updateDisplayName`, `UpdateSelfProfileSchema`, `UsersController`/`UsersService`, 2 spec files, doc updates, and 2 Postman requests.
+**Who decided (me):** dropped `GET /users/:userId`; `PATCH /users/me` needs the JWT but no OTP (the AI pointed out my wording was ambiguous); a narrower self-profile shape, recorded in AGENTS.md; I found that `display_name` isn't unique and had it noted.
+**What I changed or rejected:** no generated code; both design points were settled before any code was written.
+**Verification:** build passes; tests 237/237. In Postman: GET returns only the 5 self fields; PATCH renames; an extra field gets 400; no token gets 401.
 
-**Decisions I made, which it did not:**
-
-- **Dropped `GET /users/:userId` from Step 11 entirely.** AGENTS.md's documented table had it
-  as a third endpoint of this step; I cut it because a by-id lookup, if it's ever needed, is a
-  filter on `GET /admin/users` instead — no separate route.
-- **`PATCH /users/me` needs no OTP, but still requires the JWT.** My first phrasing ("no
-  authentication required") was ambiguous with dropping the JWT guard entirely; it flagged the
-  contradiction with the route sitting under `JwtAuthGuard` and the "Logged in" section, and I
-  confirmed I meant no OTP step only.
-- **`GET /users/me`/`PATCH /users/me` return a narrower "self profile" shape** — no `role`,
-  `status` or `createdAt` — distinct from the admin-facing `Profile` shape `GET /admin/users`
-  still uses. This is a documented interface change, so it's recorded in AGENTS.md, not just in
-  this log.
-- Found, independently of anything it proposed, that `display_name` has no `UNIQUE` constraint
-  and `PATCH /users/me` does not check for a duplicate name; had it flag this as a note in
-  AGENTS.md rather than silently accept the gap.
-
-**What I changed or rejected:** none of the generated code itself; the two design decisions
-above were resolved as clarifying questions before code was written, not corrections after.
-
-**Verification.**
-- `npm run build` (clean) and `npm test` (237/237, 19 suites — the two new spec files pass and
-  the rest of the suite is unaffected).
-- Manually verified both endpoints via Postman against the compose stack: `GET /users/me`
-  returns exactly `{ userId, displayName, email, countryCode, mobileNumber }` with no
-  `role`/`status`/`createdAt`; `PATCH /users/me` renames the caller and a follow-up `GET`
-  reflects the new name; a body with an extra field (e.g. `role`) is rejected 400 by the
-  `.strict()` schema; a missing token gets 401.
-
-### 2026-09-27 to 2026-09-28 — Step 10 endpoint 2: PATCH /admin/users/:userId/role (branch `feature/user-service-admin-endpoints`, PR not yet opened)
+### 2026-09-27 to 2026-09-28 — Step 10 endpoint 2: PATCH /admin/users/:userId/role (branch `feature/user-service-admin-endpoints`)
 
 **Tool:** Claude Code (Claude Sonnet 5) · **Mode:** generate, explain, debug, verify
-**Files:** `user-service/src/users/admin-lock.service.ts` (new),
-`user-service/src/users/admin-lock.service.spec.ts` (new),
-`user-service/src/users/admin.service.spec.ts` (new), `user-service/src/users/admin.service.ts`,
-`user-service/src/users/admin.controller.ts`, `user-service/src/users/users.repository.ts`,
-`user-service/src/users/users.schemas.ts`, `user-service/src/users/users.module.ts`
-
-**Scenario.** Continuing Step 10 after endpoint 1 (previous entry below): the role-change
-endpoint and its shared last-admin lock. Had it walk through and explain the design before
-writing code, asked clarifying questions on three specific ambiguities, then implemented, then
-manually verified.
+**Files:** `user-service/src/users/`: `admin-lock.service.ts` (new), `admin-lock.service.spec.ts` (new), `admin.service.spec.ts` (new), `admin.service.ts`, `admin.controller.ts`, `users.repository.ts`, `users.schemas.ts`, `users.module.ts`
 
 **Prompts (exact):**
 
@@ -786,61 +619,21 @@ manually verified.
 > I tested the endpoint via Postman. Update usage-log-md, AGENTS.md and other relevant files,
 > marking step 10 as complete
 
-(Also asked it to explain, separately and without changing any code, two existing files —
-`auth/decorators.ts` and the JWT-extraction chain in `auth/jwt-auth.guard.ts` — while getting
-oriented; omitted here since nothing was generated or changed by those.)
+(I also asked for explanations of `auth/decorators.ts` and `auth/jwt-auth.guard.ts`; nothing was changed.)
 
-**What it produced:** the design for `AdminLockService` (locks the caller row, then
-conditionally the full active-admin set, inside one transaction) and `AdminService.changeRole`'s
-branch logic; the three new repository methods, the `ChangeRoleSchema`, the route, the module
-wiring, and two new spec files (`admin-lock.service.spec.ts`, and the first-ever
-`admin.service.spec.ts`, which also backfilled coverage for the already-shipped `listUsers`).
-
+**What it produced:** `AdminLockService` (locks the caller row, then the active admins, in one transaction), the `changeRole` logic, repository methods, schema, route and wiring, and 2 spec files (also covering `listUsers`).
 **What I changed or rejected:**
-- Three clarifying-question decisions, picking: `ParseUUIDPipe` for a malformed `:userId`
-  (400, not folded into 404); a true short-circuit for the self-reaffirm no-op (no DB write, no
-  audit log — not just "don't error"); and backfilling `listUsers` test coverage now rather
-  than leaving it out of scope.
-- **Caught a real logic bug that its own tests did not.** While working out how to manually
-  demonstrate `LAST_ADMIN` for the test plan, realised the branch could never fire: the check
-  compared the locked active-admin list against a target that, by construction, can never be
-  its sole entry unless the target is the caller — but self-targeting was already routed to
-  `CANNOT_MODIFY_SELF` earlier in the same function, every time. The two unit tests that
-  supposedly covered `LAST_ADMIN` only passed because they hand-constructed a mock state
-  (`activeAdminIds` excluding the caller) that `AdminLockService` can never actually produce —
-  they asserted a scenario, not the real invariant. Had it explain the flaw back to me, confirm
-  the fix (move the sole-admin check into the self-demotion branch, since AGENTS.md's own
-  reasoning for `CANNOT_MODIFY_SELF` — "another admin must do it" — stops applying once you
-  *are* the only admin), and rewrite the two invalid tests against a realistic mock state.
+- Clarifying choices: `ParseUUIDPipe` (400), a real no-op on self-reaffirm (no write, no audit), and backfilling the `listUsers` tests.
+- **I caught a bug its tests missed:** `LAST_ADMIN` could never fire, because self-targeting always returned `CANNOT_MODIFY_SELF` first, and the tests used a mock state that can't happen. I had the check moved into the self-demotion branch and the tests rewritten.
 
-**Verification.**
-- `npm run build` (clean) and `npm test`: the two new spec files pass 17/17; the rest of the
-  suite is unaffected by this branch — the 2 pre-existing `jwt.service.spec.ts` failures were
-  confirmed via `git stash` to already fail on the base branch (environment leakage between
-  test files sharing a Jest worker, once `.env` holds real generated keys — unrelated to this
-  work, not investigated further here).
-- Manually verified `PATCH /admin/users/:userId/role` via Postman against the compose stack:
-  promoted a USER to ADMIN (200, `ADMIN_ACTION` logged); self re-affirm is a true no-op (200,
-  unchanged profile, confirmed no new `ADMIN_ACTION` log line); self-demote with another admin
-  present → `CANNOT_MODIFY_SELF`; demoting a distinct admin succeeds; self-demote as the sole
-  admin → `LAST_ADMIN` (the exact branch the bug had hidden — confirmed this is a genuinely
-  different response from the `CANNOT_MODIFY_SELF` case, not just different in the source);
-  404 for a nonexistent id; 400 for a malformed UUID and for an invalid `role` value; 403 for a
-  non-admin token; 401 for a missing and for a garbage token. All passed.
+**Verification:** build passes; the new specs pass 17/17 (2 `jwt.service.spec.ts` failures already exist on the base branch). In Postman: promote, a no-op re-affirm, `CANNOT_MODIFY_SELF`, demote, `LAST_ADMIN`, 404, 400, 403 and 401 all passed.
 
-### 2026-09-27 — Step 10 planning and GET /admin/users (branch `feature/user-service-admin-endpoints`, PR not yet opened)
+### 2026-09-27 — Step 10 planning and GET /admin/users (branch `feature/user-service-admin-endpoints`)
 
 **Tool:** Claude Code (Claude Sonnet 5) · **Mode:** explain, generate
-**Files:** `user-service/src/users/users.schemas.ts` (new), `user-service/src/users/profile.mapper.ts` (new),
-`user-service/src/users/admin.service.ts` (new), `user-service/src/users/admin.controller.ts` (new),
-`user-service/src/users/users.repository.ts`, `user-service/src/users/users.module.ts`
+**Files:** `user-service/src/users/`: `users.schemas.ts`, `profile.mapper.ts`, `admin.service.ts`, `admin.controller.ts` (all new), `users.repository.ts`, `users.module.ts`
 
-**Scenario.** I own Person B's track (profile/admin endpoints, Steps 10–14 of
-`user-service/AGENTS.md`'s build order), which was entirely unimplemented. Used Claude Code
-first to get oriented on what was already built, then to plan Step 10 (`GET /admin/users`,
-`PATCH /admin/users/:userId/role`) in detail before writing any code, then to implement only
-the first endpoint (`GET /admin/users`) so I can verify it manually via Postman before the
-second.
+**Scenario:** my track (Steps 10–14) wasn't started. I used the AI to get oriented and plan Step 10, then to implement endpoint 1 only, so I could test it before endpoint 2.
 
 **Prompts (exact):**
 
@@ -876,31 +669,6 @@ second.
 > I have verified endpoint 1, all is working well. Document it under usage-log.md and other
 > relevant files.
 
-**What it produced:** a written plan for Steps 10–14 (repository methods, the shared
-last-admin-lock service, service/controller split, Zod schemas, module wiring), cross-checked
-against the actual source rather than taken on faith; then, scoped to endpoint 1 only, a new
-`listUsers` repository method, `toProfileResponse` mapper, `AdminService`, and `AdminController`
-gated by the existing global `@Roles('ADMIN')`/`RolesGuard`. Later in the same branch: a
-Postman/curl test plan for `GET /admin/users` (happy path, `role`/`status` filters alone and
-combined, `.strict()`-schema rejection of an unknown `email` param and of an invalid `role`
-enum value, 403 for a non-admin, 401 for no/garbage token), and help diagnosing a "not
-receiving the OTP email" report.
-
-**What I changed or rejected:**
-- Rejected the AI's first draft of `GET /admin/users`, which assumed pagination and an
-  `email`-hash filter because AGENTS.md's endpoint table lists them; I cut both — filters by
-  `role`/`status` only, response is `{ items }` with no `page`/`pageSize`/`total`. This is a
-  deliberate deviation from AGENTS.md's documented shape, not yet reflected back into that file.
-- Had it confirm, rather than assume, that nothing in `AGENTS.md` grants it authority to commit
-  on my behalf — it does not; commits remain something I trigger explicitly each time.
-
-**Verification:** `npm run build` (clean) and `npm test` (213/213, 15 suites, no regressions)
-after the code change. Manually verified `GET /admin/users` via Postman/curl against the
-compose stack: happy-path listing, `role` and `status` filters (individually and combined),
-an unknown `email` query param and an invalid `role` value both rejected with 400 (confirms
-the `.strict()` schema and the deliberate no-pagination/no-email-filter scope cut), a non-admin
-token gets 403, and a missing or invalid token gets 401. All passed. Along the way, resolved
-confusion where OTP "reset password" emails weren't visibly arriving: Mailpit intercepts all
-outbound SMTP in dev and never delivers to a real inbox, so the bootstrap admin's real-looking
-`@u.nus.edu` address had its codes sitting in the Mailpit web UI (localhost:8025) rather than
-any real mailbox — not a service outage.
+**What it produced:** a plan for Steps 10–14; then `listUsers`, `toProfileResponse`, `AdminService` and `AdminController` (behind `@Roles('ADMIN')`); a Postman/curl test plan; and the explanation that OTP emails go to Mailpit (localhost:8025), not a real inbox.
+**What I changed or rejected:** I rejected the AI's pagination and `email` filter: role/status filters only, `{ items }` response (a deliberate deviation from AGENTS.md). It confirmed it has no authority to commit for me.
+**Verification:** build passes; tests 213/213. In Postman/curl: listing, filters, 400 for an unknown param or bad role, 403 and 401.

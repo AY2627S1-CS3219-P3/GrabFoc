@@ -4,7 +4,10 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-14
 Scope: Wrote this implementation plan from the redesign spec §9 (Jian Bing's Kafka decisions and
        the proposals he confirmed). 2026-10-15: rewrote it after his walkthrough (K5–K13): infra/kafka,
        one topic list, central topic creation, per-consumer DLTs, tolerant reading, one PR per phase.
-Author review: pending — Jian Bing to record what he checked.
+Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
+Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
+Author review: Jian Bing supplied what it states; the wording is Claude's.
 -->
 
 # Credit Service on Kafka (Phases 2–3, Credit side) Implementation Plan
