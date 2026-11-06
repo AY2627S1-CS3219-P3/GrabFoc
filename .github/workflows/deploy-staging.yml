@@ -2,8 +2,12 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Generated from the deployment plan (deploy part 3, #143, Task 5).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+# Scope: Job timeout above push + deploy + checks at their slowest (PR #191 review).
+# Author review: Pending Jian Bing's review.
 # Every merge to main: build the images once, roll them onto staging, and run the checks there. Only
 # a pass makes the tag available to the production workflow.
+# AI-generated (Claude Code); review pending.
 
 name: Deploy staging
 
@@ -26,7 +30,9 @@ jobs:
     # The deploy role trusts only main.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # AI-generated (Claude Code, 2026-11-06), review pending: above the three scripts at their slowest,
+    # about 187 min: push ~20, deploy-images.sh ~132, run-checks.sh 3 x 10 min waits plus logs.
+    timeout-minutes: 210
     steps:
       - uses: actions/checkout@v7
       - uses: aws-actions/configure-aws-credentials@v6

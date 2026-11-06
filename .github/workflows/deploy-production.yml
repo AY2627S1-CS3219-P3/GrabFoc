@@ -2,8 +2,13 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Generated from the deployment plan (deploy part 3, #143, Task 5).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+# Scope: Job timeout above deploy-images.sh's slowest run; the image check moved into deploy-images.sh,
+#        which checks every repository (PR #191 review).
+# Author review: Pending Jian Bing's review.
 # Started by hand, and waits for approval in the production environment. Deploys the tag staging
 # last passed; nothing is rebuilt. Give an older tag to roll back.
+# AI-generated (Claude Code); review pending.
 
 name: Deploy production
 
@@ -27,7 +32,9 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # AI-generated (Claude Code, 2026-11-06), review pending: above deploy-images.sh at its slowest, about
+    # 132 min (per layer up to 3 x 10 min stable waits, per service up to 20 x 15 s health checks).
+    timeout-minutes: 150
     environment: production
     steps:
       - uses: actions/checkout@v7
@@ -48,8 +55,7 @@ jobs:
             echo "not an image tag: $tag" >&2
             exit 1
           fi
-          # Every image is pushed for a tag, so one repository answers whether the tag was ever built.
-          aws ecr describe-images --repository-name foc/api-gateway --image-ids imageTag="$tag" > /dev/null
+          # deploy-images.sh checks that every image exists on the tag before it changes anything.
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - name: Roll it onto production
         run: infra/scripts/deploy-images.sh production "${{ steps.tag.outputs.tag }}"

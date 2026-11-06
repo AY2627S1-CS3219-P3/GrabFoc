@@ -4,8 +4,12 @@
 # Scope: Generated from the deployment plan (deploy part 3, #143, Task 3): tests deploy-images.sh.
 #        Final review fixes: failed registers, missing services, health after the rollout.
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+# Scope: Tests that every foc/ image is checked on the tag first, and a missing one stops the deploy.
+# Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/deploy-images.test.sh   (no AWS access needed; needs jq)
+# AI-generated (Claude Code); review pending.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/../deploy-images.sh"
@@ -52,6 +56,10 @@ JSON
     file=$(arg --cli-input-json "$@"); file=${file#file://}
     family=$(jq -r .family "$file"); cp "$file" "$AWS_CALLS.$family.json"
     echo "arn:aws:ecs:ap-southeast-1:1:task-definition/$family:4" ;;
+  ecr\ describe-images*)
+    [ "$(arg --repository-name "$@")" = "foc/${FAKE_NO_IMAGE:-none}" ] &&
+      { echo "An error occurred (ImageNotFoundException) when calling the DescribeImages operation" >&2; exit 254; }
+    echo '{"imageDetails":[{}]}' ;;
   ecs\ update-service*) touch "$AWS_CALLS.updated.$(arg --service "$@")"; echo '{}' ;;
   ecs\ wait*) case " $* " in *" ${FAKE_WAIT_FAIL:-none} "*) exit 255 ;; esac ;;
   ecs\ list-tasks*) echo "{\"taskArns\":[\"arn:aws:ecs:ap-southeast-1:1:task/foc-staging/$(arg --service-name "$@")-1\"]}" ;;
@@ -93,6 +101,16 @@ check "tag recorded last" 'tail -1 "$AWS_CALLS" | grep -q "^ssm put-parameter .*
 check "tag parameter overwrites and is a plain String" 'tail -1 "$AWS_CALLS" | grep -q -- "--type String --overwrite"'
 check "every call pins the region" '[ "$(grep -vc -- "--region ap-southeast-1" "$AWS_CALLS")" = 0 ]'
 check "uses the environment's cluster" 'grep -q "update-service --region ap-southeast-1 --cluster foc-staging" "$AWS_CALLS"'
+
+repos=$(grep "^ecr describe-images" "$AWS_CALLS" | sed -E 's/.*--repository-name ([^ ]+).*/\1/' | sort | tr "\n" " ")
+check "every foc image is checked on the tag" '[ "$repos" = "foc/api-gateway foc/credit-service foc/frontend foc/kafka-init foc/notification-service foc/order-service foc/supplier-service foc/user-service " ]'
+check "images are checked with the tag under deploy" '[ "$(grep "^ecr describe-images" "$AWS_CALLS" | grep -vc -- "--image-ids imageTag=new1234")" = 0 ]'
+check "images are checked before any change" '[ "$(grep -n "^ecr describe-images" "$AWS_CALLS" | tail -1 | cut -d: -f1)" -lt "$(grep -n "^ecs register-task-definition" "$AWS_CALLS" | head -1 | cut -d: -f1)" ]'
+
+reset
+out=$(FAKE_NO_IMAGE=frontend "$SCRIPT" production new1234 2>&1); code=$?
+check "a tag missing from one repository stops the deploy before any change" '[ $code -ne 0 ] && ! grep -q -E "register-task-definition|update-service|put-parameter" "$AWS_CALLS"'
+check "the repository without the image is named" 'grep -q "foc/frontend" <<<"$out"'
 
 reset
 out=$(FAKE_WAIT_FAIL=api-gateway "$SCRIPT" staging new1234 2>&1); code=$?
