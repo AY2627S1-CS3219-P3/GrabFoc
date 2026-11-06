@@ -65,6 +65,11 @@
  *        documented bound is the real ceiling (PR #129 review). Body kept
  *        identical to the canonical copy.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Drop an id carrying a lone surrogate, which the store would encode as U+FFFD and
+ *        merge with another id (PR #129 review). Body kept
+ *        identical to the canonical copy.
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -462,7 +467,18 @@ function boundedId(value: unknown, max: number): string | undefined {
   if (typeof value !== 'string') return undefined;
   // Dropped rather than stripped, for the same reason it is not cut: a tab taken out of
   // `trace<TAB>1` leaves `trace1`, which may be some other request's id.
-  return value.length >= 1 && value.length <= max && !hasControl(value) ? value : undefined;
+  //
+  // `unstorableInJsonb` is in that list because of what the *column* does with the value, not
+  // because of JSONB: a lone surrogate is a valid JavaScript string and not valid UTF-8, so `pg`
+  // encodes it as U+FFFD on the way to a TEXT column. `u\ud8001` and `u\ud8011` are different
+  // ids that arrive as the same bytes, so two students' lines merge under one userId - which is
+  // worse than losing the field, and the reason this function drops rather than cleans. Cleaning
+  // it here would be the `trace1` mistake with different characters (PR #129 review).
+  // `jsonbSafe(value) === value` rather than `unstorableInJsonb`, which is a coarse pre-check that
+  // fires on any surrogate code unit, both halves of a valid pair included: testing it directly
+  // dropped an id containing an emoji. Surviving normalisation unchanged is the exact question.
+  const storable = !hasControl(value) && jsonbSafe(value) === value;
+  return value.length >= 1 && value.length <= max && storable ? value : undefined;
 }
 
 /**

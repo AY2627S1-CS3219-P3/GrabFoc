@@ -6,6 +6,10 @@
 # Scope: After the PR #129 reviews: moved to host port 3006 (Order publishes 3005), and forward
 #        the two settings that were in .env.example but never reached the container.
 # Author review: Cole Lin, read and approved.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+# Scope: restart: unless-stopped on both long-running containers, the policy every other service's
+#        compose file already uses (PR #129 review).
+# Author review: Cole Lin, read and approved.
 #
 # The Logging Service and the database only it uses (root AGENTS.md §3). The root compose.yaml
 # includes this file.
@@ -24,6 +28,10 @@ name: foc
 services:
   logging-db:
     image: postgres:17-alpine
+    # Long-running, so the same policy every other service's compose file uses. Without it a
+    # transient failure - or a Docker daemon restart - leaves the store stopped, and the lines it
+    # exists to collect are the record of whatever went wrong (PR #129 review).
+    restart: unless-stopped
     environment:
       # Supplied by the git-ignored .env so no working credential lives in the repository.
       POSTGRES_USER: foc
@@ -49,6 +57,9 @@ services:
     build:
       context: ..
       dockerfile: logging-service/Dockerfile
+    # As above. This one matters most on a startup or schema failure that reaches process.exit(1):
+    # without a policy the container stays down and nothing consumes the topic.
+    restart: unless-stopped
     depends_on:
       logging-db:
         condition: service_healthy

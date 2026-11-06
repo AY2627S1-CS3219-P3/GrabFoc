@@ -33,6 +33,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
  * Scope: Added the cases for a key that carries a code rather than naming a field (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Added the cases for a lone surrogate in an envelope field and for the stored timestamp
+ *        being the one the API returns (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, redactDeep, toRow } from './line.schema';
 
@@ -628,5 +632,97 @@ describe('a key that carries a code rather than naming a field (store)', () => {
     // Still a fixed point: the marker starts with `[`, so without this it would be replaced again
     // on every pass and report its own length instead of the key's.
     expect(keysOf({ attempts: { '[key 0: 6 chars]': true } })).toEqual(['[key 0: 6 chars]']);
+  });
+});
+
+/**
+ * A lone surrogate is valid in a JavaScript string and not valid UTF-8, so `pg` encodes it as
+ * U+FFFD on the way to a TEXT column. For an *identifier* that is worse than losing the field:
+ * `u\ud8001` and `u\ud8011` are different ids that both store as the same bytes, so two students'
+ * lines merge under one userId (PR #129 review). The field is dropped instead, which is the rule
+ * `boundedId` already applies to a control character and for the same reason - an absent id is
+ * honest, a wrong one reads as somebody else's.
+ */
+describe('a lone surrogate in an envelope field', () => {
+  const base = {
+    lineId: '11111111-1111-1111-1111-111111111111',
+    ts: '2026-11-06T00:00:00.000Z',
+    service: 'supplier',
+    level: 'info' as const,
+    event: 'probe',
+  };
+  const row = (extra: Record<string, unknown>) => {
+    const parsed = inboundLineSchema.safeParse({ ...base, ...extra });
+    expect(parsed.success).toBe(true);
+    return toRow(parsed.data as never);
+  };
+
+  it.each(['requestId', 'userId'])('drops %s rather than storing a merged id', (field) => {
+    expect(row({ [field]: 'u\ud8001' })[field as 'userId']).toBeNull();
+  });
+
+  it('keeps two distinct broken ids distinguishable by storing neither', () => {
+    // The collapse this prevents: both of these encode to the same UTF-8 bytes.
+    expect(Buffer.from('u\ud8001', 'utf8').equals(Buffer.from('u\ud8011', 'utf8'))).toBe(true);
+    expect(row({ userId: 'u\ud8001' }).userId).toBeNull();
+    expect(row({ userId: 'u\ud8011' }).userId).toBeNull();
+  });
+
+  it.each(['event', 'service'])('normalises %s, which labels rather than identifies', (field) => {
+    // Not dropped: these are required, and they are what a reader searches by. The shipper
+    // already removes a lone surrogate from `event`, so this is the store agreeing with it.
+    expect(row({ [field]: 'a\ud800b' })[field as 'event']).toBe('ab');
+  });
+
+  it('normalises method and path the same way', () => {
+    const stored = row({ method: 'G\ud800T', path: '/a\ud800b' });
+    expect(stored.method).toBe('GT');
+    expect(stored.path).toBe('/ab');
+  });
+
+  it('leaves a real surrogate pair alone everywhere', () => {
+    const stored = row({ userId: 'u-😀', event: 'e-😀' });
+    expect(stored.userId).toBe('u-😀');
+    expect(stored.event).toBe('e-😀');
+  });
+});
+
+/**
+ * `.datetime()` accepts any number of fractional digits and TIMESTAMPTZ keeps microseconds, but
+ * `pg` materialises the column as a `Date` and the API renders it with `toISOString()` - so a line
+ * stored as `.123456Z` was returned as `.123Z`, and feeding that value back as `to=` excluded the
+ * very line it came from. `ts` is the one timestamp the API filters on (PR #129 review).
+ */
+describe('a timestamp with more precision than the API can return', () => {
+  const base = {
+    lineId: '11111111-1111-1111-1111-111111111111',
+    service: 'supplier',
+    level: 'info' as const,
+    event: 'probe',
+  };
+  const storedTs = (ts: string) => {
+    const parsed = inboundLineSchema.safeParse({ ...base, ts });
+    expect(parsed.success).toBe(true);
+    return toRow(parsed.data as never).ts;
+  };
+
+  it('is stored at the precision the API returns', () => {
+    expect(storedTs('2026-11-06T00:00:00.123456Z')).toBe('2026-11-06T00:00:00.123Z');
+  });
+
+  it('round-trips: what the API returns selects the line it came from', () => {
+    const stored = storedTs('2026-11-06T00:00:00.123456Z');
+    // The API renders the stored value this way, so the two must be the same string for a
+    // `to=` filter built from a returned `ts` to include that line.
+    expect(new Date(stored).toISOString()).toBe(stored);
+  });
+
+  it('leaves a millisecond timestamp exactly as it arrived', () => {
+    expect(storedTs('2026-11-06T00:00:00.123Z')).toBe('2026-11-06T00:00:00.123Z');
+  });
+
+  it('still accepts the line rather than rejecting the extra precision', () => {
+    // The file's standing rule: an odd envelope value costs the field, never the whole line.
+    expect(inboundLineSchema.safeParse({ ...base, ts: '2026-11-06T00:00:00.999999Z' }).success).toBe(true);
   });
 });

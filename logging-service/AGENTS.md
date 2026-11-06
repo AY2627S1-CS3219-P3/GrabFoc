@@ -1,6 +1,6 @@
 <!--
 AI Assistance Disclosure:
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-28
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-11-06
 Scope: Wrote this document from the plan and the four schema answers Cole Lin gave in chat on
   2026-10-16, and kept it in step with each review round on PR #129. The decisions it records are
   his; the wording is Claude's. Where a section records a problem rather than a decision, he raised
@@ -226,6 +226,26 @@ _Origin: AI doc, from the plan Cole Lin approved_
     these numbers, so a bound added to the schema and forgotten here fails a test instead of
     quietly costing lines. Only the spec imports it; the shipper is copied into every service and
     stays free of logging-service imports.
+- **An id that would not survive storage is dropped; text is normalised.** A lone surrogate is a
+  valid JavaScript string and not valid UTF-8, so `pg` encodes it as U+FFFD on the way to a TEXT
+  column - and two ids differing only in which unpaired high surrogate they carry arrive as the
+  *same bytes*, so two students' lines merge under one `userId` (PR #129 review). An id is
+  therefore dropped rather than cleaned, which is the rule `boundedId` already applied to control
+  characters and for the same reason: an absent id is honest, a cleaned one reads as somebody
+  else's. `service`, `event`, `method` and `path` are normalised instead, because they label rather
+  than identify, they are what a reader searches by, and the shipper already removes a lone
+  surrogate from `event` and `path` on the way out - so this is the store agreeing with the line it
+  was sent rather than leaving the driver to decide. The test is `jsonbSafe(v) === v`, not
+  `unstorableInJsonb(v)`: the latter is a coarse pre-check that fires on both halves of a *valid*
+  pair, and testing it directly dropped an id containing an emoji, which two control cases caught.
+- **`ts` is stored at the precision the API can return.** `.datetime()` accepts any number of
+  fractional digits and TIMESTAMPTZ keeps microseconds, but `pg` materialises the column as a
+  `Date` and the API renders it with `toISOString()` - so a line stored as `.123456Z` came back as
+  `.123Z`, and feeding that returned value to `to=` excluded the very line it came from. `ts` is
+  the one timestamp the query filters on, so it is truncated to milliseconds in `toRow` rather than
+  refused: an odd envelope value costs the field here, never the whole line (PR #129 review).
+  `received_at` is left alone deliberately - it is the database's own clock and the API does not
+  filter on it, so there is nothing to round-trip.
 - **A key is a name, and something that is not a name is data.** A key that does not start with a
   letter is replaced unless it is at most 3 characters: `{ attempts: { "123456": true } }` put a
   six-digit OTP in key position, where `isSensitive` has no name to match on and the safe alphabet

@@ -64,6 +64,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
  * Scope: Added the cases for a batch still in flight counting against the bounds (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Added the cases for an id carrying a lone surrogate being dropped (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -1287,5 +1290,41 @@ describe('a batch that is still being published', () => {
     log.emit({ level: 'info', event: 'c' });
     expect(log.counts.dropped).toBe(0);
     expect(log.counts.failed).toBe(2);
+  });
+});
+
+/**
+ * `boundedId` drops an id it cannot ship rather than cutting or cleaning it, because the first 100
+ * characters of a long id read as a different student's and `trace<TAB>1` stripped to `trace1` may
+ * be another request's. A lone surrogate belongs in that list: `pg` encodes it as U+FFFD, so
+ * `u\ud8001` and `u\ud8011` reach the column as the same bytes and two ids become one
+ * (PR #129 review).
+ */
+describe('an id carrying a lone surrogate', () => {
+  const lineFor = (input: Record<string, unknown>) => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', ...input });
+    return JSON.parse(written[written.length - 1]) as Record<string, unknown>;
+  };
+
+  it.each(['requestId', 'userId'])('leaves %s off the line rather than shipping a merged id', (field) => {
+    expect(lineFor({ [field]: 'u\ud8001' })[field]).toBeUndefined();
+  });
+
+  it('still ships the line, and the rest of its fields', () => {
+    const line = lineFor({ userId: 'u\ud8001', status: 403 });
+    expect(line.status).toBe(403);
+    expect(line.event).toBe('probe');
+  });
+
+  it('keeps an id made of a real surrogate pair', () => {
+    expect(lineFor({ userId: 'u-😀' }).userId).toBe('u-😀');
+  });
+
+  it('agrees with the store about what it shipped', () => {
+    const line = lineFor({ userId: 'u\ud8001' });
+    const parsed = inboundLineSchema.safeParse(line);
+    expect(parsed.success).toBe(true);
+    expect(toRow(parsed.data as never).userId).toBeNull();
   });
 });

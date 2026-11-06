@@ -44,6 +44,11 @@
  *        the walkers could rename it (PR #129 review).
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
  * Scope: Replace a key that carries a code rather than naming a field (PR #129 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Drop an id carrying a lone surrogate, normalise the text fields the same way the shipper
+ *        does, and store `ts` at the precision the API returns (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -448,6 +453,33 @@ function extraOf(line: InboundLine): Record<string, unknown> | null {
 }
 
 /**
+ * An identifier the TEXT column holds unchanged, or null.
+ *
+ * A lone surrogate is a valid JavaScript string and not valid UTF-8, so `pg` encodes it as U+FFFD:
+ * `u\ud8001` and `u\ud8011` are different ids that arrive as the same bytes, and two students'
+ * lines then merge under one userId. Dropped rather than cleaned, which is the rule the shipper's
+ * `boundedId` already applies to a control character and for the same reason - an absent id is
+ * honest, and a cleaned one reads as somebody else's (PR #129 review).
+ */
+function storableId(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  // Kept only if it survives normalisation unchanged. Not `unstorableInJsonb`, which is a coarse
+  // pre-check that fires on any surrogate code unit including both halves of a valid pair - so
+  // testing it directly dropped an id containing an emoji, which two control cases caught.
+  return jsonbSafe(value) === value ? value : null;
+}
+
+/**
+ * Text the TEXT column holds unchanged. Normalised rather than dropped, because `service` and
+ * `event` are required and are what a reader searches by - and because the shipper already removes
+ * a lone surrogate from `event` and `path` on its way out, so this is the store agreeing with the
+ * line it was sent rather than leaving the driver to decide (PR #129 review).
+ */
+function storableText(value: string): string {
+  return jsonbSafe(value);
+}
+
+/**
  * A validated line as a row. `path` is cut at the first `?`: the producer is supposed to send the
  * pathname only, because a query string can carry the caller's coordinates, and this store is the
  * last place that should hold them (see supplier-service PR #90).
@@ -456,15 +488,22 @@ export function toRow(line: InboundLine): LineRow {
   const path = line.path?.split('?')[0];
   return {
     lineId: line.lineId,
-    ts: line.ts,
-    service: line.service,
+    // Stored at the precision the API can give back. `.datetime()` accepts any number of
+    // fractional digits and TIMESTAMPTZ keeps microseconds, but `pg` materialises the column as a
+    // `Date` and the API renders it with `toISOString()` - so a line stored as `.123456Z` came
+    // back as `.123Z`, and feeding that returned value to `to=` excluded the line it came from.
+    // `ts` is the one timestamp the query filters on. Truncated rather than refused, because an
+    // odd envelope value costs the field here and never the whole line (PR #129 review).
+    ts: new Date(line.ts).toISOString(),
+    service: storableText(line.service),
     level: line.level,
-    event: line.event,
-    requestId: line.requestId ?? null,
-    userId: line.userId ?? null,
+    event: storableText(line.event),
+    requestId: storableId(line.requestId),
+    userId: storableId(line.userId),
     role: line.role ?? null,
-    method: line.method ?? null,
-    path: path === undefined || path === '' ? null : path,
+    // Normalised, not dropped: a method names the verb, it does not identify anyone.
+    method: line.method === undefined ? null : storableText(line.method),
+    path: path === undefined || path === '' ? null : storableText(path),
     status: line.status ?? null,
     durationMs: line.durationMs ?? null,
     extra: extraOf(line),
