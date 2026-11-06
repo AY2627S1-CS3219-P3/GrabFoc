@@ -6,15 +6,19 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Allowed schemas whose input differs from their output (e.g. string → Date).
  * Author review: Reviewed in full
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+ * Scope: Zod 4 upgrade: ZodType<Output, Input> replaces the removed ZodTypeDef parameter.
+ * Author review: Pending Jian Bing's review.
  */
 import { Injectable, PipeTransform } from '@nestjs/common';
-import type { ZodType, ZodTypeDef } from 'zod';
+import type { ZodType } from 'zod';
 import { AppError, ErrorCode } from './errors';
 
 /** Validates a body, query or param. Object schemas must be `.strict()` so unknown fields are a 400. */
 @Injectable()
 export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
-  constructor(private readonly schema: ZodType<T, ZodTypeDef, unknown>) {}
+  // AI-generated (Claude Code), review pending: Zod 4's ZodType takes <Output, Input>.
+  constructor(private readonly schema: ZodType<T, unknown>) {}
 
   transform(value: unknown): T {
     const result = this.schema.safeParse(value);
