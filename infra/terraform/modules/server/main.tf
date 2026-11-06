@@ -2,9 +2,12 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 4).
 #        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
+#   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
+#   the admin locations page load).
 # The environment's one ECS server (spec §3.1) and its persistent data volume (spec §4). The server
 # can be replaced at any time; the volume and the Elastic IP outlive it.
+# AI-generated (Claude Code).
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}

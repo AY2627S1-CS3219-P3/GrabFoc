@@ -107,6 +107,18 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 deploy part 3 review-fix entry (PR #191) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 gateway .env.example entry (PR #156) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 design-confirmation entry (PR #146) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 broken-main dependency entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 PR #146 review-recording entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -145,6 +157,129 @@ My answer to Claude's question about the new Codex threads: "Fix 4, explain 1 (R
 passed, every stack valid), `node --test infra/checks/test/select.test.mjs` (6 passed) and `actionlint`. My own
 check: pending — Jian Bing to record what he checked.
 
+### 2026-11-06 — Recording my review of the AWS infrastructure (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** the 46 files #146 added with a pending "Author review" line, the three infrastructure entries in this
+log, and an inline marker in each AI-generated file
+
+**Scenario:** Claude walked me through #146 (network and server together, then a written guide for the rest), I ran
+`infra/terraform/check.sh` and checked the staging site, and Claude wrote my review lines in the wording I agreed.
+Files the walkthrough covered say so; tests and the variables/outputs/versions files say they were not read line by
+line and how they were checked. The design spec, `infra/secrets/README.md` and the Cole-confirmation entry stay
+pending: they were not part of the walkthrough.
+
+**Prompts (exact, in order):**
+> yea lwts go through together
+
+> yep understood, also [Image #19] why does soclaas kee pfailing
+
+> coudl you jus tdump the rest of the parts on me for every file then let me read through in 1 shot
+
+> okay i understood everything, but my peer alreayd reviewed and emrged 193, so can uadd the authro review to another branch like 143 by merging main into it and then letting me add the remaing missing author reviewe comments
+
+> yes
+
+**What it produced:** Main merged in (both sides of the usage-log conflict kept), the review lines, and an
+"AI-generated (Claude Code)." marker under each generated file's header and above each added code block (Terraform's
+own `.lock.hcl` files excluded).
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `infra/terraform/check.sh` (14 test runs passed, 7 stacks valid), the three script
+tests (0 failed), `api-gateway/test/envoy_routes_test.py` (OK) and `actionlint` after the changes. My own check: the
+walkthrough, `check.sh` and the staging site, as recorded above.
+
+### 2026-11-06 — Edge listener settings in the gateway's `.env.example` (PR #156 review)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `api-gateway/.env.example`, `api-gateway/test/envoy_routes_test.py`
+
+**Scenario:** Codex flagged on #156 that the renderer reads `GATEWAY_EDGE_PORT`, `GATEWAY_ORIGIN_KEY` and
+`FRONTEND_URL`, but `api-gateway/.env.example` does not list them (AGENTS.md §8). Claude added a test that every
+variable the renderer and route files read is in the template, watched it fail on those three, then added them.
+
+**Prompts (exact, in order):**
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answer to Claude's question about the new Codex threads: "Fix 4, explain 1 (Recommended)".
+
+**What it produced:** The three settings with safe placeholders (edge port empty, so it stays off; origin key empty)
+and `EnvExampleTest`.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `python3 api-gateway/test/envoy_routes_test.py`: the new test failed listing the three
+names, then 14/14 passed. My own check: pending — Jian Bing to record what he checked.
+
+### 2026-11-06 — Recording Cole Lin's confirmation of the AWS design (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `docs/superpowers/specs/2026-10-23-aws-deployment-design.md`; replies on two Codex threads in PR #146
+
+**Scenario:** A Codex thread on #146 blocked the merge because the AWS design spec still said [Proposed]. I asked
+what the "design sign-off" meant; Cole had already looked through the design and told me it was okay. Claude
+changed the status to [Decided], recorded Cole's confirmation, and replied on the thread. It also replied on the
+origin-key thread, which #156 fixes.
+
+**Prompts (exact, in order):**
+> what is cole deisng sign off, he told me he looked through and said it was okay, is that good enough
+
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answer to Claude's question on how to record it: "Record the chat OK now (Recommended)".
+
+**What it produced:** The new status line, and the thread replies.
+
+**What I changed or rejected:** Waiting for Cole to approve on GitHub first was offered; I chose to record the chat
+confirmation now. Cole can still approve the PR.
+
+**Verification:** Pending — Jian Bing to record what he checked.
+
+### 2026-11-06 — Main's CI broken by two Dependabot major bumps (NestJS platform-express 12, Zod 4)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `user-service/package.json`, `user-service/package-lock.json`, `supplier-service/package.json`,
+`supplier-service/package-lock.json`, `supplier-service/src/locations/location.schemas.ts`,
+`order-service/src/common/zod-validation.pipe.ts`
+
+**Scenario:** The user-service and supplier-service CI jobs failed on my PRs #146 and #156 after I merged main into
+them. Claude found that main itself had been red since 2026-11-02 and fixed it in a separate PR. In the same session
+Claude also merged main into `fix/soclaas-timeout` (#133) to clear its usage-log conflict, keeping both entries.
+
+**Prompts (exact, in order):**
+> [Image #11], ci cd fail, and [Image #12] thsi also failed, and also [Image #13] emrge conflict
+
+(Screenshots of the failing checks on #146 and #156, and the conflict on #133.)
+
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answers to Claude's questions: "Keep Zod 4, fix code (Recommended)", "Fix 4, explain 1 (Recommended)",
+"Record the chat OK now (Recommended)", "Walk me through it".
+
+> [Image #14]
+
+(Screenshot of Codex's comment on #193: `npm ci` with npm 11.4.2 fails with `Missing: typescript@ from lock file`.)
+
+**What it produced:** The cause: Dependabot PRs #163 and #164 moved `@nestjs/platform-express` to 12 while the rest
+of NestJS is 11, so `npm ci` stops with ERESOLVE before any test runs. That hid a second break: #173 and #174 moved
+supplier-service and order-service to Zod 4, where `ZodTypeDef` is gone and `.default()` no longer runs the
+transform (supplier's `page` came back as the text `"1"`). The fix: platform-express back to `^11.2.8`, with an npm
+override that keeps multer at 2.5.0, because 11.2.8 pins multer 2.4.0, which has GHSA-q7qp-rjg7-q26m (high); Zod 4
+kept, with `.prefault()` for the two defaults and `ZodType<Output, Input>` in the two validation helpers.
+
+**What I changed or rejected:** I rejected going back to Zod 3, because every Zod 3 version has
+GHSA-mrhx-c7xc-m3w5 (high) and 3.x has no patch. Moving all of NestJS to 12 was not attempted; that is for the
+service owners.
+
+**Verification:** Claude reproduced the ERESOLVE failure locally on main, then on Node 24 (CI's version for
+user-service) ran `npm ci`, `npm test` and `npm run build`: user-service passed (4 test files, 1 skipped),
+supplier-service 178/178 (the two default-value tests failed before `.prefault()`), and order-service 13/13 (its
+build failed with three TS errors before the fix). `npm ls` shows multer 2.5.0 overridden. Integration tests were
+not run. For the Codex comment, Claude reproduced the EUSAGE failure with npm 11.4.2 (main's lockfile from before
+Dependabot fails the same way), added only the missing nested `typescript` entry (regenerating with 11.4.2 would have
+dropped the `libc` fields newer npm uses), and ran `npm ci` with npm 11.4.2, 11.6.2 and 11.19.1: all three pass. My
+own check: pending — Jian Bing to record what he checked.
 
 ### 2026-11-05 — Delivery and the Notification Service on AWS, deploy part 3 (issue #143)
 
@@ -200,6 +335,10 @@ context, and `ec2:DescribeTags` added so the CloudWatch agent can find its serve
 
 **Key response:** "No, neither is ready to merge yet. Merging AWS is close, but CD isn't built: part 3
 only has a plan, on a local branch."
+
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
 
 ### 2026-10-27 — Edge routing: the website through CloudFront, deploy part 1 (issue #141)
 
@@ -265,7 +404,9 @@ a per-environment disk metric, and the GitHub OIDC subject in its immutable form
 **Key response:** "There are 14 unresolved Codex threads on #146. I'll check each one against the current
 `feat/aws-infra` code before changing anything."
 
-**Verification:** Pending — Jian Bing to record what he checked.
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
 
 ### 2026-10-26 — First staging apply (deploy part 2, PR #146)
 
@@ -353,7 +494,9 @@ fixed test-first. Claude's own calls are listed in the PR description.
 **What I changed or rejected:** Chose single-account staging (NUS doesn't allow a second account).
 Decided the secret origin header (`X-Origin-Key`, like our service key) so the server only accepts our
 CloudFront distribution; Envoy's check stays in part 1.
-**Verification:** Pending — Jian Bing to record what he checked.
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
 
 ### 2026-10-23 — AWS deployment design and spec (issue #58)
 

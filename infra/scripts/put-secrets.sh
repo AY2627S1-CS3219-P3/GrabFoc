@@ -3,13 +3,18 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 7).
 #        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
-#        2026-11-05 (Claude Code, Claude Opus 5.5): Notification's secrets (deploy part 3).
+# Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
+#   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
+#   the admin locations page load).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: Notification's secrets (deploy part 3).
 # Author review: Pending Jian Bing's review.
 #
 # Loads one environment's secrets into SSM Parameter Store as SecureStrings under /foc/<env>/.
 #   infra/scripts/put-secrets.sh staging      # reads infra/secrets/staging.env (git-ignored)
 # The file uses .env syntax (NAME=value). Values are passed to the AWS CLI through a private temp
 # file, never on the command line, and never printed.
+# AI-generated (Claude Code).
 set -euo pipefail
 
 env="${1:-}"

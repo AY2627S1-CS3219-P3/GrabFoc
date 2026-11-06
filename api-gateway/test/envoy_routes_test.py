@@ -2,6 +2,7 @@
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Verify route-file discovery, malformed authentication configuration, and environment-configurable Envoy settings.
 Author review: Pending human review.
+# AI-generated (Claude Code).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-26
 Scope: Added test_upstreams_prefer_ipv4 (first AWS staging deploy).
 Author review: Pending Jie Yang's review.
@@ -16,6 +17,9 @@ Scope: Tests that the internal listener accepts /gateway/* and never routes /gat
 and Credit count tests now count unprefixed routes (#141).
 Scope: Tests for the edge listener: off by default, startup validation, origin-key match on every route,
 frontend catch-all without host rewrite (#141).
+Author review: Pending Jie Yang's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Test that api-gateway/.env.example lists every variable the renderer and route files read (PR #156 review).
 Author review: Pending Jie Yang's review.
 """
 # AI-generated; review pending.
@@ -163,6 +167,7 @@ class RouteFilesTest(unittest.TestCase):
         self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"], "user_token")
         self.assertEqual(routes[-1]["direct_response"]["status"], 404)
 
+    # AI-generated (Claude Code).
     # AI-generated (Claude Code, 2026-10-26; pending review by Jie Yang). On ECS, Service Connect lists
     # an IPv6 address next to each service's IPv4 one; Envoy's default lookup prefers IPv6, which
     # nothing serves there, so every upstream call failed (first staging deploy, deploy part 2).
@@ -245,6 +250,18 @@ class RouteFilesTest(unittest.TestCase):
             with self.subTest(name=name):
                 with self.assertRaises(ValueError):
                     self.renderer.configuration({**self.env, name: value})
+
+
+class EnvExampleTest(unittest.TestCase):
+    # AI-generated (Claude Code, 2026-11-06), review pending: AGENTS.md §8 asks for every variable a
+    # service reads to be in its .env.example, with a safe placeholder.
+    def test_env_example_lists_every_variable_the_gateway_reads(self):
+        gateway = Path(__file__).resolve().parents[1]
+        read = set(re.findall(r'env\.get\("([A-Z0-9_]+)"', (gateway / "envoy" / "render.py").read_text()))
+        for routes in (gateway / "envoy" / "routes").glob("*.routes.json"):
+            read.add(json.loads(routes.read_text())["urlEnv"])
+        listed = set(re.findall(r"^([A-Z0-9_]+)=", (gateway / ".env.example").read_text(), re.M))
+        self.assertEqual(sorted(read - listed), [])
 
 
 if __name__ == "__main__":

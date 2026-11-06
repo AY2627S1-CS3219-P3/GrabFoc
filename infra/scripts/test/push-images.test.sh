@@ -3,10 +3,13 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 # Scope: Tests that push-images.sh can be rerun after a partial push, and that the root build context
 #        leaves out infra/secrets (Codex review on #146).
-#        2026-11-05 (Claude Code, Claude Opus 5.5): the Notification and checks images (deploy part 3).
+# Author review (Jian Bing, 2026-11-06): Not read line by line; these tests pass in CI (terraform.yml).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: the Notification and checks images (deploy part 3).
 # Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/push-images.test.sh   (no AWS or Docker access needed)
+# AI-generated (Claude Code).
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 fails=0

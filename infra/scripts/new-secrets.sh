@@ -2,7 +2,11 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generates an environment's secrets file for the first live apply (deploy part 2).
-#        2026-11-05 (Claude Code, Claude Opus 5.5): Notification's secrets and --add-missing (deploy part 3).
+# Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
+#   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
+#   the admin locations page load).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: Notification's secrets and --add-missing (deploy part 3).
 # Author review: Pending Jian Bing's review.
 #
 # Creates infra/secrets/<env>.env (git-ignored, mode 600) with fresh random values for every
@@ -11,6 +15,7 @@
 #   infra/scripts/new-secrets.sh staging
 # For an environment created before a secret existed, this appends only the missing ones:
 #   infra/scripts/new-secrets.sh staging --add-missing
+# AI-generated (Claude Code).
 set -euo pipefail
 
 env="${1:-}"

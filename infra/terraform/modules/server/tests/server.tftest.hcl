@@ -4,7 +4,9 @@
 #        2026-10-27 and 2026-11-05 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 #        2026-11-05 (Claude Code, Claude Opus 5.5): the /data/notification-db folder (deploy part 3, #143).
 #        volume has prevent_destroy, so the test never applies (and so never has to destroy) it.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-06): Not read line by line; ran infra/terraform/check.sh, which runs these
+#   tests (all passed).
+# AI-generated (Claude Code).
 
 mock_provider "aws" {
   mock_data "aws_ssm_parameter" {

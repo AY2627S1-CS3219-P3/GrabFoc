@@ -2,6 +2,7 @@
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Render route files, expose JWT failure metadata, and read existing Envoy infrastructure settings from environment variables.
 Author review: Pending human review.
+# AI-generated (Claude Code).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-26
 Scope: Upstream clusters prefer IPv4 (dns_lookup_family V4_PREFERRED), found on the first AWS staging deploy.
 Author review: Pending Jie Yang's review.

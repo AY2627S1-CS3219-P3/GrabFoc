@@ -1,11 +1,14 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 1).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
+#   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
+#   the admin locations page load).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Deploy part 3 (#143): the checks and notification-service repos, the plan role's parameter
 #        exceptions, and the deploy roles' tag parameters and log reads.
 # Author review: Pending Jian Bing's review.
+# AI-generated (Claude Code).
 
 # One stack per account (staging and production share the NUS-managed account, spec §6). It keeps
 # local state because it creates the bucket every other stack stores its state in.

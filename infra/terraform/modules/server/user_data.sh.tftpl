@@ -3,11 +3,16 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 4): server start-up (spec §4).
 #        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
-#        2026-11-05 (Claude Code, Claude Opus 5.5): the /data/notification-db folder (deploy part 3, #143).
+# Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
+#   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
+#   the admin locations page load).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: the /data/notification-db folder (deploy part 3, #143).
 # Author review: Pending Jian Bing's review.
 #
 # Runs once when the ECS server boots: joins the cluster, takes the Elastic IP, attaches and mounts
 # the persistent data volume, and prepares a folder per data store.
+# AI-generated (Claude Code).
 set -euo pipefail
 # Any failure shuts the server down, so the auto scaling group replaces it. It must never join the
 # cluster without /data mounted: the databases would start empty on the root disk.

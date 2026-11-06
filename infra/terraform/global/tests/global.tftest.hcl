@@ -2,11 +2,13 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 1). Runs with a mocked AWS provider: no credentials needed.
 #        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-06): Not read line by line; ran infra/terraform/check.sh, which runs these
+#   tests (all passed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Deploy part 3 (#143): the checks and notification-service repos, the plan role's parameter
 #        exceptions, and the deploy roles' tag parameters and log reads.
 # Author review: Pending Jian Bing's review.
+# AI-generated (Claude Code).
 
 mock_provider "aws" {
   mock_data "aws_caller_identity" {

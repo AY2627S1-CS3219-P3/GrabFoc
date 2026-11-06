@@ -1,7 +1,9 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 6). Runs with a mocked AWS provider.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-06): Not read line by line; ran infra/terraform/check.sh, which runs these
+#   tests (all passed).
+# AI-generated (Claude Code).
 
 mock_provider "aws" {
   mock_resource "aws_cloudfront_distribution" {
