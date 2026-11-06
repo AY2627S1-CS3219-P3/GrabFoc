@@ -11,6 +11,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Added order.events (Order's state-change events for Notification) at Zi Yi's direction.
 # Author review: Reviewed
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+# Scope: Added order.user-events.dlt (Order's dead letters for user.events) at Zi Yi's direction.
+# Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
 # Scope: Added logging.lines and its dead-letter topic for the Logging Service (issue #52), at
 #   Cole Lin's direction: every service gets its own dead letter, as rule 6 says.
@@ -42,4 +45,5 @@ credit.commands.retry.4 1
 # Dead-letter topics, one per consumer and source topic (rule 6)
 credit.commands.dlt 1
 credit.user-events.dlt 1
+order.user-events.dlt 1
 logging.lines.dlt 1

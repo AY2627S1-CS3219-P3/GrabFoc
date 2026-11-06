@@ -4,6 +4,9 @@
  * Scope: Generated the order.events publisher (Phase D): plan §5 envelope plus data.status, with
  *        order_history as the outbox, as Zi Yi decided on 2026-10-18.
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+ * Scope: Listed USER_SUSPENDED among the OrderCancelled reasons.
+ * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { OrdersRepository, Unpublished } from '../orders/orders.repository';
@@ -33,7 +36,7 @@ export interface OrderEvent {
     /** null for an order cancelled before anyone accepted it. */
     courierId: string | null;
     status: OrderStatus;
-    /** OrderCancelled only: REQUESTER_CANCELLED, MUTUAL_CANCELLATION or EXPIRED. */
+    /** OrderCancelled only: REQUESTER_CANCELLED, MUTUAL_CANCELLATION, EXPIRED or USER_SUSPENDED. */
     reason?: string;
   };
 }

@@ -12,6 +12,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 # Scope: Order Service settings for the active-order check (#71).
 # Author review: Reviewed by Zi Yi, 2026-10-20.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+# Scope: restart: unless-stopped on every long-running container (one-shot init containers excluded).
+# Author review: pending — Jie Yang to record the review.
 #
 # The User Service and the containers only it uses. Its database is its own — no other
 # service connects to user-db (root AGENTS.md §3). The root compose.yaml includes this file.
@@ -29,6 +32,8 @@ name: foc
 
 services:
   user-db:
+    # Restarted after a crash or a Docker restart; `docker compose stop` still stops it.
+    restart: unless-stopped
     image: postgres:17-alpine
     environment:
       # Supplied by the git-ignored .env so no working credential lives in the repository.
@@ -48,6 +53,7 @@ services:
       retries: 10
 
   user-redis:
+    restart: unless-stopped
     image: redis:7-alpine
     # AOF with everysec: at most one second of OTPs and counters is lost on a crash.
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
@@ -62,6 +68,7 @@ services:
       retries: 10
 
   mailpit:
+    restart: unless-stopped
     # A fake SMTP server with a web inbox, so OTP emails can be read without sending real mail.
     # Pinned: this container is part of the demo, so it must not change under us.
     image: axllent/mailpit:v1.31.2
@@ -75,6 +82,7 @@ services:
       retries: 10
 
   user-service:
+    restart: unless-stopped
     build: .
     depends_on:
       user-db:

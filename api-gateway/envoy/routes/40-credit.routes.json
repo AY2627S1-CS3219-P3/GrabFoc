@@ -1,0 +1,21 @@
+{
+  "_disclosure": "AI Assistance Disclosure:\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22\nScope: Routes for the two existing Credit Service endpoints the frontend reads (balance and transaction history, #61); no API or authentication changes. /internal/credits/** and /admin/credits/** are deliberately not routed.\nAuthor review: Route file approved by Jie Yang (gateway owner) in the plan on 2026-10-22; implementation review pending.",
+  "service": "credit",
+  "urlEnv": "CREDIT_SERVICE_URL",
+  "prefixes": {
+    "credits": {
+      "env": "GATEWAY_CREDITS_PREFIX",
+      "default": "/credits"
+    }
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "regex": "{credits}/[^/]+"
+    },
+    {
+      "method": "GET",
+      "regex": "{credits}/[^/]+/transactions"
+    }
+  ]
+}

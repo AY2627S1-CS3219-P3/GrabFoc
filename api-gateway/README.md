@@ -6,6 +6,9 @@ Author review: Jie Yang reviewed earlier documentation; Envoy implementation app
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Listed POST /admin/users/:userId/suspend among the protected User routes (#72).
 Author review: Reviewed by Zi Yi, 2026-10-21; pending Jie Yang's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added the Order Service upstream address.
+Author review: Pending review by Deanson.
 -->
 
 # API Gateway
@@ -58,7 +61,8 @@ upstream requests then need the corresponding service containers in the same `fo
 Compose reads optional `api-gateway/.env` settings through `${VARIABLE:-default}`
 interpolation. When the root Compose file includes the gateway, root project/shell
 variables can override the service file's defaults. Gateway URLs default to the
-Compose names `http://user-service:3001` and `http://supplier-service:3002`.
+Compose names `http://user-service:3001`, `http://supplier-service:3002` and
+`http://order-service:3005`.
 Inside a container, `localhost` refers to that container; use the service names
 for container upstreams.
 An empty `USER_SERVICE_JWKS_URL` derives the key endpoint from `USER_SERVICE_URL`.
