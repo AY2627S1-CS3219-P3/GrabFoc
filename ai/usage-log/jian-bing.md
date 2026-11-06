@@ -107,12 +107,48 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 broken-main dependency entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 PR #146 review-recording entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-06 — Recording my review of the AWS infrastructure (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** the 46 files #146 added with a pending "Author review" line, the three infrastructure entries in this
+log, and an inline marker in each AI-generated file
+
+**Scenario:** Claude walked me through #146 (network and server together, then a written guide for the rest), I ran
+`infra/terraform/check.sh` and checked the staging site, and Claude wrote my review lines in the wording I agreed.
+Files the walkthrough covered say so; tests and the variables/outputs/versions files say they were not read line by
+line and how they were checked. The design spec, `infra/secrets/README.md` and the Cole-confirmation entry stay
+pending: they were not part of the walkthrough.
+
+**Prompts (exact, in order):**
+> yea lwts go through together
+
+> yep understood, also [Image #19] why does soclaas kee pfailing
+
+> coudl you jus tdump the rest of the parts on me for every file then let me read through in 1 shot
+
+> okay i understood everything, but my peer alreayd reviewed and emrged 193, so can uadd the authro review to another branch like 143 by merging main into it and then letting me add the remaing missing author reviewe comments
+
+> yes
+
+**What it produced:** Main merged in (both sides of the usage-log conflict kept), the review lines, and an
+"AI-generated (Claude Code)." marker under each generated file's header and above each added code block (Terraform's
+own `.lock.hcl` files excluded).
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `infra/terraform/check.sh` (14 test runs passed, 7 stacks valid), the three script
+tests (0 failed), `api-gateway/test/envoy_routes_test.py` (OK) and `actionlint` after the changes. My own check: the
+walkthrough, `check.sh` and the staging site, as recorded above.
 
 ### 2026-11-06 — Recording Cole Lin's confirmation of the AWS design (PR #146)
 
@@ -203,7 +239,9 @@ context, and `ec2:DescribeTags` added so the CloudWatch agent can find its serve
 **Key response:** "No, neither is ready to merge yet. Merging AWS is close, but CD isn't built: part 3
 only has a plan, on a local branch."
 
-**Verification:** Pending — Jian Bing to record what he checked.
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
 
 ### 2026-10-27 — Codex review fixes on the AWS infrastructure (PR #146)
 
@@ -224,7 +262,9 @@ a per-environment disk metric, and the GitHub OIDC subject in its immutable form
 **Key response:** "There are 14 unresolved Codex threads on #146. I'll check each one against the current
 `feat/aws-infra` code before changing anything."
 
-**Verification:** Pending — Jian Bing to record what he checked.
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
 
 ### 2026-10-25 — AWS infrastructure in Terraform, deploy part 2 (issue #142)
 
@@ -267,7 +307,9 @@ fixed test-first. Claude's own calls are listed in the PR description.
 **What I changed or rejected:** Chose single-account staging (NUS doesn't allow a second account).
 Decided the secret origin header (`X-Origin-Key`, like our service key) so the server only accepts our
 CloudFront distribution; Envoy's check stays in part 1.
-**Verification:** Pending — Jian Bing to record what he checked.
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
 
 ### 2026-10-23 — AWS deployment design and spec (issue #58)
 

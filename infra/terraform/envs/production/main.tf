@@ -1,9 +1,12 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 2).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
+#   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
+#   the admin locations page load).
 # The production environment: one VPC, one ECS-on-EC2 server, every container as an ECS service, and
 # CloudFront in front (spec §3). Module calls are added by later tasks.
+# AI-generated (Claude Code).
 
 module "network" {
   source = "../../modules/network"

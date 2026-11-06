@@ -2,7 +2,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 1).
 #        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-06): Not read line by line; ran infra/terraform/check.sh, which validates
+#   this stack (every stack valid).
+# AI-generated (Claude Code).
 
 variable "github_repo" {
   # Repositories created after GitHub's July 2026 change put owner and repository IDs in the OIDC
