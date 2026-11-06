@@ -55,8 +55,8 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 Scope: Added the Order Service admin read routes (#181) entry.
 Author review: Reviewed by Zi Yi, 2026-11-05.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
-Scope: Recorded removing the zod build fix from PR #192.
-Author review: pending
+Scope: Recorded removing the zod build fix from PR #192, and the Postman folder 6 fix from its review.
+Author review: Reviewed by Zi Yi, 2026-11-06.
 -->
 
 # AI Usage Log — Zi Yi
@@ -93,6 +93,10 @@ order list and order history.
 
 > i think can remove the zod fix first, my teammate will do handle it
 
+> check https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/192 bot comment, then let me know if it needs fixing, dont fix anything yet
+
+> fix Postman folder 6 issue
+
 **What it produced:**
 - `GET /admin/orders/overview` (counts for all five live states, zeros included, and up to 50
   orders cancelled in the last hour, newest first), `GET /admin/orders` (filtered by `scope`,
@@ -119,7 +123,9 @@ order list and order history.
 
 **What I changed or rejected:** Reviewed every changed and added file; no edits. Removed the zod
 fix from PR #192, because a teammate is fixing it separately; until that fix is on main, this
-branch does not build.
+branch does not build. From Codex's review of PR #192, asked the AI to fix only the Postman
+folder 6 comment: the README and collection said to run it "after another folder", but only
+folders 2, 3 and 4 leave A with a cancelled order; they now say so.
 
 **Verification:** with the zod fix applied locally, `npm test`: 13 passed; `compose.test.yaml`: 68
 passed on main with only the zod fix, then 73 passed (5 new) with the routes. Postman folder 6 has not been run yet.
