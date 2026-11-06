@@ -8,12 +8,16 @@ Author review: Pending Jian Bing's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 Scope: §3.3 origin key (X-Origin-Key), from Jian Bing's decision after the automated security review.
 Author review: Pending Jian Bing's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Status line: [Proposed] to [Decided], recording Cole Lin's confirmation as Jian Bing reported it.
+Author review: Pending Jian Bing's review.
 -->
 
 # AWS deployment design (issue #58)
 
-Status: **[Proposed]**, for team review. Owner of cloud deployment and CI/CD per the Gantt chart: Cole Lin. Jian
-Bing led this design. Sub-issues: #99–#111, #113, #114 (#112 closed).
+Status: **[Decided]**. Cole Lin, the owner of cloud deployment and CI/CD per the Gantt chart, looked through the
+design and told Jian Bing it was okay (recorded 2026-11-06). Jian Bing led this design. Sub-issues: #99–#111,
+#113, #114 (#112 closed).
 
 ## 1. Intent
 

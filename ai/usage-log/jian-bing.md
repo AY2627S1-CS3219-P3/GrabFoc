@@ -101,12 +101,39 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 Scope: Wrote the 2026-10-25 AWS infrastructure entry (deploy part 2) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 design-confirmation entry (PR #146) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-06 — Recording Cole Lin's confirmation of the AWS design (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `docs/superpowers/specs/2026-10-23-aws-deployment-design.md`; replies on two Codex threads in PR #146
+
+**Scenario:** A Codex thread on #146 blocked the merge because the AWS design spec still said [Proposed]. I asked
+what the "design sign-off" meant; Cole had already looked through the design and told me it was okay. Claude
+changed the status to [Decided], recorded Cole's confirmation, and replied on the thread. It also replied on the
+origin-key thread, which #156 fixes.
+
+**Prompts (exact, in order):**
+> what is cole deisng sign off, he told me he looked through and said it was okay, is that good enough
+
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answer to Claude's question on how to record it: "Record the chat OK now (Recommended)".
+
+**What it produced:** The new status line, and the thread replies.
+
+**What I changed or rejected:** Waiting for Cole to approve on GitHub first was offered; I chose to record the chat
+confirmation now. Cole can still approve the PR.
+
+**Verification:** Pending — Jian Bing to record what he checked.
 
 
 ### 2026-11-05 — Second Codex review round on the AWS infrastructure (PR #146)
