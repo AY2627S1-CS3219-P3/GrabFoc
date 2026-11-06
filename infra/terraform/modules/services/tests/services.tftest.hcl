@@ -1,10 +1,12 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 5). Runs with a mocked AWS provider.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-06): Not read line by line; ran infra/terraform/check.sh, which runs these
+#   tests (all passed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 # Scope: Deploy part 1 (#141): the frontend's own layer, and the gateway's edge listener settings.
 # Author review: Pending Jian Bing's review.
+# AI-generated (Claude Code).
 
 mock_provider "aws" {
   mock_data "aws_caller_identity" {

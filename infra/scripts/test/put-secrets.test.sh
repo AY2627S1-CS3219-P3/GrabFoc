@@ -3,9 +3,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 7): tests put-secrets.sh against a fake `aws`.
 #        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-06): Not read line by line; these tests pass in CI (terraform.yml).
 #
 # Run: infra/scripts/test/put-secrets.test.sh   (no AWS access needed)
+# AI-generated (Claude Code).
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/../put-secrets.sh"

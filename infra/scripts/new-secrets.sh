@@ -2,12 +2,15 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generates an environment's secrets file for the first live apply (deploy part 2).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
+#   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
+#   the admin locations page load).
 #
 # Creates infra/secrets/<env>.env (git-ignored, mode 600) with fresh random values for every
 # generated secret, the same formats as .env.example asks for. It never prints a value and never
 # overwrites an existing file. Fill in the four Gmail/admin lines yourself, then run put-secrets.sh.
 #   infra/scripts/new-secrets.sh staging
+# AI-generated (Claude Code).
 set -euo pipefail
 
 env="${1:-}"

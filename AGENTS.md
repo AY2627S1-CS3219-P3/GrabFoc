@@ -5,7 +5,9 @@ Scope: §9 D2 demo checks: replaced the stale `status=INACTIVE` / `ALL` query wi
 Author review (Jian Bing): Checked the whole end-to-end flow locally.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 Scope: "Where to find things": added the "Deploying to AWS" row (deploy part 2, #142).
-Author review: Pending Jian Bing's review.
+Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
+  infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and the
+  admin locations page load).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: §3 "Messaging (Kafka)" [Proposed] (six rules and two proposed changes to [Decided] items) and three §10 open items, written from Jian Bing's walkthrough decisions (redesign spec §9, K1–K13); consumer rules 1–2 proposed by Claude Code and confirmed by him.
 Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.

@@ -2,6 +2,7 @@
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Verify route-file discovery, malformed authentication configuration, and environment-configurable Envoy settings.
 Author review: Pending human review.
+# AI-generated (Claude Code).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-26
 Scope: Added test_upstreams_prefer_ipv4 (first AWS staging deploy).
 Author review: Pending Jie Yang's review.
@@ -166,6 +167,7 @@ class RouteFilesTest(unittest.TestCase):
         self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"], "user_token")
         self.assertEqual(routes[-1]["direct_response"]["status"], 404)
 
+    # AI-generated (Claude Code).
     # AI-generated (Claude Code, 2026-10-26; pending review by Jie Yang). On ECS, Service Connect lists
     # an IPv6 address next to each service's IPv4 one; Envoy's default lookup prefers IPv6, which
     # nothing serves there, so every upstream call failed (first staging deploy, deploy part 2).

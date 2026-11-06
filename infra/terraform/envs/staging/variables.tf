@@ -1,10 +1,12 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 2).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-06): Not read line by line; ran infra/terraform/check.sh, which validates
+#   this stack (every stack valid).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 # Scope: edge_container_port defaults to 8080, the edge listener (deploy part 1, #141).
 # Author review: Pending Jian Bing's review.
+# AI-generated (Claude Code).
 
 variable "env" {
   description = "Environment name, used in every resource name (foc-<env>-…)."
