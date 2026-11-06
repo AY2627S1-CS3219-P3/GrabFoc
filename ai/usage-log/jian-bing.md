@@ -104,12 +104,37 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Wrote the 2026-10-26 staging apply and 2026-10-27 edge routing (deploy part 1) entries from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 gateway .env.example entry (PR #156) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-06 — Edge listener settings in the gateway's `.env.example` (PR #156 review)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `api-gateway/.env.example`, `api-gateway/test/envoy_routes_test.py`
+
+**Scenario:** Codex flagged on #156 that the renderer reads `GATEWAY_EDGE_PORT`, `GATEWAY_ORIGIN_KEY` and
+`FRONTEND_URL`, but `api-gateway/.env.example` does not list them (AGENTS.md §8). Claude added a test that every
+variable the renderer and route files read is in the template, watched it fail on those three, then added them.
+
+**Prompts (exact, in order):**
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answer to Claude's question about the new Codex threads: "Fix 4, explain 1 (Recommended)".
+
+**What it produced:** The three settings with safe placeholders (edge port empty, so it stays off; origin key empty)
+and `EnvExampleTest`.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `python3 api-gateway/test/envoy_routes_test.py`: the new test failed listing the three
+names, then 14/14 passed. My own check: pending — Jian Bing to record what he checked.
 
 
 ### 2026-11-05 — Second Codex review round on the AWS infrastructure (PR #146)
