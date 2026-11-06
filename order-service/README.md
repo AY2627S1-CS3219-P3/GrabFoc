@@ -36,6 +36,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 Scope: Documented the admin read routes (#181) and Postman folder 6.
 Author review: Reviewed by Zi Yi, 2026-11-05.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Said which Postman folders leave A with a cancelled order for folder 6 (PR #192 review).
+Author review: Reviewed by Zi Yi, 2026-11-06.
 -->
 
 # Order Service
@@ -425,6 +428,6 @@ so run 0 again on a 401. A full run needs A to have at least 5 available credits
 cancelled order's credit returns about 10 s later); a `409 INSUFFICIENT_CREDITS` on a create
 means A has run low, so swap the two accounts. Folders: 1 full order (with the courier's balance before and 11 s after
 completion), 2 requester and mutual cancellation, 3 edit, 4 errors, 5 internal lookup, 6 admin read routes (set
-`adminEmail` / `adminPassword` to an `ADMIN` account; run it after another folder so A has a
-cancelled order). Background
+`adminEmail` / `adminPassword` to an `ADMIN` account; run it after folder 2, 3 or 4, which leave
+A with a cancelled order). Background
 jobs (expiry, `order.events`) have no endpoint; check those as described above.
