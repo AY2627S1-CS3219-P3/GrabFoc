@@ -116,6 +116,12 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 PR #146 review-recording entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 SoCLaaS timeout entry from Jian Bing's prompts.
+Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it; the 4 tests pass.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 review-recording entry (PRs #193 and #133) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -202,7 +208,6 @@ confirmation now. Cole can still approve the PR.
 
 **Verification:** Pending — Jian Bing to record what he checked.
 
-
 ### 2026-11-06 — Main's CI broken by two Dependabot major bumps (NestJS platform-express 12, Zod 4)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
@@ -246,7 +251,40 @@ build failed with three TS errors before the fix). `npm ls` shows multer 2.5.0 o
 not run. For the Codex comment, Claude reproduced the EUSAGE failure with npm 11.4.2 (main's lockfile from before
 Dependabot fails the same way), added only the missing nested `typescript` entry (regenerating with 11.4.2 would have
 dropped the `libc` fields newer npm uses), and ran `npm ci` with npm 11.4.2, 11.6.2 and 11.19.1: all three pass. My
-own check: pending — Jian Bing to record what he checked.
+own check (2026-11-06): I went through the change with Claude Code's walkthrough and understood it; CI
+passed (user-service and supplier-service tests and builds). Approved and merged by Deanson Choo (#193).
+
+### 2026-11-06 — Recording my reviews of #193 and #133, and bringing #133 up to date
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `.gitignore`, `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, the four
+files #193 changed, this log
+
+**Scenario:** Deanson merged #193 before its review lines were filled in, so they are recorded here, on #133, which
+also needed main merged in. Claude walked me through the #193 and #133 changes and wrote my review lines in the
+wording I confirmed. While merging, it found that the original #133 commit had committed two Python bytecode
+caches, removed them and ignored `__pycache__/` everywhere.
+
+**Prompts (exact, in order):**
+> okay i understood everything, but my peer alreayd reviewed and emrged 193, so can uadd the authro review to another branch like 143 by merging main into it and then letting me add the remaing missing author reviewe comments
+
+> lets marge 133 too
+
+> lets marge 133 actually first instead of 143
+
+My answers to Claude's questions: "Use this wording (Recommended)" (the #193 review line) and "Walk me through it"
+(for #133).
+
+> yep males sense
+
+**What it produced:** The merge of main (both sides of the usage-log conflict kept), the cache removal, and the
+review lines. Claude's first removal commit (d396ebe) re-added the caches, because the test run before it rebuilt
+them; the next commit removed them.
+
+**What I changed or rejected:** I chose #133 over the AWS PRs for these lines, since it can merge sooner.
+
+**Verification:** `python3 -I -m unittest discover -s .github/scripts`: 4 passed after the merge. My own check: the
+walkthroughs above.
 
 ### 2026-11-05 — Second Codex review round on the AWS infrastructure (PR #146)
 
@@ -772,6 +810,34 @@ partition and lose per-order ordering.
 
 **Verification:** Test-first: the uppercase-orderId replay test failed (uppercase key), then passed;
 unit 144/144, integration 85/85.
+
+### 2026-10-22 — Why the SoCLaaS review keeps failing, and a timeout fix
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** The SoCLaaS review check kept failing on the stacked credit PRs with "SoCLaaS could not
+be reached". I asked Claude to diagnose it, then to fix it.
+
+**Prompts (exact):**
+> help me diagnose why the soclass pr review keeps fialing
+
+> alright do it
+
+**Key responses:** From the run logs: the failures end about 120 s after the request starts, the
+script's per-request timeout, so the model was slow, not unreachable; the script reported timeouts
+with the network-failure message. Each push to the stack started six reviews at once (PRs based on
+another stack branch run twice), which queued on SoCLaaS. The check is not required for merging.
+
+**What it produced:** a timeout now says "did not answer within N s; it may be busy"; the review
+request gets 240 s and one retry after a timeout or a 503; stdlib tests against a stalling local server.
+
+**Changed or rejected:** I chose the clearer message and the longer timeout with a retry; reviewing
+only PRs that target main was offered and not taken.
+
+**Verification:** Test-first: the timeout test failed with "could not be reached", then the four
+tests passed (`python3 -I -m unittest discover -s .github/scripts`). My own check (2026-11-06): I went through
+the change with Claude Code's walkthrough and understood it; the 4 tests pass.
 
 ### 2026-10-18 — Codex review fixes: transaction ledger (PR #93)
 
