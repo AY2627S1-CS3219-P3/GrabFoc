@@ -129,6 +129,10 @@ Claude also merged main into `fix/soclaas-timeout` (#133) to clear its usage-log
 My answers to Claude's questions: "Keep Zod 4, fix code (Recommended)", "Fix 4, explain 1 (Recommended)",
 "Record the chat OK now (Recommended)", "Walk me through it".
 
+> [Image #14]
+
+(Screenshot of Codex's comment on #193: `npm ci` with npm 11.4.2 fails with `Missing: typescript@ from lock file`.)
+
 **What it produced:** The cause: Dependabot PRs #163 and #164 moved `@nestjs/platform-express` to 12 while the rest
 of NestJS is 11, so `npm ci` stops with ERESOLVE before any test runs. That hid a second break: #173 and #174 moved
 supplier-service and order-service to Zod 4, where `ZodTypeDef` is gone and `.default()` no longer runs the
@@ -144,7 +148,10 @@ service owners.
 user-service) ran `npm ci`, `npm test` and `npm run build`: user-service passed (4 test files, 1 skipped),
 supplier-service 178/178 (the two default-value tests failed before `.prefault()`), and order-service 13/13 (its
 build failed with three TS errors before the fix). `npm ls` shows multer 2.5.0 overridden. Integration tests were
-not run. My own check: pending — Jian Bing to record what he checked.
+not run. For the Codex comment, Claude reproduced the EUSAGE failure with npm 11.4.2 (main's lockfile from before
+Dependabot fails the same way), added only the missing nested `typescript` entry (regenerating with 11.4.2 would have
+dropped the `libc` fields newer npm uses), and ran `npm ci` with npm 11.4.2, 11.6.2 and 11.19.1: all three pass. My
+own check: pending — Jian Bing to record what he checked.
 
 
 ### 2026-10-23 — AWS deployment design and spec (issue #58)
