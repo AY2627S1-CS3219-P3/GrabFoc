@@ -1,13 +1,17 @@
 /*
  * AI Assistance Disclosure:
- * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
- * Scope: Copied from logging-service/src/client/log-shipper.ts, which is the canonical copy.
- *        This repository has no shared package, so common code is copied, not imported: a change
- *        there has to be repeated here. Re-copied after the reviews of PR #129 and #130, which
- *        added recursive redaction, substring matching of sensitive names, envelope precedence,
- *        truncation past the depth limit, dropped function values, a publish guard cleared by
- *        identity, a stop() that waits for a publish in flight, and an emit() that cannot throw
- *        on a value JSON refuses to serialise.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Copied from logging-service/src/client/log-shipper.ts, the canonical copy. This
+ *        repository has no shared package, so common code is copied, not imported: a change there
+ *        has to be repeated here. This copy brings the fixes from the #129 and #145 reviews - all
+ *        reads of the caller's input inside the serialisation guard, and a fixed reason instead of
+ *        an exception message in the fallback line.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-25
+ * Scope: Call Date.prototype.toISOString rather than the value's own, so an override cannot
+ *        run after redaction (PR #145 review).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Sanitise field *names* as well as values, and bound the buffer in bytes as well as
+ *        in lines (PR #129 review). Body kept identical to the canonical copy.
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -69,6 +73,14 @@ export interface ShipperOptions {
   publisher?: LinePublisher;
   /** Lines held while a publish is in flight. Beyond this, lines are dropped. */
   maxBuffer?: number;
+  /**
+   * Bytes held while a publish is in flight, across all buffered lines. A count alone is not a
+   * bound: 1,000 lines carrying a megabyte of metadata each is a gigabyte held by the component
+   * whose whole purpose is not to disrupt the service it logs for (PR #129 review).
+   */
+  maxBufferBytes?: number;
+  /** A single line larger than this is written to stdout but never buffered. */
+  maxLineBytes?: number;
   /** How often the buffer is drained, in milliseconds. */
   flushMs?: number;
   /** Where the line goes locally. Replaced in tests. */
@@ -112,6 +124,16 @@ const NEVER_LOG = [
 
 const REDACTED = '[REDACTED]';
 const TRUNCATED = '[TRUNCATED]';
+// A field name a caller would plausibly write. Only values were ever redacted, so a caller passing
+// `{ recipients: { 'alice@nus.edu.sg': true } }` shipped an address as a field name with nothing
+// flagged (PR #129 review). An unsafe name is replaced whole, not truncated: half an address is
+// still half an address. The same rule is in the logging service's line.schema.ts and in its
+// dead-letter shape, and the three must agree.
+const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
+
+function safeKey(key: string, index: number): string {
+  return SAFE_KEY.test(key) ? key : `[key ${index}: ${key.length} chars]`;
+}
 const MAX_DEPTH = 6;
 
 /**
@@ -137,16 +159,22 @@ export function redactFields(value: unknown, depth = 0): unknown {
   // nested deeper than this verbatim, and would let a cycle through to JSON.stringify, which
   // throws — crashing the caller over a log line (PR #130 review).
   if (depth > MAX_DEPTH) return TRUNCATED;
-  if (value instanceof Date) return value;
+  // An ISO string, not the object. JSON.stringify would call the Date's toJSON — and a Date with
+  // its own toJSON, or a subclass overriding it, could return anything at all, after redaction
+  // has finished (PR #129 review). This is what an honest Date serialised to anyway.
+  // Date.prototype.toISOString, not value.toISOString(): a subclass or an own override would
+  // otherwise run after redaction has decided this field is safe, and could return a token from
+  // an innocent-looking field (PR #145 review).
+  if (value instanceof Date) return Date.prototype.toISOString.call(value);
   if (Array.isArray(value)) return value.map((item) => serialisable(redactFields(item, depth + 1)));
   const out: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+  Object.entries(value as Record<string, unknown>).forEach(([key, item], index) => {
     // A function is dropped. JSON.stringify ignores functions anyway, except an own `toJSON`,
     // which it calls instead of reading the object — so copying one across would let it return
     // whatever it liked, unredacted, including a replacement for the whole envelope.
-    if (typeof item === 'function') continue;
-    out[key] = isSensitive(key) ? REDACTED : serialisable(redactFields(item, depth + 1));
-  }
+    if (typeof item === 'function') return;
+    out[safeKey(key, index)] = isSensitive(key) ? REDACTED : serialisable(redactFields(item, depth + 1));
+  });
   return out;
 }
 
@@ -165,12 +193,20 @@ function serialisable(value: unknown): unknown {
 export class LogShipper {
   private readonly buffer: OutboundLine[] = [];
   private readonly maxBuffer: number;
+  private readonly maxBufferBytes: number;
+  private readonly maxLineBytes: number;
+  /** Bytes currently buffered. Kept as a running total rather than recomputed per emit. */
+  private bufferedBytes = 0;
   private timer?: NodeJS.Timeout;
   private publishing?: Promise<void>;
-  readonly counts = { emitted: 0, dropped: 0, failed: 0 };
+  readonly counts = { emitted: 0, dropped: 0, oversize: 0, failed: 0 };
 
   constructor(private readonly options: ShipperOptions) {
     this.maxBuffer = options.maxBuffer ?? 1000;
+    // 4 MB and 64 KB: a log line that does not fit in 64 KB is a bug in the caller, and 4 MB is
+    // small enough that holding it through a broker outage is not what takes a service down.
+    this.maxBufferBytes = options.maxBufferBytes ?? 4 * 1024 * 1024;
+    this.maxLineBytes = options.maxLineBytes ?? 64 * 1024;
     if (options.publisher) {
       this.timer = setInterval(() => void this.flush(), options.flushMs ?? 1000);
       // Never hold the process open just to ship a log line.
@@ -185,51 +221,82 @@ export class LogShipper {
    * lossy.
    */
   emit(input: LineInput): void {
-    const { level, event, path, ...rest } = input;
-    const payload = this.serialise({
-      // The caller's own fields go in FIRST, so the envelope below always wins: a line claiming
-      // `service: "gateway"` or its own `ts` would make the store unreadable.
-      ...(redactFields(rest) as Record<string, unknown>),
-      // One id, shared by the stdout line and the Kafka message, so reading stdout later cannot
-      // double-count what the store already has.
-      lineId: (this.options.newId ?? randomUUID)(),
-      ts: new Date().toISOString(),
-      service: this.options.service,
-      level,
-      event,
-      // Stripped here, at the one point every service shares, rather than relying on each copy of
-      // this file to remember: `?lat=…&lon=…` is the caller's position, and this line carries
-      // their userId (root AGENTS.md: never log unmasked personal data).
-      ...(path === undefined ? {} : { path: path.split('?')[0] }),
-    });
+    const { payload, key } = this.build(
+      (this.options.newId ?? randomUUID)(),
+      new Date().toISOString(),
+      input,
+    );
     this.counts.emitted += 1;
     (this.options.write ?? console.log)(payload);
 
     if (!this.options.publisher) return;
-    if (this.buffer.length >= this.maxBuffer) {
+    const bytes = Buffer.byteLength(payload);
+    // Counted apart from an ordinary drop: a line too big to ship at all says something about the
+    // caller, while a full buffer says something about the broker.
+    if (bytes > this.maxLineBytes) {
+      this.counts.oversize += 1;
+      return;
+    }
+    if (this.buffer.length >= this.maxBuffer || this.bufferedBytes + bytes > this.maxBufferBytes) {
       this.counts.dropped += 1;
       return;
     }
-    this.buffer.push({ key: input.requestId, value: payload });
+    this.buffer.push({ key, value: payload });
+    this.bufferedBytes += bytes;
   }
 
   /**
    * JSON for one line, or a line saying it could not be built. Nothing a caller passes may turn a
    * log call into an exception on the path being logged.
    */
-  private serialise(line: Record<string, unknown>): string {
+  private build(lineId: string, ts: string, input: LineInput): { payload: string; key?: string } {
+    // Read once, defensively, so the fallback line can still say which event failed.
+    let originalEvent: string | null = null;
     try {
-      return JSON.stringify(line);
-    } catch (err) {
-      return JSON.stringify({
-        lineId: line.lineId,
-        ts: line.ts,
-        service: line.service,
-        level: 'error',
-        event: 'line_unserialisable',
-        reason: err instanceof Error ? err.message : 'unknown',
-        originalEvent: typeof line.event === 'string' ? line.event : null,
+      originalEvent = typeof input.event === 'string' ? input.event : null;
+    } catch {
+      originalEvent = null;
+    }
+
+    try {
+      // **Everything** that reads the caller's input happens in here. Destructuring it runs an
+      // enumerable getter, and a Proxy trap runs on enumeration, so doing it outside meant a
+      // hostile top-level field could still throw out of emit() — which the earlier guard claimed
+      // to prevent and did not (PR #145 review).
+      const { level, event, path, ...rest } = input;
+      const safeRest = redactFields(rest) as Record<string, unknown>;
+      const payload = JSON.stringify({
+        // The caller's own fields go in FIRST, so the envelope always wins: a line claiming
+        // `service: "gateway"` or its own `ts` would make the store unreadable.
+        ...safeRest,
+        lineId,
+        ts,
+        service: this.options.service,
+        level,
+        event,
+        // Stripped here, at the one point every service shares, rather than relying on each copy of
+        // this file to remember: `?lat=…&lon=…` is the caller's position, and this line carries
+        // their userId (root AGENTS.md: never log unmasked personal data).
+        ...(path === undefined ? {} : { path: `${path}`.split('?')[0] }),
       });
+      // From the redacted copy, so the Kafka key cannot be a value redaction removed.
+      const key = typeof safeRest.requestId === 'string' ? safeRest.requestId : undefined;
+      return { payload, key };
+    } catch {
+      // A fixed reason, never the exception's message: the exception came from the caller's own
+      // getter, so its message is caller-controlled text and could carry the very secret the
+      // field-name redaction exists to remove (PR #129 review).
+      return {
+        payload: JSON.stringify({
+          lineId,
+          ts,
+          service: this.options.service,
+          level: 'error',
+          event: 'line_unserialisable',
+          reason: 'the line could not be built',
+          originalEvent,
+        }),
+      };
     }
   }
 
@@ -238,6 +305,9 @@ export class LogShipper {
     if (this.publishing) return this.publishing;
     if (!this.options.publisher || !this.buffer.length) return;
     const batch = this.buffer.splice(0, this.buffer.length);
+    // The buffer is what holds the memory; once the batch is out of it the budget is free again,
+    // whether or not the publish then succeeds. Lines are never put back - they are on stdout.
+    this.bufferedBytes = 0;
     const publisher = this.options.publisher;
     const pending = (async () => {
       try {
