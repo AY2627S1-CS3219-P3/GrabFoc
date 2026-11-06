@@ -8,7 +8,8 @@
  * Author review: Reviewed in full
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
  * Scope: Zod 4 upgrade: ZodType<Output, Input> replaces the removed ZodTypeDef parameter.
- * Author review: Pending Jian Bing's review.
+ * Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it;
+ *   CI passed (user-service and supplier-service tests and builds). Approved and merged by Deanson Choo (#193).
  */
 import { Injectable, PipeTransform } from '@nestjs/common';
 import type { ZodType } from 'zod';
@@ -17,7 +18,7 @@ import { AppError, ErrorCode } from './errors';
 /** Validates a body, query or param. Object schemas must be `.strict()` so unknown fields are a 400. */
 @Injectable()
 export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
-  // AI-generated (Claude Code), review pending: Zod 4's ZodType takes <Output, Input>.
+  // AI-generated (Claude Code), reviewed by Jian Bing: Zod 4's ZodType takes <Output, Input>.
   constructor(private readonly schema: ZodType<T, unknown>) {}
 
   transform(value: unknown): T {
