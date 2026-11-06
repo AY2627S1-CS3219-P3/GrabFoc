@@ -2,7 +2,7 @@
   "info": {
     "name": "FoC Order Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19. Scope: generated this collection from the routes and error codes in order-service/README.md. Author review: Reviewed\n\nRequests for the Order Service. They go straight to the services (Order on port 3005), because the gateway does not route /orders yet.\n\nSETUP: start the whole stack with `docker compose up -d --build`. Set emailA, emailB and password to two verified test accounts (A is the requester, B the courier; B must have no active order), and serviceKey to ORDER_SERVICE_KEY from your .env (folder 5 only). Then run folder 0. Access tokens last 15 minutes: run folder 0 again when requests start returning 401.\n\nRUN each folder top to bottom (or with the Collection Runner). Each folder creates its own order, and each request saves orderId and version for the next one. Each order offers 1 credit. A full run needs A to have at least 5 available: folder 1 pays 1 to B, and a cancelled order's credit only returns about 10 s later, after the run has moved on. Credits never come back otherwise (closed economy), so if A runs low, swap the two accounts: B has been earning. Folder 1's last request waits 11 s for the credit settlement job."
+    "description": "AI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19. Scope: generated this collection from the routes and error codes in order-service/README.md. Author review: Reviewed. Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05. Scope: added folder 6, the admin read routes (#181). Author review: reviewed by Zi Yi, 2026-11-05; folder 6 not yet run. Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06. Scope: said which folders leave A with a cancelled order for folder 6 (PR #192 review). Author review: reviewed by Zi Yi, 2026-11-06.\n\nRequests for the Order Service. They go straight to the services (Order on port 3005), because the gateway does not route /orders yet.\n\nSETUP: start the whole stack with `docker compose up -d --build`. Set emailA, emailB and password to two verified test accounts (A is the requester, B the courier; B must have no active order), serviceKey to ORDER_SERVICE_KEY from your .env (folder 5 only), and adminEmail / adminPassword to an ADMIN account (folder 6 only; run it after folder 2, 3 or 4, which leave A with a cancelled order). Then run folder 0. Access tokens last 15 minutes: run folder 0 again when requests start returning 401.\n\nRUN each folder top to bottom (or with the Collection Runner). Each folder creates its own order, and each request saves orderId and version for the next one. Each order offers 1 credit. A full run needs A to have at least 5 available: folder 1 pays 1 to B, and a cancelled order's credit only returns about 10 s later, after the run has moved on. Credits never come back otherwise (closed economy), so if A runs low, swap the two accounts: B has been earning. Folder 1's last request waits 11 s for the credit settlement job."
   },
   "variable": [
     {
@@ -79,6 +79,20 @@
     },
     {
       "key": "courierBefore",
+      "value": ""
+    },
+    {
+      "key": "adminEmail",
+      "value": "",
+      "description": "An ADMIN account (folder 6 only)."
+    },
+    {
+      "key": "adminPassword",
+      "value": "",
+      "description": "The admin's password. Do not commit a real one."
+    },
+    {
+      "key": "adminToken",
       "value": ""
     }
   ],
@@ -1710,6 +1724,233 @@
                 "exec": [
                   "pm.test('status 400', () => pm.response.to.have.status(400));",
                   "pm.test('error VALIDATION_ERROR', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Admin read routes (ADMIN token)",
+      "item": [
+        {
+          "name": "Log in as the admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{userUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) pm.collectionVariables.set('adminToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview → 200",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{orderUrl}}/admin/orders/overview"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const { live } = pm.response.json();",
+                  "pm.test('byState has all five live states', () => pm.expect(Object.keys(live.byState)).to.eql(['PENDING', 'ACCEPTED', 'PICKED_UP', 'IN_PROGRESS', 'ARRIVED']));",
+                  "pm.test('total is their sum', () => pm.expect(live.total).to.eql(Object.values(live.byState).reduce((a, b) => a + b, 0)));",
+                  "pm.test('recent cancellations are CANCELLED', () => pm.response.json().recentCancellations.forEach((o) => pm.expect(o.status).to.eql('CANCELLED')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Live orders → 200",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{orderUrl}}/admin/orders?scope=live"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('only live states', () => pm.response.json().items.forEach((o) => pm.expect(['PENDING', 'ACCEPTED', 'PICKED_UP', 'IN_PROGRESS', 'ARRIVED']).to.include(o.status)));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A's cancelled orders → 200",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{orderUrl}}/admin/orders?scope=past&state=CANCELLED&userId={{userIdA}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const { items, total } = pm.response.json();",
+                  "pm.test('A has a cancelled order (run folder 2, 3 or 4 first)', () => pm.expect(total).to.be.above(0));",
+                  "pm.test('all CANCELLED and involve A', () => items.forEach((o) => {",
+                  "  pm.expect(o.status).to.eql('CANCELLED');",
+                  "  pm.expect([o.requesterId, o.courierId]).to.include(pm.collectionVariables.get('userIdA'));",
+                  "}));",
+                  "if (items.length) pm.collectionVariables.set('orderId', items[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "History of that order → 200",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{orderUrl}}/admin/orders/{{orderId}}/history"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const last = pm.response.json().items.at(-1);",
+                  "pm.test('ends CANCELLED with a reason', () => {",
+                  "  pm.expect(last.action).to.eql('CANCELLED');",
+                  "  pm.expect(last.changeDetails.reason).to.be.a('string');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "A state outside its scope → 400",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{orderUrl}}/admin/orders?scope=live&state=COMPLETED"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('error VALIDATION_ERROR', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown order history → 404",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{orderUrl}}/admin/orders/00000000-0000-4000-8000-000000000000/history"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('error NOT_FOUND', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview as A (a USER) → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenA}}"
+              }
+            ],
+            "url": "{{orderUrl}}/admin/orders/overview"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 403', () => pm.response.to.have.status(403));",
+                  "pm.test('error FORBIDDEN', () => pm.expect(pm.response.json().error.code).to.eql('FORBIDDEN'));"
                 ]
               }
             }

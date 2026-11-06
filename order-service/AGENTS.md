@@ -29,6 +29,9 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
 Scope: Recorded the UserSuspended consumer, order.user-events.dlt and the USER_SUSPENDED reason (Phase D).
 Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+Scope: Recorded the admin read routes (#181).
+Author review: Reviewed by Zi Yi, 2026-11-05.
 -->
 
 # AGENTS.md — Order Service
@@ -73,6 +76,7 @@ _Origin: Team / Restated from root AGENTS.md; AI doc (implementation status)_
 - Implemented Phase D step 2: the 60 s expiry worker (`expireOrders`) cancels `PENDING`/`ACCEPTED`/`PICKED_UP`/`IN_PROGRESS` orders once `now() >= window_end` (plan §0/§2), rechecking each under its row lock; history `reason: EXPIRED`, no actor; pending `TIMING_CHANGE` → `EXPIRED`, pending `CANCELLATION` → `SUPERSEDED` (plan §2 rule 6). No `OrderCancelled` yet (needs `order.events`).
 - Implemented Phase D step 3: `order.events` (contract below), published every second from `order_history` as the outbox, so expiry, requester and mutual cancellations now publish `OrderCancelled`; and `GET /internal/orders/users/:userId/active` behind `ORDER_SERVICE_KEY`. Not yet, blocked on other services: `UserSuspended` / `SupplierDeactivated` consumers (User and Supplier publish nothing yet); the User Service calling the lookup before deactivation.
 - Implemented Phase D step 4, users half (2026-10-21): a `user.events` consumer (group `order-service`, from the beginning). `UserSuspended` cancels every unfinished order the user is requester or courier on, `AWAITING_CREDIT` and `ARRIVED` included, each rechecked under its row lock; history `reason: USER_SUSPENDED`, no actor; all pending proposals → `SUPERSEDED`; `settleCredits` releases the holds. Other event types are skipped; an unreadable event goes to `order.user-events.dlt`; any other failure pauses 5 s and retries the same event. A create whose `AWAITING_CREDIT` order a suspension cancelled while Credit was reserving returns **403 `USER_SUSPENDED`** (was a misleading 503). Not yet: `SupplierDeactivated` (Supplier publishes nothing yet). Known limit: the suspended user's access token works until it expires (≤15 min), so an order created or accepted after the event was handled is not cancelled.
+- **[Decided by Zi Yi, 2026-11-05; Jie Yang to confirm]** Admin read routes for the admin dashboard ([#181](https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/181), `docs/admin-dashboard-plan.md` §5): `GET /admin/orders/overview`, `GET /admin/orders` and `GET /admin/orders/:orderId/history`, all read-only and `ADMIN` only (`@AdminOnly()`, checked in `JwtAuthGuard`). This is the one admin power added beyond the root table; admins still cannot change orders. Shapes in the README.
 - Phase E tests (2026-10-19): added one courier accepting two orders at once, expiry racing a timing approval, and no history or event for failed transitions; the other plan §8 Phase E test items were already covered. Not yet: suspension/deactivation consumer tests (consumers blocked, above) and the full demo with Notification (no Notification Service yet).
 
 ## Creation and reading [Decided]

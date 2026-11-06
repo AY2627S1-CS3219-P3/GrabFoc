@@ -23,6 +23,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
  * Scope: Added the suspended user's unfinished-order queries and cancelReason (Phase D).
  * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+ * Scope: Added the admin list, live counts and recent cancellations (#181).
+ * Author review: Reviewed by Zi Yi, 2026-11-05.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -205,6 +208,39 @@ export class OrdersRepository {
       this.pool.query<{ n: string }>(`SELECT count(*) AS n FROM orders WHERE ${where}`, [userId]),
     ]);
     return { items: items.rows.map(toOrder), page, pageSize, total: Number(count.rows[0].n) };
+  }
+
+  /** Admin list: newest first, like list. Without `userId`, every user's orders. */
+  async adminList(statuses: readonly OrderStatus[], userId: string | undefined, { page, pageSize }: PageQuery): Promise<Page<Order>> {
+    const where = `status = ANY($1) AND ($2::uuid IS NULL OR $2 IN (requester_id, courier_id))`;
+    const filter = [statuses, userId ?? null];
+    const [items, count] = await Promise.all([
+      this.pool.query(`SELECT * FROM orders WHERE ${where} ORDER BY created_at DESC, id LIMIT $3 OFFSET $4`, [
+        ...filter,
+        pageSize,
+        (page - 1) * pageSize,
+      ]),
+      this.pool.query<{ n: string }>(`SELECT count(*) AS n FROM orders WHERE ${where}`, filter),
+    ]);
+    return { items: items.rows.map(toOrder), page, pageSize, total: Number(count.rows[0].n) };
+  }
+
+  /** Orders in each of `statuses`; a status with none is missing from the result. */
+  async countByStatus(statuses: readonly OrderStatus[]): Promise<Partial<Record<OrderStatus, number>>> {
+    const { rows } = await this.pool.query(
+      'SELECT status, count(*) AS n FROM orders WHERE status = ANY($1) GROUP BY status',
+      [statuses],
+    );
+    return Object.fromEntries(rows.map((row) => [row.status, Number(row.n)]));
+  }
+
+  /** Newest first. Nothing changes a CANCELLED order's updated_at, so it is when it was cancelled. */
+  async recentCancellations(): Promise<Order[]> {
+    const { rows } = await this.pool.query(
+      `SELECT * FROM orders WHERE status = 'CANCELLED' AND updated_at > now() - interval '1 hour'
+       ORDER BY updated_at DESC, id LIMIT 50`,
+    );
+    return rows.map(toOrder);
   }
 
   /** Oldest first, so the entries read as a timeline. */

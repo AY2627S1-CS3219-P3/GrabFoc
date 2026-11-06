@@ -30,6 +30,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
  * Scope: Added UserSuspended consumer tests and the 403 for a create a suspension cancelled (Phase D).
  * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+ * Scope: Added admin read route tests and a skipped UserReactivated event (#181).
+ * Author review: Reviewed by Zi Yi, 2026-11-05.
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -60,6 +63,7 @@ const pool = new Pool({ connectionString, options: `-c search_path=${schema}` })
 const alice = randomUUID(); // requester
 const bob = randomUUID(); // courier
 const carol = randomUUID(); // unrelated user
+const dana = randomUUID(); // admin
 let jwks: JwksStub;
 let app: INestApplication;
 let baseUrl: string;
@@ -124,6 +128,7 @@ before(async () => {
   process.env.ORDER_KAFKA_BROKERS = 'unused:9092'; // the producer is faked
   process.env.ORDER_SERVICE_KEY = SERVICE_KEY;
   for (const id of [alice, bob, carol]) tokens[id] = await jwks.sign({ sub: id });
+  tokens[dana] = await jwks.sign({ sub: dana, role: 'ADMIN' });
 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(PG_POOL)
@@ -860,6 +865,7 @@ test('a create cancelled by a suspension while Credit reserves returns 403 and t
 test('user.events: other types are skipped, unreadable events go to the dead-letter topic', async () => {
   const id = await insertOrder();
   await app.get(UserEvents).handle(userEvent('UserRegistered', alice));
+  await app.get(UserEvents).handle(userEvent('UserReactivated', alice));
   await app.get(UserEvents).handle({ key: alice, value: '{"type":"UserSuspended","userId":"not-a-uuid"}' });
   await app.get(UserEvents).handle({ key: alice, value: 'not json' });
   assert.equal((await row(id)).status, 'PENDING');
@@ -867,4 +873,76 @@ test('user.events: other types are skipped, unreadable events go to the dead-let
     [alice, '{"type":"UserSuspended","userId":"not-a-uuid"}', 'user.events'],
     [alice, 'not json', 'user.events'],
   ]);
+});
+
+// ---- Admin read routes (#181) ----
+
+const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+
+test('admin routes need an ADMIN token, checked before the query is validated', async () => {
+  const id = await insertOrder();
+  for (const path of ['/admin/orders/overview', '/admin/orders', '/admin/orders?scope=nope', `/admin/orders/${id}/history`]) {
+    expectError(await get(path, alice), 403, 'FORBIDDEN');
+  }
+  expectError(await get('/admin/orders'), 401, 'TOKEN_INVALID');
+});
+
+test('admin overview counts every live state, zeros included, and lists the last hour of cancellations newest first', async () => {
+  await insertOrder();
+  await insertOrder({ requester_id: bob });
+  await insertOrder({ status: 'ARRIVED', courier_id: bob });
+  await insertOrder({ status: 'AWAITING_CREDIT' });
+  await insertOrder({ status: 'COMPLETED', courier_id: bob });
+  const older = await insertOrder({ status: 'CANCELLED', updated_at: minutesAgo(30) });
+  const newer = await insertOrder({ status: 'CANCELLED', updated_at: minutesAgo(5) });
+  await insertOrder({ status: 'CANCELLED', updated_at: minutesAgo(61) });
+
+  const { status, body } = await get('/admin/orders/overview', dana);
+  assert.equal(status, 200);
+  assert.deepEqual(body.live, { total: 3, byState: { PENDING: 2, ACCEPTED: 0, PICKED_UP: 0, IN_PROGRESS: 0, ARRIVED: 1 } });
+  assert.deepEqual(ids({ items: body.recentCancellations }), [newer, older]);
+});
+
+test('admin list filters by scope, state and user as requester or courier, newest first, never AWAITING_CREDIT', async () => {
+  const pending = await insertOrder({ created_at: minutesAgo(1) });
+  const carried = await insertOrder({ status: 'ACCEPTED', requester_id: carol, courier_id: alice, created_at: minutesAgo(2) });
+  const completed = await insertOrder({ status: 'COMPLETED', courier_id: bob, created_at: minutesAgo(3) });
+  const cancelled = await insertOrder({ status: 'CANCELLED', requester_id: carol, created_at: minutesAgo(4) });
+  await insertOrder({ status: 'AWAITING_CREDIT', created_at: minutesAgo(5) });
+
+  const list = async (query: string) => ids((await get(`/admin/orders?${query}`, dana)).body);
+  assert.deepEqual(await list(''), [pending, carried, completed, cancelled]);
+  assert.deepEqual(await list('scope=live'), [pending, carried]);
+  assert.deepEqual(await list('scope=past'), [completed, cancelled]);
+  assert.deepEqual(await list('scope=past&state=CANCELLED'), [cancelled]);
+  assert.deepEqual(await list('state=ACCEPTED'), [carried]);
+  assert.deepEqual(await list(`userId=${alice}`), [pending, carried, completed]);
+  assert.deepEqual(await list(`userId=${bob}&scope=past`), [completed]);
+  assert.deepEqual(await list(`userId=${carol}&scope=live`), [carried]);
+
+  // The same Order shape as /orders/mine.
+  const [mine] = (await get('/orders/mine', alice)).body.items;
+  assert.deepEqual((await get('/admin/orders?state=PENDING', dana)).body.items, [mine]);
+});
+
+test('admin list rejects a state outside its scope and unknown parameters, and pages with correct totals', async () => {
+  for (const query of ['scope=live&state=COMPLETED', 'scope=past&state=PENDING', 'state=AWAITING_CREDIT', 'scope=all', 'userId=nope', 'status=PENDING']) {
+    expectError(await get(`/admin/orders?${query}`, dana), 400, 'VALIDATION_ERROR');
+  }
+  for (let i = 0; i < 5; i++) await insertOrder();
+  await insertOrder({ status: 'AWAITING_CREDIT' });
+  const pages = await Promise.all([1, 2, 3].map(async (page) => (await get(`/admin/orders?pageSize=2&page=${page}`, dana)).body));
+  assert.deepEqual(pages.map((p) => [p.page, p.pageSize, p.total, p.items.length]), [[1, 2, 5, 2], [2, 2, 5, 2], [3, 2, 5, 1]]);
+  assert.equal(new Set(pages.flatMap((p) => ids(p))).size, 5);
+});
+
+test('admin history matches the participant view and carries the cancellation reason; an unknown order is 404', async () => {
+  const id = await insertOrder();
+  await post(`/orders/${id}/cancel`, alice, { version: 1 });
+  const { status, body } = await get(`/admin/orders/${id}/history`, dana);
+  assert.equal(status, 200);
+  assert.deepEqual(body, (await get(`/orders/${id}/history`, alice)).body);
+  assert.deepEqual(body.items.map((h: any) => h.changeDetails), [{ reason: 'REQUESTER_CANCELLED' }]);
+  expectError(await get(`/admin/orders/${randomUUID()}/history`, dana), 404, 'NOT_FOUND');
+  expectError(await get('/admin/orders/not-a-uuid/history', dana), 400, 'VALIDATION_ERROR');
 });
