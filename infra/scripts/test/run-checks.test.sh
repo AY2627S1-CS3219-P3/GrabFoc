@@ -6,6 +6,7 @@
 # Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/run-checks.test.sh   (no AWS access needed; needs jq)
+# AI-generated (Claude Code); review pending.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/../run-checks.sh"

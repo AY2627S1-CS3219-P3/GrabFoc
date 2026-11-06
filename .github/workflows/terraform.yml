@@ -42,6 +42,7 @@ jobs:
           infra/scripts/test/put-secrets.test.sh
           infra/scripts/test/new-secrets.test.sh
           infra/scripts/test/push-images.test.sh
+          # AI-generated (Claude Code); review pending.
           infra/scripts/test/deploy-images.test.sh
           infra/scripts/test/run-checks.test.sh
           infra/scripts/test/repo-checks.test.sh

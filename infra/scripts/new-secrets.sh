@@ -23,6 +23,7 @@ esac
 root="${FOC_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 file="$root/infra/secrets/$env.env"
 
+# AI-generated (Claude Code); review pending.
 hex() { openssl rand -hex 32; }
 key32() { openssl rand -base64 32; }
 

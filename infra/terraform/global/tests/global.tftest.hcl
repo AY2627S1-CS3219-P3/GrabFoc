@@ -141,6 +141,7 @@ run "plan_parameter_exceptions" {
   assert {
     condition = alltrue([
       for st in jsondecode(aws_iam_role_policy.plan_state_lock.policy).Statement :
+      # AI-generated (Claude Code); review pending.
       toset(st.NotResource) == toset([
         "arn:aws:ssm:*::parameter/aws/service/*",
         "arn:aws:ssm:*:111122223333:parameter/foc-deploy/*",

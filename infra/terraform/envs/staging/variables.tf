@@ -37,6 +37,7 @@ variable "alert_emails" {
   type        = list(string)
 }
 
+# AI-generated (Claude Code); review pending.
 variable "mailpit_relay_to" {
   description = "The only recipients Mailpit forwards to Gmail; all other mail stays in Mailpit. Set TF_VAR_mailpit_relay_to: the repository is public."
   type        = list(string)

@@ -37,6 +37,7 @@ variables {
   mailpit_relay_to       = ["a@x.edu", "b@y.com"]
   public_url             = "https://d111.cloudfront.net"
   ecr_repository_urls = {
+    # AI-generated (Claude Code); review pending.
     "user-service"         = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/user-service"
     "supplier-service"     = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/supplier-service"
     "credit-service"       = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/credit-service"
@@ -192,6 +193,7 @@ run "staging" {
     ]) == toset(["kafka-init:SUCCESS", "order-migrate:SUCCESS"])
     error_message = "The Order Service starts only after topics and migrations succeed."
   }
+  # AI-generated (Claude Code); review pending.
   # Deploy part 3: newman reads OTP codes from Mailpit's API on the server's own host port.
   assert {
     condition = anytrue([
@@ -263,6 +265,7 @@ run "staging" {
     condition = alltrue([
       for name, t in aws_ecs_task_definition.service : can(jsondecode(t.container_definitions)[0].healthCheck.command[0])
     ])
+    # AI-generated (Claude Code); review pending.
     error_message = "Every service has a container health check."
   }
   assert {
@@ -274,6 +277,7 @@ run "staging" {
 run "production" {
   command = apply
   variables {
+    # AI-generated (Claude Code); review pending.
     env              = "production"
     cluster_arn      = "arn:aws:ecs:ap-southeast-1:111122223333:cluster/foc-production"
     mailpit_relay    = false
@@ -288,6 +292,7 @@ run "production" {
     )
     error_message = "Production sends straight to Gmail on 587, with no Mailpit."
   }
+  # AI-generated (Claude Code); review pending.
   assert {
     condition     = length(aws_ecs_task_definition.checks) == 0
     error_message = "The checks run on staging only: they need Mailpit."
@@ -322,6 +327,7 @@ run "edge_listener" {
   }
 }
 
+# AI-generated (Claude Code); review pending.
 # With nobody on the list, nothing is relayed: an empty regex would mean no filter at all.
 run "no_relay_recipients" {
   command = apply

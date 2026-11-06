@@ -5,6 +5,7 @@
 # Author review: Pending Jian Bing's review.
 #
 # The checks container's entrypoint. Exits with newman's status: non-zero if any check failed.
+# AI-generated (Claude Code); review pending.
 set -eu
 : "${BASE_URL:?BASE_URL must be set}"
 : "${MAILPIT_URL:?MAILPIT_URL must be set}"

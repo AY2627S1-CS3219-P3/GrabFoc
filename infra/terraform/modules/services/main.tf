@@ -26,6 +26,7 @@ locals {
 
   postgres = {
     for name, cfg in {
+      # AI-generated (Claude Code); review pending.
       "user-db"         = { db = "users", password = "POSTGRES_PASSWORD" }
       "supplier-db"     = { db = "supplier", password = "SUPPLIER_POSTGRES_PASSWORD" }
       "credit-db"       = { db = "credit", password = "CREDIT_POSTGRES_PASSWORD" }
@@ -156,6 +157,7 @@ locals {
         ORDER_SERVICE_KEY        = "ORDER_SERVICE_KEY"
       }
     }
+    # AI-generated (Claude Code); review pending.
     "notification-service" = {
       image  = local.image["notification-service"]
       port   = 3006
@@ -203,6 +205,7 @@ locals {
       image  = "axllent/mailpit:v1.31.2"
       health = ["CMD", "/mailpit", "readyz"]
       port   = 1025
+      # AI-generated (Claude Code); review pending.
       # The API, for the checks task; the security group keeps it off the internet.
       extra_ports = [8025]
       memory      = 48
@@ -217,6 +220,7 @@ locals {
     }
   } : {})
 
+  # AI-generated (Claude Code); review pending.
   # Without a list, Mailpit relays nothing: the checks sign up random addresses at a real domain.
   mailpit_env = merge({
     MP_SMTP_AUTH_ALLOW_INSECURE = "true" # plain login over the server's internal network
@@ -258,6 +262,7 @@ locals {
     "order-migrate" = { image = local.image["order-service"], memory = 128, command = ["node", "dist/db/migrate-cli.js"], env = local.order_db_env, secrets = { ORDER_DB_PASSWORD = "ORDER_DB_PASSWORD" } }
   }
 
+  # AI-generated (Claude Code); review pending.
   # Staging's on-demand checks (infra/scripts/run-checks.sh). A standalone task gets no Service
   # Connect names, so it uses the public URL, and Mailpit through the server's Docker bridge address.
   checks = var.mailpit_relay ? {
@@ -273,6 +278,7 @@ locals {
   secret_names = distinct(flatten([for c in merge(local.containers, local.oneoffs) : concat(keys(c.secrets), values(c.secrets))]))
 
   init_containers = {
+    # AI-generated (Claude Code); review pending.
     "order-service"        = ["kafka-init", "order-migrate"]
     "credit-service"       = ["kafka-init"]
     "notification-service" = ["kafka-init"]
@@ -384,6 +390,7 @@ resource "aws_ecs_task_definition" "service" {
   }
 }
 
+# AI-generated (Claude Code); review pending.
 # No ECS service: run-checks.sh starts it after each staging deploy.
 resource "aws_ecs_task_definition" "checks" {
   count                    = length(local.checks)

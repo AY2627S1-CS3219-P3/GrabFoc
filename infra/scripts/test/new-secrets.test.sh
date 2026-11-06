@@ -37,6 +37,7 @@ before=$(cat "$file")
 FOC_REPO_ROOT="$work" "$HERE/../new-secrets.sh" staging >/dev/null 2>&1; code=$?
 check "refuses to overwrite an existing file" '[ $code -ne 0 ] && [ "$(cat "$file")" = "$before" ]'
 
+# AI-generated (Claude Code); review pending.
 # --add-missing: an environment created before a secret existed gets it, and nothing else changes.
 grep -v '^NOTIFICATION_POSTGRES_PASSWORD=\|^USER_INTERNAL_SERVICE_KEY=' "$file" > "$file.new"
 printf '%s' "$(cat "$file.new")" > "$file" # no newline at the end of the file

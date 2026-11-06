@@ -2,6 +2,7 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Deploy part 3 (#143): a manual apply keeps the tag CD last deployed. Mocked AWS provider.
 # Author review: Pending Jian Bing's review.
+# AI-generated (Claude Code); review pending.
 
 mock_provider "aws" {
   mock_data "aws_caller_identity" {

@@ -8,6 +8,7 @@
  * request that needs an admin or resets a password. Those stay out however the collection changes.
  *   node select.mjs <collection in> <collection out> <base URL> <Mailpit URL>
  */
+// AI-generated (Claude Code); review pending.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 

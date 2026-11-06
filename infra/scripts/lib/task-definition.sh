@@ -6,6 +6,7 @@
 # Author review: Pending Jian Bing's review.
 #
 # Shared by deploy-images.sh and run-checks.sh. Both set $region first.
+# AI-generated (Claude Code); review pending.
 
 # Registers a copy of a task definition with every image from our foc/ ECR repositories on <tag>,
 # and prints the new revision's ARN. Other images (databases, Mailpit) stay as they are. Returns

@@ -4,6 +4,7 @@
  * Scope: Tests which Postman requests the staging checks run (deploy part 3, #143).
  * Author review: Pending Jian Bing's review.
  */
+// AI-generated (Claude Code); review pending.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';

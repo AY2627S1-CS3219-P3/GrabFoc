@@ -6,6 +6,7 @@
 # Build context is the repository root, for the Postman collection:
 #
 #   docker build -f infra/checks/Dockerfile -t foc-checks .
+# AI-generated (Claude Code); review pending.
 
 FROM postman/newman:6.1.3-alpine
 WORKDIR /checks

@@ -14,6 +14,7 @@ data "aws_caller_identity" "current" {}
 
 locals {
   account_id = data.aws_caller_identity.current.account_id
+  # AI-generated (Claude Code); review pending.
   images = [
     "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
     "api-gateway", "frontend", "kafka-init", "checks",
@@ -117,6 +118,7 @@ resource "aws_iam_role_policy" "plan_state_lock" {
         Resource = [for env in ["staging", "production"] : "${aws_s3_bucket.state.arn}/${env}/terraform.tfstate.tflock"]
       },
       {
+        # AI-generated (Claude Code); review pending.
         # ReadOnlyAccess would otherwise let a pull request read our SecureStrings. Plan still reads
         # AWS's public parameters (the ECS-optimised AMI ID), the deployed tag and the origin key.
         Effect = "Deny"
@@ -182,6 +184,7 @@ resource "aws_iam_role_policy" "deploy" {
         Resource  = "arn:aws:iam::${local.account_id}:role/foc-${each.value}-*"
         Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
+      # AI-generated (Claude Code); review pending.
       # The tag this environment runs, and for staging the tag its checks passed.
       {
         Effect   = "Allow"

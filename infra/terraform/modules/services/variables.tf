@@ -42,6 +42,7 @@ variable "mailpit_relay" {
   type        = bool
 }
 
+# AI-generated (Claude Code); review pending.
 variable "mailpit_relay_to" {
   description = "The only recipients Mailpit forwards to Gmail. Empty means nothing is forwarded."
   type        = list(string)

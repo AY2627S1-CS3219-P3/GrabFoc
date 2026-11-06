@@ -7,6 +7,7 @@
 # Runs the Postman checks as a one-off task on staging, prints their output, and exits with their
 # status. Only a pass records the tag as ready for production.
 #   infra/scripts/run-checks.sh staging "$(git rev-parse --short=7 HEAD)"
+# AI-generated (Claude Code); review pending.
 set -euo pipefail
 
 env="${1:-}"
