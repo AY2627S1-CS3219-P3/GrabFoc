@@ -79,6 +79,10 @@
  * Scope: Added the cases for a collision suffix surviving the store's own pass, and for a
  *        truncation that lands inside a surrogate pair (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a one-shot requestId getter and for a caller key shaped like a
+ *        marker carrying its own digits (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -790,7 +794,15 @@ describe('the fallback line stays on its request', () => {
     expect(line).not.toHaveProperty('requestId');
   });
 
-  it('still writes a fallback line when reading the requestId itself throws', () => {
+  /**
+   * Changed deliberately. This asserted that a throwing `requestId` getter produced the fallback
+   * line, which was true while the build read that property a second time. It is read once now,
+   * inside its own guard, so the throw costs the *field* and not the event - and an
+   * `access_denied` line surviving is strictly better than one replaced by `line_unserialisable`,
+   * which is the rule this file applies to every other envelope field (PR #157 review). What the
+   * case is really for - that `emit` does not throw - is unchanged and still asserted.
+   */
+  it('keeps the real line when reading the requestId itself throws', () => {
     const input: Record<string, unknown> = { level: 'warn', event: 'access_denied' };
     Object.defineProperty(input, 'requestId', {
       enumerable: true,
@@ -800,7 +812,9 @@ describe('the fallback line stays on its request', () => {
     });
     const log = shipper();
     expect(() => log.emit(input as never)).not.toThrow();
-    expect(JSON.parse(written[0]).event).toBe('line_unserialisable');
+    const line = JSON.parse(written[0]);
+    expect(line.event).toBe('access_denied');
+    expect(line).not.toHaveProperty('requestId');
   });
 
   it('writes a fallback line the store will take', () => {
@@ -1552,5 +1566,63 @@ describe('a truncation that lands inside a surrogate pair', () => {
     const log = shipper();
     log.emit({ level: 'info', event: 'ok-😀' });
     expect((JSON.parse(written[0]) as { event: string }).event).toBe('ok-😀');
+  });
+});
+
+/**
+ * The previous fix read `requestId` once and then deleted it from the rest object - but the object
+ * rest itself still *read* the property to copy it before the delete, which my own comment on that
+ * fix admitted out loud. A one-shot getter that answers once and throws afterwards therefore threw
+ * inside the build, and the real event was replaced by `line_unserialisable` even though the id
+ * had already been captured successfully (PR #157 review).
+ */
+describe('a one-shot requestId getter', () => {
+  it('still writes the real line, not the fallback', () => {
+    let reads = 0;
+    const input: Record<string, unknown> = { level: 'info', event: 'probe', attempt: 1 };
+    Object.defineProperty(input, 'requestId', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        if (reads > 1) throw new Error('one shot');
+        return 'r-1';
+      },
+    });
+    const log = shipper();
+    log.emit(input as never);
+    const line = JSON.parse(written[0]) as Record<string, unknown>;
+    expect(line.event).toBe('probe');
+    expect(line.requestId).toBe('r-1');
+    expect(line.attempt).toBe(1);
+  });
+});
+
+/**
+ * The fixed-point rule trusted anything shaped like a marker, so a caller key spelled
+ * `[key 123456: 6 chars]` passed through verbatim - carrying its own digits past the safe-key
+ * bound and past the rule that replaces long numeric keys. An OTP formatted into the index or the
+ * length slot reached stdout and the store in the clear (PR #157 review).
+ */
+describe('a caller key shaped like a marker but carrying its own digits', () => {
+  const keysOf = (meta: Record<string, unknown>) => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta });
+    return Object.keys((JSON.parse(written[written.length - 1]) as { meta: object }).meta);
+  };
+
+  it.each(['[key 123456: 6 chars]', '[key 1: 123456 chars]', '[key 999999: 999999 chars]'])(
+    'replaces %s rather than trusting its numbers',
+    (key) => {
+      const keys = keysOf({ [key]: 1 });
+      expect(keys).toHaveLength(1);
+      expect(keys[0]).not.toBe(key);
+      expect(keys[0]).not.toContain('123456');
+      expect(keys[0]).not.toContain('999999');
+    },
+  );
+
+  it('still passes a marker whose numbers fit this object through unchanged', () => {
+    const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
+    expect(keysOf({ [marker]: 1, other: 2 })).toContain(marker);
   });
 });

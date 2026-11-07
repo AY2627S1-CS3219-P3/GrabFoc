@@ -56,6 +56,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
  * Scope: Make the collision name marker-shaped, so the walkers still agree on it (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Trust a marker only when its numbers are ones this walk could have written, so a caller
+ *        key shaped like one cannot carry its own digits through (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -204,10 +208,11 @@ function renameTopLevelProto(input: unknown): unknown {
   if (!Object.prototype.hasOwnProperty.call(input, PROTO)) return input;
   const source = input as Record<string, unknown>;
   const renamed: Record<string, unknown> = {};
-  Object.keys(source).forEach((key, index) => {
+  const keys = Object.keys(source);
+  keys.forEach((key, index) => {
     // Defined rather than assigned: assignment is what lost the field in the first place, and a
     // marker is only worth writing if writing it cannot fail the same way.
-    Object.defineProperty(renamed, key === PROTO ? safeKey(PROTO, index) : key, {
+    Object.defineProperty(renamed, key === PROTO ? safeKey(PROTO, index, keys.length) : key, {
       value: source[key],
       enumerable: true,
       writable: true,
@@ -372,7 +377,30 @@ const MAX_UNNAMED_KEY = 3;
  * which costs nothing: the shape carries a position and a length and no content of its own, so
  * the worst case is a key that says about itself what it would have said anyway.
  */
-const KEY_MARKER = /^\[key \d+: \d+ chars\]$/;
+const KEY_MARKER = /^\[key (\d{1,6}): (\d{1,6}) chars\]$/;
+/**
+ * The largest key length a marker reports, and so the largest number it can carry.
+ *
+ * The fixed-point rule trusted anything marker-shaped, so a caller key spelled
+ * `[key 123456: 6 chars]` passed through verbatim and its digits reached stdout and the store - an
+ * OTP or a handover code formatted into the index or the length slot, past the safe-key bound and
+ * past the rule that replaces long numeric keys (PR #157 review).
+ *
+ * A marker is now recognised only when its numbers are ones *this* walk could have produced: an
+ * index inside the object's own key range, and a length at most this. Generation clamps the
+ * reported length to the same number, so every marker a walker writes is still recognised by the
+ * next one and the fixed point holds - while three digits is too few to carry a code. The clamp
+ * costs nothing real: a key longer than 999 characters is reported as 999, and the marker's job is
+ * to say "a name was replaced here", not to measure it exactly.
+ */
+const MAX_REPORTED_LENGTH = 999;
+
+/** A marker with numbers this walk could have written, rather than anything marker-shaped. */
+function isOwnMarker(key: string, total: number): boolean {
+  const parts = KEY_MARKER.exec(key);
+  if (!parts) return false;
+  return Number(parts[1]) < total && Number(parts[2]) <= MAX_REPORTED_LENGTH;
+}
 
 /**
  * `safeKey`, and then distinct from what the object already holds.
@@ -386,8 +414,8 @@ const KEY_MARKER = /^\[key \d+: \d+ chars\]$/;
  * The replacement is itself marker-shaped, so a later walker recognises it and passes it through:
  * a name that survives one pass and not the next is the same disagreement in slower motion.
  */
-function freshKey(out: Record<string, unknown>, key: string, index: number): string {
-  const name = safeKey(key, index);
+function freshKey(out: Record<string, unknown>, key: string, index: number, total: number): string {
+  const name = safeKey(key, index, total);
   if (!Object.prototype.hasOwnProperty.call(out, name)) return name;
   // Marker-shaped, not just unique. The first version suffixed ` (2)`, which matches neither
   // KEY_MARKER nor SAFE_KEY - so the next walker replaced it again and the stored row stopped
@@ -397,29 +425,30 @@ function freshKey(out: Record<string, unknown>, key: string, index: number): str
   // This key's own index and length, which no other key in this object can produce, and the index
   // is walked up if a caller's literal marker already sits on that name. The result matches
   // KEY_MARKER, so a later pass passes it through untouched.
+  const length = Math.min(key.length, MAX_REPORTED_LENGTH);
   let n = index;
-  let candidate = `[key ${n}: ${key.length} chars]`;
+  let candidate = `[key ${n}: ${length} chars]`;
   while (Object.prototype.hasOwnProperty.call(out, candidate)) {
     n += 1;
-    candidate = `[key ${n}: ${key.length} chars]`;
+    candidate = `[key ${n}: ${length} chars]`;
   }
   return candidate;
 }
 
-function safeKey(key: string, index: number): string {
+function safeKey(key: string, index: number, total: number): string {
   // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
   // object runs Object.prototype's setter instead of defining a property, and the field is lost.
   // The objects built below have null prototypes, so nothing is lost there - but the store's
   // inbound schema builds its own object through Zod, which does drop that name, so it is
   // replaced here rather than shipped and the two sides cannot disagree (PR #129 review).
-  if (KEY_MARKER.test(key)) return key;
+  if (isOwnMarker(key, total)) return key;
   // A name, or short enough that it cannot be carrying anything. A credential that does start
   // with a letter still passes, and nothing here can catch that: the rule that covers it is the
   // one in AGENTS.md about what may go in key position at all.
   const named = NAMED_KEY.test(key) || key.length <= MAX_UNNAMED_KEY;
   return SAFE_KEY.test(key) && named && key !== '__proto__'
     ? key
-    : `[key ${index}: ${key.length} chars]`;
+    : `[key ${index}: ${Math.min(key.length, MAX_REPORTED_LENGTH)} chars]`;
 }
 const TRUNCATED = '[TRUNCATED]';
 const MAX_DEPTH = 6;
@@ -480,9 +509,12 @@ export function redactDeep(value: unknown, depth = 0): unknown {
   // (PR #129 review). `safeKey` replaces that name too; this is what makes the loss structurally
   // impossible rather than dependent on the list staying right.
   const out: Record<string, unknown> = Object.create(null);
-  Object.entries(value as Record<string, unknown>).forEach(([key, item], index) => {
+  const entries = Object.entries(value as Record<string, unknown>);
+  entries.forEach(([key, item], index) => {
     if (typeof item === 'function') return;
-    out[freshKey(out, key, index)] = neverStore(key) ? REDACTED : redactDeep(item, depth + 1);
+    out[freshKey(out, key, index, entries.length)] = neverStore(key)
+      ? REDACTED
+      : redactDeep(item, depth + 1);
   });
   return out;
 }
@@ -492,9 +524,10 @@ function extraOf(line: InboundLine): Record<string, unknown> | null {
   const known = new Set<string>(KNOWN_FIELDS);
   // Null-prototype, for the same reason as in redactDeep above.
   const extra: Record<string, unknown> = Object.create(null);
-  Object.entries(line).forEach(([key, value], index) => {
+  const entries = Object.entries(line);
+  entries.forEach(([key, value], index) => {
     if (known.has(key)) return;
-    extra[freshKey(extra, key, index)] = neverStore(key) ? REDACTED : redactDeep(value);
+    extra[freshKey(extra, key, index, entries.length)] = neverStore(key) ? REDACTED : redactDeep(value);
   });
   return Object.keys(extra).length ? extra : null;
 }
