@@ -3,9 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-11-07
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-11-08
 Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23, 2026-10-25, the two
-  dated 2026-10-27, the one dated 2026-10-28 and the ones dated 2026-11-06 and 2026-11-07
+  dated 2026-10-27, the one dated 2026-10-28 and the ones dated 2026-11-06, 2026-11-07 and 2026-11-08
   from the prompts and work in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
   verified; the wording is Claude's, written to the template in ai/usage-log.md.
 Author review: Cole Lin, read and approved.
@@ -15,6 +15,15 @@ Author review: Cole Lin, read and approved.
 
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-08 — A comment left standing over the function it described (PR #200)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Found while verifying PR #145's merged tree, not from a review: two comments in `line.schema.ts` still described the function the ordinal change deleted. One of them is the doc comment standing directly **above its replacement**, explaining a mechanism - a marker recognised on sight, an index taken from the key's position - that the function below it does not have and deliberately does not have. A reader following the comment would conclude the fixed point still depends on recognition.
+- This is the class these reviews have filed against me repeatedly: the fix is sound and its comment is wrong. It has been a P1 twice, once where a redaction list's documentation claimed a guarantee the list did not provide. Deleting code is where it bites hardest, because nothing fails and nothing warns - the comment simply outlives its subject.
+- Fixed here rather than in PR #145, whose tree now holds these files too: the canonical home is the Logging Service, and hand-applying one change in two places is what put PR #129's copy a round behind its own canonical last week. The cost is that this PR was settled and the push restarts its reviewer, which is the right trade for a comment that misdescribes the mechanism it sits above.
+- A check of my own fired on my own text: the assertion that no reference to the deleted function remains tripped over the disclosure entry announcing the fix, which names it on purpose. Scoped to the body below the header.
+- Verification: **451 pass**, `tsc --noEmit` clean. The four walkers' shared functions were hashed and are byte-identical across all four files.
 
 ### 2026-11-07 — PR #200: the four commits that missed main, and the end of the marker argument (PR #200)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
