@@ -469,7 +469,11 @@ export function redactFields(value: unknown, depth = 0): unknown {
     // A function is dropped. JSON.stringify ignores functions anyway, except an own `toJSON`,
     // which it calls instead of reading the object — so copying one across would let it return
     // whatever it liked, unredacted, including a replacement for the whole envelope.
-    if (typeof item === 'function') continue;
+    // Skipped *before* the count, like a function above it: `JSON.stringify` drops a field whose
+    // value is `undefined`, so numbering one spent an ordinal the written line never carried - and
+    // the store, renumbering from what reached it, stored a different name than stdout showed. The
+    // ordinals only agree while both walks see the same keys (PR #200 review).
+    if (typeof item === 'function' || item === undefined) continue;
     const name = isUsableName(key) ? key : replacedName((replaced += 1));
     out[name] = isSensitive(key) ? REDACTED : serialisable(redactFields(item, depth + 1));
   }

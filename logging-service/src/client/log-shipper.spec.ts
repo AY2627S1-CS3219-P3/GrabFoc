@@ -87,6 +87,10 @@
  * Scope: Updated the replaced-name cases for the generated ordinal, and removed the three blocks
  *        that only tested the recognition rule (PR #200 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the case for a field JSON.stringify drops, which must not spend an ordinal
+ *        (PR #200 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -1551,3 +1555,47 @@ describe('a one-shot requestId getter', () => {
   });
 });
 
+/**
+ * The ordinal only agrees across the walkers while they see the same keys, and `JSON.stringify`
+ * drops a field whose value is `undefined` *after* this walk has already numbered it. So an
+ * unusable key with no value spent `[key 1]`, the line carried only `[key 2]`, and the store - for
+ * which that was the first replacement - stored `[key 1]`: stdout and the row disagreeing again,
+ * through the one property the design rests on (PR #200 review). A function was already skipped
+ * before the count for the same reason; `undefined` is the same case.
+ */
+describe('a field JSON.stringify will drop', () => {
+  it('does not spend an ordinal', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { '@gone': undefined, '@kept': 1 } });
+    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
+    expect(Object.keys(meta)).toEqual(['[key 1]']);
+    expect(meta['[key 1]']).toBe(1);
+  });
+
+  it('leaves the line and the row agreeing about the name', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { '@gone': undefined, '@kept': 1 } });
+    const line = JSON.parse(written[0]);
+    const parsed = inboundLineSchema.safeParse(line);
+    expect(parsed.success).toBe(true);
+    const stored = (toRow(parsed.data as never).extra as { meta: object }).meta;
+    // The two sides compared against each other, not against a literal: asserting the store's
+    // own output passed even unfixed, because the store renumbers from what reached it and lands
+    // on `[key 1]` either way. The disagreement is between the line and the row.
+    expect(Object.keys(stored)).toEqual(Object.keys((line as { meta: object }).meta));
+  });
+
+  it('still numbers two unusable keys that both survive', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { '@one': 1, '@two': 2 } });
+    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
+    expect(Object.keys(meta)).toEqual(['[key 1]', '[key 2]']);
+  });
+
+  it('still keeps a usable name whose value is undefined out of the line', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { gone: undefined, kept: 1 } });
+    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
+    expect(Object.keys(meta)).toEqual(['kept']);
+  });
+});

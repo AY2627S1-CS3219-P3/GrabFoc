@@ -489,7 +489,9 @@ export function redactDeep(value: unknown, depth = 0): unknown {
   const out: Record<string, unknown> = Object.create(null);
   let replaced = 0;
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof item === 'function') continue;
+    // The same rule as the shipper's walk, for the same reason: a field `JSON.stringify` drops
+    // must not spend an ordinal, or the two sides number the rest differently (PR #200 review).
+    if (typeof item === 'function' || item === undefined) continue;
     const name = isUsableName(key) ? key : replacedName((replaced += 1));
     out[name] = neverStore(key) ? REDACTED : redactDeep(item, depth + 1);
   }
@@ -506,7 +508,7 @@ function extraOf(line: InboundLine): Record<string, unknown> | null {
   // two agree without either knowing the other's key positions (PR #200 review).
   let replaced = 0;
   for (const [key, value] of Object.entries(line)) {
-    if (known.has(key)) continue;
+    if (known.has(key) || value === undefined) continue;
     const name = isUsableName(key) ? key : replacedName((replaced += 1));
     extra[name] = neverStore(key) ? REDACTED : redactDeep(value);
   }

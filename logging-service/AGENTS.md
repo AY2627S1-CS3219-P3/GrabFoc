@@ -193,7 +193,10 @@ _Origin: AI doc, from the plan Cole Lin approved_
     recognise and no recognition rule to get wrong. It is also why the three agree without sharing
     anything: the shipper walks a line's metadata, the store walks a whole line minus its columns,
     and the parked shape walks what it could parse — but the *replacements* are the same keys in
-    the same order. The previous design needed all three to compute the same **position**, which
+    the same order. That is the one thing the design depends on, so a field that will not be
+    written — a function, or a value of `undefined`, both of which `JSON.stringify` drops — is
+    skipped **before** the count. Numbering one spent an ordinal the line never carried, and the
+    store renumbered from what reached it, so the row and stdout disagreed again (PR #200 review). The previous design needed all three to compute the same **position**, which
     they never did.
 
     It took six rounds to get here, and the history is the argument for the design, so keep it:

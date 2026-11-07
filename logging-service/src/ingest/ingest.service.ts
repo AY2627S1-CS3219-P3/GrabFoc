@@ -330,6 +330,8 @@ function describeShape(value: unknown, depth = 0): unknown {
   const out: Record<string, unknown> = Object.create(null);
   let replaced = 0;
   for (const [key, inner] of Object.entries(value as Record<string, unknown>).slice(0, SHAPE_MAX_KEYS)) {
+    // As in the other two walkers: a field that will not be written must not spend an ordinal.
+    if (inner === undefined) continue;
     const name = isUsableName(key) ? key : replacedName((replaced += 1));
     out[name] = describeShape(inner, depth + 1);
   }
