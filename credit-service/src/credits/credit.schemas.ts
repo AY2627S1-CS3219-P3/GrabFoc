@@ -20,6 +20,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Removed the transfer/release HTTP schemas (they are Kafka commands only, team consensus).
  * Author review: Jian Bing, 2026-10-18 — manually tested on this branch: unit, integration and Kafka suites pass (incl. transfer/release no longer offered over HTTP); reserve over HTTP, 409 when credits are short, a TransferCredits command over Kafka pays the courier, and repeating it changes nothing.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+ * Scope: Zod 4 (Dependabot #170): the limit default uses .prefault() so it still goes through the
+ *        transform, and parseOr400 takes z.ZodType<T, unknown>, since Zod 4 removed ZodTypeDef.
+ * Author review: Pending Jian Bing's review.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -58,7 +62,8 @@ const wholeNumber = z
 // GET /credits/:userId/transactions: newest first, `before` is the id of the last row already seen.
 export const transactionsQuerySchema = z
   .object({
-    limit: wholeNumber.pipe(z.number().max(100)).default('20'),
+    // AI-generated (Claude Code), review pending: Zod 4's .default() skips the transform, .prefault() does not.
+    limit: wholeNumber.pipe(z.number().max(100)).prefault('20'),
     before: wholeNumber.optional(),
   })
   .strict();
@@ -75,7 +80,8 @@ export interface ReleaseRequest {
   orderId: string;
 }
 
-export function parseOr400<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, data: unknown, what: string): T {
+// AI-generated (Claude Code), review pending: Zod 4 has no ZodTypeDef; the second parameter is the input type.
+export function parseOr400<T>(schema: z.ZodType<T, unknown>, data: unknown, what: string): T {
   const result = schema.safeParse(data ?? {});
   if (result.success) return result.data;
   const issues = result.error.issues

@@ -37,8 +37,27 @@
  * Scope: Added the cases for a lone surrogate in an envelope field and for the stored timestamp
  *        being the one the API returns (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+ * Scope: Added the case pinning that the store accepts every lineId the shipper accepts (Zod 4, Dependabot #196).
+ * Author review: Pending Jian Bing's review.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, redactDeep, toRow } from './line.schema';
+
+// AI-generated (Claude Code), review pending.
+describe('a lineId the shipper accepts', () => {
+  const base = { ts: '2026-11-06T00:00:00.000Z', service: 'supplier', level: 'info' as const, event: 'probe' };
+
+  // The shipper checks lineId with the plain 8-4-4-4-12 hex pattern and nothing more. Zod 4's
+  // .uuid() also requires RFC version and variant digits, so a store using it would refuse - and
+  // lose - a line whose id came from a generator that sets neither, after the shipper sent it.
+  it('is stored even without RFC version and variant digits', () => {
+    expect(inboundLineSchema.safeParse({ ...base, lineId: '11111111-1111-1111-1111-111111111111' }).success).toBe(true);
+  });
+
+  it('is still refused when it is not 8-4-4-4-12 hex', () => {
+    expect(inboundLineSchema.safeParse({ ...base, lineId: '11111111-1111-1111-1111-11111111111g' }).success).toBe(false);
+  });
+});
 
 // AI-generated (reviewed by Cole Lin).
 
