@@ -6,12 +6,15 @@
  *        has to be repeated here. This copy brings the fixes from the #129 and #145 reviews - all
  *        reads of the caller's input inside the serialisation guard, and a fixed reason instead of
  *        an exception message in the fallback line.
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-25
  * Scope: Call Date.prototype.toISOString rather than the value's own, so an override cannot
  *        run after redaction (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: Sanitise field *names* as well as values, and bound the buffer in bytes as well as
  *        in lines (PR #129 review). Body kept identical to the canonical copy.
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: A field named `__proto__` no longer disappears, and personal-name fields are redacted
  *        (PR #129 review). Body kept identical to the canonical copy.

@@ -4,11 +4,6 @@
  * Scope: Generated strict Zod schemas for request bodies and query parameters, following the
  *        field, validation and error decisions in supplier-service/AGENTS.md.
  * Author review (Cole Lin): Read in full; ran it with Postman and checked the 400 cases: missing fields, unknown fields and bad query parameters.
- * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
- * Scope: Zod 4 upgrade: the page and pageSize defaults use .prefault() so they still pass through the number transform,
- *        and parseOr400 uses ZodType<Output, Input> (ZodTypeDef was removed).
- * Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it;
- *   CI passed (user-service and supplier-service tests and builds). Approved and merged by Deanson Choo (#193).
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: The name, type and building list filters reject control bytes, and are length-bound only
  *        where the stored field is - a class of bug the PR #129 review found in the Logging
@@ -18,6 +13,11 @@
  * Scope: Refuse in a filter only what PostgreSQL cannot store, and refuse the same on creation,
  *        so anything storable stays findable (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+ * Scope: Zod 4 upgrade: the page and pageSize defaults use .prefault() so they still pass through the number transform,
+ *        and parseOr400 uses ZodType<Output, Input> (ZodTypeDef was removed).
+ * Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it;
+ *   CI passed (user-service and supplier-service tests and builds). Approved and merged by Deanson Choo (#193).
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
  * Scope: Refuse a NUL in image_url too, the one text field the earlier storable fix missed
  *        (PR #157 review).
