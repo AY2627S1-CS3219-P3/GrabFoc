@@ -71,6 +71,10 @@
  * Scope: Added the cases for given- and family-name redaction, a caller key spelled like a
  *        marker, one requestId value per line, and an asynchronous stdout failure (PR #157).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the case for a write option that reads differently than it assigned, which is the
+ *        read-once class inside the fix for the read-once class (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -1447,5 +1451,31 @@ describe('an asynchronous stdout failure', () => {
     log.emit({ level: 'info', event: 'probe' });
     process.stdout.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }));
     expect(log.counts.writeFailed).toBe(0);
+  });
+});
+
+/**
+ * The stdout watcher keyed itself off `options.write` - a *second* read of the caller's property,
+ * in the very commit that fixed a second read of `options.service`. An accessor returning
+ * `undefined` for the assignment and a function for the check leaves `this.write` unset, so the
+ * default `console.log` sink is used, while the watcher is skipped: exactly the unhandled
+ * asynchronous `EPIPE` it was added to prevent (PR #157 review).
+ */
+describe('a write option that reads differently than it assigned', () => {
+  it('watches stdout based on the sink actually in use', () => {
+    let reads = 0;
+    const options: Record<string, unknown> = { service: 'supplier', newId: () => testId(1) };
+    Object.defineProperty(options, 'write', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        // Undefined for the assignment, a function for any later read.
+        return reads === 1 ? undefined : () => undefined;
+      },
+    });
+    const log = new LogShipper(options as never);
+    log.emit({ level: 'info', event: 'probe' });
+    process.stdout.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }));
+    expect(log.counts.writeFailed).toBe(1);
   });
 });

@@ -75,6 +75,10 @@
  *        one, use one requestId value per line, and count an asynchronous stdout failure
  *        (PR #157 review). Body kept identical to the canonical copy.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Decide the stdout watch from the sink that was kept, not from a second read of the
+ *        caller's option (PR #157 review). Body kept identical to the canonical copy.
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -667,7 +671,14 @@ export class LogShipper {
     this.write = options.write;
     // Only for the default sink: a caller who supplied `write` owns its failures, and the
     // synchronous catch around that call is the whole guarantee this component can give them.
-    if (!options.write) watchStdout(() => (this.counts.writeFailed += 1));
+    //
+    // `this.write`, not `options.write`. Reading the option again here was the read-once defect
+    // inside the commit that fixed the read-once defect: an accessor answering `undefined` for the
+    // assignment above and a function for this check leaves the default `console.log` sink in use
+    // with no watcher on it, which is the unhandled asynchronous EPIPE this exists to stop. The
+    // question is which sink is in use, so the answer has to come from the field that holds it
+    // (PR #157 review).
+    if (!this.write) watchStdout(() => (this.counts.writeFailed += 1));
     this.newId = options.newId;
     this.publisher = options.publisher;
     const flushMs = options.flushMs ?? 1000;

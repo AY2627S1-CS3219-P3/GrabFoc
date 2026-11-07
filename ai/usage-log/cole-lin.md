@@ -3,10 +3,10 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-28
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-11-07
 Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23, 2026-10-25, the two
-  dated 2026-10-27 and the one dated 2026-10-28 from the prompts and work
-  in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
+  dated 2026-10-27, the one dated 2026-10-28 and the ones dated 2026-11-06 and 2026-11-07
+  from the prompts and work in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
   verified; the wording is Claude's, written to the template in ai/usage-log.md.
 Author review: Cole Lin, read and approved.
 -->
@@ -17,6 +17,7 @@ Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
 ### 2026-11-07 — The findings PR #157 had been holding, fixed in the canonical copies (PRs #129 and #157)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
 - Prompt: "ok work on the other pr now, same thing don't stop until we are sure all conversations resolved".
 - Four of the seven open threads on PR #157 were against its copy of the shipper, whose canonical home is the Logging Service - so the fixes are made there and re-synced, which keeps the two byte-identical as `logging-service/AGENTS.md` requires. It also means touching a PR that had just been approved, and I said so rather than quietly breaking the invariant instead.
@@ -24,9 +25,12 @@ Cole Lin's entries for the FoC AI usage log. The template and rules are in
 - The marker collision is a cost I had explicitly written off. Round seven made a sanitised key a fixed point so the three walkers would agree on it, and I noted that a caller's own key spelled like a marker "costs nothing". It costs a field: an unsafe key at index 0 becomes `[key 0: 16 chars]`, a caller key spelled exactly that passes through unchanged, and the second assignment overwrote the first. The walkers now take the next free name, suffixed ` (2)`, which the safe alphabet cannot produce and the marker pattern does not match - so it is still a fixed point on a later pass. That note in AGENTS.md is corrected rather than left to mislead the next reader.
 - `requestId` was read twice in `build()`: once to capture it for the fallback line and again by the destructuring that builds the envelope. A getter can answer those differently, so the fallback could be keyed by one request while the normal line described another - the trace gap the fallback was added to prevent. This is the same defect as the service name read three times in the constructor, one function along, and the third time this class has surfaced after I claimed to have closed it.
 - The last one is a failure mode I had reasoned about and got wrong in a comment: I wrote that a pipe write is synchronous on Linux, so a synchronous try/catch covers it. `console.log` to a pipe whose reader has gone returns *before* `process.stdout` emits `EPIPE`, so the catch saw nothing, `writeFailed` stayed at zero, and an `error` event with no listener is an uncaught exception - a broken log pipe would have taken down the service this component exists not to disturb. One module-level listener now counts it, because stdout is one shared stream.
-- Verification: 26 new cases, run against the unfixed code first - 16 fail there, and one of those 16 fails by *crashing the test run*, which is the finding itself. **443 pass** in the Logging Service, `tsc --noEmit` clean, and `freshKey` is byte-identical across all three walkers, checked by hash.
+- One more came back on the same code within the hour, and it was mine: the stdout watcher I had just added keyed itself off `options.write` - a *second* read of the caller's property, inside the commit that fixed a second read of `options.service`. An accessor answering `undefined` for the assignment and a function for the check leaves the default `console.log` sink in use with no watcher on it, which is the unhandled EPIPE the watcher exists to stop. It asks which sink is in use, so the answer has to come from the field that holds it. Fourth appearance of this class, and the first time I caused it while fixing it.
+- The other was a P1 on this log: its own header scoped Claude's authorship to 28 October while entries for the 6th and 7th had been added under it, and neither entry carried the **Tool** and **Mode** lines `ai/usage-log.md` asks for. Both fixed. The older entries in this file do not carry those lines either, which is a pre-existing gap I have left alone rather than rewriting entries whose author-review lines say a human checked them as they stand.
+- Verification: 26 new cases, run against the unfixed code first - 16 fail there, and one of those 16 fails by *crashing the test run*, which is the finding itself. **444 pass** in the Logging Service, `tsc --noEmit` clean, and `freshKey` is byte-identical across all three walkers, checked by hash.
 
 ### 2026-11-06 — Tenth round: a secret in key position, and syncing with main (PR #129)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
 - Prompt: "fix 129 again", then "there are some unresolved on 129. forget the other for now".
 - Key response: Brought the branch up to date with `main` (52 commits, one conflict in `infra/kafka/topics.txt` where both sides had added a topic - resolved by keeping both, all 13 present), added the missing disclosure entry for the root `node_modules/` ignore rule, and closed the long-standing key-position finding.
