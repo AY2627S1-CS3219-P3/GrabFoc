@@ -3,6 +3,14 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-10-13
 Scope: Document Envoy startup, tests, standard Dockerfile and the approved JWKS failure response exception.
 Author review: User approved stock defaults; generated changes review pending.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Listed the Order route file.
+Author review: Pending review by Deanson.
+Scope: Listed the Credit route file (#61).
+Author review: pending — Jie Yang to record the review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Documented the /gateway prefix and the edge listener (#141).
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 -->
 
 # Stock Envoy gateway
@@ -26,7 +34,10 @@ layer. Editing the renderer, route files or Lua header filter only copies those 
 ## Route files
 
 `render.py` reads `routes/*.routes.json` in filename order. The User routes live in
-`10-user.routes.json`, and Supplier routes in `20-supplier.routes.json`.
+`10-user.routes.json`, Supplier routes in `20-supplier.routes.json`, Order routes
+(approved by Jie Yang, 2026-10-22; never `/internal/**`) in `30-order.routes.json`, and
+Credit's balance and history reads in `40-credit.routes.json` (Credit's `/internal` and
+`/admin` routes are not routed).
 Each file declares a `service` (upstream cluster name), `urlEnv` (the service URL's
 environment variable), and a `routes` array. JSON files carry their AI disclosure
 in the first `_disclosure` field because JSON does not support comments.
@@ -34,9 +45,14 @@ in the first `_disclosure` field because JSON does not support comments.
 Each route has a `method` and either an exact `path` or a `regex`. JWT authentication
 is required unless `"public": true` is explicitly set. Paths are forwarded unchanged;
 regex matching does not rewrite them. Declared `prefixes` support placeholders such
-as `{auth}` and `{locations}` using an environment variable and a default value.
+as `{auth}`, `{locations}` and `{orders}` using an environment variable and a default value.
 The renderer escapes substituted prefixes in regex routes. Health and the final
 404 response remain shared renderer configuration.
+
+Every route is also served under `/gateway` (for example `/gateway/locations`), with the prefix
+removed before forwarding. That is the public API path on AWS, and Postman uses it locally too, so
+only `baseUrl` differs. Unprefixed paths stay for the frontend's server-side calls. `/internal/**`
+is not routed under either form.
 
 For an additional service with team-approved endpoints, add another `*.routes.json`
 file and set its `urlEnv` variable in the gateway Compose environment and
@@ -51,6 +67,23 @@ Run the route-loader tests from the repository root:
 ```powershell
 python api-gateway/test/envoy_routes_test.py
 ```
+
+## Edge listener (AWS)
+
+On AWS, CloudFront sends every request to a second listener, turned on by `GATEWAY_EDGE_PORT`
+(8080 in the container, published as the server's port 80). Locally it stays off.
+
+- Every request must carry CloudFront's `X-Origin-Key` header with the value of
+  `GATEWAY_ORIGIN_KEY` (at least 32 characters). Without it the answer is `403 {"error":"Forbidden"}`,
+  including `/health`. The header is removed before forwarding.
+- `/gateway/*` goes to the API routes with the prefix removed. Unknown `/gateway` paths get the JSON 404.
+- Every other path goes to the frontend at `FRONTEND_URL`. That route keeps `Cookie` and `Host`
+  (the frontend's session and origin checks need them), removes `X-User-Id`, `X-User-Role` and
+  `X-Forwarded-*`, then sets `X-Forwarded-Proto` from CloudFront's `CloudFront-Forwarded-Proto`
+  (`frontend.lua`). API routes keep using `compatibility.lua`.
+- The listener never redirects to HTTPS: CloudFront already did, and talks plain HTTP to it.
+
+Startup fails if `GATEWAY_EDGE_PORT` is set without a valid key or frontend URL, or equals `GATEWAY_PORT`.
 
 ## Verify accepted behaviour
 

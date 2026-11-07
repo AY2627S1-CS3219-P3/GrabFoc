@@ -95,6 +95,39 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added the "Changed or rejected" line to the lazy wallet creation removal entry, from the choices it records; noted the merge with main (Postman rebuilt on the reserve-only folders).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-23
+Scope: Wrote the 2026-10-23 AWS deployment design entry (issue #58) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
+Scope: Wrote the 2026-10-25 AWS infrastructure entry (deploy part 2) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Wrote the 2026-10-26 staging apply and 2026-10-27 edge routing (deploy part 1) entries from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 gateway .env.example entry (PR #156) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 design-confirmation entry (PR #146) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 broken-main dependency entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 PR #146 review-recording entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 SoCLaaS timeout entry from Jian Bing's prompts.
+Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it; the 4 tests pass.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 review-recording entry (PRs #193 and #133) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Wrote the 2026-11-07 PR #156 review-recording entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Wrote the 2026-11-07 Envoy request-flow and first-apply restart entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
@@ -102,6 +135,621 @@ Author review: pending — Jian Bing to record what he checked.
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-07 — How Envoy routes requests, and the first-apply restart on #146
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `infra/terraform/README.md`, `infra/terraform/modules/services/main.tf`
+
+**Scenario:** I asked Claude how Envoy works now, for myself and for Deanson's questions about the login flow and
+adding a service. Claude read the gateway, frontend and Terraform code on `feat/edge-routing` and explained it, then
+made a private claude.ai page with two diagrams (local vs AWS, and the eight login steps) and a checklist for adding
+a service; that page is not in the repo. On #146, Codex then flagged that the four app services start together on a
+brand-new environment and can't reach each other until they restart. Claude explained the finding and offered two
+fixes: extend the runbook's one-off restart, or have Terraform restart them automatically. I chose the runbook: an
+environment is rarely recreated, so a one-off manual step costs little, and the automatic step could only really be
+tested on a brand-new environment (the Terraform tests use a mocked AWS).
+
+**Prompts (exact, in order):**
+> I just need u to roughly tell me how the envoy is currently working, kinda confused ngl
+
+> give me an illustration
+
+> [7/11/26 1:48 PM] deanson: like lets say data flow from client to backend
+> [7/11/26 1:48 PM] deanson: client -> cloudfront -> envoy -> backend?
+> [7/11/26 1:48 PM] deanson: lets say something as simple as login
+> [7/11/26 1:48 PM] deanson in reply to deanson:
+> > lets say something as simple as login
+> what happens
+> [7/11/26 1:49 PM] deanson: if I add a new service, what do I need to edit in the envoy etc
+
+> is there a different between local and aws for this flow
+
+> could you create an artefact
+
+> hello where is my artefact
+
+> https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/146?overview=true help em resolve th econversatiosn first
+
+> wait so that means that anytime a push to main is done, if we do runbok omnly, someone has to do a first-aply step
+> manually every single time? also for no.2 how is it harder to test
+
+> okay lets do 1, seems like its lesser friction, and wont be that detgrimental to our workflow since environment
+> rarely gets recreated, so its tardeoff fares better compared to having worst observabiltiy for testing
+
+> Implement this step (answer to Claude's question: fix the Codex finding with the runbook only, push, then reply
+> to and resolve the thread)
+
+**What it produced:** An explanation of Envoy's two listeners and the login flow (in chat and on the private page),
+a reply for Deanson (not committed), a first-apply restart loop in the runbook's step 4 covering the four app
+services and the gateway, a matching comment on the service layers in `modules/services/main.tf`, and a reply on the
+Codex thread before resolving it.
+
+**What I changed or rejected:** Chose the runbook step over a Terraform step that restarts the services
+automatically.
+
+**Verification:** Claude ran `infra/terraform/check.sh`: every stack valid, module tests all passed (global 3/3,
+edge 1/1, network 1/1, server 1/1, services 3/3). My own check: pending.
+
+### 2026-11-07 — Recording my review of the edge routing (PR #156), and the stack's open threads
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** the 18 files where #156 added a pending "Author review" line, three of this log's entries for #156, and
+the inline markers in #156's generated code
+
+**Scenario:** Deanson asked whether the AWS and Envoy work is on main yet and whether #156 matters for his work.
+Claude explained the three stacked PRs (#146 → main, #156 on #146, #191 on #156) and drafted my reply. Claude then
+checked what still blocks #146 and #156, and resolved the two open review threads (the origin key on #146, handled by
+#156; the Notification Service on #191, waiting for Jie Yang's PRs), both of which already had my replies. After I
+told Claude that Jie Yang had approved #156, Claude replaced #156's pending review lines with my review in my words
+and pushed, which re-ran the SoCLaaS review (its last run failed with HTTP 502 from the SoCLaaS server). The
+2026-10-26 staging apply entry's Verification line stays pending: it records the AWS apply, not #156's code.
+
+**Prompts (exact, in order):**
+> pr 133 merged
+
+> actually what did deanson even ask me, and what am i usppose dot reply to him
+
+> are pr 146 and 156 ready to merge right now?
+
+> help me resolve all the conversations in the PRs
+
+> jieyang has approved #156, for the author review lines jsut say that i have looked through the code and think its ok, also just re run coclass on 156
+
+**What it produced:** A chat reply for Deanson (not committed), the two resolved threads, and "Author review (Jian
+Bing, 2026-11-07): Looked through the code and think it's okay." in place of each pending line #156 added; "review
+pending" removed from the inline markers in #156's code.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `api-gateway/test/envoy_routes_test.py` (14/14), parsed the Postman collection and
+`render.py`, ran `node --check` on both edited test files, `bash -n` on `check.sh` and `terraform fmt -check`. My own
+check: looked through the code and think it's okay.
+
+### 2026-11-06 — Recording my review of the AWS infrastructure (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** the 46 files #146 added with a pending "Author review" line, the three infrastructure entries in this
+log, and an inline marker in each AI-generated file
+
+**Scenario:** Claude walked me through #146 (network and server together, then a written guide for the rest), I ran
+`infra/terraform/check.sh` and checked the staging site, and Claude wrote my review lines in the wording I agreed.
+Files the walkthrough covered say so; tests and the variables/outputs/versions files say they were not read line by
+line and how they were checked. The design spec, `infra/secrets/README.md` and the Cole-confirmation entry stay
+pending: they were not part of the walkthrough.
+
+**Prompts (exact, in order):**
+> yea lwts go through together
+
+> yep understood, also [Image #19] why does soclaas kee pfailing
+
+> coudl you jus tdump the rest of the parts on me for every file then let me read through in 1 shot
+
+> okay i understood everything, but my peer alreayd reviewed and emrged 193, so can uadd the authro review to another branch like 143 by merging main into it and then letting me add the remaing missing author reviewe comments
+
+> yes
+
+**What it produced:** Main merged in (both sides of the usage-log conflict kept), the review lines, and an
+"AI-generated (Claude Code)." marker under each generated file's header and above each added code block (Terraform's
+own `.lock.hcl` files excluded).
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `infra/terraform/check.sh` (14 test runs passed, 7 stacks valid), the three script
+tests (0 failed), `api-gateway/test/envoy_routes_test.py` (OK) and `actionlint` after the changes. My own check: the
+walkthrough, `check.sh` and the staging site, as recorded above.
+
+### 2026-11-06 — Edge listener settings in the gateway's `.env.example` (PR #156 review)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `api-gateway/.env.example`, `api-gateway/test/envoy_routes_test.py`
+
+**Scenario:** Codex flagged on #156 that the renderer reads `GATEWAY_EDGE_PORT`, `GATEWAY_ORIGIN_KEY` and
+`FRONTEND_URL`, but `api-gateway/.env.example` does not list them (AGENTS.md §8). Claude added a test that every
+variable the renderer and route files read is in the template, watched it fail on those three, then added them.
+
+**Prompts (exact, in order):**
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answer to Claude's question about the new Codex threads: "Fix 4, explain 1 (Recommended)".
+
+**What it produced:** The three settings with safe placeholders (edge port empty, so it stays off; origin key empty)
+and `EnvExampleTest`.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `python3 api-gateway/test/envoy_routes_test.py`: the new test failed listing the three
+names, then 14/14 passed. My own check (2026-11-07): looked through the code and think it's okay.
+
+### 2026-11-06 — Recording Cole Lin's confirmation of the AWS design (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `docs/superpowers/specs/2026-10-23-aws-deployment-design.md`; replies on two Codex threads in PR #146
+
+**Scenario:** A Codex thread on #146 blocked the merge because the AWS design spec still said [Proposed]. I asked
+what the "design sign-off" meant; Cole had already looked through the design and told me it was okay. Claude
+changed the status to [Decided], recorded Cole's confirmation, and replied on the thread. It also replied on the
+origin-key thread, which #156 fixes.
+
+**Prompts (exact, in order):**
+> what is cole deisng sign off, he told me he looked through and said it was okay, is that good enough
+
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answer to Claude's question on how to record it: "Record the chat OK now (Recommended)".
+
+**What it produced:** The new status line, and the thread replies.
+
+**What I changed or rejected:** Waiting for Cole to approve on GitHub first was offered; I chose to record the chat
+confirmation now. Cole can still approve the PR.
+
+**Verification:** Pending — Jian Bing to record what he checked.
+
+### 2026-11-06 — Main's CI broken by two Dependabot major bumps (NestJS platform-express 12, Zod 4)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `user-service/package.json`, `user-service/package-lock.json`, `supplier-service/package.json`,
+`supplier-service/package-lock.json`, `supplier-service/src/locations/location.schemas.ts`,
+`order-service/src/common/zod-validation.pipe.ts`
+
+**Scenario:** The user-service and supplier-service CI jobs failed on my PRs #146 and #156 after I merged main into
+them. Claude found that main itself had been red since 2026-11-02 and fixed it in a separate PR. In the same session
+Claude also merged main into `fix/soclaas-timeout` (#133) to clear its usage-log conflict, keeping both entries.
+
+**Prompts (exact, in order):**
+> [Image #11], ci cd fail, and [Image #12] thsi also failed, and also [Image #13] emrge conflict
+
+(Screenshots of the failing checks on #146 and #156, and the conflict on #133.)
+
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answers to Claude's questions: "Keep Zod 4, fix code (Recommended)", "Fix 4, explain 1 (Recommended)",
+"Record the chat OK now (Recommended)", "Walk me through it".
+
+> [Image #14]
+
+(Screenshot of Codex's comment on #193: `npm ci` with npm 11.4.2 fails with `Missing: typescript@ from lock file`.)
+
+**What it produced:** The cause: Dependabot PRs #163 and #164 moved `@nestjs/platform-express` to 12 while the rest
+of NestJS is 11, so `npm ci` stops with ERESOLVE before any test runs. That hid a second break: #173 and #174 moved
+supplier-service and order-service to Zod 4, where `ZodTypeDef` is gone and `.default()` no longer runs the
+transform (supplier's `page` came back as the text `"1"`). The fix: platform-express back to `^11.2.8`, with an npm
+override that keeps multer at 2.5.0, because 11.2.8 pins multer 2.4.0, which has GHSA-q7qp-rjg7-q26m (high); Zod 4
+kept, with `.prefault()` for the two defaults and `ZodType<Output, Input>` in the two validation helpers.
+
+**What I changed or rejected:** I rejected going back to Zod 3, because every Zod 3 version has
+GHSA-mrhx-c7xc-m3w5 (high) and 3.x has no patch. Moving all of NestJS to 12 was not attempted; that is for the
+service owners.
+
+**Verification:** Claude reproduced the ERESOLVE failure locally on main, then on Node 24 (CI's version for
+user-service) ran `npm ci`, `npm test` and `npm run build`: user-service passed (4 test files, 1 skipped),
+supplier-service 178/178 (the two default-value tests failed before `.prefault()`), and order-service 13/13 (its
+build failed with three TS errors before the fix). `npm ls` shows multer 2.5.0 overridden. Integration tests were
+not run. For the Codex comment, Claude reproduced the EUSAGE failure with npm 11.4.2 (main's lockfile from before
+Dependabot fails the same way), added only the missing nested `typescript` entry (regenerating with 11.4.2 would have
+dropped the `libc` fields newer npm uses), and ran `npm ci` with npm 11.4.2, 11.6.2 and 11.19.1: all three pass. My
+own check (2026-11-06): I went through the change with Claude Code's walkthrough and understood it; CI
+passed (user-service and supplier-service tests and builds). Approved and merged by Deanson Choo (#193).
+
+### 2026-11-06 — Recording my reviews of #193 and #133, and bringing #133 up to date
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `.gitignore`, `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, the four
+files #193 changed, this log
+
+**Scenario:** Deanson merged #193 before its review lines were filled in, so they are recorded here, on #133, which
+also needed main merged in. Claude walked me through the #193 and #133 changes and wrote my review lines in the
+wording I confirmed. While merging, it found that the original #133 commit had committed two Python bytecode
+caches, removed them and ignored `__pycache__/` everywhere.
+
+**Prompts (exact, in order):**
+> okay i understood everything, but my peer alreayd reviewed and emrged 193, so can uadd the authro review to another branch like 143 by merging main into it and then letting me add the remaing missing author reviewe comments
+
+> lets marge 133 too
+
+> lets marge 133 actually first instead of 143
+
+My answers to Claude's questions: "Use this wording (Recommended)" (the #193 review line) and "Walk me through it"
+(for #133).
+
+> yep males sense
+
+**What it produced:** The merge of main (both sides of the usage-log conflict kept), the cache removal, and the
+review lines. Claude's first removal commit (d396ebe) re-added the caches, because the test run before it rebuilt
+them; the next commit removed them.
+
+**What I changed or rejected:** I chose #133 over the AWS PRs for these lines, since it can merge sooner.
+
+**Verification:** `python3 -I -m unittest discover -s .github/scripts`: 4 passed after the merge. My own check: the
+walkthroughs above.
+
+### 2026-11-05 — Second Codex review round on the AWS infrastructure (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug
+**Files:** `.dockerignore`, `infra/scripts/test/push-images.test.sh`,
+`infra/terraform/modules/server/{main.tf,tests/server.tftest.hcl}`
+
+**Scenario:** Peers asked whether the AWS and CD work was ready to merge. Claude checked both PRs and
+found three new Codex threads. Two were fixed test-first: `infra/secrets` left out of the root build
+context, and `ec2:DescribeTags` added so the CloudWatch agent can find its server group. The third
+(the origin key) is already enforced by PR #156. `main` was merged in.
+
+**Prompts (exact):**
+> sorry, back to the grabfoc, i mistokk this terminal for the kootu one, my peer are asking me if the cd and aws is ready to merge, also part 3 seems okay
+
+> yea fix them, and add the notificaiton too, bascially jsut finish out this whole nice 2 have
+
+**Key response:** "No, neither is ready to merge yet. Merging AWS is close, but CD isn't built: part 3
+only has a plan, on a local branch."
+
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
+
+### 2026-10-27 — Edge routing: the website through CloudFront, deploy part 1 (issue #141)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain, generate
+**Files:** `api-gateway/envoy/render.py`, `api-gateway/envoy/frontend.lua`, `api-gateway/Dockerfile`,
+`api-gateway/test/**`, `api-gateway/postman/gateway.postman_collection.json`, `api-gateway/README.md`,
+`api-gateway/envoy/README.md`, `frontend/app/not-found.tsx`, `frontend/test/routes.test.mjs`,
+`infra/terraform/**`, the plan `docs/superpowers/plans/2026-10-27-deploy-part1-edge-routing.md`
+
+**Scenario:** The staging CloudFront URL answered `{"error":"Not found"}` and the server's own address
+timed out. Claude explained that both were expected: the address is closed to everyone but CloudFront,
+and Envoy had no route to the frontend yet. We then planned and built part 1: Envoy's edge listener
+(checks CloudFront's `X-Origin-Key`, sends `/gateway/*` to the API and everything else to the
+frontend), a not-found page, Postman's `baseUrl` ending in `/gateway`, and the frontend starting after
+the gateway on ECS. Claude implemented the plan test-first; a separate Claude reviewer checked the
+whole branch.
+
+**Prompts (exact, in order):**
+> [Image #7] [Image #8] seems to not be working,  help figure it out
+
+> wait so the frontend isnt routed right now?
+
+> caan we make it such that it will call localhost:3003 on lcoal and then have an environemnt vairalve to the live clodufornt url and the frontetend calls that in our aws cloud, and then i think we send / to main is reasonable, isnt tha thwo msot website owrk, also lets make a 404 page for the non-api path if they dont exist, or like custom 401 atc apges
+
+> jie yang has read thru and approved these changes
+
+> yes
+
+> alright logged in, im ok to biuild and push image
+
+> ok
+
+> okay confirmed tha tthey are secure [Image #9], then could you help me reoslve the conversation rasied by codex in this pr ?https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/146 and also please do psuh the new features
+
+**What it produced:** The plan and 5 implementation commits (route-renderer, Lua, frontend and
+Terraform changes, each with tests), plus a regression test from the final review (clients can't make
+Envoy retry their requests). Images tagged `fc2f431` were pushed and applied to staging; Claude checked
+the CloudFront URL (pages, `/gateway/*`, the 404 page, the server closed to direct access) and I
+confirmed the session cookies are Secure in Chrome. Claude's own calls are listed in the PR description.
+**What I changed or rejected:** Proposed an environment variable for the gateway URL and `/` going to
+the frontend; Claude showed the variable already exists (`FRONTEND_GATEWAY_URL`, used server-side) and
+should stay pointed at the gateway inside the server, not the CloudFront URL. Dropped a separate 401
+page, because every page already sends signed-out users to `/signin`. Jie Yang approved the gateway
+changes.
+**Verification:** My own check (2026-11-07): looked through the code and think it's okay.
+
+### 2026-10-27 — Codex review fixes on the AWS infrastructure (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug
+**Files:** `infra/scripts/put-secrets.sh`, `infra/scripts/push-images.sh`, `infra/scripts/test/*.test.sh`,
+`infra/terraform/modules/server/{main.tf,user_data.sh.tftpl,tests/server.tftest.hcl}`,
+`infra/terraform/global/{variables.tf,tests/global.tftest.hcl}`, `.github/workflows/terraform.yml`
+
+**Scenario:** Answer the 14 Codex review threads on PR #146. Claude checked each against the code and
+the live staging stack, fixed six test-first (secrets pinned to ap-southeast-1, Windows line endings,
+percent-encoded database passwords, a rerunnable image push, a portable file-mode check for Linux CI,
+a per-environment disk metric, and the GitHub OIDC subject in its immutable form, confirmed with
+`gh api repos/AY2627S1-CS3219-P3/GrabFoc/actions/oidc/customization/sub`), and replied on the rest.
+
+**Prompts (exact):**
+> okay confirmed tha tthey are secure [Image #9], then could you help me reoslve the conversation rasied by codex in this pr ?https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/146 and also please do psuh the new features
+
+**Key response:** "There are 14 unresolved Codex threads on #146. I'll check each one against the current
+`feat/aws-infra` code before changing anything."
+
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
+
+### 2026-10-26 — First staging apply (deploy part 2, PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain
+**Files:** `infra/terraform/**`, `infra/scripts/**`, `api-gateway/envoy/render.py` (IPv4 upstreams)
+
+**Scenario:** Applied deploy part 2 to AWS: the account-wide stack, then staging. Claude explained how
+to fill the secrets file and fixed what only the real deploy showed: the first server launch failing
+while its role propagated, services created at the same moment not finding each other's names, and
+Envoy picking an IPv6 address nothing answers on.
+
+**Prompts (exact, in order; button choices in brackets):**
+> lets apply first
+
+> sorry continue
+
+> [Budget $100; alert email e1155372@u.nus.edu; Apply]
+
+> how do i ge tthe 4 env secrets, and docker is runnign
+
+> its empty right now, i need to get it
+
+> how do i get it, like what should the email be
+
+> does it need to be a business gmail account?
+
+> oh okay i meant to use e1155372@u.nus.edu
+
+> done
+
+> done
+
+> [Apply]
+
+> [I'll fix it, tag Jie Yang]
+
+> [Apply]
+
+**What it produced:** The live staging environment at its CloudFront URL, plus three fix commits on
+PR #146 (`wait_for_capacity_timeout`, layered ECS services, Envoy `V4_PREFERRED`).
+**What I changed or rejected:** Set the $100 budget and the alert email. Rotated the Gmail app password
+after pasting it in chat by mistake. Chose to fix the gateway's IPv6 issue myself and ask Jie Yang to
+review it.
+
+**Verification:** Pending — Jian Bing to record what he checked.
+
+### 2026-10-25 — AWS infrastructure in Terraform, deploy part 2 (issue #142)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** `infra/terraform/**`, `infra/scripts/**`, `infra/secrets/README.md`, `infra/kafka/Dockerfile.init`,
+`.github/workflows/terraform.yml`, `.gitignore`, `AGENTS.md` (one table row), the deployment spec §3.3
+
+**Scenario:** Build part 2 of the approved AWS deployment plan
+(`docs/superpowers/plans/2026-10-23-aws-infrastructure.md`): Terraform for the account-wide stack,
+network, ECS-on-EC2 server with its `/data` volume, every container as an ECS service, CloudFront, and
+the scripts that load secrets and push images. Claude implemented the plan task by task, test-first
+with a mocked AWS provider, then a separate Claude reviewer checked the whole branch. Nothing has been
+applied to AWS yet.
+
+**Prompts (exact, in order):**
+> looks good
+
+> make the corresponding issues on github, and i think lets do part 2 first, nus doesnt allow a 2nd staging account so we have to create 2 ecs instance sourselves i think
+
+> make the corresponding issues on github, and i think lets do part 2 first, nus doesnt allow a 2nd staging account so we have to create 2 ec2 instance sourselves i think
+
+> lets do part 1 next
+
+> sorry i pressed esc by accident, please continue
+
+> native
+
+> okay lets go back to cloud deployment, i want native development
+
+> open the pr
+
+> ok lets do the secret header as a service key? does that make sense, then after that open the pr
+
+**What it produced:** 15 commits: the Terraform stacks and modules with 10 test runs, `check.sh` and a
+CI workflow, `put-secrets.sh` (with 12 tests) and `push-images.sh`, and the runbook
+`infra/terraform/README.md`. An automated security review flagged over-broad IAM roles and an open
+Mailpit relay, and the final review found 2 critical and 6 important issues (e.g. one-off tasks
+couldn't resolve service names; a failed boot could start the databases on an empty disk). All were
+fixed test-first. Claude's own calls are listed in the PR description.
+**What I changed or rejected:** Chose single-account staging (NUS doesn't allow a second account).
+Decided the secret origin header (`X-Origin-Key`, like our service key) so the server only accepts our
+CloudFront distribution; Envoy's check stays in part 1.
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
+
+### 2026-10-23 — AWS deployment design and spec (issue #58)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `docs/superpowers/specs/2026-10-23-aws-deployment-design.md`; GitHub issues #99–#114 (bodies)
+
+**Scenario:** Design how the whole stack is deployed to AWS (cloud deployment N2H). Claude ran in a learning
+mode: I made the design decisions, and Claude explained the AWS concepts, laid out options when I asked, flagged
+architecture and security trade-offs under the AI policy, created and updated the sub-issues, and wrote the spec
+from my decisions. Sessions from 2026-10-14 to 2026-10-23.
+
+**Prompts (exact, in order):**
+> alright lets move on with the Cd part
+
+> which costs more and what are the trade fofs
+
+> alright i wish to weight some tradeoffs, the firs thtat comes to ym midn is definitely testing locally vs testing on cloud.I want to do IAC, terraform so  if we do use fargate, then running docker compsoe here on my lcoal might have differnet results with the deplyoed isntnaces especially wit h.env. and another thign is the message broker, using kafka now, if i make maazon MSK, the topcis and all the config will liekly differ fro mthat on my local when i run the kafka locally right
+
+> so ecs supports reading terraform to creates its instnace?
+
+> hmm since doign deployment on cloud will definitely make it different from running locally, what abotu makign a ci/cd straight  to a preprod/staging env on a different aws account, then only when we see preprod dint break, we push to prod usiing a workflow that can only be triggered manually?
+
+> hmm im still lsot on ec2 vs fargate, woudl the cost of fargate, sinc eit sserverless be potentialyl lwoer, if lets say we only deplyo it but no one visits the website, maybe msot like 10 times a week for like 5 mins each time?
+
+> what do u mean by everythign delcard in terraform? doesnt ec2 also have it such tha tit can eb declared in terraform? and why do i need to patch a serve rmsyelf if i sue ecs to orchestrate, and restart a service when it dies
+
+> i think we have sufficient credits to do an ec2 + ec2, and i think its better for terraform iac since with ecs, terraform will knwo about all the setup for the services, the iamges and env vars and easier for ci/cd pipelining too, althought lcoal running docker compsoe will make ti differ
+
+> ecs on ec2
+
+> ec2 on ec2, since we are sill going to use oru own custom envoy load baalcning ap igateway so we need nto use the aws eco systme, same with broker, so msk cost is saved. and we can run psotgres on our own ec2 docker containers so no need ofr rds. but i dont get what u mean by patching and sizing server
+
+> what is alternative network move.for the chekcpoint  how do people usualyl get abotu doing data to make it persistent then? is it a msut to use rds then, or maybe we can store it in a s3 bcuekt and pull form there, is it cheaper that way?
+
+> i think the dat aliekly wont exceed more than 2 gb, so that saves u pto $14 if we sue EBS and S3, so we put kafka, redis and pg on the EBs, can  ialso check on how this eBS work, wha tmake sit different form S3 holding files, and how does EBS handle storing 3 differne tkind of database, for postgres, kafka and redis
+
+> i dont get how the cost is the same? break it down for me
+
+> i dont get how the cost is the same? break it down for me
+
+> what? so am i saving or nah, i thought i also said that i woudl sav emoney from having small amount of data stored since i only pay for a few dollars on EBS rather than have the fixed $15 per month from RDS that coudl handle way more data that i woudl never reach realistically? anyways i tihnk 1 ebs instance for all 3 woudl be bette rand simpler, since its a source of truth and less overhead
+
+> actually im not sure on how the redis is workign for user service, coudl you explai nto me and teach me, and tell me how to go about putting it up on the cloud?
+
+> okay so lets do ebs for storage, redis on a docker container, kafka o na contianer, and we use deploy mdoe on ec2 with ecs, is this a correct idea for our infra?
+
+> Discuss *(chosen at Claude's checkpoint: "How do you want to proceed with this infrastructure design?")*
+
+> whats the estimate cost, and will this be the cosest to runnign the set up on local as psosible? other than the ebs?
+
+> Discuss *(chosen at Claude's checkpoint: "With the cost and the differences from local laid out, how do you want to proceed with the infrastructure design?")*
+
+> how woudl i go about setting up the api gateway to connect it to aws's gateway?
+
+> does this help prevent outside calsl into our internal redis and user serivce/etc?
+
+> then is there a point to using something liek a VPC from AWS ( a concept im not the msot familair with but i hear is quite important)
+
+> use aSD STE100 to explain this to me
+
+> is the itnernet gateway the same as the ap igateway, and explain where envoy comes into play, and also a private subnet difference agaisnt a publci subent is that a publci subnet has n internet gateway? also a diagram would help me visualsie this concept alot ebtter
+
+> so a subnet has its own route table? then what does the internet gateway do? how does the mapping work if the subnet is routing from 0.0.0.0/0 to internet gatewya, but the internet gateway has already been passed through from the packet entering oru server?
+
+> new diagram please
+
+> the internet gatewya is just a nat?
+
+> a route tabel is ony for outgoign traffic? wait the for a private subnet, it means any incoming traffic is not stopped, but only outocming traffic is restricted?
+
+> so a private suben tis usually for another subnet to communicate with
+
+> shoudl we do that then? is there any problem if i want t omake a private subnet for all my microservices except ap igateway which is on a publci subnet now
+
+> does this mena extar costs to have 2 servers, and can ecs be cofngured to segregate these 2 ec2 isntance saccordingly? what is bridge mode? what is a https terminator, and what do u mean by a program should handle https?
+
+> okay lets stick to jsut one vpc, 1 public subnet and sue the scurity group with a cheap and  free inernet gateway ehlping us. then i want to use envoy for our https terminator
+
+> Discuss *(chosen at Claude's checkpoint: "How do you want to proceed with this updated infrastructure design?")*
+
+> can oyu elaborate more on this 3. Envoy becomes the front door for the website too. Today the browser reaches the frontend directly on port 3000. If Envoy terminates HTTPS, all internet traffic enters through Envoy on 443. Envoy then sends website requests to the frontend, and API requests to the services. perhaps a diagram can help me see the differenc ena dcompre tradeoff
+
+> can i ask if its possible to somehow have separate ip or soemthing, so there 2 point sofr incomign traffic similar to our current local?
+
+> im curious, is the local 22 door architecture typical in indsutry, or is it usually a case where no matter wha t client requests, the api gateway is first, become frontend, compared to our whenre u dont need an api gateway to reach the frontend, and only the requests amde by the frontend needs the api gateway
+
+> so currently we are on pattern 2, just lcoally, then we ar eproposing a change to pattern 1 if we do otpion a?
+
+> i kind of like option c to lower the lcoal-cloud parity difference, so does that mean with aprrtern c, our frontend will need a lt oof changes, or i ngenral, will there be alto of new changes
+
+> ok lets do A, but with that, it measn the changed code will allow the lcoal to follow the new plan a right, plus the https terminator? but im jsut worried abotut he prot mapping, since we sue 3003 for backend, 3000 for frontend, then does that mean firewll wil lblock when we use different domain mapping to different ports?
+
+> i really want to mimic the envoy https teminator and edge here, but i think the certificate being neede dis a huge drawback, is there a middle ground here?
+
+> lets do option 2 also all this ahs been seen and vetted by jie yang 
+>
+> <pasted_content id="b7d5">
+> [18/10/26 8:03 PM] jianbing: [ Photo ]
+>
+> r yall ok if i do this change
+> [18/10/26 8:03 PM] jianbing: esp @jyricong
+> [18/10/26 8:06 PM] Jie Yang: ic
+> [18/10/26 8:06 PM] Jie Yang: yea shld b ok
+> </pasted_content id="b7d5">
+
+> actually lets do option 3
+
+> actually lets do option 3 but make sure the mkcert -install is bmade known to my mebmers, like on a readme or agents.md
+
+> Confirm and continue *(chosen at Claude's checkpoint: "How do you want to proceed with this design?")*
+
+> what do u mean a lockout? survivng a restarT? i dont understand? for staging email, can we use real email and still use mailpit? i think staigng using real meail si better thoguh definitely to emulate real live usage 2. what are the domains i need to register. let me know
+
+> lets make the approrpaite sub issues first
+
+> Create all 15 *(chosen at Claude's checkpoint: "Create these 15 sub-issues under #58?")*
+> Yes *(chosen at Claude's checkpoint: "Also add the CI follow-ups as sub-issues of #57?")*
+
+> lets do Gmail, since it woudl mimic lcoal very easily, also turns out my free aws credits cant be sued to get a domain through route53, are there free options?[Image #54]
+
+> elaborate more on this: 
+>
+> <pasted_content id="b7d5">
+> How this affects the design: the certificate plan assumed DNS on Route 53 (certbot's DNS challenge). If the domain's DNS stays with Namecheap or DuckDNS, or Route 53 is blocked, change to one of these:
+> - HTTP challenge: Let's Encrypt fetches a file from http://<domain>/.well-known/acme-challenge/.... Envoy forwards that path on port 80 to certbot. No DNS API is needed, and it works with any DNS provider.
+> - That provider's DNS plugin: certbot and acme.sh both support Namecheap's and DuckDNS's DNS APIs.
+> </pasted_content id="b7d5">
+
+> i swear when  igot my domain for mcloudflare,  ididnt need to get this cert, why is it such that now i need it
+
+> i do not own a cloudflare domain for foc, it was for a different project
+
+> why are we suddnely using cloudflare as the edge now isntead of our envoy
+
+> what are the tradeoff with using clopudflare as the edge
+
+> explain the difference between using ebs for our fiel storage on cloudsv using our current local arhcitecutre, please use diagrams to shwo the difference explciitly
+
+> i heard from my mentor that i need not get a domai nto do deployment, when runningmy ecs, aws will giv eme a url that works, just that it will be ugly
+
+> for this build chekcpoint: . PostgreSQL in AWS: one container per service, as locally, or a single shared one? Weigh parity and isolation against memory. I thin ki want to mimic the cloud infrastructure as much as psosibler, so can each of my docker in lcoal also write to a unified ebs volume mimic, liek jsut to a directory with the same file path. then i want to ask if theres any free url we can do that lets the envoy take in https?
+
+> 1. i am okay with reseeding data, byt jie yang and colelin use windows and oinux respectively, so is there a workaround this?
+>
+> 2. how about using the donain that aws givesupon deploying an ec2 isntance? i was told by my mentor that aws will ig e a CA for a donain fir the ec2 without route 53 or a donain nmae registered so wecan still access it
+
+> i dont quit eudnersntand what yo uar egetting at, so aws domains r not using https? since aws doesnt issue a certificate? then how come the dns name is there, so i can onyl mkae http request to it?
+
+> so does that mean my google chrome wont let me see the deployed isntnac esince its on http and not https
+
+> how would cloudfornt work here? is it oen more edge proxy before our ec2 instance that has a api gateway
+
+> wait isdoesnt this mean that envoy api gateway will drop request that ar eusing http, which include request fro mcloudfront to envoy?
+
+> wait so the current envoy set u paccept shttp? so that means a person currnelty, on oru lcoal architecutre, would go to our local api 3003 and use http, but the lcoal fornteend woudl need https? then wait if we do the current proposal, wouldnt the frorntend drop all requests since they use http within the subnet?
+
+> so other then this one line of check, const unsupported = x-forwarded-proto !== "https" && !local;, ther eis no other restrictiosn for https?
+
+> alright then, jieyang has approved the gateway decision, and envoy deletes the cookie becuase the routing table changes the dest and src ip, so services will use a different new session id
+
+> it deletes x-user-role and x-user-id to ensure that the internal http calls with these headers are onyl from iwthin the servcies rather than appended from an external malicious user, while cookie is deleted since we dont need it for authentication
+
+> CloudFront default URL *(chosen at Claude's checkpoint: "Build checkpoint: which HTTPS approach for the AWS deployment? (Heads-up: this is an architecture and security trade-off under the AI policy, so it's your and the team's call.)")*
+
+> cloudfront for the better aws ecossytem, and for better convenience, since we need not renew and get a lets encrypt cert ourself, jie yang need not see this change,lets do local http for bettter latency
+
+> lets do gateway as prefix for easier reading and it makes better sense. lets keep named volumes, just ensuring that the team knows of this initial init step
+
+> yes updat ethe issues accordingly too, also lets do the /gateway on localhsot for standardisation and not having to switch our path  when using psotman collection, only the url
+
+> yes
+
+> A. for more accurate behavior of send gmail while keeping mailpit for debugging purposes
+
+**What it produced:** Explanations (ECS vs Fargate vs EC2, VPC, subnets, route tables, internet gateway,
+security groups, EBS vs S3, Redis in the User Service, TLS termination, edge proxy vs API gateway, CloudFront,
+why AWS's EC2 DNS name has no trusted certificate); 15 sub-issues under #58 and 4 under #57, later updated as
+decisions changed (#112 closed); and the spec. It records my decisions: ECS on EC2 via Terraform, one server
+per environment, one VPC and public subnet, all databases, Redis and Kafka as containers on one EBS volume,
+daily snapshots and `pg_dump` to S3, CloudFront terminating HTTPS in front of Envoy, the `/gateway` prefix (also
+locally), Gmail SMTP with Mailpit relaying in staging, staging on merge and production by manual approval.
+Claude's own proposals and calls are labelled in the spec.
+**What I changed or rejected:** Rejected Fargate, RDS, MSK and a private subnet with a NAT gateway on cost and
+local parity. Dropped Envoy terminating HTTPS with Let's Encrypt (and local mkcert) for CloudFront, since there
+is no domain to get a certificate for. Rejected local bind mounts mirroring `/data` (Windows and Linux
+teammates) and kept named volumes. Chose `/gateway` over `/api` because the frontend already uses
+`/api/session`.
+**Verification:** Pending — Jian Bing to record what he checked.
 
 ### 2026-10-22 — Recording Zi Yi's and the mentor's approvals (PR #97)
 
@@ -258,6 +906,34 @@ partition and lose per-order ordering.
 
 **Verification:** Test-first: the uppercase-orderId replay test failed (uppercase key), then passed;
 unit 144/144, integration 85/85.
+
+### 2026-10-22 — Why the SoCLaaS review keeps failing, and a timeout fix
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** The SoCLaaS review check kept failing on the stacked credit PRs with "SoCLaaS could not
+be reached". I asked Claude to diagnose it, then to fix it.
+
+**Prompts (exact):**
+> help me diagnose why the soclass pr review keeps fialing
+
+> alright do it
+
+**Key responses:** From the run logs: the failures end about 120 s after the request starts, the
+script's per-request timeout, so the model was slow, not unreachable; the script reported timeouts
+with the network-failure message. Each push to the stack started six reviews at once (PRs based on
+another stack branch run twice), which queued on SoCLaaS. The check is not required for merging.
+
+**What it produced:** a timeout now says "did not answer within N s; it may be busy"; the review
+request gets 240 s and one retry after a timeout or a 503; stdlib tests against a stalling local server.
+
+**Changed or rejected:** I chose the clearer message and the longer timeout with a retry; reviewing
+only PRs that target main was offered and not taken.
+
+**Verification:** Test-first: the timeout test failed with "could not be reached", then the four
+tests passed (`python3 -I -m unittest discover -s .github/scripts`). My own check (2026-11-06): I went through
+the change with Claude Code's walkthrough and understood it; the 4 tests pass.
 
 ### 2026-10-18 — Codex review fixes: transaction ledger (PR #93)
 

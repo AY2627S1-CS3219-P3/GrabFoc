@@ -6,6 +6,12 @@ Author review: Jie Yang reviewed earlier documentation; Envoy implementation app
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Listed POST /admin/users/:userId/suspend among the protected User routes (#72).
 Author review: Reviewed by Zi Yi, 2026-10-21; pending Jie Yang's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Added the Order Service upstream address.
+Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Postman baseUrl ends in /gateway, locally and on AWS (#141).
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 -->
 
 # API Gateway
@@ -15,8 +21,9 @@ The Compose stack runs official Envoy v1.38.6, with its built-in JWT verificatio
 no native compilation or custom registry release is required.
 See [build and tests](envoy/README.md) and [behaviour differences](envoy/behaviour-differences.md).
 Import the [gateway Postman collection](postman/gateway.postman_collection.json)
-to test User and Supplier routes through port 3003. Its collection description
-contains login and smoke-test instructions. The legacy Node gateway has been removed.
+to test the routes through the gateway. Its `baseUrl` is `http://localhost:3003/gateway`
+locally and `https://<CloudFront URL>/gateway` on AWS; nothing else changes. Its collection
+description contains login and smoke-test instructions. The legacy Node gateway has been removed.
 
 _Origin: AI doc; implementation of the gateway direction recorded in the project `AGENTS.md`._
 
@@ -58,7 +65,8 @@ upstream requests then need the corresponding service containers in the same `fo
 Compose reads optional `api-gateway/.env` settings through `${VARIABLE:-default}`
 interpolation. When the root Compose file includes the gateway, root project/shell
 variables can override the service file's defaults. Gateway URLs default to the
-Compose names `http://user-service:3001` and `http://supplier-service:3002`.
+Compose names `http://user-service:3001`, `http://supplier-service:3002` and
+`http://order-service:3005`.
 Inside a container, `localhost` refers to that container; use the service names
 for container upstreams.
 An empty `USER_SERVICE_JWKS_URL` derives the key endpoint from `USER_SERVICE_URL`.

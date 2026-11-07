@@ -6,15 +6,12 @@
  *        has to be repeated here. This copy brings the fixes from the #129 and #145 reviews - all
  *        reads of the caller's input inside the serialisation guard, and a fixed reason instead of
  *        an exception message in the fallback line.
- * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-25
  * Scope: Call Date.prototype.toISOString rather than the value's own, so an override cannot
  *        run after redaction (PR #145 review).
- * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: Sanitise field *names* as well as values, and bound the buffer in bytes as well as
  *        in lines (PR #129 review). Body kept identical to the canonical copy.
- * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: A field named `__proto__` no longer disappears, and personal-name fields are redacted
  *        (PR #129 review). Body kept identical to the canonical copy.
@@ -58,6 +55,21 @@
  * Scope: Refuse a buffer limit a comparison cannot act on - NaN removes the bound rather than
  *        tightening it (PR #129 review). Body kept identical to the canonical copy.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Replace a key that carries a code rather than naming a field, so a credential in key
+ *        position is not treated as safe because its characters are (PR #129 review). Body kept
+ *        identical to the canonical copy.
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Charge a batch that is still being published against the buffer limits, so the
+ *        documented bound is the real ceiling (PR #129 review). Body kept
+ *        identical to the canonical copy.
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
+ * Scope: Drop an id carrying a lone surrogate, which the store would encode as U+FFFD and
+ *        merge with another id (PR #129 review). Body kept
+ *        identical to the canonical copy.
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
  * Scope: Redact given and family names, keep a caller key spelled like a marker from overwriting
  *        one, use one requestId value per line, and count an asynchronous stdout failure
@@ -77,8 +89,7 @@
  * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
  * Scope: Keep a collision name inside the index range a later pass recognises (PR #157 review).
- *        This copy now leads the canonical file, which is on PR #129's branch and not to be
- *        pushed to; the same change belongs there before that PR merges.
+ *        This copy led the canonical file for a day, which the ordinal change below closed.
  * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
  * Scope: Recognise only the canonical spelling of a marker's numbers, so leading zeroes cannot
@@ -89,8 +100,13 @@
  *        index cannot carry a four-digit code (PR #157 review).
  * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
- * Scope: Generate a replaced field name from its own ordinal instead of bounding the numbers a
- *        caller may put inside one, which six rounds of bounds failed to do (PR #145 review).
+ * Scope: Generate a replaced field name from its own ordinal, which ended six rounds of bounding
+ *        what a caller could put inside one (PR #145 and PR #200 reviews). Body kept
+ *        identical to the canonical copy.
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: A field JSON.stringify drops must not spend a replacement ordinal
+ *        (PR #200 review). Body kept identical to the canonical copy.
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -319,7 +335,8 @@ const MAX_UNNAMED_KEY = 3;
  *
  * A name is spelled from the safe alphabet, starts with a letter unless it is too short to carry
  * anything, and is not `__proto__` - which passes the pattern but is never a usable property name,
- * because assigning it runs `Object.prototype`'s setter instead of defining a field.
+ * because assigning it runs `Object.prototype`'s setter instead of defining a field. Zod's own
+ * object build drops that key too, which is why it has to be replaced before the store sees it.
  */
 function isUsableName(key: string): boolean {
   if (!SAFE_KEY.test(key) || key === '__proto__') return false;
@@ -329,20 +346,27 @@ function isUsableName(key: string): boolean {
 /**
  * The stand-in for a name that cannot be used: `[key 1]`, `[key 2]`, by order of replacement.
  *
- * Six rounds of this component tried to bound what a caller could put *inside* a replaced name,
- * and each bound was defeated by a spelling the previous one allowed: the length field disagreed
- * between passes, the fixed point let a caller key shaped like a marker through, the collision
- * suffix broke the fixed point, the numeric limit fell to leading zeroes, and the index range
- * still left four digits in an object wide enough. `[key 12: 34 chars]` carries four digits and
- * `[key 123: 456 chars]` six, and both satisfy every bound that only checks ranges
- * (PR #129 and PR #145 reviews).
+ * Six rounds of review bounded what a caller could put *inside* a replaced name, and each bound
+ * fell to a spelling the previous one allowed: the length field disagreed between passes, the
+ * fixed point let a caller key shaped like a marker through, the collision suffix broke the fixed
+ * point, the numeric limit fell to leading zeroes (`Number('000000')` is 0), and the index range
+ * still left four digits in a wide enough object. `[key 12: 34 chars]` carries four digits and
+ * `[key 123: 456 chars]` six (PRs #129, #145, #157, #200 reviews).
  *
  * So no caller text is trusted at all. The ordinal is this walk's own count, which a caller cannot
- * influence; a generated name can never collide with a kept one, because a kept name comes from an
- * alphabet with no brackets or spaces in it; and it is a fixed point by construction - on a later
- * pass the same key is the same ordinal and gets the same name, with no recognition rule to get
- * wrong. What is given up is the replaced name's length, which was diagnostic at best and was the
- * field every one of those bypasses travelled in.
+ * influence; it cannot collide with a kept name, because a kept name comes from an alphabet with
+ * no brackets or spaces in it; and it is a fixed point by construction - a later walk over the
+ * same keys in the same order reaches the same key at the same ordinal and writes the same name,
+ * with no recognition rule left to get wrong.
+ *
+ * That last property is why the three walkers agree without sharing anything: the shipper walks a
+ * line's metadata, the store walks the whole line and skips the columns it knows, and the parked
+ * shape walks what it could parse - but the *replacements* they make are the same keys in the same
+ * order, so the ordinals match. The earlier design depended on each walker computing the same
+ * position, which they never did.
+ *
+ * What is given up is the replaced name's length. It was diagnostic at best, and it was the field
+ * every one of those bypasses travelled in.
  */
 function replacedName(ordinal: number): string {
   return `[key ${ordinal}]`;
@@ -426,14 +450,18 @@ export function redactFields(value: unknown, depth = 0): unknown {
   // is built from this unchanged, and no caller's field name can reach a prototype.
   const out: Record<string, unknown> = Object.create(null);
   // Counts the names this walk has replaced in this object, which is what the stand-in is built
-  // from. It is deliberately not the key's position: a position has to agree with whatever walk
-  // reads the line next, while an ordinal over the same keys in the same order agrees by itself.
+  // from. Deliberately not the key's position: a position has to agree with whatever walk reads
+  // the line next, and an ordinal over the same keys in the same order agrees by itself.
   let replaced = 0;
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
     // A function is dropped. JSON.stringify ignores functions anyway, except an own `toJSON`,
     // which it calls instead of reading the object — so copying one across would let it return
     // whatever it liked, unredacted, including a replacement for the whole envelope.
-    if (typeof item === 'function') continue;
+    // Skipped *before* the count, like a function above it: `JSON.stringify` drops a field whose
+    // value is `undefined`, so numbering one spent an ordinal the written line never carried - and
+    // the store, renumbering from what reached it, stored a different name than stdout showed. The
+    // ordinals only agree while both walks see the same keys (PR #200 review).
+    if (typeof item === 'function' || item === undefined) continue;
     const name = isUsableName(key) ? key : replacedName((replaced += 1));
     out[name] = isSensitive(key) ? REDACTED : serialisable(redactFields(item, depth + 1));
   }

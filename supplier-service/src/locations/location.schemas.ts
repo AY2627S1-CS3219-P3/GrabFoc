@@ -4,6 +4,11 @@
  * Scope: Generated strict Zod schemas for request bodies and query parameters, following the
  *        field, validation and error decisions in supplier-service/AGENTS.md.
  * Author review (Cole Lin): Read in full; ran it with Postman and checked the 400 cases: missing fields, unknown fields and bad query parameters.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+ * Scope: Zod 4 upgrade: the page and pageSize defaults use .prefault() so they still pass through the number transform,
+ *        and parseOr400 uses ZodType<Output, Input> (ZodTypeDef was removed).
+ * Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it;
+ *   CI passed (user-service and supplier-service tests and builds). Approved and merged by Deanson Choo (#193).
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: The name, type and building list filters reject control bytes, and are length-bound only
  *        where the stored field is - a class of bug the PR #129 review found in the Logging
@@ -141,8 +146,9 @@ export const listQuerySchema = z
     lat: degrees(-90, 90).optional(),
     lon: degrees(-180, 180).optional(),
     order: z.enum(['asc', 'desc', 'distance']).default('asc'),
-    page: positiveInt.default('1'),
-    pageSize: positiveInt.default('20'),
+    // AI-generated (Claude Code), reviewed by Jian Bing: Zod 4's .default() skips the transform, .prefault() does not.
+    page: positiveInt.prefault('1'),
+    pageSize: positiveInt.prefault('20'),
   })
   .strict()
   .superRefine((q, ctx) => {
@@ -159,7 +165,8 @@ export type UpdateLocation = z.infer<typeof updateLocationSchema>;
 export type ListQuery = z.infer<typeof listQuerySchema>;
 
 /** Parse with a Zod schema, or throw a 400 Problem Details response naming the invalid fields. */
-export function parseOr400<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, data: unknown, what: string): T {
+// AI-generated (Claude Code), reviewed by Jian Bing: Zod 4's ZodType takes <Output, Input>.
+export function parseOr400<T>(schema: z.ZodType<T, unknown>, data: unknown, what: string): T {
   const result = schema.safeParse(data ?? {});
   if (result.success) return result.data;
   const issues = result.error.issues

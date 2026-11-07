@@ -16,6 +16,9 @@
  * Scope: Added the cases for a replaced name generated from its own position rather than taken
  *        from caller text (PR #145 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Added the case for a field JSON.stringify drops spending an ordinal (PR #200 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { LogShipper } from './log-shipper';
 
@@ -93,6 +96,17 @@ describe('a replaced name generated rather than trusted', () => {
     const meta = metaOf({ requestId: 'r-1', 'req.path': '/x', password: 'hunter2' });
     expect(Object.keys(meta)).toEqual(['requestId', 'req.path', 'password']);
     expect(meta.password).toBe('[REDACTED]');
+  });
+
+  it('spends no ordinal on a field JSON.stringify would drop', () => {
+    // The ordinals only agree while both walks see the same keys, and `JSON.stringify` drops a
+    // field whose value is `undefined` - so numbering one here spent an ordinal the written line
+    // never carried, and the store, renumbering from what reached it, stored a different name than
+    // stdout showed. Asserted against the line itself rather than against the store, because the
+    // store lands on `[key 1]` either way: the two sides agreeing is the property (PR #200 review).
+    const meta = metaOf({ '@gone': undefined, '@kept': 2 });
+    expect(Object.keys(meta)).toEqual(['[key 1]']);
+    expect(meta['[key 1]']).toBe(2);
   });
 
   it('still replaces a name that carries data, and shows none of it', () => {

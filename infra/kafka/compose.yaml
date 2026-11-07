@@ -11,6 +11,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: EXTERNAL listener advertises 127.0.0.1 instead of localhost (quieter logs).
 # Author review: Jian Bing, 2026-10-18 — ran npm run test:kafka on this branch: 12/12 pass with no console errors (the IPv6 connection failures and retry-wait errors seen on main are gone).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+# Scope: restart: unless-stopped on every long-running container (one-shot init containers excluded).
+# Author review: pending — Jie Yang to record the review.
 #
 # Shared by every service, so it lives in infra/ rather than in one service's folder.
 # One KRaft broker (no ZooKeeper), replication factor 1: local only, not for the cloud.
@@ -19,6 +22,8 @@ name: foc
 
 services:
   kafka:
+    # Restarted after a crash or a Docker restart; `docker compose stop` still stops it.
+    restart: unless-stopped
     image: apache/kafka:4.1.0
     environment:
       KAFKA_NODE_ID: 1
@@ -66,6 +71,7 @@ services:
 
   # Web UI for topics and messages, used to demo the async workflow.
   kafka-ui:
+    restart: unless-stopped
     image: ghcr.io/kafbat/kafka-ui:v1.3.0
     depends_on:
       kafka:

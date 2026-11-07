@@ -1,0 +1,69 @@
+{
+  "_disclosure": "AI Assistance Disclosure:\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22\nScope: Added routes for the existing Order Service endpoints the frontend uses (docs/orders/frontend-integration-plan.md); no API or authentication changes. /internal/** is deliberately not routed.\nAuthor review: Route file approved by Jie Yang (gateway owner) on 2026-10-22; implementation pending review by Deanson.",
+  "service": "order",
+  "urlEnv": "ORDER_SERVICE_URL",
+  "prefixes": {
+    "orders": {
+      "env": "GATEWAY_ORDERS_PREFIX",
+      "default": "/orders"
+    }
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "{orders}/available"
+    },
+    {
+      "method": "GET",
+      "path": "{orders}/mine"
+    },
+    {
+      "method": "GET",
+      "path": "{orders}/assigned"
+    },
+    {
+      "method": "POST",
+      "path": "{orders}"
+    },
+    {
+      "method": "GET",
+      "regex": "{orders}/[^/]+"
+    },
+    {
+      "method": "PATCH",
+      "regex": "{orders}/[^/]+"
+    },
+    {
+      "method": "POST",
+      "regex": "{orders}/[^/]+/accept"
+    },
+    {
+      "method": "POST",
+      "regex": "{orders}/[^/]+/cancel"
+    },
+    {
+      "method": "POST",
+      "regex": "{orders}/[^/]+/pick-up"
+    },
+    {
+      "method": "POST",
+      "regex": "{orders}/[^/]+/start-delivery"
+    },
+    {
+      "method": "POST",
+      "regex": "{orders}/[^/]+/arrive"
+    },
+    {
+      "method": "GET",
+      "regex": "{orders}/[^/]+/confirmations"
+    },
+    {
+      "method": "POST",
+      "regex": "{orders}/[^/]+/confirmations"
+    },
+    {
+      "method": "POST",
+      "regex": "{orders}/[^/]+/confirmations/[^/]+/respond"
+    }
+  ]
+}
