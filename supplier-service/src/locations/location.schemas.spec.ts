@@ -12,6 +12,10 @@
  * Scope: Added the cases for a value creation accepts staying findable through its own filter
  *        (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a NUL in image_url, the one text field the earlier storable fix
+ *        missed (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { ProblemException } from '../common/problem';
 import { createLocationSchema, listQuerySchema, parseOr400, updateLocationSchema } from './location.schemas';
@@ -294,5 +298,35 @@ describe('a value creation accepts stays findable', () => {
     const lone = 'Techno\ud800Edge';
     expect(createLocationSchema.safeParse(withControl('building', lone)).success).toBe(true);
     expect(listQuerySchema.safeParse({ building: lone }).success).toBe(true);
+  });
+});
+
+/**
+ * `storable` went on `name`, `type`, `building` and `location_desc` and not on `image_url`, which
+ * has only a prefix regex - so a URL carrying a NUL passed validation, reached the INSERT and came
+ * back as a driver 500 instead of a 400. The same class as the fix that introduced it, in the one
+ * field that fix did not touch (PR #157 review).
+ */
+describe('a NUL in image_url', () => {
+  const withUrl = (image_url: string) => ({ ...valid, image_url });
+
+  it('is refused on creation rather than reaching the INSERT', () => {
+    expect(createLocationSchema.safeParse(withUrl(`https://example.com/a${String.fromCharCode(0)}.jpg`)).success).toBe(
+      false,
+    );
+  });
+
+  it('is refused on update too', () => {
+    const body = { version: 1, image_url: `https://example.com/a${String.fromCharCode(0)}.jpg` };
+    expect(updateLocationSchema.safeParse(body).success).toBe(false);
+  });
+
+  it('still accepts an ordinary URL, and still rejects a non-http one', () => {
+    expect(createLocationSchema.safeParse(withUrl('https://example.com/a.jpg')).success).toBe(true);
+    expect(createLocationSchema.safeParse(withUrl('ftp://example.com/a.jpg')).success).toBe(false);
+  });
+
+  it('still accepts a null image_url, which means no image', () => {
+    expect(createLocationSchema.safeParse({ ...valid, image_url: null }).success).toBe(true);
   });
 });

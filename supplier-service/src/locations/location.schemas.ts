@@ -13,6 +13,10 @@
  * Scope: Refuse in a filter only what PostgreSQL cannot store, and refuse the same on creation,
  *        so anything storable stays findable (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Refuse a NUL in image_url too, the one text field the earlier storable fix missed
+ *        (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -74,9 +78,12 @@ const locationFields = {
   lon: z.number(),
   open_time: hhmm.nullable().optional(),
   close_time: hhmm.nullable().optional(),
-  image_url: z
-    .string()
-    .regex(/^https?:\/\//i, 'must start with http:// or https://')
+  // `storable` here too. This field has only a prefix regex, so a URL carrying a NUL passed
+  // validation, reached the INSERT and came back as a driver 500 rather than a 400 - the same gap
+  // the other four text fields were fixed for, in the one field that fix did not touch
+  // (PR #157 review).
+  image_url: storable
+    .pipe(z.string().regex(/^https?:\/\//i, 'must start with http:// or https://'))
     .nullable()
     .optional(),
 };

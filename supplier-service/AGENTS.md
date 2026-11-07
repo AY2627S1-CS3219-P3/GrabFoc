@@ -9,6 +9,13 @@ Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
 Scope: Recorded the JWKS filtering and the bounded list filters in the Auth section
   (swept from the PR #129 review).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-27 to 2026-11-07
+Scope: Wrote the logging sections that document this service's copy of the shipper as the PR #129
+  and PR #157 reviews changed it - redaction of names and keys, the bounds the store will accept,
+  the fallback line, and the rule that a filter never refuses what creation accepts. The decisions
+  are Cole Lin's; the wording is Claude's. This entry was missing while those sections were being
+  added, which the PR #157 review caught.
+Author review: Cole Lin, read and approved.
 -->
 # AGENTS.md — Supplier (Location) Service
 
