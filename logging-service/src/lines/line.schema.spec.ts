@@ -37,6 +37,10 @@
  * Scope: Added the cases for a lone surrogate in an envelope field and for the stored timestamp
  *        being the one the API returns (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for given- and family-name redaction, a caller key spelled like a
+ *        marker, one requestId value per line, and an asynchronous stdout failure (PR #157).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, redactDeep, toRow } from './line.schema';
 
@@ -724,5 +728,23 @@ describe('a timestamp with more precision than the API can return', () => {
   it('still accepts the line rather than rejecting the extra precision', () => {
     // The file's standing rule: an odd envelope value costs the field, never the whole line.
     expect(inboundLineSchema.safeParse({ ...base, ts: '2026-11-06T00:00:00.999999Z' }).success).toBe(true);
+  });
+});
+
+/** The store's half of the two list and marker findings on PR #157. */
+describe('the store agrees about names and colliding markers', () => {
+  it.each(['givenName', 'given_name', 'familyName', 'family_name', 'surname'])('redacts %s', (key) => {
+    expect(redactDeep({ [key]: 'Alice' })).toEqual({ [key]: '[REDACTED]' });
+  });
+
+  it.each(['eventName', 'name'])('leaves %s alone', (key) => {
+    expect(redactDeep({ [key]: 'Alice' })).toEqual({ [key]: 'Alice' });
+  });
+
+  it('keeps both a replaced key and a caller key spelled like its marker', () => {
+    const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
+    const out = redactDeep({ 'alice@nus.edu.sg': 1, [marker]: 2 }) as Record<string, unknown>;
+    expect(Object.keys(out)).toHaveLength(2);
+    expect(Object.values(out).sort()).toEqual([1, 2]);
   });
 });

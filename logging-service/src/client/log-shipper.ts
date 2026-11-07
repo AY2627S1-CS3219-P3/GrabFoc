@@ -93,6 +93,29 @@
  * Scope: Drop an id carrying a lone surrogate, which the store would encode as U+FFFD and merge
  *        with another id (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Redact given and family names as the docs already claimed, keep a caller key spelled
+ *        like a marker from overwriting one, use one requestId value per line, and count an
+ *        asynchronous stdout failure (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Decide the stdout watch from the sink that was kept, not from a second read of the
+ *        caller's option - the read-once class inside last round's fix for it (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Make the collision name marker-shaped, so the walkers still agree on it (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Normalise a truncated value after the cut as well as before it (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Trust a marker only when its numbers are ones this walk could have written, so a caller
+ *        key shaped like one cannot carry its own digits through (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Build the metadata remainder without reading requestId again, which the object rest did
+ *        however late the copy was deleted (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -214,6 +237,14 @@ const NEVER_LOG = [
   'fullname',
   'firstname',
   'lastname',
+  // The spelling an OIDC claim and most APIs use, which is the one that was missing: `givenName`
+  // normalised to `givenname` and matched nothing in this list, so a student's name went to
+  // stdout and the store in the clear while this file's documentation said given and family names
+  // were covered. `name` on its own stays out, because it would take `eventName` and the location
+  // labels, which are public catalogue data (PR #157 review).
+  'givenname',
+  'familyname',
+  'surname',
   'balance',
   'creditbalance',
   'credits',
@@ -318,22 +349,78 @@ const MAX_UNNAMED_KEY = 3;
  * which costs nothing: the shape carries a position and a length and no content of its own, so
  * the worst case is a key that says about itself what it would have said anyway.
  */
-const KEY_MARKER = /^\[key \d+: \d+ chars\]$/;
+const KEY_MARKER = /^\[key (\d{1,6}): (\d{1,6}) chars\]$/;
+/**
+ * The largest key length a marker reports, and so the largest number it can carry.
+ *
+ * The fixed-point rule trusted anything marker-shaped, so a caller key spelled
+ * `[key 123456: 6 chars]` passed through verbatim and its digits reached stdout and the store - an
+ * OTP or a handover code formatted into the index or the length slot, past the safe-key bound and
+ * past the rule that replaces long numeric keys (PR #157 review).
+ *
+ * A marker is now recognised only when its numbers are ones *this* walk could have produced: an
+ * index inside the object's own key range, and a length at most this. Generation clamps the
+ * reported length to the same number, so every marker a walker writes is still recognised by the
+ * next one and the fixed point holds - while three digits is too few to carry a code. The clamp
+ * costs nothing real: a key longer than 999 characters is reported as 999, and the marker's job is
+ * to say "a name was replaced here", not to measure it exactly.
+ */
+const MAX_REPORTED_LENGTH = 999;
 
-function safeKey(key: string, index: number): string {
+/** A marker with numbers this walk could have written, rather than anything marker-shaped. */
+function isOwnMarker(key: string, total: number): boolean {
+  const parts = KEY_MARKER.exec(key);
+  if (!parts) return false;
+  return Number(parts[1]) < total && Number(parts[2]) <= MAX_REPORTED_LENGTH;
+}
+
+/**
+ * `safeKey`, and then distinct from what the object already holds.
+ *
+ * Two different caller keys can reduce to the same name: an unsafe key at index 0 becomes
+ * `[key 0: 16 chars]`, and a caller whose *own* key is spelled exactly like that marker is passed
+ * through unchanged by the fixed-point rule, so the second assignment silently overwrote the first
+ * and a field was lost. The note on that rule said passing a marker through "costs nothing"; this
+ * is what it cost (PR #157 review).
+ *
+ * The replacement is itself marker-shaped, so a later walker recognises it and passes it through:
+ * a name that survives one pass and not the next is the same disagreement in slower motion.
+ */
+function freshKey(out: Record<string, unknown>, key: string, index: number, total: number): string {
+  const name = safeKey(key, index, total);
+  if (!Object.prototype.hasOwnProperty.call(out, name)) return name;
+  // Marker-shaped, not just unique. The first version suffixed ` (2)`, which matches neither
+  // KEY_MARKER nor SAFE_KEY - so the next walker replaced it again and the stored row stopped
+  // carrying the key the stdout line did, which is the disagreement the fixed point exists to
+  // remove. The comment here claimed it was still a fixed point; it was not (PR #157 review).
+  //
+  // This key's own index and length, which no other key in this object can produce, and the index
+  // is walked up if a caller's literal marker already sits on that name. The result matches
+  // KEY_MARKER, so a later pass passes it through untouched.
+  const length = Math.min(key.length, MAX_REPORTED_LENGTH);
+  let n = index;
+  let candidate = `[key ${n}: ${length} chars]`;
+  while (Object.prototype.hasOwnProperty.call(out, candidate)) {
+    n += 1;
+    candidate = `[key ${n}: ${length} chars]`;
+  }
+  return candidate;
+}
+
+function safeKey(key: string, index: number, total: number): string {
   // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
   // object runs Object.prototype's setter instead of defining a property, and the field is lost.
   // The objects built below have null prototypes, so nothing is lost there - but the store's
   // inbound schema builds its own object through Zod, which does drop that name, so it is
   // replaced here rather than shipped and the two sides cannot disagree (PR #129 review).
-  if (KEY_MARKER.test(key)) return key;
+  if (isOwnMarker(key, total)) return key;
   // A name, or short enough that it cannot be carrying anything. A credential that does start
   // with a letter still passes, and nothing here can catch that: the rule that covers it is the
   // one in AGENTS.md about what may go in key position at all.
   const named = NAMED_KEY.test(key) || key.length <= MAX_UNNAMED_KEY;
   return SAFE_KEY.test(key) && named && key !== '__proto__'
     ? key
-    : `[key ${index}: ${key.length} chars]`;
+    : `[key ${index}: ${Math.min(key.length, MAX_REPORTED_LENGTH)} chars]`;
 }
 const MAX_DEPTH = 6;
 /**
@@ -412,12 +499,15 @@ export function redactFields(value: unknown, depth = 0): unknown {
   // JSON.stringify and object spread both read own enumerable properties, so the envelope below
   // is built from this unchanged, and no caller's field name can reach a prototype.
   const out: Record<string, unknown> = Object.create(null);
-  Object.entries(value as Record<string, unknown>).forEach(([key, item], index) => {
+  const entries = Object.entries(value as Record<string, unknown>);
+  entries.forEach(([key, item], index) => {
     // A function is dropped. JSON.stringify ignores functions anyway, except an own `toJSON`,
     // which it calls instead of reading the object — so copying one across would let it return
     // whatever it liked, unredacted, including a replacement for the whole envelope.
     if (typeof item === 'function') return;
-    out[safeKey(key, index)] = isSensitive(key) ? REDACTED : serialisable(redactFields(item, depth + 1));
+    out[freshKey(out, key, index, entries.length)] = isSensitive(key)
+      ? REDACTED
+      : serialisable(redactFields(item, depth + 1));
   });
   return out;
 }
@@ -469,6 +559,49 @@ function hasControl(value: string): boolean {
   return false;
 }
 
+/**
+ * Counters to bump when stdout fails after the write has already returned.
+ *
+ * In the documented stdout-only configuration the sink is `console.log`, and a write to a pipe
+ * whose reader has gone resolves *before* `process.stdout` emits its `EPIPE`. The synchronous
+ * try/catch around the write therefore saw nothing: `writeFailed` stayed at zero, and an `error`
+ * event with no listener is an uncaught exception - so a broken log pipe would terminate the
+ * service this component exists not to disturb (PR #157 review).
+ *
+ * One listener for the module rather than one per shipper: stdout is a single shared stream, and a
+ * listener per instance would trip Node's max-listeners warning in a service that builds several.
+ * Every shipper on the default sink is counted, because a stdout failure is every one of theirs.
+ */
+/**
+ * The envelope's own field names, so the metadata walk can skip them without reading them.
+ *
+ * `requestId` is in here for a second reason: it is read once before the build and that value is
+ * used throughout, so this walk must not touch its getter again (PR #157 review).
+ */
+const ENVELOPE_FIELDS = new Set([
+  'level',
+  'event',
+  'requestId',
+  'userId',
+  'role',
+  'method',
+  'path',
+  'status',
+  'durationMs',
+]);
+
+const stdoutWriters = new Set<() => void>();
+let stdoutWatched = false;
+
+function watchStdout(bump: () => void): void {
+  stdoutWriters.add(bump);
+  if (stdoutWatched) return;
+  stdoutWatched = true;
+  process.stdout.on('error', () => {
+    for (const bumpOne of stdoutWriters) bumpOne();
+  });
+}
+
 function stripControl(value: string): string {
   if (!hasControl(value)) return value;
   let out = '';
@@ -516,7 +649,13 @@ function boundedText(value: string, max: number): string {
   // JSONB. For `event` and `path` it changes nothing worth keeping: they go to TEXT columns, where
   // a lone surrogate is encoded rather than refused (PR #129 review).
   const text = jsonbSafe(stripControl(value));
-  return text.length <= max ? text : `${text.slice(0, max - TRUNCATED.length)}${TRUNCATED}`;
+  if (text.length <= max) return text;
+  // `jsonbSafe` again *after* the cut: it ran before, and the cut itself can land between the two
+  // code units of an emoji and leave the high surrogate behind. On the fallback path this value is
+  // `originalEvent`, which lands in the store's `extra` JSONB - whose parser refuses an unpaired
+  // surrogate - so the one line that records a build failure was itself parked (PR #157 review).
+  // Dropping the half character can only shorten the result, so the bound still holds.
+  return `${jsonbSafe(text.slice(0, max - TRUNCATED.length))}${TRUNCATED}`;
 }
 
 /**
@@ -627,6 +766,16 @@ export class LogShipper {
     }
     this.service = service;
     this.write = options.write;
+    // Only for the default sink: a caller who supplied `write` owns its failures, and the
+    // synchronous catch around that call is the whole guarantee this component can give them.
+    //
+    // `this.write`, not `options.write`. Reading the option again here was the read-once defect
+    // inside the commit that fixed the read-once defect: an accessor answering `undefined` for the
+    // assignment above and a function for this check leaves the default `console.log` sink in use
+    // with no watcher on it, which is the unhandled asynchronous EPIPE this exists to stop. The
+    // question is which sink is in use, so the answer has to come from the field that holds it
+    // (PR #157 review).
+    if (!this.write) watchStdout(() => (this.counts.writeFailed += 1));
     this.newId = options.newId;
     this.publisher = options.publisher;
     const flushMs = options.flushMs ?? 1000;
@@ -753,19 +902,41 @@ export class LogShipper {
     // a line that was lost (PR #129 review). Bounded here rather than below, because the bound is
     // what makes it storable and `boundedId` is total: it returns undefined instead of throwing,
     // so it cannot itself be the reason this line fails too.
-    let originalRequestId: string | undefined;
+    let rawRequestId: unknown;
     try {
-      originalRequestId = boundedId(input.requestId, STORE_LIMITS.requestId);
+      rawRequestId = input.requestId;
     } catch {
-      originalRequestId = undefined;
+      rawRequestId = undefined;
     }
+    // Bounded from the value already read, not from a second read of the caller's property. The
+    // envelope below used to read it again through its destructuring, so a getter could answer the
+    // two reads differently and the fallback would be keyed by one request while the normal line
+    // described another - the trace gap this fallback exists to prevent. The same defect as the
+    // service name read three times in the constructor, one function along (PR #157 review).
+    const originalRequestId = boundedId(rawRequestId, STORE_LIMITS.requestId);
 
     try {
       // **Everything** that reads the caller's input happens in here. Destructuring it runs an
       // enumerable getter, and a Proxy trap runs on enumeration, so doing it outside meant a
       // hostile top-level field could still throw out of emit() — which the earlier guard claimed
       // to prevent and did not (PR #145 review).
-      const { level, event, requestId, userId, role, method, path, status, durationMs, ...rest } = input;
+      const { level, event, userId, role, method, path, status, durationMs } = input;
+      // Walked by key and filtered, rather than collected with an object rest. The rest operation
+      // *reads* every own enumerable property to copy it - `requestId` included - so deleting the
+      // copy afterwards was too late: a one-shot getter that answers once and throws on the second
+      // read threw in here, and the real event was replaced by the fallback although the id had
+      // already been captured. The previous comment admitted the read and treated it as harmless
+      // (PR #157 review). `Object.keys` runs an ownKeys trap but no getters, so the envelope's own
+      // fields - which are read above, once each - are the only properties read at all.
+      // Null prototype, as every other object built here is: assigning a key named `__proto__` to
+      // an ordinary `{}` runs Object.prototype's setter instead of defining a property, and the
+      // field is lost. The object rest this replaced defined properties rather than assigning
+      // them, so it did not have that problem - two existing cases caught the difference.
+      const rest: Record<string, unknown> = Object.create(null);
+      for (const key of Object.keys(input)) {
+        if (ENVELOPE_FIELDS.has(key)) continue;
+        rest[key] = (input as Record<string, unknown>)[key];
+      }
       const safeRest = redactFields(rest) as Record<string, unknown>;
       // Stripped before the bound below, at the one point every service shares, rather than
       // relying on each copy of this file to remember: `?lat=…&lon=…` is the caller's position, and
@@ -776,7 +947,7 @@ export class LogShipper {
       const envelope = {
         level: LEVELS.includes(level) ? level : UNKNOWN_LEVEL,
         event: boundedText(typeof event === 'string' ? event : '', STORE_LIMITS.event) || UNKNOWN_EVENT,
-        requestId: boundedId(requestId, STORE_LIMITS.requestId),
+        requestId: originalRequestId,
         userId: boundedId(userId, STORE_LIMITS.userId),
         role: typeof role === 'string' && ROLES.includes(role) ? role : undefined,
         method: boundedId(method, STORE_LIMITS.method),
@@ -791,7 +962,7 @@ export class LogShipper {
       const given: Record<string, unknown> = {
         level,
         event,
-        requestId,
+        requestId: rawRequestId,
         userId,
         role,
         method,

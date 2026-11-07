@@ -188,9 +188,14 @@ _Origin: AI doc, from the plan Cole Lin approved_
     previous one's work and reported *its* length. `alice@nus.edu.sg` left the shipper as
     `[key 0: 16 chars]` and was stored as `[key 0: 17 chars]`, so the row disagreed with the line on
     stdout about the one number the marker exists to carry. All four copies recognise the marker
-    now. The brackets stay outside the safe alphabet on purpose, and a caller's own key spelled like
-    a marker passing through costs nothing: the shape carries a position and a length and no
-    content of its own (PR #129 review).
+    now. The brackets stay outside the safe alphabet on purpose. A caller's own key spelled like a
+    marker passes through as well, and that is **not** free, as this note used to claim: when an
+    unsafe key at the same index reduces to the same text, the second assignment overwrote the
+    first and a field disappeared. The walkers take the next free name instead, built from
+    that key's own index and length - a name no other key in the object can produce, and one
+    `KEY_MARKER` matches, so a later pass passes it through. The first version suffixed ` (2)`,
+    which matched neither pattern and so was replaced on the next pass, reintroducing the very
+    disagreement in slower motion (PR #129, PR #157 reviews).
   - **The array walk is bounded, because rebuilding by index gave up what `map` had.**
     `Array.prototype.map` skips holes; a loop over `length` does not, and `length` is
     caller-controlled and free to inflate — `a.length = 0xffffffff` on an empty array is one
@@ -274,6 +279,12 @@ _Origin: AI doc, from the plan Cole Lin approved_
   that renames it runs on Zod's output and the name was gone by then. The parse is now preceded by
   a rename of that one key on the raw input, spelled by `safeKey` itself, so the field arrives
   where the walkers can see it (PR #129 review).
+- **A list is only as good as the spellings in it.** This bullet claimed given and family names
+  were covered while the list held only `firstname` and `lastname`, so `givenName` - the spelling
+  an OIDC claim and most APIs use - normalised to `givenname`, matched nothing, and went to stdout
+  and the store in the clear (PR #157 review). `givenname`, `familyname` and `surname` are in the
+  list now. The documentation was the thing that was wrong first, which is worth noticing: it
+  described an intention and was read as a guarantee.
 - **The redaction list covers personal data, not only credentials.** `phone` and display, given
   and family names were outside it, so a profile line put a student's name in the clear into
   stdout, Kafka and the `extra` column (PR #129 review). `name` on its own is *not* in the list:

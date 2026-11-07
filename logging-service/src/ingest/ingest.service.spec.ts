@@ -19,6 +19,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
  * Scope: Added the cases for a key that carries a code rather than naming a field (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for given- and family-name redaction, a caller key spelled like a
+ *        marker, one requestId value per line, and an asynchronous stdout failure (PR #157).
+ * Author review: Cole Lin, read and approved.
  */
 import { Logger } from '@nestjs/common';
 import { config } from '../config';
@@ -262,6 +266,15 @@ describe('handling a message', () => {
     expect(Object.keys(body)).toContain('[key 1: 6 chars]');
     expect(Object.keys(body)).toContain('403');
     expect(Object.keys(body)).not.toContain('123456');
+  });
+
+  /** The parked shape is the third walker, and it collides the same way (PR #157 review). */
+  it('keeps a replaced key and a caller key spelled like its marker', async () => {
+    const marker = `[key 1: ${'alice@nus.edu.sg'.length} chars]`;
+    await consumer.deliver(JSON.stringify({ lineId: 'nope', 'alice@nus.edu.sg': 1, [marker]: 2 }));
+    const body = JSON.parse(parked[0].body as string) as Record<string, unknown>;
+    // Three keys in, three keys out: nothing was overwritten by a name collision.
+    expect(Object.keys(body)).toHaveLength(3);
   });
 
   it('keeps ordinary field names, including ones redaction would blank', async () => {

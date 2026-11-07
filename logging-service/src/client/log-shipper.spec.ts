@@ -67,6 +67,22 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
  * Scope: Added the cases for an id carrying a lone surrogate being dropped (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for given- and family-name redaction, a caller key spelled like a
+ *        marker, one requestId value per line, and an asynchronous stdout failure (PR #157).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the case for a write option that reads differently than it assigned, which is the
+ *        read-once class inside the fix for the read-once class (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a collision suffix surviving the store's own pass, and for a
+ *        truncation that lands inside a surrogate pair (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a one-shot requestId getter and for a caller key shaped like a
+ *        marker carrying its own digits (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -778,7 +794,15 @@ describe('the fallback line stays on its request', () => {
     expect(line).not.toHaveProperty('requestId');
   });
 
-  it('still writes a fallback line when reading the requestId itself throws', () => {
+  /**
+   * Changed deliberately. This asserted that a throwing `requestId` getter produced the fallback
+   * line, which was true while the build read that property a second time. It is read once now,
+   * inside its own guard, so the throw costs the *field* and not the event - and an
+   * `access_denied` line surviving is strictly better than one replaced by `line_unserialisable`,
+   * which is the rule this file applies to every other envelope field (PR #157 review). What the
+   * case is really for - that `emit` does not throw - is unchanged and still asserted.
+   */
+  it('keeps the real line when reading the requestId itself throws', () => {
     const input: Record<string, unknown> = { level: 'warn', event: 'access_denied' };
     Object.defineProperty(input, 'requestId', {
       enumerable: true,
@@ -788,7 +812,9 @@ describe('the fallback line stays on its request', () => {
     });
     const log = shipper();
     expect(() => log.emit(input as never)).not.toThrow();
-    expect(JSON.parse(written[0]).event).toBe('line_unserialisable');
+    const line = JSON.parse(written[0]);
+    expect(line.event).toBe('access_denied');
+    expect(line).not.toHaveProperty('requestId');
   });
 
   it('writes a fallback line the store will take', () => {
@@ -1326,5 +1352,277 @@ describe('an id carrying a lone surrogate', () => {
     const parsed = inboundLineSchema.safeParse(line);
     expect(parsed.success).toBe(true);
     expect(toRow(parsed.data as never).userId).toBeNull();
+  });
+});
+
+/**
+ * The list's own documentation claims given and family names are covered. It held `firstname` and
+ * `lastname` and not `givenname`, which is the spelling an OIDC claim and most APIs use - so
+ * `givenName` normalised to `givenname`, matched nothing, and went to stdout and the store in the
+ * clear while the docs said otherwise (PR #157 review).
+ */
+describe('a name field spelled the way an API spells it', () => {
+  const valueFor = (key: string) => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'profile', [key]: 'Alice' });
+    return (JSON.parse(written[written.length - 1]) as Record<string, unknown>)[key];
+  };
+
+  it.each(['givenName', 'given_name', 'familyName', 'family_name', 'surname'])('redacts %s', (key) => {
+    expect(valueFor(key)).toBe('[REDACTED]');
+  });
+
+  it.each(['firstname', 'lastname', 'displayName'])('still redacts %s', (key) => {
+    expect(valueFor(key)).toBe('[REDACTED]');
+  });
+
+  it.each(['eventName', 'name', 'locationName'])('still leaves %s alone, which is catalogue data', (key) => {
+    expect(valueFor(key)).toBe('Alice');
+  });
+});
+
+/**
+ * Two different caller keys could reduce to the same marker: an unsafe key at index 0 becomes
+ * `[key 0: 16 chars]`, and a caller whose own key is spelled exactly like that marker is passed
+ * through unchanged by the fixed-point rule - so the second assignment overwrote the first and a
+ * field disappeared. I wrote that passing a marker through "costs nothing"; this is what it cost
+ * (PR #157 review).
+ */
+describe('a caller key spelled exactly like a marker', () => {
+  const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
+
+  it('does not overwrite the replaced key that collides with it', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { 'alice@nus.edu.sg': 1, [marker]: 2 } });
+    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
+    // Both fields survive, under distinct names, and neither value is lost.
+    expect(Object.keys(meta)).toHaveLength(2);
+    expect(Object.values(meta).sort()).toEqual([1, 2]);
+  });
+
+  it('still passes a marker through unchanged when nothing collides', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { [marker]: 2 } });
+    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
+    expect(meta[marker]).toBe(2);
+  });
+});
+
+/**
+ * `requestId` was read twice: once to capture it for the fallback line, and again by the
+ * destructuring that builds the envelope. A getter can answer those two reads differently, so the
+ * fallback could be keyed by one request while the normal build described another - the trace gap
+ * the fallback exists to prevent. The same defect as the service name read three times in the
+ * constructor, one function along (PR #157 review).
+ */
+describe('a requestId that changes between reads', () => {
+  const changing = () => {
+    let reads = 0;
+    const input: Record<string, unknown> = { level: 'info', event: 'probe' };
+    Object.defineProperty(input, 'requestId', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return `r-${reads}`;
+      },
+    });
+    return input;
+  };
+
+  it('puts one value on the line, not one per read', () => {
+    const log = shipper();
+    log.emit(changing() as never);
+    expect((JSON.parse(written[0]) as { requestId: string }).requestId).toBe('r-1');
+  });
+
+  it('keys the fallback with the same value the envelope would have used', async () => {
+    const input = changing();
+    Object.defineProperty(input, 'boom', { enumerable: true, get() { throw new Error('nope'); } });
+    const log = shipper(collecting);
+    log.emit(input as never);
+    await log.flush();
+    expect(published[0].key).toBe('r-1');
+    expect((JSON.parse(written[0]) as { requestId: string }).requestId).toBe('r-1');
+  });
+});
+
+/**
+ * In the documented stdout-only configuration the default sink is `console.log`, and a write to a
+ * pipe whose reader has gone resolves *before* `process.stdout` emits its `EPIPE`. So the
+ * synchronous try/catch around the write saw nothing, `writeFailed` stayed at zero, and the
+ * unhandled stream error would take down the process this component exists not to disturb
+ * (PR #157 review).
+ */
+describe('an asynchronous stdout failure', () => {
+  it('is counted rather than left to terminate the process', () => {
+    // No `write` option: this is the default sink, which is the only configuration that can fail
+    // this way. stdout is left intact - only an `error` event is delivered to it.
+    const log = new LogShipper({ service: 'supplier', newId: () => testId(1) });
+    log.emit({ level: 'info', event: 'probe' });
+    expect(log.counts.writeFailed).toBe(0);
+    process.stdout.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }));
+    expect(log.counts.writeFailed).toBe(1);
+  });
+
+  it('leaves an unused stdout alone when the caller supplied its own sink', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe' });
+    process.stdout.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }));
+    expect(log.counts.writeFailed).toBe(0);
+  });
+});
+
+/**
+ * The stdout watcher keyed itself off `options.write` - a *second* read of the caller's property,
+ * in the very commit that fixed a second read of `options.service`. An accessor returning
+ * `undefined` for the assignment and a function for the check leaves `this.write` unset, so the
+ * default `console.log` sink is used, while the watcher is skipped: exactly the unhandled
+ * asynchronous `EPIPE` it was added to prevent (PR #157 review).
+ */
+describe('a write option that reads differently than it assigned', () => {
+  it('watches stdout based on the sink actually in use', () => {
+    let reads = 0;
+    const options: Record<string, unknown> = { service: 'supplier', newId: () => testId(1) };
+    Object.defineProperty(options, 'write', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        // Undefined for the assignment, a function for any later read.
+        return reads === 1 ? undefined : () => undefined;
+      },
+    });
+    const log = new LogShipper(options as never);
+    log.emit({ level: 'info', event: 'probe' });
+    process.stdout.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }));
+    expect(log.counts.writeFailed).toBe(1);
+  });
+});
+
+/**
+ * The disambiguator has to be marker-shaped, not just unique. `[key 0: 16 chars] (2)` matches
+ * neither `KEY_MARKER` nor `SAFE_KEY`, so the Logging Service's own pass replaced it again and the
+ * stored row no longer carried the key the stdout line did - which is the exact disagreement the
+ * fixed point was introduced to remove. My comment on that fix claimed it was "still a fixed point
+ * on a later pass"; it was not (PR #157 review).
+ */
+describe('a collision suffix and the store it is shipped to', () => {
+  const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
+  const MARKER_SHAPE = /^\[key \d+: \d+ chars\]$/;
+
+  const shipped = () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { 'alice@nus.edu.sg': 1, [marker]: 2 } });
+    return JSON.parse(written[written.length - 1]) as Record<string, unknown>;
+  };
+
+  it('writes only marker-shaped names', () => {
+    const meta = shipped().meta as Record<string, unknown>;
+    expect(Object.keys(meta)).toHaveLength(2);
+    for (const key of Object.keys(meta)) expect(key).toMatch(MARKER_SHAPE);
+  });
+
+  it('survives the store unchanged, so the row and the line agree', () => {
+    const line = shipped();
+    const parsed = inboundLineSchema.safeParse(line);
+    expect(parsed.success).toBe(true);
+    const stored = (toRow(parsed.data as never).extra as { meta: Record<string, unknown> }).meta;
+    expect(Object.keys(stored).sort()).toEqual(Object.keys(line.meta as object).sort());
+    expect(Object.values(stored).sort()).toEqual([1, 2]);
+  });
+});
+
+/**
+ * `boundedText` cut the string after `jsonbSafe` had already run, so a cut landing between the two
+ * code units of an emoji left the high surrogate behind. For `originalEvent` on the fallback path
+ * that value goes into `extra` JSONB, whose parser refuses an unpaired surrogate - so the one line
+ * that records a build failure was itself parked (PR #157 review).
+ */
+describe('a truncation that lands inside a surrogate pair', () => {
+  const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+  it('leaves no unpaired surrogate in a cut event', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: `${'e'.repeat(48)}😀${'e'.repeat(40)}` });
+    const event = (JSON.parse(written[0]) as { event: string }).event;
+    expect(LONE.test(event)).toBe(false);
+  });
+
+  it('keeps the cut line storable, which is the point of the bound', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: `${'e'.repeat(48)}😀${'e'.repeat(40)}` });
+    const parsed = inboundLineSchema.safeParse(JSON.parse(written[0]));
+    expect(parsed.success).toBe(true);
+    // The store does not have to change it, which is what "agrees with the store" means here.
+    expect(toRow(parsed.data as never).event).toBe((JSON.parse(written[0]) as { event: string }).event);
+  });
+
+  it('still marks the value as cut', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: `${'e'.repeat(48)}😀${'e'.repeat(40)}` });
+    expect((JSON.parse(written[0]) as { event: string }).event).toContain('[TRUNCATED]');
+  });
+
+  it('leaves a short value with an emoji completely alone', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'ok-😀' });
+    expect((JSON.parse(written[0]) as { event: string }).event).toBe('ok-😀');
+  });
+});
+
+/**
+ * The previous fix read `requestId` once and then deleted it from the rest object - but the object
+ * rest itself still *read* the property to copy it before the delete, which my own comment on that
+ * fix admitted out loud. A one-shot getter that answers once and throws afterwards therefore threw
+ * inside the build, and the real event was replaced by `line_unserialisable` even though the id
+ * had already been captured successfully (PR #157 review).
+ */
+describe('a one-shot requestId getter', () => {
+  it('still writes the real line, not the fallback', () => {
+    let reads = 0;
+    const input: Record<string, unknown> = { level: 'info', event: 'probe', attempt: 1 };
+    Object.defineProperty(input, 'requestId', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        if (reads > 1) throw new Error('one shot');
+        return 'r-1';
+      },
+    });
+    const log = shipper();
+    log.emit(input as never);
+    const line = JSON.parse(written[0]) as Record<string, unknown>;
+    expect(line.event).toBe('probe');
+    expect(line.requestId).toBe('r-1');
+    expect(line.attempt).toBe(1);
+  });
+});
+
+/**
+ * The fixed-point rule trusted anything shaped like a marker, so a caller key spelled
+ * `[key 123456: 6 chars]` passed through verbatim - carrying its own digits past the safe-key
+ * bound and past the rule that replaces long numeric keys. An OTP formatted into the index or the
+ * length slot reached stdout and the store in the clear (PR #157 review).
+ */
+describe('a caller key shaped like a marker but carrying its own digits', () => {
+  const keysOf = (meta: Record<string, unknown>) => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta });
+    return Object.keys((JSON.parse(written[written.length - 1]) as { meta: object }).meta);
+  };
+
+  it.each(['[key 123456: 6 chars]', '[key 1: 123456 chars]', '[key 999999: 999999 chars]'])(
+    'replaces %s rather than trusting its numbers',
+    (key) => {
+      const keys = keysOf({ [key]: 1 });
+      expect(keys).toHaveLength(1);
+      expect(keys[0]).not.toBe(key);
+      expect(keys[0]).not.toContain('123456');
+      expect(keys[0]).not.toContain('999999');
+    },
+  );
+
+  it('still passes a marker whose numbers fit this object through unchanged', () => {
+    const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
+    expect(keysOf({ [marker]: 1, other: 2 })).toContain(marker);
   });
 });
