@@ -14,7 +14,11 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: Added the case where the cold-cache fetch is itself the miss (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a key whose type the verifier cannot use at all (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
+import { generateKeyPairSync } from 'node:crypto';
 import { config } from '../config';
 import { JwksStub, makeKey, signToken } from '../test/jwks-stub';
 import { JwksUnavailableError, resetJwksCache, verifyToken } from './jwks';
@@ -315,5 +319,54 @@ describe('key caching', () => {
     await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);
     stub.respond = undefined;
     await expect(verifyToken(bearer(signToken(rsa)))).resolves.not.toBeNull();
+  });
+});
+
+/**
+ * The filter checked `alg` only when the key carried one, and proved usability by *importing* the
+ * key. An Ed25519 or P-384 JWK with no `alg` imports perfectly well and this service can verify
+ * with neither: a caller naming that kid with an `RS256` header reached
+ * `verify('sha256', ..., ed25519Key, ...)`, which throws `ERR_OSSL_INVALID_DIGEST` - an unhandled
+ * 500 out of the auth path, from an unauthenticated request. And when it was the only key, the set
+ * counted as usable rather than unavailable (PR #157 review).
+ */
+describe('a key whose type this service cannot verify with', () => {
+  const unusable = (kid: string, make: () => { publicKey: { export: (o: { format: 'jwk' }) => object } }) => {
+    const { publicKey } = make();
+    // Deliberately no `alg`: a key that declares one was already filtered out.
+    return { kid, alg: 'RS256' as const, privateKey: rsa.privateKey, jwk: { ...publicKey.export({ format: 'jwk' }), kid, use: 'sig' } };
+  };
+
+  const ed = () => unusable('ed-1', () => generateKeyPairSync('ed25519'));
+  const p384 = () => unusable('ec-384', () => generateKeyPairSync('ec', { namedCurve: 'P-384' }));
+
+  it.each([
+    ['an Ed25519 key', ed],
+    ['a P-384 key', p384],
+  ])('treats a set holding only %s as unavailable, not as a bad token', async (_why, build) => {
+    const key = build();
+    stub.keys = [key as never];
+    await expect(verifyToken(bearer(signToken(rsa, {}, { kid: key.kid })))).rejects.toBeInstanceOf(
+      JwksUnavailableError,
+    );
+  });
+
+  it.each([
+    ['an Ed25519 key', ed],
+    ['a P-384 key', p384],
+  ])('rejects a token naming %s when a usable key sits beside it', async (_why, build) => {
+    const key = build();
+    stub.keys = [key as never, rsa];
+    await expect(verifyToken(bearer(signToken(rsa, {}, { kid: key.kid })))).resolves.toBeNull();
+  });
+
+  it('still accepts an RSA key that declares no alg', async () => {
+    stub.keys = [{ ...rsa, jwk: { ...rsa.jwk, alg: undefined } }];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toMatchObject({ sub: 'user-1' });
+  });
+
+  it('still accepts a P-256 key that declares no alg', async () => {
+    stub.keys = [{ ...ec, jwk: { ...ec.jwk, alg: undefined } }];
+    await expect(verifyToken(bearer(signToken(ec)))).resolves.toMatchObject({ sub: 'user-1' });
   });
 });

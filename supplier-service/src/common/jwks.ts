@@ -27,6 +27,10 @@
  * Scope: Do not fetch the same key set twice in one request when the cache was cold and the kid is
  *        unknown, and let that one fetch spend the unknown-kid allowance (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Accept only key types RS256 and ES256 can actually verify with, so an importable key of
+ *        another type cannot turn an unauthenticated request into a 500 (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
 import { config } from '../config';
@@ -78,11 +82,34 @@ function isObject(value: unknown): value is Record<string, unknown> {
  */
 function isUsableKey(value: unknown): value is Record<string, unknown> {
   if (!isObject(value)) return false;
-  const { kid, kty, use, alg } = value as { kid?: unknown; kty?: unknown; use?: unknown; alg?: unknown };
+  const { kid, kty, crv, use, alg } = value as {
+    kid?: unknown;
+    kty?: unknown;
+    crv?: unknown;
+    use?: unknown;
+    alg?: unknown;
+  };
   if (typeof kid !== 'string' || kid === '') return false;
   if (typeof kty !== 'string' || kty === '') return false;
   if (use !== undefined && use !== 'sig') return false;
   if (alg !== undefined && alg !== 'RS256' && alg !== 'ES256') return false;
+  // The key *type*, not only a declared `alg`. `alg` is optional in a JWK, and importing the key
+  // proves nothing about whether this service can verify with it: an Ed25519 or P-384 JWK with no
+  // `alg` imports perfectly well, and a caller naming that kid with an `RS256` header reached
+  // `verify('sha256', ..., ed25519Key, ...)`, which throws ERR_OSSL_INVALID_DIGEST - an unhandled
+  // 500 out of the auth path, from an unauthenticated request. When it was the only key, the set
+  // also counted as usable instead of unavailable (PR #157 review).
+  //
+  // RS256 needs an RSA key; ES256 needs P-256 specifically, which is why the curve is checked and
+  // not just `kty`. The claim above - that this filter applies the restrictions the verifier
+  // applies - is only true with this check in it.
+  if (kty === 'RSA') {
+    if (crv !== undefined) return false;
+  } else if (kty === 'EC') {
+    if (crv !== 'P-256') return false;
+  } else {
+    return false;
+  }
   try {
     createPublicKey({ key: value as JsonWebKey, format: 'jwk' });
     return true;
