@@ -72,6 +72,11 @@
  * Scope: Trust a marker only by its own numbers, and build the metadata remainder without
  *        reading requestId again (PR #157 review). Body kept identical to the canonical copy.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Keep a collision name inside the index range a later pass recognises (PR #157 review).
+ *        This copy now leads the canonical file, which is on PR #129's branch and not to be
+ *        pushed to; the same change belongs there before that PR merges.
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -354,13 +359,20 @@ function freshKey(out: Record<string, unknown>, key: string, index: number, tota
   // is walked up if a caller's literal marker already sits on that name. The result matches
   // KEY_MARKER, so a later pass passes it through untouched.
   const length = Math.min(key.length, MAX_REPORTED_LENGTH);
-  let n = index;
-  let candidate = `[key ${n}: ${length} chars]`;
-  while (Object.prototype.hasOwnProperty.call(out, candidate)) {
-    n += 1;
-    candidate = `[key ${n}: ${length} chars]`;
+  // Searched *within* [0, total), wrapping, rather than counted upwards from `index`. Walking past
+  // the end produced names like `[key 3: 16 chars]` in an object of three keys, which `isOwnMarker`
+  // rejects as out of range - so the next walker replaced it and the stored row stopped matching
+  // the line on stdout, which is the disagreement this whole mechanism exists to prevent. The fix
+  // for the previous version of this introduced it (PR #157 review).
+  //
+  // One of those indices is always free: placing the k-th key, the object holds at most k entries
+  // and k < total, so the `total` candidates cannot all be taken.
+  for (let step = 0; step < total; step += 1) {
+    const candidate = `[key ${(index + step) % total}: ${length} chars]`;
+    if (!Object.prototype.hasOwnProperty.call(out, candidate)) return candidate;
   }
-  return candidate;
+  // Unreachable by the argument above; a name rather than a throw, because this is a log line.
+  return `[key ${index}: ${length} chars]`;
 }
 
 function safeKey(key: string, index: number, total: number): string {
