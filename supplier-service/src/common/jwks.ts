@@ -31,6 +31,9 @@
  * Scope: Accept only key types RS256 and ES256 can actually verify with, so an importable key of
  *        another type cannot turn an unauthenticated request into a 500 (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Check the declared alg against the key type together, not independently (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
 import { config } from '../config';
@@ -103,10 +106,17 @@ function isUsableKey(value: unknown): value is Record<string, unknown> {
   // RS256 needs an RSA key; ES256 needs P-256 specifically, which is why the curve is checked and
   // not just `kty`. The claim above - that this filter applies the restrictions the verifier
   // applies - is only true with this check in it.
+  //
+  // The pair, not the two checks separately. An RSA key declaring `alg: "ES256"` satisfies both on
+  // its own and can serve neither, because verifyToken requires the header's alg to equal the
+  // key's - so the set cached as healthy while no token could ever verify, and callers got 401
+  // where a set holding nothing verifiable owes them 503 (PR #157 review).
   if (kty === 'RSA') {
     if (crv !== undefined) return false;
+    if (alg !== undefined && alg !== 'RS256') return false;
   } else if (kty === 'EC') {
     if (crv !== 'P-256') return false;
+    if (alg !== undefined && alg !== 'ES256') return false;
   } else {
     return false;
   }

@@ -17,6 +17,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
  * Scope: Added the cases for a key whose type the verifier cannot use at all (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a declared alg the key type cannot serve (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { generateKeyPairSync } from 'node:crypto';
 import { config } from '../config';
@@ -367,6 +370,29 @@ describe('a key whose type this service cannot verify with', () => {
 
   it('still accepts a P-256 key that declares no alg', async () => {
     stub.keys = [{ ...ec, jwk: { ...ec.jwk, alg: undefined } }];
+    await expect(verifyToken(bearer(signToken(ec)))).resolves.toMatchObject({ sub: 'user-1' });
+  });
+});
+
+/**
+ * The two restrictions were checked independently: a declared `alg` had to be RS256 or ES256, and
+ * the key type had to be RSA or P-256 - but not *together*. An RSA key declaring `alg: "ES256"`
+ * satisfies both and can serve neither, because `verifyToken` requires the header alg to equal the
+ * key's. The set cached as healthy and every caller got 401, where a set holding nothing
+ * verifiable is supposed to answer 503 (PR #157 review).
+ */
+describe('a declared alg the key type cannot serve', () => {
+  it.each([
+    ['an RSA key declaring ES256', () => ({ ...rsa, jwk: { ...rsa.jwk, alg: 'ES256' } })],
+    ['a P-256 key declaring RS256', () => ({ ...ec, jwk: { ...ec.jwk, alg: 'RS256' } })],
+  ])('treats a set holding only %s as unavailable', async (_why, build) => {
+    stub.keys = [build() as never];
+    await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);
+  });
+
+  it('still accepts the pairs that do match', async () => {
+    stub.keys = [rsa, ec];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toMatchObject({ sub: 'user-1' });
     await expect(verifyToken(bearer(signToken(ec)))).resolves.toMatchObject({ sub: 'user-1' });
   });
 });
