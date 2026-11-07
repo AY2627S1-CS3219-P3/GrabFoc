@@ -98,14 +98,35 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-23
 Scope: Wrote the 2026-10-23 AWS deployment design entry (issue #58) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
-Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
-Scope: Wrote the 2026-10-22 SoCLaaS timeout entry from Jian Bing's prompts.
-Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it; the 4 tests pass.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
+Scope: Wrote the 2026-10-25 AWS infrastructure entry (deploy part 2) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Wrote the 2026-10-26 staging apply and 2026-10-27 edge routing (deploy part 1) entries from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 gateway .env.example entry (PR #156) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 design-confirmation entry (PR #146) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 broken-main dependency entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 PR #146 review-recording entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 SoCLaaS timeout entry from Jian Bing's prompts.
+Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it; the 4 tests pass.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 review-recording entry (PRs #193 and #133) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Wrote the 2026-11-07 PR #156 review-recording entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Wrote the 2026-11-07 Envoy request-flow and first-apply restart entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -114,37 +135,174 @@ Author review: pending — Jian Bing to record what he checked.
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
-### 2026-11-06 — Recording my reviews of #193 and #133, and bringing #133 up to date
+### 2026-11-07 — How Envoy routes requests, and the first-apply restart on #146
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
-**Files:** `.gitignore`, `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, the four
-files #193 changed, this log
+**Files:** `infra/terraform/README.md`, `infra/terraform/modules/services/main.tf`
 
-**Scenario:** Deanson merged #193 before its review lines were filled in, so they are recorded here, on #133, which
-also needed main merged in. Claude walked me through the #193 and #133 changes and wrote my review lines in the
-wording I confirmed. While merging, it found that the original #133 commit had committed two Python bytecode
-caches, removed them and ignored `__pycache__/` everywhere.
+**Scenario:** I asked Claude how Envoy works now, for myself and for Deanson's questions about the login flow and
+adding a service. Claude read the gateway, frontend and Terraform code on `feat/edge-routing` and explained it, then
+made a private claude.ai page with two diagrams (local vs AWS, and the eight login steps) and a checklist for adding
+a service; that page is not in the repo. On #146, Codex then flagged that the four app services start together on a
+brand-new environment and can't reach each other until they restart. Claude explained the finding and offered two
+fixes: extend the runbook's one-off restart, or have Terraform restart them automatically. I chose the runbook: an
+environment is rarely recreated, so a one-off manual step costs little, and the automatic step could only really be
+tested on a brand-new environment (the Terraform tests use a mocked AWS).
 
 **Prompts (exact, in order):**
+> I just need u to roughly tell me how the envoy is currently working, kinda confused ngl
+
+> give me an illustration
+
+> [7/11/26 1:48 PM] deanson: like lets say data flow from client to backend
+> [7/11/26 1:48 PM] deanson: client -> cloudfront -> envoy -> backend?
+> [7/11/26 1:48 PM] deanson: lets say something as simple as login
+> [7/11/26 1:48 PM] deanson in reply to deanson:
+> > lets say something as simple as login
+> what happens
+> [7/11/26 1:49 PM] deanson: if I add a new service, what do I need to edit in the envoy etc
+
+> is there a different between local and aws for this flow
+
+> could you create an artefact
+
+> hello where is my artefact
+
+> https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/146?overview=true help em resolve th econversatiosn first
+
+> wait so that means that anytime a push to main is done, if we do runbok omnly, someone has to do a first-aply step
+> manually every single time? also for no.2 how is it harder to test
+
+> okay lets do 1, seems like its lesser friction, and wont be that detgrimental to our workflow since environment
+> rarely gets recreated, so its tardeoff fares better compared to having worst observabiltiy for testing
+
+> Implement this step (answer to Claude's question: fix the Codex finding with the runbook only, push, then reply
+> to and resolve the thread)
+
+**What it produced:** An explanation of Envoy's two listeners and the login flow (in chat and on the private page),
+a reply for Deanson (not committed), a first-apply restart loop in the runbook's step 4 covering the four app
+services and the gateway, a matching comment on the service layers in `modules/services/main.tf`, and a reply on the
+Codex thread before resolving it.
+
+**What I changed or rejected:** Chose the runbook step over a Terraform step that restarts the services
+automatically.
+
+**Verification:** Claude ran `infra/terraform/check.sh`: every stack valid, module tests all passed (global 3/3,
+edge 1/1, network 1/1, server 1/1, services 3/3). My own check: pending.
+
+### 2026-11-07 — Recording my review of the edge routing (PR #156), and the stack's open threads
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** the 18 files where #156 added a pending "Author review" line, three of this log's entries for #156, and
+the inline markers in #156's generated code
+
+**Scenario:** Deanson asked whether the AWS and Envoy work is on main yet and whether #156 matters for his work.
+Claude explained the three stacked PRs (#146 → main, #156 on #146, #191 on #156) and drafted my reply. Claude then
+checked what still blocks #146 and #156, and resolved the two open review threads (the origin key on #146, handled by
+#156; the Notification Service on #191, waiting for Jie Yang's PRs), both of which already had my replies. After I
+told Claude that Jie Yang had approved #156, Claude replaced #156's pending review lines with my review in my words
+and pushed, which re-ran the SoCLaaS review (its last run failed with HTTP 502 from the SoCLaaS server). The
+2026-10-26 staging apply entry's Verification line stays pending: it records the AWS apply, not #156's code.
+
+**Prompts (exact, in order):**
+> pr 133 merged
+
+> actually what did deanson even ask me, and what am i usppose dot reply to him
+
+> are pr 146 and 156 ready to merge right now?
+
+> help me resolve all the conversations in the PRs
+
+> jieyang has approved #156, for the author review lines jsut say that i have looked through the code and think its ok, also just re run coclass on 156
+
+**What it produced:** A chat reply for Deanson (not committed), the two resolved threads, and "Author review (Jian
+Bing, 2026-11-07): Looked through the code and think it's okay." in place of each pending line #156 added; "review
+pending" removed from the inline markers in #156's code.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `api-gateway/test/envoy_routes_test.py` (14/14), parsed the Postman collection and
+`render.py`, ran `node --check` on both edited test files, `bash -n` on `check.sh` and `terraform fmt -check`. My own
+check: looked through the code and think it's okay.
+
+### 2026-11-06 — Recording my review of the AWS infrastructure (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** the 46 files #146 added with a pending "Author review" line, the three infrastructure entries in this
+log, and an inline marker in each AI-generated file
+
+**Scenario:** Claude walked me through #146 (network and server together, then a written guide for the rest), I ran
+`infra/terraform/check.sh` and checked the staging site, and Claude wrote my review lines in the wording I agreed.
+Files the walkthrough covered say so; tests and the variables/outputs/versions files say they were not read line by
+line and how they were checked. The design spec, `infra/secrets/README.md` and the Cole-confirmation entry stay
+pending: they were not part of the walkthrough.
+
+**Prompts (exact, in order):**
+> yea lwts go through together
+
+> yep understood, also [Image #19] why does soclaas kee pfailing
+
+> coudl you jus tdump the rest of the parts on me for every file then let me read through in 1 shot
+
 > okay i understood everything, but my peer alreayd reviewed and emrged 193, so can uadd the authro review to another branch like 143 by merging main into it and then letting me add the remaing missing author reviewe comments
 
-> lets marge 133 too
+> yes
 
-> lets marge 133 actually first instead of 143
+**What it produced:** Main merged in (both sides of the usage-log conflict kept), the review lines, and an
+"AI-generated (Claude Code)." marker under each generated file's header and above each added code block (Terraform's
+own `.lock.hcl` files excluded).
 
-My answers to Claude's questions: "Use this wording (Recommended)" (the #193 review line) and "Walk me through it"
-(for #133).
+**What I changed or rejected:** Nothing.
 
-> yep males sense
+**Verification:** Claude ran `infra/terraform/check.sh` (14 test runs passed, 7 stacks valid), the three script
+tests (0 failed), `api-gateway/test/envoy_routes_test.py` (OK) and `actionlint` after the changes. My own check: the
+walkthrough, `check.sh` and the staging site, as recorded above.
 
-**What it produced:** The merge of main (both sides of the usage-log conflict kept), the cache removal, and the
-review lines. Claude's first removal commit (d396ebe) re-added the caches, because the test run before it rebuilt
-them; the next commit removed them.
+### 2026-11-06 — Edge listener settings in the gateway's `.env.example` (PR #156 review)
 
-**What I changed or rejected:** I chose #133 over the AWS PRs for these lines, since it can merge sooner.
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `api-gateway/.env.example`, `api-gateway/test/envoy_routes_test.py`
 
-**Verification:** `python3 -I -m unittest discover -s .github/scripts`: 4 passed after the merge. My own check: the
-walkthroughs above.
+**Scenario:** Codex flagged on #156 that the renderer reads `GATEWAY_EDGE_PORT`, `GATEWAY_ORIGIN_KEY` and
+`FRONTEND_URL`, but `api-gateway/.env.example` does not list them (AGENTS.md §8). Claude added a test that every
+variable the renderer and route files read is in the template, watched it fail on those three, then added them.
+
+**Prompts (exact, in order):**
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answer to Claude's question about the new Codex threads: "Fix 4, explain 1 (Recommended)".
+
+**What it produced:** The three settings with safe placeholders (edge port empty, so it stays off; origin key empty)
+and `EnvExampleTest`.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `python3 api-gateway/test/envoy_routes_test.py`: the new test failed listing the three
+names, then 14/14 passed. My own check (2026-11-07): looked through the code and think it's okay.
+
+### 2026-11-06 — Recording Cole Lin's confirmation of the AWS design (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `docs/superpowers/specs/2026-10-23-aws-deployment-design.md`; replies on two Codex threads in PR #146
+
+**Scenario:** A Codex thread on #146 blocked the merge because the AWS design spec still said [Proposed]. I asked
+what the "design sign-off" meant; Cole had already looked through the design and told me it was okay. Claude
+changed the status to [Decided], recorded Cole's confirmation, and replied on the thread. It also replied on the
+origin-key thread, which #156 fixes.
+
+**Prompts (exact, in order):**
+> what is cole deisng sign off, he told me he looked through and said it was okay, is that good enough
+
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answer to Claude's question on how to record it: "Record the chat OK now (Recommended)".
+
+**What it produced:** The new status line, and the thread replies.
+
+**What I changed or rejected:** Waiting for Cole to approve on GitHub first was offered; I chose to record the chat
+confirmation now. Cole can still approve the PR.
+
+**Verification:** Pending — Jian Bing to record what he checked.
 
 ### 2026-11-06 — Main's CI broken by two Dependabot major bumps (NestJS platform-express 12, Zod 4)
 
@@ -192,6 +350,218 @@ dropped the `libc` fields newer npm uses), and ran `npm ci` with npm 11.4.2, 11.
 own check (2026-11-06): I went through the change with Claude Code's walkthrough and understood it; CI
 passed (user-service and supplier-service tests and builds). Approved and merged by Deanson Choo (#193).
 
+### 2026-11-06 — Recording my reviews of #193 and #133, and bringing #133 up to date
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `.gitignore`, `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, the four
+files #193 changed, this log
+
+**Scenario:** Deanson merged #193 before its review lines were filled in, so they are recorded here, on #133, which
+also needed main merged in. Claude walked me through the #193 and #133 changes and wrote my review lines in the
+wording I confirmed. While merging, it found that the original #133 commit had committed two Python bytecode
+caches, removed them and ignored `__pycache__/` everywhere.
+
+**Prompts (exact, in order):**
+> okay i understood everything, but my peer alreayd reviewed and emrged 193, so can uadd the authro review to another branch like 143 by merging main into it and then letting me add the remaing missing author reviewe comments
+
+> lets marge 133 too
+
+> lets marge 133 actually first instead of 143
+
+My answers to Claude's questions: "Use this wording (Recommended)" (the #193 review line) and "Walk me through it"
+(for #133).
+
+> yep males sense
+
+**What it produced:** The merge of main (both sides of the usage-log conflict kept), the cache removal, and the
+review lines. Claude's first removal commit (d396ebe) re-added the caches, because the test run before it rebuilt
+them; the next commit removed them.
+
+**What I changed or rejected:** I chose #133 over the AWS PRs for these lines, since it can merge sooner.
+
+**Verification:** `python3 -I -m unittest discover -s .github/scripts`: 4 passed after the merge. My own check: the
+walkthroughs above.
+
+### 2026-11-05 — Second Codex review round on the AWS infrastructure (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug
+**Files:** `.dockerignore`, `infra/scripts/test/push-images.test.sh`,
+`infra/terraform/modules/server/{main.tf,tests/server.tftest.hcl}`
+
+**Scenario:** Peers asked whether the AWS and CD work was ready to merge. Claude checked both PRs and
+found three new Codex threads. Two were fixed test-first: `infra/secrets` left out of the root build
+context, and `ec2:DescribeTags` added so the CloudWatch agent can find its server group. The third
+(the origin key) is already enforced by PR #156. `main` was merged in.
+
+**Prompts (exact):**
+> sorry, back to the grabfoc, i mistokk this terminal for the kootu one, my peer are asking me if the cd and aws is ready to merge, also part 3 seems okay
+
+> yea fix them, and add the notificaiton too, bascially jsut finish out this whole nice 2 have
+
+**Key response:** "No, neither is ready to merge yet. Merging AWS is close, but CD isn't built: part 3
+only has a plan, on a local branch."
+
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
+
+### 2026-10-27 — Edge routing: the website through CloudFront, deploy part 1 (issue #141)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain, generate
+**Files:** `api-gateway/envoy/render.py`, `api-gateway/envoy/frontend.lua`, `api-gateway/Dockerfile`,
+`api-gateway/test/**`, `api-gateway/postman/gateway.postman_collection.json`, `api-gateway/README.md`,
+`api-gateway/envoy/README.md`, `frontend/app/not-found.tsx`, `frontend/test/routes.test.mjs`,
+`infra/terraform/**`, the plan `docs/superpowers/plans/2026-10-27-deploy-part1-edge-routing.md`
+
+**Scenario:** The staging CloudFront URL answered `{"error":"Not found"}` and the server's own address
+timed out. Claude explained that both were expected: the address is closed to everyone but CloudFront,
+and Envoy had no route to the frontend yet. We then planned and built part 1: Envoy's edge listener
+(checks CloudFront's `X-Origin-Key`, sends `/gateway/*` to the API and everything else to the
+frontend), a not-found page, Postman's `baseUrl` ending in `/gateway`, and the frontend starting after
+the gateway on ECS. Claude implemented the plan test-first; a separate Claude reviewer checked the
+whole branch.
+
+**Prompts (exact, in order):**
+> [Image #7] [Image #8] seems to not be working,  help figure it out
+
+> wait so the frontend isnt routed right now?
+
+> caan we make it such that it will call localhost:3003 on lcoal and then have an environemnt vairalve to the live clodufornt url and the frontetend calls that in our aws cloud, and then i think we send / to main is reasonable, isnt tha thwo msot website owrk, also lets make a 404 page for the non-api path if they dont exist, or like custom 401 atc apges
+
+> jie yang has read thru and approved these changes
+
+> yes
+
+> alright logged in, im ok to biuild and push image
+
+> ok
+
+> okay confirmed tha tthey are secure [Image #9], then could you help me reoslve the conversation rasied by codex in this pr ?https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/146 and also please do psuh the new features
+
+**What it produced:** The plan and 5 implementation commits (route-renderer, Lua, frontend and
+Terraform changes, each with tests), plus a regression test from the final review (clients can't make
+Envoy retry their requests). Images tagged `fc2f431` were pushed and applied to staging; Claude checked
+the CloudFront URL (pages, `/gateway/*`, the 404 page, the server closed to direct access) and I
+confirmed the session cookies are Secure in Chrome. Claude's own calls are listed in the PR description.
+**What I changed or rejected:** Proposed an environment variable for the gateway URL and `/` going to
+the frontend; Claude showed the variable already exists (`FRONTEND_GATEWAY_URL`, used server-side) and
+should stay pointed at the gateway inside the server, not the CloudFront URL. Dropped a separate 401
+page, because every page already sends signed-out users to `/signin`. Jie Yang approved the gateway
+changes.
+**Verification:** My own check (2026-11-07): looked through the code and think it's okay.
+
+### 2026-10-27 — Codex review fixes on the AWS infrastructure (PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug
+**Files:** `infra/scripts/put-secrets.sh`, `infra/scripts/push-images.sh`, `infra/scripts/test/*.test.sh`,
+`infra/terraform/modules/server/{main.tf,user_data.sh.tftpl,tests/server.tftest.hcl}`,
+`infra/terraform/global/{variables.tf,tests/global.tftest.hcl}`, `.github/workflows/terraform.yml`
+
+**Scenario:** Answer the 14 Codex review threads on PR #146. Claude checked each against the code and
+the live staging stack, fixed six test-first (secrets pinned to ap-southeast-1, Windows line endings,
+percent-encoded database passwords, a rerunnable image push, a portable file-mode check for Linux CI,
+a per-environment disk metric, and the GitHub OIDC subject in its immutable form, confirmed with
+`gh api repos/AY2627S1-CS3219-P3/GrabFoc/actions/oidc/customization/sub`), and replied on the rest.
+
+**Prompts (exact):**
+> okay confirmed tha tthey are secure [Image #9], then could you help me reoslve the conversation rasied by codex in this pr ?https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/146 and also please do psuh the new features
+
+**Key response:** "There are 14 unresolved Codex threads on #146. I'll check each one against the current
+`feat/aws-infra` code before changing anything."
+
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
+
+### 2026-10-26 — First staging apply (deploy part 2, PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain
+**Files:** `infra/terraform/**`, `infra/scripts/**`, `api-gateway/envoy/render.py` (IPv4 upstreams)
+
+**Scenario:** Applied deploy part 2 to AWS: the account-wide stack, then staging. Claude explained how
+to fill the secrets file and fixed what only the real deploy showed: the first server launch failing
+while its role propagated, services created at the same moment not finding each other's names, and
+Envoy picking an IPv6 address nothing answers on.
+
+**Prompts (exact, in order; button choices in brackets):**
+> lets apply first
+
+> sorry continue
+
+> [Budget $100; alert email e1155372@u.nus.edu; Apply]
+
+> how do i ge tthe 4 env secrets, and docker is runnign
+
+> its empty right now, i need to get it
+
+> how do i get it, like what should the email be
+
+> does it need to be a business gmail account?
+
+> oh okay i meant to use e1155372@u.nus.edu
+
+> done
+
+> done
+
+> [Apply]
+
+> [I'll fix it, tag Jie Yang]
+
+> [Apply]
+
+**What it produced:** The live staging environment at its CloudFront URL, plus three fix commits on
+PR #146 (`wait_for_capacity_timeout`, layered ECS services, Envoy `V4_PREFERRED`).
+**What I changed or rejected:** Set the $100 budget and the alert email. Rotated the Gmail app password
+after pasting it in chat by mistake. Chose to fix the gateway's IPv6 issue myself and ask Jie Yang to
+review it.
+
+**Verification:** Pending — Jian Bing to record what he checked.
+
+### 2026-10-25 — AWS infrastructure in Terraform, deploy part 2 (issue #142)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, debug
+**Files:** `infra/terraform/**`, `infra/scripts/**`, `infra/secrets/README.md`, `infra/kafka/Dockerfile.init`,
+`.github/workflows/terraform.yml`, `.gitignore`, `AGENTS.md` (one table row), the deployment spec §3.3
+
+**Scenario:** Build part 2 of the approved AWS deployment plan
+(`docs/superpowers/plans/2026-10-23-aws-infrastructure.md`): Terraform for the account-wide stack,
+network, ECS-on-EC2 server with its `/data` volume, every container as an ECS service, CloudFront, and
+the scripts that load secrets and push images. Claude implemented the plan task by task, test-first
+with a mocked AWS provider, then a separate Claude reviewer checked the whole branch. Nothing has been
+applied to AWS yet.
+
+**Prompts (exact, in order):**
+> looks good
+
+> make the corresponding issues on github, and i think lets do part 2 first, nus doesnt allow a 2nd staging account so we have to create 2 ecs instance sourselves i think
+
+> make the corresponding issues on github, and i think lets do part 2 first, nus doesnt allow a 2nd staging account so we have to create 2 ec2 instance sourselves i think
+
+> lets do part 1 next
+
+> sorry i pressed esc by accident, please continue
+
+> native
+
+> okay lets go back to cloud deployment, i want native development
+
+> open the pr
+
+> ok lets do the secret header as a service key? does that make sense, then after that open the pr
+
+**What it produced:** 15 commits: the Terraform stacks and modules with 10 test runs, `check.sh` and a
+CI workflow, `put-secrets.sh` (with 12 tests) and `push-images.sh`, and the runbook
+`infra/terraform/README.md`. An automated security review flagged over-broad IAM roles and an open
+Mailpit relay, and the final review found 2 critical and 6 important issues (e.g. one-off tasks
+couldn't resolve service names; a failed boot could start the databases on an empty disk). All were
+fixed test-first. Claude's own calls are listed in the PR description.
+**What I changed or rejected:** Chose single-account staging (NUS doesn't allow a second account).
+Decided the secret origin header (`X-Origin-Key`, like our service key) so the server only accepts our
+CloudFront distribution; Envoy's check stays in part 1.
+**Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
+ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
+admin locations page load).
 
 ### 2026-10-23 — AWS deployment design and spec (issue #58)
 
@@ -381,34 +751,6 @@ teammates) and kept named volumes. Chose `/gateway` over `/api` because the fron
 `/api/session`.
 **Verification:** Pending — Jian Bing to record what he checked.
 
-### 2026-10-22 — Why the SoCLaaS review keeps failing, and a timeout fix
-
-**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
-**Files:** `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, `ai/usage-log/jian-bing.md`
-
-**Scenario:** The SoCLaaS review check kept failing on the stacked credit PRs with "SoCLaaS could not
-be reached". I asked Claude to diagnose it, then to fix it.
-
-**Prompts (exact):**
-> help me diagnose why the soclass pr review keeps fialing
-
-> alright do it
-
-**Key responses:** From the run logs: the failures end about 120 s after the request starts, the
-script's per-request timeout, so the model was slow, not unreachable; the script reported timeouts
-with the network-failure message. Each push to the stack started six reviews at once (PRs based on
-another stack branch run twice), which queued on SoCLaaS. The check is not required for merging.
-
-**What it produced:** a timeout now says "did not answer within N s; it may be busy"; the review
-request gets 240 s and one retry after a timeout or a 503; stdlib tests against a stalling local server.
-
-**Changed or rejected:** I chose the clearer message and the longer timeout with a retry; reviewing
-only PRs that target main was offered and not taken.
-
-**Verification:** Test-first: the timeout test failed with "could not be reached", then the four
-tests passed (`python3 -I -m unittest discover -s .github/scripts`). My own check (2026-11-06): I went through
-the change with Claude Code's walkthrough and understood it; the 4 tests pass.
-
 ### 2026-10-22 — Recording Zi Yi's and the mentor's approvals (PR #97)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
@@ -564,6 +906,34 @@ partition and lose per-order ordering.
 
 **Verification:** Test-first: the uppercase-orderId replay test failed (uppercase key), then passed;
 unit 144/144, integration 85/85.
+
+### 2026-10-22 — Why the SoCLaaS review keeps failing, and a timeout fix
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** The SoCLaaS review check kept failing on the stacked credit PRs with "SoCLaaS could not
+be reached". I asked Claude to diagnose it, then to fix it.
+
+**Prompts (exact):**
+> help me diagnose why the soclass pr review keeps fialing
+
+> alright do it
+
+**Key responses:** From the run logs: the failures end about 120 s after the request starts, the
+script's per-request timeout, so the model was slow, not unreachable; the script reported timeouts
+with the network-failure message. Each push to the stack started six reviews at once (PRs based on
+another stack branch run twice), which queued on SoCLaaS. The check is not required for merging.
+
+**What it produced:** a timeout now says "did not answer within N s; it may be busy"; the review
+request gets 240 s and one retry after a timeout or a 503; stdlib tests against a stalling local server.
+
+**Changed or rejected:** I chose the clearer message and the longer timeout with a retry; reviewing
+only PRs that target main was offered and not taken.
+
+**Verification:** Test-first: the timeout test failed with "could not be reached", then the four
+tests passed (`python3 -I -m unittest discover -s .github/scripts`). My own check (2026-11-06): I went through
+the change with Claude Code's walkthrough and understood it; the 4 tests pass.
 
 ### 2026-10-18 — Codex review fixes: transaction ledger (PR #93)
 

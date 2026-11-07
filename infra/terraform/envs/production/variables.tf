@@ -1,0 +1,36 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
+# Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 2).
+# Author review (Jian Bing, 2026-11-06): Not read line by line; ran infra/terraform/check.sh, which validates
+#   this stack (every stack valid).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+# Scope: edge_container_port defaults to 8080, the edge listener (deploy part 1, #141).
+# Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+# AI-generated (Claude Code).
+
+variable "env" {
+  description = "Environment name, used in every resource name (foc-<env>-…)."
+  type        = string
+}
+
+variable "instance_type" {
+  description = "EC2 instance type of the environment's one ECS server."
+  type        = string
+  default     = "t3.large"
+}
+
+variable "image_tag" {
+  description = "Image tag (the commit SHA) every service runs."
+  type        = string
+}
+
+variable "edge_container_port" {
+  description = "Envoy's edge listener port, published on host port 80 (CloudFront's origin). 3003 means no edge listener."
+  type        = number
+  default     = 8080
+}
+
+variable "alert_emails" {
+  description = "Addresses emailed when an alarm fires (each confirms its subscription once)."
+  type        = list(string)
+}
