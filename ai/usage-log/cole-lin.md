@@ -17,6 +17,18 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-08 — Three sections of instructions telling the next change to undo a fix (PR #145)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Three findings, all the same shape as the one on PR #200 an hour earlier and all in this service's `AGENTS.md`: documentation describing behaviour the code no longer has, in a **scoped instruction file**. That is what makes them worth more than a typo - each one tells the next agent to put a fix back the way it was.
+  - A replaced field name "appears as its position and length", with `[key 0: 16 chars]` given as the emitted name and "both sides recognise a marker now" as the rule. All three bounds are gone; the name is generated from the walk's own count of replacements. The paragraph now says so and says plainly not to reintroduce a format with caller-derived numbers in it.
+  - "`path` comes from the URL, so a caller chooses its length", with a 500-character path segment as the live reason the store's clamp is reachable here - and a separate bullet calling `path` "the pathname only, never the query string". `logPath()` returns the **route template** or `/<unrouted>`, which is the fix that closed a token in a path segment reaching the store. The clamp example is marked historical and the bullet now states the stronger guarantee, with "do not change this back to a pathname" in it.
+  - "`request_completed` carries the method, the path, the status, `durationMs` and the caller", with no mention that three of those are conditional. `status` is absent on a pre-header abort - my own fix, because Express reports 200 until something sets it - and `userId` and `role` are absent whenever no caller was established, which is every 401. A dashboard built from that sentence would misclassify exactly the lines worth reading. Documented, including that an absent field is absent rather than null.
+- Checked rather than assumed that the contract I was writing is real: every claim in it already has a test - "leaves the caller out when there was none", "reports no status rather than a 200 nobody received", "is info rather than an error", the route template and the unrouted placeholder. So no test was added; the documentation was the only thing wrong.
+- Also fixed in passing, found rather than filed: the comment above `path:` in the middleware still said "the pathname only".
+- The pattern across today is worth stating once: **four of the last five findings have been documentation, not code.** The code is where the reviews started, and the fixes were sound; what kept failing afterwards was the prose around them, which no test touches and no compiler reads. For a repository whose `AGENTS.md` files are instructions to the next agent, that prose is executable in the only sense that matters.
+- Verification: **281 pass**, `tsc --noEmit` clean. Nothing in the change is executable.
+
 ### 2026-11-08 — The seam I had just called harmless (PR #145)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

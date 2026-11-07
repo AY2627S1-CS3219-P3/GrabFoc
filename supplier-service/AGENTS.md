@@ -16,6 +16,12 @@ Scope: Wrote the logging sections that document this service's copy of the shipp
   are Cole Lin's; the wording is Claude's. This entry was missing while those sections were being
   added, which the PR #157 review caught.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+Scope: Three sections still described behaviour this service no longer has - a replaced field name
+  spelled from its position and length, `path` as the caller's pathname, and a request_completed
+  line that always carries a status and a caller. This is a scoped instruction file, so each would
+  have told the next change to undo a fix (PR #145 review).
+Author review: Cole Lin, read and approved.
 -->
 # AGENTS.md — Supplier (Location) Service
 
@@ -233,7 +239,14 @@ in this service changes.
 **Every request, not only the failures** _(Origin: Team — Cole Lin, 2026-10-23)_. Until then this
 service logged nothing on a success, so the store could say who was refused but not what anyone
 actually did, and had no durations to compare. `request_completed` carries the method, the path, the
-status, `durationMs` and the caller.
+status, `durationMs` and the caller - but **three of those are conditional, and a consumer that
+treats them as required will misread exactly the lines worth reading**: `status` is absent when the
+client gave up before any header was sent, because Express reports `statusCode` as 200 until
+something sets it and an abandoned request would otherwise count as a delivered success (PR #145
+review); such a line carries `aborted: true` and `level: info`, since nothing failed on this side.
+`userId` and `role` are absent when no caller was ever established, which is every 401 and every
+unauthenticated 404. A field whose value is `undefined` is not written at all, so absent means
+absent rather than null.
 
 It is **middleware**, not a Nest interceptor — `src/common/request-log.ts`. Guards run *before*
 interceptors, so an interceptor never sees a request `JwtAuthGuard` refused: it would miss every 401
@@ -258,26 +271,34 @@ of a pair** — a name is as caller-controlled as a value, so `{ recipients: { '
 true } }` is caught as well as `{ email: ... }`. The set covers credentials *and* personal data,
 including `phone` and display or given names, which identify a student on sight (PR #129 review).
 Two consequences to know about when reading a line: a field whose name is not a plain identifier
-appears as its position and length rather than its name, and a field named `__proto__` survives
+appears as the walk's own count of replacements in that object - `[key 1]`, `[key 2]` - rather than
+as its name, and a field named `__proto__` survives
 only because the redacted copy has a null prototype — on an ordinary object that assignment runs
 the prototype setter, and the field disappears with its neighbours intact.
 
 A name is matched with **every separator removed**, not just `-` and `_`: a key may contain `.` and
 `:`, so `pass.word` normalised to `pass.word`, matched nothing in the list, and
 `{ 'pass.word': 'hunter2' }` went to stdout and the topic in the clear (PR #129 review). And the
-`[key 0: 16 chars]` a replaced name becomes is now a **fixed point**: the Logging Service sanitises
-keys again on the way into its own table, the marker did not match the pattern it tests against, so
-the stored row reported the marker's length rather than the key's — 16 characters on this
-container's stdout and 17 in the row. Both sides recognise a marker now.
+`[key 1]` a replaced name becomes is a **fixed point by construction**: the Logging Service
+sanitises keys again on the way into its own table, and a name carrying its own numbers could not
+survive that second pass - each pass reported its own length, 16 characters on this container's
+stdout and 17 in the row. Six rounds of bounding what a caller could put *inside* a replaced name
+each fell to a spelling the previous bound allowed, so the name is now generated from nothing but
+the walk's position in its own list of replacements. A later walk over the same keys in the same
+order reaches the same key at the same ordinal and writes the same name, with no recognition rule
+left to get wrong (PRs #129, #145, #157 and #200 reviews). **Do not reintroduce a format with
+caller-derived numbers in it**, here or in the canonical copy: the two must agree.
 
 **Bounds the store will accept.** The shipper also brings every field the Logging Service bounds
 inside that bound before writing the line: `path` at 400 characters, `event` at 60, `requestId` at
 200, `userId` at 100, `method` at 10, `service` at 40, plus the two enums for `level` and `role`. A
 value outside any one of them does not cost the field — `inboundLineSchema` refuses the **whole
-line** and ingest parks it — so a request to `/locations/<500 characters>` would leave its
-`access_denied` line on this container's stdout and keep it out of the searchable store, which is
-where anyone looking for it would look (PR #129 review). This service is what makes that reachable:
-`path` comes from the URL, so a caller chooses its length. `event` and `path` are cut and marked;
+line** and ingest parks it — so a request to `/locations/<500 characters>` would once have left its
+`access_denied` line on this container's stdout and kept it out of the searchable store, which is
+where anyone looking for it would look (PR #129 review). That example is **historical**: `path` is
+now the route template, so a caller no longer chooses a single byte of it, and nothing this service
+writes reaches the `path` bound. The clamp is still what keeps a line out of the store when it is
+reached, and the field to watch is any the caller does supply. `event` and `path` are cut and marked;
 an id, method, role, status or duration outside the bound is left out instead, because an id cut to
 length is some other request's id. The `requestId` this service accepts from `x-request-id` is
 already capped at 128 characters, so it stays inside the store's 200 either way. A line this
@@ -305,9 +326,14 @@ the gateway's `request_completed` line for the same request:
   so it must not turn a working request into a 400. Minting also means direct calls that skip the
   gateway (Postman on `:3002`) still produce joinable lines.
 - The id is echoed back in the `x-request-id` response header, so a bug report can quote it.
-- **`path` is the pathname only, never the query string.** `?lat=…&lon=…` is the caller's
-  position, and a line that carries it also carries `userId` (root AGENTS.md: never log unmasked
-  personal data). The gateway drops query strings for the same reason. See `logPath()`.
+- **`path` is the route template, never the caller's URL.** `/locations/:locationId`, not
+  `/locations/7` and not `/locations/<whatever the caller put there>`; an unmatched path is
+  `/<unrouted>`. A caller chooses every byte of a URL and redaction matches field *names*, so a
+  token or an email in a path segment would reach the store verbatim under a harmless `path` key
+  (PR #145 review). This also covers the query string, which was the original reason for the
+  function: `?lat=…&lon=…` is the caller's position, and a line carrying it also carries
+  `userId` (root AGENTS.md: never log unmasked personal data). The gateway drops query strings too.
+  **Do not change this back to a pathname.** See `logPath()`.
 - See `src/common/request-id.ts`. Service-layer code (`locations.service.ts`) has no request object
   and so logs no id; if that is ever needed, it takes an `AsyncLocalStorage` store.
 

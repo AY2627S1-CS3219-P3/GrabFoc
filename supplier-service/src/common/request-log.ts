@@ -8,6 +8,9 @@
  * Scope: Leave the status off a request that was abandoned before any header went out, rather
  *        than reporting Express's default 200 (PR #145 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Say which path this line carries, now that it is the route template (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  */
 import type { NextFunction, Request, Response } from 'express';
 import type { AuthedRequest } from './auth';
@@ -56,8 +59,10 @@ export function requestLogMiddleware(req: Request, res: Response, next: NextFunc
       event: 'request_completed',
       requestId: requestIdOf(req),
       method: req.method,
-      // The pathname only. A location search carries the caller's coordinates, and this line also
-      // carries their userId (root AGENTS.md: never log unmasked personal data).
+      // The route template, not the caller's URL: a token or an email in a path segment would
+      // reach the store verbatim under a harmless `path` key, and a location search carries the
+      // caller's coordinates while this line also carries their userId (root AGENTS.md: never log
+      // unmasked personal data).
       path: logPath(req),
       ...(status === undefined ? {} : { status }),
       durationMs: Number((process.hrtime.bigint() - startedAt) / 1_000_000n),
