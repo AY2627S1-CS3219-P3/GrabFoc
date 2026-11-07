@@ -5,6 +5,9 @@
  *        the supplier-db container, created and emptied by the tests themselves.
  * Author review (Jian Bing): Used by the integration tests; ran `npm run test:int` against
  *        supplier-db on 2026-10-01 (51 passed) and verified those test cases by hand.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: emptyLocations also empties supplier_outbox (issue #120).
+ * Author review: pending — Jie Yang to record what he checked.
  */
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
@@ -60,7 +63,7 @@ export async function openTestDatabase(): Promise<Pool> {
   return pool;
 }
 
-/** Empties the locations table and restarts its ids at 1. */
+/** Empties the locations table and restarts its ids at 1, and empties the event outbox. */
 export async function emptyLocations(pool: Pool): Promise<void> {
-  await pool.query('TRUNCATE locations RESTART IDENTITY');
+  await pool.query('TRUNCATE locations, supplier_outbox RESTART IDENTITY');
 }

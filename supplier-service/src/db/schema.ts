@@ -4,6 +4,10 @@
  * Scope: Transcribed the team's schema from supplier-service/AGENTS.md into SQL run at startup;
  *        added IF NOT EXISTS / ON CONFLICT DO NOTHING so it can run on every start.
  * Author review (Cole Lin): Read in full; verified the SQL matches the schema in AGENTS.md, and that re-running it on an existing database is harmless.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: Added the supplier_outbox table for events waiting to be sent to Kafka (issue #120;
+ *        table approved by Jie Yang).
+ * Author review: pending — Jie Yang to record what he checked.
  */
 
 // Keep in sync with the "Schema" section of supplier-service/AGENTS.md.
@@ -32,4 +36,17 @@ CREATE TABLE IF NOT EXISTS locations (
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_locations_active_name
     ON locations (lower(name)) WHERE status = 'ACTIVE';
+
+-- Events saved in the same transaction as the change, sent to Kafka by the OutboxRelay.
+CREATE TABLE IF NOT EXISTS supplier_outbox (
+    event_id      UUID PRIMARY KEY,
+    topic         TEXT NOT NULL,
+    msg_key       TEXT NOT NULL,
+    payload       JSONB NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at  TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS ix_supplier_outbox_unpublished
+    ON supplier_outbox (created_at) WHERE published_at IS NULL;
 `;
