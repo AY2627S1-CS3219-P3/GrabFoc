@@ -67,6 +67,30 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
  * Scope: Added the cases for an id carrying a lone surrogate being dropped (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for given- and family-name redaction, a caller key spelled like a
+ *        marker, one requestId value per line, and an asynchronous stdout failure (PR #157).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the case for a write option that reads differently than it assigned, which is the
+ *        read-once class inside the fix for the read-once class (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a collision suffix surviving the store's own pass, and for a
+ *        truncation that lands inside a surrogate pair (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a one-shot requestId getter and for a caller key shaped like a
+ *        marker carrying its own digits (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Updated the replaced-name cases for the generated ordinal, and removed the three blocks
+ *        that only tested the recognition rule (PR #200 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the case for a field JSON.stringify drops, which must not spend an ordinal
+ *        (PR #200 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -262,7 +286,7 @@ describe('redaction cannot be worked around', () => {
     shipper().emit({ level: 'info', event: 'mail', recipients: { 'alice@nus.edu.sg': true } });
     expect(written[0]).not.toContain('alice@nus.edu.sg');
     expect(JSON.parse(written[0]).recipients).toEqual({
-      [`[key 0: ${'alice@nus.edu.sg'.length} chars]`]: true,
+      '[key 1]': true,
     });
   });
 
@@ -778,7 +802,15 @@ describe('the fallback line stays on its request', () => {
     expect(line).not.toHaveProperty('requestId');
   });
 
-  it('still writes a fallback line when reading the requestId itself throws', () => {
+  /**
+   * Changed deliberately. This asserted that a throwing `requestId` getter produced the fallback
+   * line, which was true while the build read that property a second time. It is read once now,
+   * inside its own guard, so the throw costs the *field* and not the event - and an
+   * `access_denied` line surviving is strictly better than one replaced by `line_unserialisable`,
+   * which is the rule this file applies to every other envelope field (PR #157 review). What the
+   * case is really for - that `emit` does not throw - is unchanged and still asserted.
+   */
+  it('keeps the real line when reading the requestId itself throws', () => {
     const input: Record<string, unknown> = { level: 'warn', event: 'access_denied' };
     Object.defineProperty(input, 'requestId', {
       enumerable: true,
@@ -788,7 +820,9 @@ describe('the fallback line stays on its request', () => {
     });
     const log = shipper();
     expect(() => log.emit(input as never)).not.toThrow();
-    expect(JSON.parse(written[0]).event).toBe('line_unserialisable');
+    const line = JSON.parse(written[0]);
+    expect(line.event).toBe('access_denied');
+    expect(line).not.toHaveProperty('requestId');
   });
 
   it('writes a fallback line the store will take', () => {
@@ -1048,7 +1082,7 @@ describe('a replaced key and the store it is shipped to', () => {
     shipper().emit({ level: 'info', event: 'mail', recipients: { 'alice@nus.edu.sg': true } });
     const line = JSON.parse(written[0]);
     const marker = Object.keys(line.recipients)[0];
-    expect(marker).toMatch(/^\[key \d+: \d+ chars\]$/);
+    expect(marker).toMatch(/^\[key [1-9]\d*\]$/);
     const row = toRow(inboundLineSchema.parse(line));
     expect(Object.keys((row.extra as { recipients: object }).recipients)).toEqual([marker]);
   });
@@ -1195,7 +1229,7 @@ describe('a key that carries a code rather than naming a field (shipper)', () =>
     ['a four-digit code', '2026'],
     ['a dashed code', '12-3456'],
   ])('replaces %s used as a key', (_why, key) => {
-    expect(keysOf({ attempts: { [key]: true } })).toEqual(['[key 0: ' + key.length + ' chars]']);
+    expect(keysOf({ attempts: { [key]: true } })).toEqual(['[key 1]']);
   });
 
   // Keyed `buckets`, not `status`: `status` is an envelope field, so the shipper destructures it
@@ -1216,10 +1250,10 @@ describe('a key that carries a code rather than naming a field (shipper)', () =>
     },
   );
 
-  it('leaves a marker it has already written alone', () => {
-    // Still a fixed point: the marker starts with `[`, so without this it would be replaced again
-    // on every pass and report its own length instead of the key's.
-    expect(keysOf({ attempts: { '[key 0: 6 chars]': true } })).toEqual(['[key 0: 6 chars]']);
+  it('gives a name it has already written the same name again', () => {
+    // A fixed point without a recognition rule: the name fails the safe pattern, so it is
+    // replaced - and as the first replacement in this object it is replaced by itself.
+    expect(keysOf({ attempts: { '[key 1]': true } })).toEqual(['[key 1]']);
   });
 
   it('agrees with the store it ships to', () => {
@@ -1228,7 +1262,7 @@ describe('a key that carries a code rather than naming a field (shipper)', () =>
     log.emit({ level: 'info', event: 'probe', attempts: { '123456': true } });
     const parsed = inboundLineSchema.safeParse(JSON.parse(written[written.length - 1]));
     expect(parsed.success).toBe(true);
-    expect(toRow(parsed.data as never).extra).toEqual({ attempts: { '[key 0: 6 chars]': true } });
+    expect(toRow(parsed.data as never).extra).toEqual({ attempts: { '[key 1]': true } });
   });
 });
 
@@ -1326,5 +1360,242 @@ describe('an id carrying a lone surrogate', () => {
     const parsed = inboundLineSchema.safeParse(line);
     expect(parsed.success).toBe(true);
     expect(toRow(parsed.data as never).userId).toBeNull();
+  });
+});
+
+/**
+ * The list's own documentation claims given and family names are covered. It held `firstname` and
+ * `lastname` and not `givenname`, which is the spelling an OIDC claim and most APIs use - so
+ * `givenName` normalised to `givenname`, matched nothing, and went to stdout and the store in the
+ * clear while the docs said otherwise (PR #157 review).
+ */
+describe('a name field spelled the way an API spells it', () => {
+  const valueFor = (key: string) => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'profile', [key]: 'Alice' });
+    return (JSON.parse(written[written.length - 1]) as Record<string, unknown>)[key];
+  };
+
+  it.each(['givenName', 'given_name', 'familyName', 'family_name', 'surname'])('redacts %s', (key) => {
+    expect(valueFor(key)).toBe('[REDACTED]');
+  });
+
+  it.each(['firstname', 'lastname', 'displayName'])('still redacts %s', (key) => {
+    expect(valueFor(key)).toBe('[REDACTED]');
+  });
+
+  it.each(['eventName', 'name', 'locationName'])('still leaves %s alone, which is catalogue data', (key) => {
+    expect(valueFor(key)).toBe('Alice');
+  });
+});
+
+/*
+ * Three blocks stood here, on the marker mechanism this file used to have: that an in-range marker
+ * passed through untouched, that a collision suffix stayed marker-shaped, and that a caller key
+ * carrying its own digits was refused. All three tested bounds on what a caller could put *inside*
+ * a replaced name. The name is generated from its ordinal now, so none of those bounds exists to
+ * test - and what they were protecting, that no caller digits survive and that no field is lost to
+ * a collision, is asserted by the blocks that remain (PR #200 review).
+ */
+
+/**
+ * `requestId` was read twice: once to capture it for the fallback line, and again by the
+ * destructuring that builds the envelope. A getter can answer those two reads differently, so the
+ * fallback could be keyed by one request while the normal build described another - the trace gap
+ * the fallback exists to prevent. The same defect as the service name read three times in the
+ * constructor, one function along (PR #157 review).
+ */
+describe('a requestId that changes between reads', () => {
+  const changing = () => {
+    let reads = 0;
+    const input: Record<string, unknown> = { level: 'info', event: 'probe' };
+    Object.defineProperty(input, 'requestId', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return `r-${reads}`;
+      },
+    });
+    return input;
+  };
+
+  it('puts one value on the line, not one per read', () => {
+    const log = shipper();
+    log.emit(changing() as never);
+    expect((JSON.parse(written[0]) as { requestId: string }).requestId).toBe('r-1');
+  });
+
+  it('keys the fallback with the same value the envelope would have used', async () => {
+    const input = changing();
+    Object.defineProperty(input, 'boom', { enumerable: true, get() { throw new Error('nope'); } });
+    const log = shipper(collecting);
+    log.emit(input as never);
+    await log.flush();
+    expect(published[0].key).toBe('r-1');
+    expect((JSON.parse(written[0]) as { requestId: string }).requestId).toBe('r-1');
+  });
+});
+
+/**
+ * In the documented stdout-only configuration the default sink is `console.log`, and a write to a
+ * pipe whose reader has gone resolves *before* `process.stdout` emits its `EPIPE`. So the
+ * synchronous try/catch around the write saw nothing, `writeFailed` stayed at zero, and the
+ * unhandled stream error would take down the process this component exists not to disturb
+ * (PR #157 review).
+ */
+describe('an asynchronous stdout failure', () => {
+  it('is counted rather than left to terminate the process', () => {
+    // No `write` option: this is the default sink, which is the only configuration that can fail
+    // this way. stdout is left intact - only an `error` event is delivered to it.
+    const log = new LogShipper({ service: 'supplier', newId: () => testId(1) });
+    log.emit({ level: 'info', event: 'probe' });
+    expect(log.counts.writeFailed).toBe(0);
+    process.stdout.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }));
+    expect(log.counts.writeFailed).toBe(1);
+  });
+
+  it('leaves an unused stdout alone when the caller supplied its own sink', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe' });
+    process.stdout.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }));
+    expect(log.counts.writeFailed).toBe(0);
+  });
+});
+
+/**
+ * The stdout watcher keyed itself off `options.write` - a *second* read of the caller's property,
+ * in the very commit that fixed a second read of `options.service`. An accessor returning
+ * `undefined` for the assignment and a function for the check leaves `this.write` unset, so the
+ * default `console.log` sink is used, while the watcher is skipped: exactly the unhandled
+ * asynchronous `EPIPE` it was added to prevent (PR #157 review).
+ */
+describe('a write option that reads differently than it assigned', () => {
+  it('watches stdout based on the sink actually in use', () => {
+    let reads = 0;
+    const options: Record<string, unknown> = { service: 'supplier', newId: () => testId(1) };
+    Object.defineProperty(options, 'write', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        // Undefined for the assignment, a function for any later read.
+        return reads === 1 ? undefined : () => undefined;
+      },
+    });
+    const log = new LogShipper(options as never);
+    log.emit({ level: 'info', event: 'probe' });
+    process.stdout.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }));
+    expect(log.counts.writeFailed).toBe(1);
+  });
+});
+
+
+/**
+ * `boundedText` cut the string after `jsonbSafe` had already run, so a cut landing between the two
+ * code units of an emoji left the high surrogate behind. For `originalEvent` on the fallback path
+ * that value goes into `extra` JSONB, whose parser refuses an unpaired surrogate - so the one line
+ * that records a build failure was itself parked (PR #157 review).
+ */
+describe('a truncation that lands inside a surrogate pair', () => {
+  const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+  it('leaves no unpaired surrogate in a cut event', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: `${'e'.repeat(48)}😀${'e'.repeat(40)}` });
+    const event = (JSON.parse(written[0]) as { event: string }).event;
+    expect(LONE.test(event)).toBe(false);
+  });
+
+  it('keeps the cut line storable, which is the point of the bound', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: `${'e'.repeat(48)}😀${'e'.repeat(40)}` });
+    const parsed = inboundLineSchema.safeParse(JSON.parse(written[0]));
+    expect(parsed.success).toBe(true);
+    // The store does not have to change it, which is what "agrees with the store" means here.
+    expect(toRow(parsed.data as never).event).toBe((JSON.parse(written[0]) as { event: string }).event);
+  });
+
+  it('still marks the value as cut', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: `${'e'.repeat(48)}😀${'e'.repeat(40)}` });
+    expect((JSON.parse(written[0]) as { event: string }).event).toContain('[TRUNCATED]');
+  });
+
+  it('leaves a short value with an emoji completely alone', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'ok-😀' });
+    expect((JSON.parse(written[0]) as { event: string }).event).toBe('ok-😀');
+  });
+});
+
+/**
+ * The previous fix read `requestId` once and then deleted it from the rest object - but the object
+ * rest itself still *read* the property to copy it before the delete, which my own comment on that
+ * fix admitted out loud. A one-shot getter that answers once and throws afterwards therefore threw
+ * inside the build, and the real event was replaced by `line_unserialisable` even though the id
+ * had already been captured successfully (PR #157 review).
+ */
+describe('a one-shot requestId getter', () => {
+  it('still writes the real line, not the fallback', () => {
+    let reads = 0;
+    const input: Record<string, unknown> = { level: 'info', event: 'probe', attempt: 1 };
+    Object.defineProperty(input, 'requestId', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        if (reads > 1) throw new Error('one shot');
+        return 'r-1';
+      },
+    });
+    const log = shipper();
+    log.emit(input as never);
+    const line = JSON.parse(written[0]) as Record<string, unknown>;
+    expect(line.event).toBe('probe');
+    expect(line.requestId).toBe('r-1');
+    expect(line.attempt).toBe(1);
+  });
+});
+
+/**
+ * The ordinal only agrees across the walkers while they see the same keys, and `JSON.stringify`
+ * drops a field whose value is `undefined` *after* this walk has already numbered it. So an
+ * unusable key with no value spent `[key 1]`, the line carried only `[key 2]`, and the store - for
+ * which that was the first replacement - stored `[key 1]`: stdout and the row disagreeing again,
+ * through the one property the design rests on (PR #200 review). A function was already skipped
+ * before the count for the same reason; `undefined` is the same case.
+ */
+describe('a field JSON.stringify will drop', () => {
+  it('does not spend an ordinal', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { '@gone': undefined, '@kept': 1 } });
+    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
+    expect(Object.keys(meta)).toEqual(['[key 1]']);
+    expect(meta['[key 1]']).toBe(1);
+  });
+
+  it('leaves the line and the row agreeing about the name', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { '@gone': undefined, '@kept': 1 } });
+    const line = JSON.parse(written[0]);
+    const parsed = inboundLineSchema.safeParse(line);
+    expect(parsed.success).toBe(true);
+    const stored = (toRow(parsed.data as never).extra as { meta: object }).meta;
+    // The two sides compared against each other, not against a literal: asserting the store's
+    // own output passed even unfixed, because the store renumbers from what reached it and lands
+    // on `[key 1]` either way. The disagreement is between the line and the row.
+    expect(Object.keys(stored)).toEqual(Object.keys((line as { meta: object }).meta));
+  });
+
+  it('still numbers two unusable keys that both survive', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { '@one': 1, '@two': 2 } });
+    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
+    expect(Object.keys(meta)).toEqual(['[key 1]', '[key 2]']);
+  });
+
+  it('still keeps a usable name whose value is undefined out of the line', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { gone: undefined, kept: 1 } });
+    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
+    expect(Object.keys(meta)).toEqual(['kept']);
   });
 });
