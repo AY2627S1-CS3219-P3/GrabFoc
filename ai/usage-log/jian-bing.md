@@ -98,12 +98,99 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-23
 Scope: Wrote the 2026-10-23 AWS deployment design entry (issue #58) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
+Scope: Wrote the 2026-10-22 SoCLaaS timeout entry from Jian Bing's prompts.
+Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it; the 4 tests pass.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 broken-main dependency entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 review-recording entry (PRs #193 and #133) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-06 — Recording my reviews of #193 and #133, and bringing #133 up to date
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `.gitignore`, `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, the four
+files #193 changed, this log
+
+**Scenario:** Deanson merged #193 before its review lines were filled in, so they are recorded here, on #133, which
+also needed main merged in. Claude walked me through the #193 and #133 changes and wrote my review lines in the
+wording I confirmed. While merging, it found that the original #133 commit had committed two Python bytecode
+caches, removed them and ignored `__pycache__/` everywhere.
+
+**Prompts (exact, in order):**
+> okay i understood everything, but my peer alreayd reviewed and emrged 193, so can uadd the authro review to another branch like 143 by merging main into it and then letting me add the remaing missing author reviewe comments
+
+> lets marge 133 too
+
+> lets marge 133 actually first instead of 143
+
+My answers to Claude's questions: "Use this wording (Recommended)" (the #193 review line) and "Walk me through it"
+(for #133).
+
+> yep males sense
+
+**What it produced:** The merge of main (both sides of the usage-log conflict kept), the cache removal, and the
+review lines. Claude's first removal commit (d396ebe) re-added the caches, because the test run before it rebuilt
+them; the next commit removed them.
+
+**What I changed or rejected:** I chose #133 over the AWS PRs for these lines, since it can merge sooner.
+
+**Verification:** `python3 -I -m unittest discover -s .github/scripts`: 4 passed after the merge. My own check: the
+walkthroughs above.
+
+### 2026-11-06 — Main's CI broken by two Dependabot major bumps (NestJS platform-express 12, Zod 4)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `user-service/package.json`, `user-service/package-lock.json`, `supplier-service/package.json`,
+`supplier-service/package-lock.json`, `supplier-service/src/locations/location.schemas.ts`,
+`order-service/src/common/zod-validation.pipe.ts`
+
+**Scenario:** The user-service and supplier-service CI jobs failed on my PRs #146 and #156 after I merged main into
+them. Claude found that main itself had been red since 2026-11-02 and fixed it in a separate PR. In the same session
+Claude also merged main into `fix/soclaas-timeout` (#133) to clear its usage-log conflict, keeping both entries.
+
+**Prompts (exact, in order):**
+> [Image #11], ci cd fail, and [Image #12] thsi also failed, and also [Image #13] emrge conflict
+
+(Screenshots of the failing checks on #146 and #156, and the conflict on #133.)
+
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answers to Claude's questions: "Keep Zod 4, fix code (Recommended)", "Fix 4, explain 1 (Recommended)",
+"Record the chat OK now (Recommended)", "Walk me through it".
+
+> [Image #14]
+
+(Screenshot of Codex's comment on #193: `npm ci` with npm 11.4.2 fails with `Missing: typescript@ from lock file`.)
+
+**What it produced:** The cause: Dependabot PRs #163 and #164 moved `@nestjs/platform-express` to 12 while the rest
+of NestJS is 11, so `npm ci` stops with ERESOLVE before any test runs. That hid a second break: #173 and #174 moved
+supplier-service and order-service to Zod 4, where `ZodTypeDef` is gone and `.default()` no longer runs the
+transform (supplier's `page` came back as the text `"1"`). The fix: platform-express back to `^11.2.8`, with an npm
+override that keeps multer at 2.5.0, because 11.2.8 pins multer 2.4.0, which has GHSA-q7qp-rjg7-q26m (high); Zod 4
+kept, with `.prefault()` for the two defaults and `ZodType<Output, Input>` in the two validation helpers.
+
+**What I changed or rejected:** I rejected going back to Zod 3, because every Zod 3 version has
+GHSA-mrhx-c7xc-m3w5 (high) and 3.x has no patch. Moving all of NestJS to 12 was not attempted; that is for the
+service owners.
+
+**Verification:** Claude reproduced the ERESOLVE failure locally on main, then on Node 24 (CI's version for
+user-service) ran `npm ci`, `npm test` and `npm run build`: user-service passed (4 test files, 1 skipped),
+supplier-service 178/178 (the two default-value tests failed before `.prefault()`), and order-service 13/13 (its
+build failed with three TS errors before the fix). `npm ls` shows multer 2.5.0 overridden. Integration tests were
+not run. For the Codex comment, Claude reproduced the EUSAGE failure with npm 11.4.2 (main's lockfile from before
+Dependabot fails the same way), added only the missing nested `typescript` entry (regenerating with 11.4.2 would have
+dropped the `libc` fields newer npm uses), and ran `npm ci` with npm 11.4.2, 11.6.2 and 11.19.1: all three pass. My
+own check (2026-11-06): I went through the change with Claude Code's walkthrough and understood it; CI
+passed (user-service and supplier-service tests and builds). Approved and merged by Deanson Choo (#193).
 
 
 ### 2026-10-23 — AWS deployment design and spec (issue #58)
@@ -293,6 +380,34 @@ is no domain to get a certificate for. Rejected local bind mounts mirroring `/da
 teammates) and kept named volumes. Chose `/gateway` over `/api` because the frontend already uses
 `/api/session`.
 **Verification:** Pending — Jian Bing to record what he checked.
+
+### 2026-10-22 — Why the SoCLaaS review keeps failing, and a timeout fix
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`, `ai/usage-log/jian-bing.md`
+
+**Scenario:** The SoCLaaS review check kept failing on the stacked credit PRs with "SoCLaaS could not
+be reached". I asked Claude to diagnose it, then to fix it.
+
+**Prompts (exact):**
+> help me diagnose why the soclass pr review keeps fialing
+
+> alright do it
+
+**Key responses:** From the run logs: the failures end about 120 s after the request starts, the
+script's per-request timeout, so the model was slow, not unreachable; the script reported timeouts
+with the network-failure message. Each push to the stack started six reviews at once (PRs based on
+another stack branch run twice), which queued on SoCLaaS. The check is not required for merging.
+
+**What it produced:** a timeout now says "did not answer within N s; it may be busy"; the review
+request gets 240 s and one retry after a timeout or a 503; stdlib tests against a stalling local server.
+
+**Changed or rejected:** I chose the clearer message and the longer timeout with a retry; reviewing
+only PRs that target main was offered and not taken.
+
+**Verification:** Test-first: the timeout test failed with "could not be reached", then the four
+tests passed (`python3 -I -m unittest discover -s .github/scripts`). My own check (2026-11-06): I went through
+the change with Claude Code's walkthrough and understood it; the 4 tests pass.
 
 ### 2026-10-22 — Recording Zi Yi's and the mentor's approvals (PR #97)
 
