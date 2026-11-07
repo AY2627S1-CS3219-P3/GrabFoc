@@ -21,6 +21,9 @@ Author review (Jian Bing, 2026-11-07): Looked through the code and think it's ok
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Test that api-gateway/.env.example lists every variable the renderer and route files read (PR #156 review).
 Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Expect the new GET /orders/:orderId/history route (#184 review).
+Author review: Reviewed by Zi Yi, 2026-11-07; pending Jie Yang's approval.
 """
 # AI-generated; review pending.
 import importlib.util
@@ -187,13 +190,15 @@ class RouteFilesTest(unittest.TestCase):
         hcm = resources["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
         routes = [r for r in self.unprefixed(hcm["route_config"]["virtual_hosts"][0]["routes"])
                   if r.get("route", {}).get("cluster") == "order"]
-        self.assertEqual(len(routes), 14)
+        self.assertEqual(len(routes), 15)
         for route in routes:
             self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"], "user_token")
             path = route["match"].get("path") or route["match"]["safe_regex"]["regex"]
             self.assertTrue(path.startswith("/orders"))
         static = [r["match"]["path"] for r in routes if "path" in r["match"]]
         self.assertEqual(static, ["/orders/available", "/orders/mine", "/orders/assigned", "/orders"])
+        history = [r for r in routes if r["match"].get("safe_regex", {}).get("regex") == "/orders/[^/]+/history"]
+        self.assertEqual([r["match"]["headers"][0]["string_match"]["exact"] for r in history], ["GET"])
         order = next(c for c in resources["clusters"] if c["name"] == "order")
         endpoint = order["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
         self.assertEqual(endpoint["address"]["socket_address"], {"address": "order", "port_value": 3005})

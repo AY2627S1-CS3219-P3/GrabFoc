@@ -30,6 +30,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
  * Scope: Added UserSuspended consumer tests and the 403 for a create a suspension cancelled (Phase D).
  * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+ * Scope: The suspension test expects suspendedUserId in the history entry (#184).
+ * Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -831,7 +834,7 @@ test('UserSuspended cancels every unfinished order the user is on, as requester 
   const proposal = (await pool.query('SELECT status FROM order_confirmations WHERE id = $1', [completion.body.id])).rows[0];
   assert.equal(proposal.status, 'SUPERSEDED');
   const [entry] = (await history(arrived)).slice(-1);
-  assert.deepEqual([entry.actorId, entry.previousStatus, entry.changeDetails], [null, 'ARRIVED', { reason: 'USER_SUSPENDED' }]);
+  assert.deepEqual([entry.actorId, entry.previousStatus, entry.changeDetails], [null, 'ARRIVED', { reason: 'USER_SUSPENDED', suspendedUserId: alice }]);
 
   // A repeat changes nothing.
   const entries = await count('order_history');

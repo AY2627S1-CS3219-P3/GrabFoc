@@ -13,7 +13,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 // AI-generated (reviewed by Jie Yang)
-export function AppShell({ section, children }: { section: "profile" | "locations" | "orders"; children: ReactNode }) {
+export function AppShell({ section, children }: { section: "profile" | "locations" | "orders" | "admin"; children: ReactNode }) {
   return (
     <div className="app-shell">
       <header className="app-header">

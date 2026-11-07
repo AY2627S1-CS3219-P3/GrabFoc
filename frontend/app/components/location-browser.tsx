@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Added live Supplier location listing, search, filters, sorting, pagination and admin navigation; added retryable location-type loading and Tailwind responsive layout on 2026-09-29; added image thumbnails on 2026-10-01.
 Author review: Jie Yang reviewed the earlier implementation; thumbnails await review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Replaced "Manage Locations" with one admin-only "Admin Panel" link; locations are its Locations tab (#184).
+Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
 */
 "use client";
 
@@ -80,7 +83,7 @@ export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
   return <section className="home-section" aria-labelledby="locations-title">
     <div className="section-heading flex-col items-stretch sm:flex-row sm:items-start">
       <h2 id="locations-title">Browse Locations</h2>
-      {role === "ADMIN" && <Link className="outline-link" href="/admin/locations">Manage Locations</Link>}
+      {role === "ADMIN" && <Link className="outline-link" href="/admin">Admin Panel</Link>}
     </div>
     <div className="location-filters flex flex-nowrap overflow-x-auto pb-2">
       <label><span>Search name</span><input type="search" value={draft.name} onChange={(event) => change("name", event.target.value)} placeholder="Search pickup points" /></label>

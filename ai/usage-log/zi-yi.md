@@ -51,12 +51,101 @@ Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
 Scope: Added the Order Service UserSuspended consumer entry.
 Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Added the admin dashboard frontend (#184) entry.
+Author review: Reviewed by Zi Yi, 2026-11-07.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-07 — Frontend: admin dashboard (#184)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `frontend/app/admin/**` (Overview, Orders, Logins, Users, Users/[userId], `admin-page.tsx`,
+`order-panel.tsx`, Locations wrapped in the admin navigation), `frontend/app/api/session/admin/[...path]/route.ts`,
+`frontend/lib/admin.ts`, `frontend/lib/orders.ts`, `frontend/app/orders/{page,[id]/page}.tsx`,
+`frontend/app/api/session/orders/[[...path]]/route.ts`, `frontend/app/components/{app-shell,location-browser}.tsx`,
+`frontend/app/globals.css`, `frontend/test/routes.test.mjs`, `order-service/src/orders/orders.service.ts`,
+`order-service/src/test/orders.api.test.ts`, `order-service/AGENTS.md`,
+`api-gateway/envoy/routes/30-order.routes.json`, `api-gateway/test/envoy_routes_test.py`, `api-gateway/AGENTS.md`,
+`docs/orders/frontend-integration-plan.md`
+
+**Scenario:** build §8 of `docs/admin-dashboard-plan.md` (issue #184, part of #179) on branch
+`feat/admin-frontend`, on top of the backend in PRs #190 (User Service), #192 (Order Service) and
+#194 (gateway). Tested on a throwaway local branch that merged the three, never pushed.
+
+**Prompts:**
+> next, move on to implement the frontend side of admin dashboard, refer to https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/184
+
+> list the files you added or changed and whats the change
+
+> give the list of steps to test locally
+
+> 1. change the suspend button to be full red, and "Suspend" instead of "Suspend..." 2. the third point sounds too much like developer. say something like suspension takes effect in 15mins. Also phrase the four points to be more intuitive to users, not developers. remove "(Only admins see it)" 3. the suspension needs to be more obvious. So many state the current status in a more obvious way. 4. under users tab, would be good to allow the admin to search for a user via email to suspend/reactivate them 5. when we click User textbox and type something, there is a huge popup, it blocks the screen. maybe use a dropdown filter instead 6. we dont have notification for suspended account right now? 7. recent cancellation should use order number 8. make the user status more obvious 9. reason for cancellation looks too for developer, need to be user intuitive 10. instead of having two buttons for admin dashboard and manage locations, maybe can have just one toggle for admin actions (need a good name to be intuitive) 11. format better for timeline 12. when a user is suspended and the orders are cancelled, the corresponding courier needs to be informed and be able to see it as a past order for its courier status. the order suddenly disappeared and cannot be found, that is not user intuitive
+
+> 1. They are signed out and can't sign in until you reactivate them. change to "until an admin reactivates them". 2. split the requested and courier into two columns, i dont want the arrow between them. If no courier, then just NA it 3. for the timeline, maybe can use badges to indicate the states 4. for suspension emails, i think it is curently handled by pr #189 5. implement Show the cancelled order on its page with a banner such as this order was cancelled: the requester'saccount has been suspended
+
+> give me the steps to do the testing lcoally
+
+> i want to restart everything, includign clear db
+
+> 1. add a part to see current locked accounts under logins tab 2. the requester was the one getting suspended but it says courier was the one suspended
+
+> instead of Locked now, use "Locked accounts". remove "A password reset unlocks an account early, but it stays listed until its 15 minutes pass."
+
+> okay i reviewed the code and did tested locally, commit in a few relevant commits and push and create a PR
+
+(Screenshots attached to the review prompts are left out.)
+
+**What it produced:**
+- An admin proxy that forwards only the dashboard's eight routes (same-origin check on suspend and
+  reactivate), and `lib/admin.ts` with the fetchers, React Query keys and plain-language labels.
+- Five admin pages behind one role gate with shared navigation: Overview (live orders, locked and
+  suspended counts, recent failed logins and cancellations), Orders (live/past, state and a
+  requester-or-courier search), Logins (locked accounts and the flagged list), Users (find by name
+  or email, suspended and deactivated lists) and a user page with Suspend/Reactivate, status
+  banners, orders and login history. An order panel shows the timeline with state badges.
+- One "Admin Panel" entry on Home in place of "Manage Locations".
+- Finished orders stay on their page with a banner (a cancelled one says why, worded for the
+  viewer), their cards in My Orders open them, and the page stops polling them.
+- In the Order Service, a suspension's `CANCELLED` history entry now records `suspendedUserId`, so
+  the banner names the right side (it guessed before, and was wrong after a reactivation).
+- A gateway route for `GET /orders/:orderId/history`, which the Order Service already served to
+  the two participants, and three route tests (admin allowlist, cross-origin suspend, USER sent
+  away from `/admin/*`).
+
+**Flagged:**
+- The gateway owner (Jie Yang) has to approve the new history route; without it the banner only
+  says "This order was cancelled." This PR and #194 both edit `30-order.routes.json` and the route
+  count in `envoy_routes_test.py`, so whichever merges second needs a small fix.
+- Keeping finished orders on their page and making their cards links reverse two of Deanson's
+  recorded decisions in `docs/orders/frontend-integration-plan.md`; he needs to agree.
+- The suspension email comes from #189, not this PR.
+- The Logins tab builds the locked list from the last hour's failures (capped at 50 rows), so a
+  flood of failures could hide a lock, and an account unlocked early by a password reset stays
+  listed for its 15 minutes.
+- Orders cancelled before `suspendedUserId` was recorded show "an account on this order has been
+  suspended."
+
+**Verification:**
+- `tsc --noEmit` and ESLint clean; route tests 45/45 (run on Chrome, since the suite asks for Edge);
+  gateway route-loader test OK; Order Service integration tests 68/68 in `compose.test.yaml`.
+- An end-to-end script against the merged stack drove the plan §9 demo through the browser: lock
+  and flag a user, open their order and login history, suspend (the courier's open order page
+  shows the banner within one poll, and the order is under Courier → Cancelled), refused login,
+  reactivate, the requester then sees "your account was suspended.", both 409 messages, no Suspend
+  button on the admin's own page, a USER sent to Home, and no sideways scroll at 375 px.
+- Zi Yi reviewed the code and tested it locally on a freshly reset stack.
+
+**Mistakes worth recording.**
+- A route-test failure (44/45) looked like the AI's debounce change; it was the stale-edit test
+  closing its page during a list reload, which spilled requests into the next test. Reverted the
+  debounce change and made that test wait for the reload.
+- The first banner assumed the suspended person was the other participant, which a reactivated
+  requester disproved in review; fixed by recording `suspendedUserId` instead of guessing.
 
 ### 2026-10-21 — Order Service: `UserSuspended` consumer (Phase D)
 
