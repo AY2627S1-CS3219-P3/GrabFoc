@@ -12,6 +12,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
  * Scope: Added the case for an in-range index still carrying four digits (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a replaced name generated from its own position rather than taken
+ *        from caller text (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { LogShipper } from './log-shipper';
 
@@ -30,113 +34,69 @@ beforeEach(() => {
   written.length = 0;
 });
 
-/**
- * A replaced key is recognised on a later pass only when its numbers are ones that walk could have
- * written - an index inside the object's own key range. The collision loop walked `n` upwards from
- * the key's index, so with three keys it could emit `[key 3: 16 chars]`: out of range, therefore
- * replaced again by the Logging Service's own pass, and the stored row stopped matching the line on
- * stdout. That is the disagreement the fixed point exists to prevent, reintroduced by the fix for
- * the previous version of it (PR #157 review).
+/*
+ * Three blocks stood here, covering the marker mechanism this file used to have: that an in-range
+ * marker passed through untouched, that only its canonical spelling was recognised, and that its
+ * index was bounded to three digits. All three tested bounds on what a caller could put *inside* a
+ * replaced name, and the name is now generated from its own ordinal instead, so none of those
+ * bounds exists to test. What they were really protecting - that no caller digits survive, that no
+ * field is lost to a collision, and that a replaced name survives a later pass unchanged - is
+ * asserted by the block below, which is why they are removed rather than rewritten
+ * (PR #145 review).
  */
-describe('a collision name and the range the next pass recognises', () => {
-  const MARKER = /^\[key (\d+): (\d+) chars\]$/;
 
-  /**
-   * The exact shape that collides: `@` is outside the safe alphabet and becomes
-   * `[key 0: 1 chars]`, the second key is a marker whose numbers are in range and so passes
-   * through, and the third is spelled exactly like what `@` became.
-   */
-  const colliding = { '@': 1, '[key 2: 16 chars]': 2, '[key 0: 1 chars]': 3 };
+/**
+ * Six attempts at bounding the numbers a caller could put inside a marker, and each bound was
+ * defeated by a spelling the previous one allowed: the length field, the fixed point, the suffix,
+ * the numeric limit, leading zeroes, the index range. `[key 12: 34 chars]` carries four digits and
+ * `[key 123: 456 chars]` six, and both satisfy every bound that only checks ranges (PR #145).
+ *
+ * So no caller text is trusted at all now. A replaced name is generated from its ordinal among the
+ * replacements in that object - `[key 1]`, `[key 2]` - which no caller can influence, cannot
+ * collide (a kept key can never contain a bracket), and is a fixed point by construction: on a
+ * later pass the same key is the same ordinal and gets the same name.
+ */
+describe('a replaced name generated rather than trusted', () => {
+  const GENERATED = /^\[key [1-9]\d*\]$/;
 
   const metaOf = (meta: Record<string, unknown>) => {
     shipper().emit({ level: 'info', event: 'probe', meta });
     return (JSON.parse(written[written.length - 1]) as { meta: Record<string, unknown> }).meta;
   };
 
-  it('keeps every marker index inside the object key count', () => {
-    const meta = metaOf(colliding);
-    const keys = Object.keys(meta);
-    expect(keys).toHaveLength(3);
-    for (const key of keys) {
-      const parts = MARKER.exec(key);
-      if (parts) expect(Number(parts[1])).toBeLessThan(keys.length);
-    }
-  });
-
-  it('loses no field to the collision', () => {
-    expect(Object.values(metaOf(colliding)).sort()).toEqual([1, 2, 3]);
-  });
-
-  it('still passes an in-range marker through untouched', () => {
-    const meta = metaOf({ '[key 0: 16 chars]': 1, other: 2 });
-    expect(Object.keys(meta)).toContain('[key 0: 16 chars]');
-  });
-
-  it('still replaces a marker whose numbers it could not have written', () => {
-    const keys = Object.keys(metaOf({ '[key 123456: 6 chars]': 1 }));
-    expect(keys[0]).not.toContain('123456');
-  });
-});
-
-/**
- * `Number('000123')` is 123, so a six-digit spelling satisfied the three-digit bound and the
- * caller's digits went through - an OTP padded with zeroes, straight past the fix that was added
- * to stop exactly that. A marker's numbers have to be spelled the way this code spells them
- * (PR #157 review).
- */
-describe('a marker spelled with leading zeroes', () => {
-  const keysOf = (meta: Record<string, unknown>) => {
-    shipper().emit({ level: 'info', event: 'probe', meta });
-    return Object.keys((JSON.parse(written[written.length - 1]) as { meta: object }).meta);
-  };
-
-  it.each(['[key 0: 000123 chars]', '[key 00: 16 chars]', '[key 0: 0999 chars]'])(
-    'replaces %s, which this code would never have written',
+  it.each(['[key 12: 34 chars]', '[key 123: 456 chars]', '[key 0: 000123 chars]', '[key 999: 1 chars]'])(
+    'carries none of the digits in %s',
     (key) => {
-      const keys = keysOf({ [key]: 1 });
-      expect(keys[0]).not.toBe(key);
-      expect(keys[0]).not.toContain('000');
+      const keys = Object.keys(metaOf({ [key]: 1 }));
+      expect(keys).toHaveLength(1);
+      expect(keys[0]).toMatch(GENERATED);
+      expect(keys[0]).toBe('[key 1]');
     },
   );
 
-  it('still passes the canonical spelling through', () => {
-    expect(keysOf({ '[key 0: 16 chars]': 1, other: 2 })).toContain('[key 0: 16 chars]');
+  it('numbers the replacements in order and loses no field', () => {
+    const meta = metaOf({ '@one': 1, kept: 2, '#two': 3 });
+    expect(Object.keys(meta)).toEqual(['[key 1]', 'kept', '[key 2]']);
+    expect(Object.values(meta)).toEqual([1, 2, 3]);
   });
 
-  it('still passes a zero length through, which is canonical', () => {
-    expect(keysOf({ '[key 0: 0 chars]': 1, other: 2 })).toContain('[key 0: 0 chars]');
-  });
-});
-
-/**
- * Restricting the index to the object's own key range still left four and five digits available,
- * because an object may legitimately hold thousands of fields: with 1,235 of them,
- * `[key 1234: 1 chars]` is in range and passed through with a four-digit code in the index slot.
- * The index is bounded to three digits now, the same width `MAX_UNNAMED_KEY` already uses and for
- * the same reason - three digits cannot hold a code this product issues (PR #157 review).
- */
-describe('an in-range index that still carries four digits', () => {
-  const bigMetaWith = (key: string) => {
-    const meta: Record<string, unknown> = { [key]: 'secret' };
-    for (let i = 0; i < 1300; i += 1) meta[`f${i}`] = i;
-    shipper().emit({ level: 'info', event: 'probe', meta });
-    return Object.keys((JSON.parse(written[written.length - 1]) as { meta: object }).meta);
-  };
-
-  it.each(['[key 1234: 1 chars]', '[key 99999: 1 chars]'])('replaces %s even in a large object', (key) => {
-    const keys = bigMetaWith(key);
-    expect(keys).not.toContain(key);
-    // Checked on the marker-shaped names only. The filler fields are called `f0`...`f1299`, so
-    // searching every key for the digits matches `f1234` and says nothing - which is what the
-    // first version of this assertion did.
-    const markers = keys.filter((k) => k.startsWith('[key '));
-    expect(markers).not.toHaveLength(0);
-    for (const marker of markers) {
-      expect(marker).toMatch(/^\[key (0|[1-9]\d{0,2}): (0|[1-9]\d{0,2}) chars\]$/);
-    }
+  it('is a fixed point: a generated name ships again unchanged', () => {
+    // What the store sees on its own pass over the same object.
+    expect(Object.keys(metaOf({ '[key 1]': 1, kept: 2, '[key 2]': 3 }))).toEqual([
+      '[key 1]',
+      'kept',
+      '[key 2]',
+    ]);
   });
 
-  it('still passes a three-digit index through', () => {
-    expect(bigMetaWith('[key 999: 1 chars]')).toContain('[key 999: 1 chars]');
+  it('still keeps ordinary names, including the ones redaction blanks', () => {
+    const meta = metaOf({ requestId: 'r-1', 'req.path': '/x', password: 'hunter2' });
+    expect(Object.keys(meta)).toEqual(['requestId', 'req.path', 'password']);
+    expect(meta.password).toBe('[REDACTED]');
+  });
+
+  it('still replaces a name that carries data, and shows none of it', () => {
+    const keys = Object.keys(metaOf({ 'alice@nus.edu.sg': 1 }));
+    expect(keys).toEqual(['[key 1]']);
   });
 });

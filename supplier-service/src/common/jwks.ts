@@ -40,6 +40,10 @@
  * Scope: Take the algorithm a key may serve from its own type rather than from the token header,
  *        so a header cannot name an algorithm the key cannot serve (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Honour a JWK's key_ops, which says what the issuer authorised the key for
+ *        (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
 import { config } from '../config';
@@ -105,16 +109,23 @@ function algFor(jwk: Jwk): 'RS256' | 'ES256' | null {
 
 function isUsableKey(value: unknown): value is Record<string, unknown> {
   if (!isObject(value)) return false;
-  const { kid, kty, crv, use, alg } = value as {
+  const { kid, kty, crv, use, alg, key_ops: keyOps } = value as {
     kid?: unknown;
     kty?: unknown;
     crv?: unknown;
     use?: unknown;
     alg?: unknown;
+    key_ops?: unknown;
   };
   if (typeof kid !== 'string' || kid === '') return false;
   if (typeof kty !== 'string' || kty === '') return false;
   if (use !== undefined && use !== 'sig') return false;
+  // `key_ops` says what the issuer authorised the key for, and when it is present it is
+  // exhaustive. A key published as `key_ops: ["encrypt"]` has an ordinary RSA signing shape, so it
+  // imported and passed on `use` alone - which means anyone holding the matching private key could
+  // authenticate with a key the issuer had explicitly not authorised for verification
+  // (PR #145 review). An empty list authorises nothing.
+  if (keyOps !== undefined && !(Array.isArray(keyOps) && keyOps.includes('verify'))) return false;
   if (alg !== undefined && alg !== 'RS256' && alg !== 'ES256') return false;
   // The key *type*, not only a declared `alg`. `alg` is optional in a JWK, and importing the key
   // proves nothing about whether this service can verify with it: an Ed25519 or P-384 JWK with no

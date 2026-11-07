@@ -16,6 +16,18 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-07 — PR #145's four findings, and giving up on bounding the marker (PR #145)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: "ok save this discussion for later then, lets work on 145 and get that merged", then "resolve the conversations and wait, same as before. I will merge it with another reviewer when its all done".
+- The serious one is in the JWKS filter: `key_ops` says what the issuer authorised a key for, and when present it is exhaustive - but the filter only looked at `use`. A key published as `key_ops: ["encrypt"]` has an ordinary RSA signing shape, so it imported and passed, which means anyone holding the matching private key could authenticate with a key the issuer had explicitly not authorised for verification. An empty list authorises nothing and is refused too.
+- The per-request line reported an abandoned request as a delivered 200. Express exposes `statusCode` as 200 until something sets it, so a client disconnecting before any header went out looked identical to a success, and every success-rate count over `request_completed` quietly counted it as one. The status is left off that line now, and its level is `info` rather than a warning, because nothing failed on this side.
+- The third ended six rounds of the same argument. Each round bounded what a caller could put *inside* a replaced field name, and each bound fell to a spelling the previous one allowed - the length field, the fixed point, the collision suffix, the numeric limit, leading zeroes, the index range. `[key 12: 34 chars]` carries four digits and `[key 123: 456 chars]` six, and both satisfy any bound that only checks ranges. The reviewer's suggestion this round was the one I had proposed on PR #157: stop trusting caller text at all. A replaced name is generated from its ordinal among the replacements in that object - `[key 1]`, `[key 2]` - which a caller cannot influence, cannot collide with a kept name (a kept name has no brackets in it), and is a fixed point by construction, with no recognition rule left to get wrong. It deleted more code than it added.
+- That made three of my own test blocks obsolete, because they asserted bounds that no longer exist. I removed them rather than rewriting, and left a note in their place saying what they were protecting and which block protects it now.
+- The fourth was a P1 on this service's `request-id.ts` header: my 2026-10-23 block had been inserted between an earlier entry and the review covering it, so it was ambiguous which work the reviewer had validated. Moved below it.
+- Not done, deliberately: the merge with `main`. I started it, found the three conflicts I had predicted - the usage log, the shipper, and `location.schemas.ts` where `main` is on Zod 4 - and aborted it when Cole Lin said to resolve the conversations and leave merging to him and another reviewer. The shipper conflict is verified safe to resolve in this branch's favour: `main`'s copy is byte-identical to the canonical file at PR #129's merge commit, and this branch's is that same file four commits further on plus three fixes made only here.
+- Verification: 19 new cases across the three files, each run against the unfixed code first - 12 fail there. **275 pass** after removing 12 obsolete ones, `tsc --noEmit` clean.
+
 ### 2026-11-07 — Clearing the seven threads this PR had been holding (PRs #157 and #129)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

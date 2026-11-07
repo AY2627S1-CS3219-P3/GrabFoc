@@ -4,6 +4,10 @@
  * Scope: Generated this middleware, from Cole Lin's decision on 2026-10-23 that every request
  *        should be logged rather than only the failures (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Leave the status off a request that was abandoned before any header went out, rather
+ *        than reporting Express's default 200 (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  */
 import type { NextFunction, Request, Response } from 'express';
 import type { AuthedRequest } from './auth';
@@ -38,17 +42,24 @@ export function requestLogMiddleware(req: Request, res: Response, next: NextFunc
     if (emitted) return;
     emitted = true;
 
-    const status = res.statusCode;
+    // Express reports `statusCode` as 200 until something sets it, so a client that disconnected
+    // before any header went out looked exactly like a delivered 200 - and every success-rate or
+    // status count over these lines quietly counted it as a success. No status is the honest
+    // answer: the line still says the request happened, how long it took, and that it was
+    // abandoned (PR #145 review).
+    const delivered = res.headersSent;
+    const status = delivered ? res.statusCode : undefined;
     const caller = (req as AuthedRequest).caller;
     log.emit({
-      level: status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info',
+      // Nothing failed on this side of an abandoned request, so it is not a warning.
+      level: status === undefined ? 'info' : status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info',
       event: 'request_completed',
       requestId: requestIdOf(req),
       method: req.method,
       // The pathname only. A location search carries the caller's coordinates, and this line also
       // carries their userId (root AGENTS.md: never log unmasked personal data).
       path: logPath(req),
-      status,
+      ...(status === undefined ? {} : { status }),
       durationMs: Number((process.hrtime.bigint() - startedAt) / 1_000_000n),
       userId: caller?.id,
       role: caller?.role,

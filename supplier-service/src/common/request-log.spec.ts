@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Generated these unit tests for the per-request log line.
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the case for a client that disconnects before any header is written (PR #145).
+ * Author review: Cole Lin, read and approved.
  */
 import { EventEmitter } from 'node:events';
 import type { NextFunction, Request, Response } from 'express';
@@ -15,10 +18,14 @@ import { requestLogMiddleware } from './request-log';
 class FakeResponse extends EventEmitter {
   statusCode = 200;
   writableFinished = false;
+  // Express's own default until a status is chosen and headers go out, which is the whole point
+  // of the pre-header case below.
+  headersSent = false;
 
   finish(status: number) {
     this.statusCode = status;
     this.writableFinished = true;
+    this.headersSent = true;
     this.emit('finish');
     // Express emits both, in this order, for a response that completed.
     this.emit('close');
@@ -158,5 +165,45 @@ describe('a request the client gave up on', () => {
     const { res, lines } = run();
     res.finish(200);
     expect('aborted' in lines()[0]).toBe(false);
+  });
+});
+
+/**
+ * Express exposes `statusCode` as 200 until something sets it, so a client that disconnects before
+ * any header is written looked exactly like a delivered 200 - and every success-rate or status
+ * count over `request_completed` silently counted it as a success (PR #145 review). No status is
+ * honest: the line still says the request happened, how long it took and that it was aborted.
+ */
+describe('a client that disconnects before any header is written', () => {
+  it('reports no status rather than a 200 nobody received', () => {
+    const { res, lines } = run({ method: 'GET' });
+    res.drop();
+    const [line] = lines();
+    expect(line).not.toHaveProperty('status');
+    expect(line.aborted).toBe(true);
+    expect(line.event).toBe('request_completed');
+  });
+
+  it('is info rather than an error, because nothing failed on this side', () => {
+    const { res, lines } = run({ method: 'GET' });
+    res.drop();
+    expect(lines()[0].level).toBe('info');
+  });
+
+  it('still reports the status when headers had gone out', () => {
+    const { res, lines } = run({ method: 'GET' });
+    res.headersSent = true;
+    res.drop(503);
+    const [line] = lines();
+    expect(line.status).toBe(503);
+    expect(line.aborted).toBe(true);
+  });
+
+  it('still reports a completed response as before', () => {
+    const { res, lines } = run({ method: 'GET' });
+    res.finish(204);
+    const [line] = lines();
+    expect(line.status).toBe(204);
+    expect(line).not.toHaveProperty('aborted');
   });
 });

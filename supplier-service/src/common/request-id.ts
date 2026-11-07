@@ -6,13 +6,13 @@
  *        supplier-service/AGENTS.md).
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
  * Scope: Added logPath() after the PR #90 review found query strings were reaching the logs.
+ * Author review (Cole Lin): Read in full; ran `npm test` (176 passed) and checked a supplied id,
+ *        a minted one and a rejected one all reach the log line and the response header, and that
+ *        a query string never reaches a log line.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: logPath returns the route template rather than the caller's pathname, so a secret in a
  *        path segment cannot reach the log store (PR #145 review).
  * Author review: Cole Lin, read and approved.
- * Author review (Cole Lin): Read in full; ran `npm test` (176 passed) and checked a supplied id,
- *        a minted one and a rejected one all reach the log line and the response header, and that
- *        a query string never reaches a log line.
  */
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';

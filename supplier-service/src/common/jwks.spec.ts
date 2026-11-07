@@ -24,6 +24,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
  * Scope: Added the cases for a header algorithm the key's own type cannot serve (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a key whose key_ops does not permit verification (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { generateKeyPairSync } from 'node:crypto';
 import { config } from '../config';
@@ -427,5 +430,43 @@ describe('a header algorithm the key type cannot serve', () => {
     resetJwksCache();
     stub.keys = [algLess(ec)];
     await expect(verifyToken(bearer(signToken(ec)))).resolves.toMatchObject({ sub: 'user-1' });
+  });
+});
+
+/**
+ * `key_ops` is the JWK field that says what a key may be *used for*, and when it is present it is
+ * exhaustive. A key published with `key_ops: ["encrypt"]` has an ordinary RSA signing shape, so it
+ * imported and passed the filter on `use` alone - meaning anyone holding the matching private key
+ * could authenticate with a key the issuer had explicitly not authorised for verification
+ * (PR #145 review).
+ */
+describe('a key whose key_ops does not permit verification', () => {
+  const withOps = (ops: unknown) => ({ ...rsa, jwk: { ...rsa.jwk, key_ops: ops } });
+
+  it.each([
+    ['encrypt only', ['encrypt']],
+    ['wrapKey only', ['wrapKey']],
+    ['an empty list', []],
+  ])('treats a set holding only a key for %s as unavailable', async (_why, ops) => {
+    stub.keys = [withOps(ops) as never];
+    await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);
+  });
+
+  it('rejects a token naming it when a usable key sits beside it', async () => {
+    stub.keys = [withOps(['encrypt']) as never, ec];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toBeNull();
+  });
+
+  it.each([
+    ['verify alone', ['verify']],
+    ['verify among others', ['verify', 'sign']],
+  ])('still accepts a key permitting %s', async (_why, ops) => {
+    stub.keys = [withOps(ops) as never];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toMatchObject({ sub: 'user-1' });
+  });
+
+  it('still accepts a key that declares no key_ops at all', async () => {
+    stub.keys = [rsa];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toMatchObject({ sub: 'user-1' });
   });
 });
