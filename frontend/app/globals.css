@@ -410,3 +410,7 @@ details.order-section[open] summary::before { content: "▾"; }
 details.order-section summary h2 { margin: 0; }
 details.order-section[open] summary { margin-bottom: 18px; }
 .order-section-empty { margin: 12px 0 0; color: var(--auth-muted); font-size: 12px; }
+/* AI-generated (Claude Code, 2026-11-07; reviewed by Zi Yi): the banner on a finished order (#184). */
+.order-finished-banner { margin: 0 0 16px; padding: 12px 14px; border: 1px solid #dce2ec; border-left-width: 4px; border-radius: 8px; background: #f8f9fb; font-size: 13px; line-height: 1.45; }
+.order-finished-banner--cancelled { border-color: #f1b5b0; border-left-color: #b42318; background: #fdecea; color: #7a271a; }
+.order-finished-banner--completed { border-color: #b7e0c4; border-left-color: #1d6b35; background: #e6f6ec; color: #1d4d2c; }

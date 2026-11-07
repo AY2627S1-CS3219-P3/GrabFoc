@@ -1284,6 +1284,7 @@ test("order proxy forwards only the allowlisted Order endpoints", async () => {
     ["GET", "mine", "/orders/mine"], ["GET", "assigned?page=3", "/orders/assigned?page=3"],
     ["POST", "", "/orders"], ["GET", `${orderId}?ignored=1`, `/orders/${orderId}`], ["PATCH", orderId, `/orders/${orderId}`],
     ...["accept", "cancel", "pick-up", "start-delivery", "arrive"].map((step) => ["POST", `${orderId}/${step}`, `/orders/${orderId}/${step}`]),
+    ["GET", `${orderId}/history`, `/orders/${orderId}/history`],
     ["GET", `${orderId}/confirmations`, `/orders/${orderId}/confirmations`],
     ["POST", `${orderId}/confirmations`, `/orders/${orderId}/confirmations`],
     ["POST", `${orderId}/confirmations/${orderId}/respond`, `/orders/${orderId}/confirmations/${orderId}/respond`],

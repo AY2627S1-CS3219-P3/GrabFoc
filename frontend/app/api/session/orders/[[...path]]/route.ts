@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added an allowlisted, cookie-backed Order gateway route, copied from the Supplier route, covering only the endpoints in docs/orders/frontend-integration-plan.md §1.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Allowed GET /orders/:orderId/history (participants only, checked by the Order Service), so a cancelled order's page can say why (#184).
+Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
 */
 import { NextRequest, NextResponse } from 'next/server';
 import { protectedGateway } from '@/lib/protected-gateway';
@@ -24,6 +27,7 @@ function orderPath(method: string, segments: string[]): Target | null {
   if (!UUID.test(first)) return null;
   if (segments.length === 1) return method === 'GET' || method === 'PATCH' ? { path: `/orders/${first}`, list: false } : null;
   if (segments.length === 2 && ACTIONS.has(second)) return method === 'POST' ? { path: `/orders/${first}/${second}`, list: false } : null;
+  if (segments.length === 2 && second === 'history') return method === 'GET' ? { path: `/orders/${first}/history`, list: false } : null;
   if (segments.length === 2 && second === 'confirmations') {
     return method === 'GET' || method === 'POST' ? { path: `/orders/${first}/confirmations`, list: false } : null;
   }
