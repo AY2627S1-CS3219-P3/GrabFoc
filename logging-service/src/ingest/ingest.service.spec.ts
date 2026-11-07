@@ -23,6 +23,10 @@
  * Scope: Added the cases for given- and family-name redaction, a caller key spelled like a
  *        marker, one requestId value per line, and an asynchronous stdout failure (PR #157).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Updated the replaced-name cases: the name is generated from its ordinal now, so the
+ *        recognition cases have nothing left to assert (PR #200 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Logger } from '@nestjs/common';
 import { config } from '../config';
@@ -239,21 +243,22 @@ describe('handling a message', () => {
     );
     expect(parked[0].body).not.toContain('must-not-appear');
     expect(parked[0].body).not.toContain('Bearer');
-    // Position and length, so two unsafe keys stay distinguishable without either being shown.
-    expect(parked[0].body).toContain('chars]');
+    // An ordinal, so two unsafe keys stay distinguishable without either being shown.
+    expect(parked[0].body).toContain('[key 1]');
     // A name a producer would plausibly write is kept, because that is the diagnostic value.
     expect(parked[0].body).toContain('lineId');
   });
 
   /**
-   * The parked shape is the third pass over a key, after the shipper and the store's schema. The
-   * marker does not match the safe-key pattern, so each pass replaced the previous one's work and
-   * reported its own length instead of the key's (PR #129 review).
+   * The parked shape is the third pass over a key, after the shipper and the store's schema, and
+   * the three have to agree on what a replaced name is. They used to agree by recognising each
+   * other's marker, which is what every bypass in this class travelled through; they agree now
+   * because the name is this walk's own count of replacements, so the same key in the same
+   * position gets the same name on every pass without anything being recognised (PR #200 review).
    */
-  it('leaves a field name the producer already replaced alone', async () => {
-    const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
-    await consumer.deliver(JSON.stringify({ lineId: 'nope', [marker]: 'x' }));
-    expect(parked[0].body).toContain(marker);
+  it('gives a name the producer already replaced the same name again', async () => {
+    await consumer.deliver(JSON.stringify({ lineId: 'nope', '[key 1]': 'x' }));
+    expect(Object.keys(JSON.parse(parked[0].body as string) as object)).toEqual(['lineId', '[key 1]']);
   });
 
   /**
@@ -263,18 +268,20 @@ describe('handling a message', () => {
   it('replaces a code used as a field name, and keeps a short bucket label', async () => {
     await consumer.deliver(JSON.stringify({ lineId: 'nope', '123456': 'x', '403': 'y' }));
     const body = JSON.parse(parked[0].body as string) as Record<string, unknown>;
-    expect(Object.keys(body)).toContain('[key 1: 6 chars]');
+    expect(Object.keys(body)).toContain('[key 1]');
     expect(Object.keys(body)).toContain('403');
     expect(Object.keys(body)).not.toContain('123456');
   });
 
-  /** The parked shape is the third walker, and it collides the same way (PR #157 review). */
-  it('keeps a replaced key and a caller key spelled like its marker', async () => {
-    const marker = `[key 1: ${'alice@nus.edu.sg'.length} chars]`;
-    await consumer.deliver(JSON.stringify({ lineId: 'nope', 'alice@nus.edu.sg': 1, [marker]: 2 }));
+  /**
+   * Two unusable names in one object, one of them spelled like a generated one. A collision is no
+   * longer possible to engineer: each replacement takes the next ordinal, and a kept name can
+   * never contain a bracket, so nothing can be overwritten (PR #200 review).
+   */
+  it('loses no field when a caller key is spelled like a generated one', async () => {
+    await consumer.deliver(JSON.stringify({ lineId: 'nope', 'alice@nus.edu.sg': 1, '[key 1]': 2 }));
     const body = JSON.parse(parked[0].body as string) as Record<string, unknown>;
-    // Three keys in, three keys out: nothing was overwritten by a name collision.
-    expect(Object.keys(body)).toHaveLength(3);
+    expect(Object.keys(body)).toEqual(['lineId', '[key 1]', '[key 2]']);
   });
 
   it('keeps ordinary field names, including ones redaction would blank', async () => {

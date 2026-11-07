@@ -83,6 +83,10 @@
  * Scope: Added the cases for a one-shot requestId getter and for a caller key shaped like a
  *        marker carrying its own digits (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Updated the replaced-name cases for the generated ordinal, and removed the three blocks
+ *        that only tested the recognition rule (PR #200 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -278,7 +282,7 @@ describe('redaction cannot be worked around', () => {
     shipper().emit({ level: 'info', event: 'mail', recipients: { 'alice@nus.edu.sg': true } });
     expect(written[0]).not.toContain('alice@nus.edu.sg');
     expect(JSON.parse(written[0]).recipients).toEqual({
-      [`[key 0: ${'alice@nus.edu.sg'.length} chars]`]: true,
+      '[key 1]': true,
     });
   });
 
@@ -1074,7 +1078,7 @@ describe('a replaced key and the store it is shipped to', () => {
     shipper().emit({ level: 'info', event: 'mail', recipients: { 'alice@nus.edu.sg': true } });
     const line = JSON.parse(written[0]);
     const marker = Object.keys(line.recipients)[0];
-    expect(marker).toMatch(/^\[key \d+: \d+ chars\]$/);
+    expect(marker).toMatch(/^\[key [1-9]\d*\]$/);
     const row = toRow(inboundLineSchema.parse(line));
     expect(Object.keys((row.extra as { recipients: object }).recipients)).toEqual([marker]);
   });
@@ -1221,7 +1225,7 @@ describe('a key that carries a code rather than naming a field (shipper)', () =>
     ['a four-digit code', '2026'],
     ['a dashed code', '12-3456'],
   ])('replaces %s used as a key', (_why, key) => {
-    expect(keysOf({ attempts: { [key]: true } })).toEqual(['[key 0: ' + key.length + ' chars]']);
+    expect(keysOf({ attempts: { [key]: true } })).toEqual(['[key 1]']);
   });
 
   // Keyed `buckets`, not `status`: `status` is an envelope field, so the shipper destructures it
@@ -1242,10 +1246,10 @@ describe('a key that carries a code rather than naming a field (shipper)', () =>
     },
   );
 
-  it('leaves a marker it has already written alone', () => {
-    // Still a fixed point: the marker starts with `[`, so without this it would be replaced again
-    // on every pass and report its own length instead of the key's.
-    expect(keysOf({ attempts: { '[key 0: 6 chars]': true } })).toEqual(['[key 0: 6 chars]']);
+  it('gives a name it has already written the same name again', () => {
+    // A fixed point without a recognition rule: the name fails the safe pattern, so it is
+    // replaced - and as the first replacement in this object it is replaced by itself.
+    expect(keysOf({ attempts: { '[key 1]': true } })).toEqual(['[key 1]']);
   });
 
   it('agrees with the store it ships to', () => {
@@ -1254,7 +1258,7 @@ describe('a key that carries a code rather than naming a field (shipper)', () =>
     log.emit({ level: 'info', event: 'probe', attempts: { '123456': true } });
     const parsed = inboundLineSchema.safeParse(JSON.parse(written[written.length - 1]));
     expect(parsed.success).toBe(true);
-    expect(toRow(parsed.data as never).extra).toEqual({ attempts: { '[key 0: 6 chars]': true } });
+    expect(toRow(parsed.data as never).extra).toEqual({ attempts: { '[key 1]': true } });
   });
 });
 
@@ -1381,32 +1385,14 @@ describe('a name field spelled the way an API spells it', () => {
   });
 });
 
-/**
- * Two different caller keys could reduce to the same marker: an unsafe key at index 0 becomes
- * `[key 0: 16 chars]`, and a caller whose own key is spelled exactly like that marker is passed
- * through unchanged by the fixed-point rule - so the second assignment overwrote the first and a
- * field disappeared. I wrote that passing a marker through "costs nothing"; this is what it cost
- * (PR #157 review).
+/*
+ * Three blocks stood here, on the marker mechanism this file used to have: that an in-range marker
+ * passed through untouched, that a collision suffix stayed marker-shaped, and that a caller key
+ * carrying its own digits was refused. All three tested bounds on what a caller could put *inside*
+ * a replaced name. The name is generated from its ordinal now, so none of those bounds exists to
+ * test - and what they were protecting, that no caller digits survive and that no field is lost to
+ * a collision, is asserted by the blocks that remain (PR #200 review).
  */
-describe('a caller key spelled exactly like a marker', () => {
-  const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
-
-  it('does not overwrite the replaced key that collides with it', () => {
-    const log = shipper();
-    log.emit({ level: 'info', event: 'probe', meta: { 'alice@nus.edu.sg': 1, [marker]: 2 } });
-    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
-    // Both fields survive, under distinct names, and neither value is lost.
-    expect(Object.keys(meta)).toHaveLength(2);
-    expect(Object.values(meta).sort()).toEqual([1, 2]);
-  });
-
-  it('still passes a marker through unchanged when nothing collides', () => {
-    const log = shipper();
-    log.emit({ level: 'info', event: 'probe', meta: { [marker]: 2 } });
-    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
-    expect(meta[marker]).toBe(2);
-  });
-});
 
 /**
  * `requestId` was read twice: once to capture it for the fallback line, and again by the
@@ -1498,38 +1484,6 @@ describe('a write option that reads differently than it assigned', () => {
   });
 });
 
-/**
- * The disambiguator has to be marker-shaped, not just unique. `[key 0: 16 chars] (2)` matches
- * neither `KEY_MARKER` nor `SAFE_KEY`, so the Logging Service's own pass replaced it again and the
- * stored row no longer carried the key the stdout line did - which is the exact disagreement the
- * fixed point was introduced to remove. My comment on that fix claimed it was "still a fixed point
- * on a later pass"; it was not (PR #157 review).
- */
-describe('a collision suffix and the store it is shipped to', () => {
-  const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
-  const MARKER_SHAPE = /^\[key \d+: \d+ chars\]$/;
-
-  const shipped = () => {
-    const log = shipper();
-    log.emit({ level: 'info', event: 'probe', meta: { 'alice@nus.edu.sg': 1, [marker]: 2 } });
-    return JSON.parse(written[written.length - 1]) as Record<string, unknown>;
-  };
-
-  it('writes only marker-shaped names', () => {
-    const meta = shipped().meta as Record<string, unknown>;
-    expect(Object.keys(meta)).toHaveLength(2);
-    for (const key of Object.keys(meta)) expect(key).toMatch(MARKER_SHAPE);
-  });
-
-  it('survives the store unchanged, so the row and the line agree', () => {
-    const line = shipped();
-    const parsed = inboundLineSchema.safeParse(line);
-    expect(parsed.success).toBe(true);
-    const stored = (toRow(parsed.data as never).extra as { meta: Record<string, unknown> }).meta;
-    expect(Object.keys(stored).sort()).toEqual(Object.keys(line.meta as object).sort());
-    expect(Object.values(stored).sort()).toEqual([1, 2]);
-  });
-});
 
 /**
  * `boundedText` cut the string after `jsonbSafe` had already run, so a cut landing between the two
@@ -1597,32 +1551,3 @@ describe('a one-shot requestId getter', () => {
   });
 });
 
-/**
- * The fixed-point rule trusted anything shaped like a marker, so a caller key spelled
- * `[key 123456: 6 chars]` passed through verbatim - carrying its own digits past the safe-key
- * bound and past the rule that replaces long numeric keys. An OTP formatted into the index or the
- * length slot reached stdout and the store in the clear (PR #157 review).
- */
-describe('a caller key shaped like a marker but carrying its own digits', () => {
-  const keysOf = (meta: Record<string, unknown>) => {
-    const log = shipper();
-    log.emit({ level: 'info', event: 'probe', meta });
-    return Object.keys((JSON.parse(written[written.length - 1]) as { meta: object }).meta);
-  };
-
-  it.each(['[key 123456: 6 chars]', '[key 1: 123456 chars]', '[key 999999: 999999 chars]'])(
-    'replaces %s rather than trusting its numbers',
-    (key) => {
-      const keys = keysOf({ [key]: 1 });
-      expect(keys).toHaveLength(1);
-      expect(keys[0]).not.toBe(key);
-      expect(keys[0]).not.toContain('123456');
-      expect(keys[0]).not.toContain('999999');
-    },
-  );
-
-  it('still passes a marker whose numbers fit this object through unchanged', () => {
-    const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
-    expect(keysOf({ [marker]: 1, other: 2 })).toContain(marker);
-  });
-});

@@ -1,6 +1,6 @@
 <!--
 AI Assistance Disclosure:
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-11-06
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-11-07
 Scope: Wrote this document from the plan and the four schema answers Cole Lin gave in chat on
   2026-10-16, and kept it in step with each review round on PR #129. The decisions it records are
   his; the wording is Claude's. Where a section records a problem rather than a decision, he raised
@@ -182,20 +182,37 @@ _Origin: AI doc, from the plan Cole Lin approved_
     already made of one: this was the one pairing on this page bounded at the *producer* and not at
     the store, where every other was the other way round. `bigint` and `symbol` cannot arrive at
     all, because `JSON.parse` makes neither (PR #129 review).
-  - **A replaced key is a fixed point.** A key is sanitised up to three times on its way into a row
-    — by the shipper, by `redactDeep`/`extraOf` defensively, and by the dead-letter shape if the
-    line is parked — and `[key 0: 16 chars]` does not match `SAFE_KEY`, so each pass replaced the
-    previous one's work and reported *its* length. `alice@nus.edu.sg` left the shipper as
-    `[key 0: 16 chars]` and was stored as `[key 0: 17 chars]`, so the row disagreed with the line on
-    stdout about the one number the marker exists to carry. All four copies recognise the marker
-    now. The brackets stay outside the safe alphabet on purpose. A caller's own key spelled like a
-    marker passes through as well, and that is **not** free, as this note used to claim: when an
-    unsafe key at the same index reduces to the same text, the second assignment overwrote the
-    first and a field disappeared. The walkers take the next free name instead, built from
-    that key's own index and length - a name no other key in the object can produce, and one
-    `KEY_MARKER` matches, so a later pass passes it through. The first version suffixed ` (2)`,
-    which matched neither pattern and so was replaced on the next pass, reintroducing the very
-    disagreement in slower motion (PR #129, PR #157 reviews).
+  - **A replaced key is named from its ordinal, and nothing a caller wrote is kept.** A key is
+    sanitised up to three times on its way into a row — by the shipper, by `redactDeep`/`extraOf`
+    defensively, and by the dead-letter shape if the line is parked — so the three have to agree on
+    what a replaced name is. The replacement is `[key 1]`, `[key 2]`: **this walk's own count of
+    the names it has replaced in that object.**
+
+    That is a fixed point by construction. A later walk over the same keys in the same order
+    reaches the same key at the same ordinal and writes the same name, so there is no marker to
+    recognise and no recognition rule to get wrong. It is also why the three agree without sharing
+    anything: the shipper walks a line's metadata, the store walks a whole line minus its columns,
+    and the parked shape walks what it could parse — but the *replacements* are the same keys in
+    the same order. The previous design needed all three to compute the same **position**, which
+    they never did.
+
+    It took six rounds to get here, and the history is the argument for the design, so keep it:
+    the name used to carry the replaced key's length, and `alice@nus.edu.sg` left the shipper as
+    `[key 0: 16 chars]` and was stored as `[key 0: 17 chars]` — each pass reporting its own
+    length. Making the marker recognised fixed that and let a caller key *spelled* like a marker
+    through. Suffixing ` (2)` for the resulting collision matched neither pattern and was replaced
+    on the next pass. Bounding the numbers fell to leading zeroes, because `Number('000000')` is 0.
+    Bounding the index to the object's range still left four digits in a wide enough object:
+    `[key 12: 34 chars]` carries four and `[key 123: 456 chars]` six, which is an OTP or a handover
+    code in trivially recoverable form. **Every bound was defeated by a spelling the previous one
+    allowed**, which is what says the bound was the wrong idea rather than the wrong number
+    (PR #129, PR #145, PR #157 and PR #200 reviews).
+
+    What is given up is the replaced key's length: diagnostic at best, and the field every one of
+    those bypasses travelled in. The brackets stay outside the safe alphabet on purpose, so a
+    generated name can never collide with a kept one. A top-level `__proto__` is renamed to a
+    placeholder before the Zod parse — which drops that key — and `extraOf` then replaces the
+    placeholder by ordinal like any other unusable name.
   - **The array walk is bounded, because rebuilding by index gave up what `map` had.**
     `Array.prototype.map` skips holes; a loop over `length` does not, and `length` is
     caller-controlled and free to inflate — `a.length = 0xffffffff` on an empty array is one
