@@ -84,6 +84,10 @@
  * Scope: Recognise only the canonical spelling of a marker's numbers, so leading zeroes cannot
  *        carry digits past the bound (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Bound a marker's index to three digits as well as to the object's range, so an in-range
+ *        index cannot carry a four-digit code (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -317,7 +321,7 @@ const MAX_UNNAMED_KEY = 3;
  * which costs nothing: the shape carries a position and a length and no content of its own, so
  * the worst case is a key that says about itself what it would have said anyway.
  */
-const KEY_MARKER = /^\[key (0|[1-9]\d{0,5}): (0|[1-9]\d{0,2}) chars\]$/;
+const KEY_MARKER = /^\[key (0|[1-9]\d{0,2}): (0|[1-9]\d{0,2}) chars\]$/;
 /**
  * The largest key length a marker reports, and so the largest number it can carry.
  *
@@ -345,9 +349,17 @@ function isOwnMarker(key: string, total: number): boolean {
   // are now written the only way this code writes them: no leading zeroes, and at most three
   // digits of length (PR #157 review).
   //
-  // Six digits of index is more than an object in a log line can reach: a line is capped at 64 KB
-  // and the shortest a key-and-value pair can be in JSON is about six bytes, so roughly 11,000
-  // keys is the ceiling - four digits.
+  // Three digits of index, not six. The range check alone was not a bound on *content*: an object
+  // may legitimately hold thousands of fields, so with 1,235 of them `[key 1234: 1 chars]` was in
+  // range and passed through with a four-digit code in the index slot. Three digits is the width
+  // `MAX_UNNAMED_KEY` already uses, for the same reason - it cannot hold a code this product
+  // issues (PR #157 review).
+  //
+  // The cost, stated rather than waved away: in an object with more than 1,000 fields, a marker
+  // this walk generated for a key past index 999 is not recognised by the next pass and is
+  // replaced again, so that one name differs between the line and the row. A marker disagreeing
+  // with a marker is a smaller problem than a key carrying a credential, and an object that wide
+  // in a log line is a producer bug in its own right.
   return Number(parts[1]) < total;
 }
 

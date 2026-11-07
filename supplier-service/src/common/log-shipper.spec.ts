@@ -9,6 +9,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
  * Scope: Added the cases for a marker spelled with leading zeroes (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the case for an in-range index still carrying four digits (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { LogShipper } from './log-shipper';
 
@@ -102,5 +105,38 @@ describe('a marker spelled with leading zeroes', () => {
 
   it('still passes a zero length through, which is canonical', () => {
     expect(keysOf({ '[key 0: 0 chars]': 1, other: 2 })).toContain('[key 0: 0 chars]');
+  });
+});
+
+/**
+ * Restricting the index to the object's own key range still left four and five digits available,
+ * because an object may legitimately hold thousands of fields: with 1,235 of them,
+ * `[key 1234: 1 chars]` is in range and passed through with a four-digit code in the index slot.
+ * The index is bounded to three digits now, the same width `MAX_UNNAMED_KEY` already uses and for
+ * the same reason - three digits cannot hold a code this product issues (PR #157 review).
+ */
+describe('an in-range index that still carries four digits', () => {
+  const bigMetaWith = (key: string) => {
+    const meta: Record<string, unknown> = { [key]: 'secret' };
+    for (let i = 0; i < 1300; i += 1) meta[`f${i}`] = i;
+    shipper().emit({ level: 'info', event: 'probe', meta });
+    return Object.keys((JSON.parse(written[written.length - 1]) as { meta: object }).meta);
+  };
+
+  it.each(['[key 1234: 1 chars]', '[key 99999: 1 chars]'])('replaces %s even in a large object', (key) => {
+    const keys = bigMetaWith(key);
+    expect(keys).not.toContain(key);
+    // Checked on the marker-shaped names only. The filler fields are called `f0`...`f1299`, so
+    // searching every key for the digits matches `f1234` and says nothing - which is what the
+    // first version of this assertion did.
+    const markers = keys.filter((k) => k.startsWith('[key '));
+    expect(markers).not.toHaveLength(0);
+    for (const marker of markers) {
+      expect(marker).toMatch(/^\[key (0|[1-9]\d{0,2}): (0|[1-9]\d{0,2}) chars\]$/);
+    }
+  });
+
+  it('still passes a three-digit index through', () => {
+    expect(bigMetaWith('[key 999: 1 chars]')).toContain('[key 999: 1 chars]');
   });
 });
