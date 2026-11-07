@@ -21,6 +21,25 @@
  * Scope: A key has to carry the fields this service reads, not merely be an object
  *        (PR #145 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Apply the restrictions verifyToken applies when the key set is filtered, and give the
+ *        unknown-kid refetch its own clock, recorded only after the endpoint answers.
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Do not fetch the same key set twice in one request when the cache was cold and the kid is
+ *        unknown, and let that one fetch spend the unknown-kid allowance (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Accept only key types RS256 and ES256 can actually verify with, so an importable key of
+ *        another type cannot turn an unauthenticated request into a 500 (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Check the declared alg against the key type together, not independently (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Take the algorithm a key may serve from its own type rather than from the token header,
+ *        so a header cannot name an algorithm the key cannot serve (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
 import { config } from '../config';
@@ -40,6 +59,9 @@ const MIN_REFETCH_MS = 30 * 1000; // don't hammer the User Service when a kid is
 
 let cachedKeys: Jwk[] = [];
 let cachedAt = 0;
+// Separate from cachedAt: gating the unknown-kid refetch on the ordinary fetch time meant a key
+// rotation seconds after a normal fetch was answered with 401 until that cache aged out.
+let lastMissAt = 0;
 // The fetch in progress, shared so concurrent requests trigger one JWKS request, not one each.
 let inflight: Promise<Jwk[]> | undefined;
 
@@ -60,11 +82,70 @@ function isObject(value: unknown): value is Record<string, unknown> {
  * needs `kty`. `{}` satisfies isObject, so an object-shaped but empty key set used to be cached -
  * and then a valid caller's kid was never found, so they got 401 instead of the 503 that says the
  * key service is unusable (PR #145 review).
+ *
+ * It also applies the two restrictions verifyToken applies, and tries the import rather than
+ * inferring it from the fields: a key published for encryption, or for an alg we do not accept, is
+ * importable and so passed this filter, and the set was cached as usable - and then verifyToken
+ * refused the same key, answering 401 to a cryptographically valid administrator token. The filter
+ * and the verifier cannot disagree about a key now (swept from the PR #129 review).
  */
+/**
+ * The one JWT algorithm a key of this type can serve, or null if this service can serve none.
+ *
+ * The same pairing `isUsableKey` applies when filtering the set, read back at verify time so the
+ * filter and the verifier cannot disagree - which is what the comment on that function has claimed
+ * since it was written (PR #157 review).
+ */
+function algFor(jwk: Jwk): 'RS256' | 'ES256' | null {
+  const { kty, crv } = jwk as { kty?: unknown; crv?: unknown };
+  if (kty === 'RSA' && crv === undefined) return 'RS256';
+  if (kty === 'EC' && crv === 'P-256') return 'ES256';
+  return null;
+}
+
 function isUsableKey(value: unknown): value is Record<string, unknown> {
   if (!isObject(value)) return false;
-  const { kid, kty } = value as { kid?: unknown; kty?: unknown };
-  return typeof kid === 'string' && kid !== '' && typeof kty === 'string' && kty !== '';
+  const { kid, kty, crv, use, alg } = value as {
+    kid?: unknown;
+    kty?: unknown;
+    crv?: unknown;
+    use?: unknown;
+    alg?: unknown;
+  };
+  if (typeof kid !== 'string' || kid === '') return false;
+  if (typeof kty !== 'string' || kty === '') return false;
+  if (use !== undefined && use !== 'sig') return false;
+  if (alg !== undefined && alg !== 'RS256' && alg !== 'ES256') return false;
+  // The key *type*, not only a declared `alg`. `alg` is optional in a JWK, and importing the key
+  // proves nothing about whether this service can verify with it: an Ed25519 or P-384 JWK with no
+  // `alg` imports perfectly well, and a caller naming that kid with an `RS256` header reached
+  // `verify('sha256', ..., ed25519Key, ...)`, which throws ERR_OSSL_INVALID_DIGEST - an unhandled
+  // 500 out of the auth path, from an unauthenticated request. When it was the only key, the set
+  // also counted as usable instead of unavailable (PR #157 review).
+  //
+  // RS256 needs an RSA key; ES256 needs P-256 specifically, which is why the curve is checked and
+  // not just `kty`. The claim above - that this filter applies the restrictions the verifier
+  // applies - is only true with this check in it.
+  //
+  // The pair, not the two checks separately. An RSA key declaring `alg: "ES256"` satisfies both on
+  // its own and can serve neither, because verifyToken requires the header's alg to equal the
+  // key's - so the set cached as healthy while no token could ever verify, and callers got 401
+  // where a set holding nothing verifiable owes them 503 (PR #157 review).
+  if (kty === 'RSA') {
+    if (crv !== undefined) return false;
+    if (alg !== undefined && alg !== 'RS256') return false;
+  } else if (kty === 'EC') {
+    if (crv !== 'P-256') return false;
+    if (alg !== undefined && alg !== 'ES256') return false;
+  } else {
+    return false;
+  }
+  try {
+    createPublicKey({ key: value as JsonWebKey, format: 'jwk' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function fetchKeys(): Promise<Jwk[]> {
@@ -119,13 +200,35 @@ function refreshKeys(): Promise<Jwk[]> {
 
 async function keysFor(kid: string): Promise<Jwk | undefined> {
   const fresh = Date.now() - cachedAt < CACHE_TTL_MS;
-  if (!fresh || !cachedKeys.length) await refreshKeys();
+  // Whether this call has already been to the endpoint. Without it, a cold or expired cache
+  // fetched here and then, on an unknown kid, fetched the identical set again - double the JWKS
+  // traffic on exactly the requests that are already failing, and a second fetch that happens to
+  // fail turns an honest 401 into a 503 (PR #157 review).
+  let justRefreshed = false;
+  if (!fresh || !cachedKeys.length) {
+    await refreshKeys();
+    justRefreshed = true;
+  }
 
   let key = cachedKeys.find((k) => k.kid === kid);
-  // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
-  if (!key && Date.now() - cachedAt > MIN_REFETCH_MS) {
-    await refreshKeys();
-    key = cachedKeys.find((k) => k.kid === kid);
+  if (!key) {
+    if (justRefreshed) {
+      // The fetch above is the endpoint's own answer about this kid, so it spends the allowance
+      // too. Skipping the branch without recording the miss left the gate open on the *next*
+      // request: a cold cache plus an unknown kid meant one JWKS request per incoming request for
+      // as long as the invalid tokens kept arriving - the opposite of the limit this constant
+      // documents (PR #157 review).
+      lastMissAt = Date.now();
+    } else if (Date.now() - lastMissAt > MIN_REFETCH_MS) {
+      // Unknown kid: the User Service may have rotated its key, so refetch (rate-limited).
+      await refreshKeys();
+      // Recorded only once the endpoint has answered. Recorded before the call, one failed refresh
+      // answered 401 from the stale cache for the next MIN_REFETCH_MS even after the endpoint came
+      // back. A refresh that throws propagates as 503 instead, and refreshKeys() already shares one
+      // in-flight fetch between concurrent callers, so this cannot become a storm.
+      lastMissAt = Date.now();
+      key = cachedKeys.find((k) => k.kid === kid);
+    }
   }
   return key;
 }
@@ -162,6 +265,14 @@ export async function verifyToken(authorization: string | undefined): Promise<To
 
   const jwk = await keysFor(header.kid);
   if (!jwk || (jwk.alg && jwk.alg !== alg) || (jwk.use && jwk.use !== 'sig')) return null;
+  // The key's *type* decides which algorithm it can serve, not the header. A JWK's `alg` is
+  // optional, and with it absent the header alone chose the branch below - and Node verifies an
+  // RSA signature perfectly well through the ES256 branch, because `dsaEncoding` is ignored for
+  // RSA. So a token could declare `ES256` against an RSA key and be accepted, which is the kind of
+  // algorithm confusion this check exists to refuse (PR #157 review). Measured, not assumed: the
+  // RSA-through-ES256 direction verified before this check, while a DER-encoded EC signature
+  // through the RS256 branch already failed on its own, and both are covered by cases now.
+  if (algFor(jwk) !== alg) return null;
 
   let publicKey: KeyObject;
   try {
@@ -188,5 +299,6 @@ export async function verifyToken(authorization: string | undefined): Promise<To
 export function resetJwksCache(): void {
   cachedKeys = [];
   cachedAt = 0;
+  lastMissAt = 0;
   inflight = undefined;
 }
