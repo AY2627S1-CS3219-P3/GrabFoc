@@ -6,7 +6,7 @@
 #   the admin locations page load).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 # Scope: Gateway edge-listener settings (GATEWAY_EDGE_PORT, FRONTEND_URL); the frontend in its own layer after the gateway (deploy part 1, #141).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).

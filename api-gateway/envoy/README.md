@@ -10,7 +10,7 @@ Scope: Listed the Credit route file (#61).
 Author review: pending — Jie Yang to record the review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Documented the /gateway prefix and the edge listener (#141).
-Author review: Pending Jie Yang's review.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 -->
 
 # Stock Envoy gateway

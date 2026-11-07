@@ -7,7 +7,7 @@ Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkth
   admin locations page load).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Checks through /gateway; the first-apply gateway redeploy (deploy part 1, #141).
-Author review: Pending Jian Bing's review.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 -->
 
 # AWS deployment runbook

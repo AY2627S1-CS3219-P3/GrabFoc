@@ -5,7 +5,7 @@
 #   tests (all passed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 # Scope: Deploy part 1 (#141): the frontend's own layer, and the gateway's edge listener settings.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {

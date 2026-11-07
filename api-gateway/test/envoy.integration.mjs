@@ -18,7 +18,7 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Added a test that /gateway/* reaches the services with the prefix removed (#141).
 Scope: Added a stub frontend and edge-listener tests: origin key, /gateway vs frontend routing, and which
 headers each route keeps (#141).
-Author review: Pending Jie Yang's review.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
 import assert from 'node:assert/strict';
@@ -85,7 +85,7 @@ const upstream = (instance) => createServer((req, res) => {
       requestId: req.headers['x-request-id'], body: Buffer.concat(chunks).toString() }));
   });
 });
-// AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang): a stand-in for the Next.js frontend.
+// AI-generated (Claude Code, 2026-10-27): a stand-in for the Next.js frontend.
 let frontendHits = 0;
 let unavailableHits = 0;
 const frontend = createServer((req, res) => {
@@ -195,7 +195,7 @@ test('Credit balance and history reads need a token and reach the Credit Service
   }
 });
 
-// AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang): deploy part 1 (#141).
+// AI-generated (Claude Code, 2026-10-27): deploy part 1 (#141).
 test('internal listener serves /gateway paths with the prefix removed', async () => {
   const keys = await fetch(gateway + '/gateway/.well-known/jwks.json');
   assert.equal(keys.status, 200);
@@ -210,7 +210,7 @@ test('internal listener serves /gateway paths with the prefix removed', async ()
   }
 });
 
-// AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang): the edge listener (deploy part 1, #141).
+// AI-generated (Claude Code, 2026-10-27): the edge listener (deploy part 1, #141).
 const originKey = 'test-origin-key-0123456789abcdefghij';
 let edgeUrl;
 async function edge() {

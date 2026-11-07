@@ -17,10 +17,10 @@ Scope: Tests that the internal listener accepts /gateway/* and never routes /gat
 and Credit count tests now count unprefixed routes (#141).
 Scope: Tests for the edge listener: off by default, startup validation, origin-key match on every route,
 frontend catch-all without host rewrite (#141).
-Author review: Pending Jie Yang's review.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Test that api-gateway/.env.example lists every variable the renderer and route files read (PR #156 review).
-Author review: Pending Jie Yang's review.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 """
 # AI-generated; review pending.
 import importlib.util
@@ -51,7 +51,7 @@ class RouteFilesTest(unittest.TestCase):
     def write_service(self, definition):
         (self.root / "routes" / "30-extra.routes.json").write_text(json.dumps(definition))
 
-    # AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang)
+    # AI-generated (Claude Code, 2026-10-27)
     @staticmethod
     def routes(config, listener=0):
         hcm = config["static_resources"]["listeners"][listener]["filter_chains"][0]["filters"][0]["typed_config"]
@@ -253,7 +253,7 @@ class RouteFilesTest(unittest.TestCase):
 
 
 class EnvExampleTest(unittest.TestCase):
-    # AI-generated (Claude Code, 2026-11-06), review pending: AGENTS.md §8 asks for every variable a
+    # AI-generated (Claude Code, 2026-11-06): AGENTS.md §8 asks for every variable a
     # service reads to be in its .env.example, with a safe placeholder.
     def test_env_example_lists_every_variable_the_gateway_reads(self):
         gateway = Path(__file__).resolve().parents[1]

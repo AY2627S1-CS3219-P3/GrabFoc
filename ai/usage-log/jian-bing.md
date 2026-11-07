@@ -103,10 +103,10 @@ Scope: Wrote the 2026-10-25 AWS infrastructure entry (deploy part 2) from Jian B
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Wrote the 2026-10-26 staging apply and 2026-10-27 edge routing (deploy part 1) entries from Jian Bing's prompts, taken verbatim from the session transcript.
-Author review: pending — Jian Bing to record what he checked.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 gateway .env.example entry (PR #156) from Jian Bing's prompts, taken verbatim from the session transcript.
-Author review: pending — Jian Bing to record what he checked.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 design-confirmation entry (PR #146) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
@@ -122,12 +122,50 @@ Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code'
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 review-recording entry (PRs #193 and #133) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Wrote the 2026-11-07 PR #156 review-recording entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-07 — Recording my review of the edge routing (PR #156), and the stack's open threads
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** the 18 files where #156 added a pending "Author review" line, three of this log's entries for #156, and
+the inline markers in #156's generated code
+
+**Scenario:** Deanson asked whether the AWS and Envoy work is on main yet and whether #156 matters for his work.
+Claude explained the three stacked PRs (#146 → main, #156 on #146, #191 on #156) and drafted my reply. Claude then
+checked what still blocks #146 and #156, and resolved the two open review threads (the origin key on #146, handled by
+#156; the Notification Service on #191, waiting for Jie Yang's PRs), both of which already had my replies. After I
+told Claude that Jie Yang had approved #156, Claude replaced #156's pending review lines with my review in my words
+and pushed, which re-ran the SoCLaaS review (its last run failed with HTTP 502 from the SoCLaaS server). The
+2026-10-26 staging apply entry's Verification line stays pending: it records the AWS apply, not #156's code.
+
+**Prompts (exact, in order):**
+> pr 133 merged
+
+> actually what did deanson even ask me, and what am i usppose dot reply to him
+
+> are pr 146 and 156 ready to merge right now?
+
+> help me resolve all the conversations in the PRs
+
+> jieyang has approved #156, for the author review lines jsut say that i have looked through the code and think its ok, also just re run coclass on 156
+
+**What it produced:** A chat reply for Deanson (not committed), the two resolved threads, and "Author review (Jian
+Bing, 2026-11-07): Looked through the code and think it's okay." in place of each pending line #156 added; "review
+pending" removed from the inline markers in #156's code.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `api-gateway/test/envoy_routes_test.py` (14/14), parsed the Postman collection and
+`render.py`, ran `node --check` on both edited test files, `bash -n` on `check.sh` and `terraform fmt -check`. My own
+check: looked through the code and think it's okay.
 
 ### 2026-11-06 — Recording my review of the AWS infrastructure (PR #146)
 
@@ -182,7 +220,7 @@ and `EnvExampleTest`.
 **What I changed or rejected:** Nothing.
 
 **Verification:** Claude ran `python3 api-gateway/test/envoy_routes_test.py`: the new test failed listing the three
-names, then 14/14 passed. My own check: pending — Jian Bing to record what he checked.
+names, then 14/14 passed. My own check (2026-11-07): looked through the code and think it's okay.
 
 ### 2026-11-06 — Recording Cole Lin's confirmation of the AWS design (PR #146)
 
@@ -352,7 +390,7 @@ the frontend; Claude showed the variable already exists (`FRONTEND_GATEWAY_URL`,
 should stay pointed at the gateway inside the server, not the CloudFront URL. Dropped a separate 401
 page, because every page already sends signed-out users to `/signin`. Jie Yang approved the gateway
 changes.
-**Verification:** Pending — Jian Bing to record what he checked.
+**Verification:** My own check (2026-11-07): looked through the code and think it's okay.
 
 ### 2026-10-27 — Codex review fixes on the AWS infrastructure (PR #146)
 

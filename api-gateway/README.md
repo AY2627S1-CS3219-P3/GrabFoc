@@ -11,7 +11,7 @@ Scope: Added the Order Service upstream address.
 Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Postman baseUrl ends in /gateway, locally and on AWS (#141).
-Author review: Pending Jie Yang's review.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 -->
 
 # API Gateway

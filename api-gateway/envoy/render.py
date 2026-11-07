@@ -9,7 +9,7 @@ Author review: Pending Jie Yang's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: /gateway/* copies of every API route with the prefix removed (deploy part 1, #141).
 Scope: Edge listener for CloudFront: X-Origin-Key check, /gateway/* API routes, frontend catch-all (#141).
-Author review: Pending Jie Yang's review.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
 import json
@@ -168,7 +168,7 @@ def load_routes(env):
     return services, prefixes
 
 
-# AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang): the public API prefix (deploy
+# AI-generated (Claude Code, 2026-10-27): the public API prefix (deploy
 # spec §3.3). A prefixed copy of each route matches "/gateway" + path and removes the prefix before
 # forwarding, so route files and services never see it.
 GATEWAY_PREFIX = "/gateway"
@@ -199,7 +199,7 @@ def api_routes(services, prefixes, settings, public_prefix=""):
     return routes
 
 
-# AI-generated (Claude Code, 2026-10-27; pending review by Jie Yang): the edge listener is CloudFront's
+# AI-generated (Claude Code, 2026-10-27): the edge listener is CloudFront's
 # origin on AWS (deploy spec §3.3). It is off unless GATEWAY_EDGE_PORT is set, so local Compose keeps
 # one listener.
 def edge_settings(env, port):
