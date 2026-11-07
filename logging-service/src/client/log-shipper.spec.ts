@@ -91,6 +91,9 @@
  * Scope: Added the case for a field JSON.stringify drops, which must not spend an ordinal
  *        (PR #200 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Describe the replacement the walk now makes, not the one it used to (PR #200 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -1072,11 +1075,11 @@ describe('a sensitive name spelled with a separator', () => {
 
 describe('a replaced key and the store it is shipped to', () => {
   /**
-   * The store sanitises keys again, defensively, and the marker did not match its safe-key
-   * pattern - so it was replaced a second time and the stored row reported the marker's length
-   * rather than the key's: 16 chars on stdout, 17 in the row (PR #129 review). Checked against
-   * the store's own code here rather than against a copy of the marker shape, so the two sides
-   * cannot drift apart silently.
+   * The store sanitises keys again, defensively, so a replaced name has to survive that second
+   * pass unchanged. It did not: the name carried its own length, and each pass reported its own -
+   * 16 chars on stdout, 17 in the row (PR #129 review). An ordinal has nothing in it for the two
+   * passes to disagree about. Checked against the store's own code here rather than against a
+   * copy of the name's shape, so the two sides cannot drift apart silently.
    */
   it('survives the store without changing what it says', () => {
     shipper().emit({ level: 'info', event: 'mail', recipients: { 'alice@nus.edu.sg': true } });

@@ -51,6 +51,9 @@
  * Scope: Generate a replaced field name from its own ordinal instead of bounding the
  *        numbers a caller may put inside one (PR #200 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Describe the replacement the walk now makes, not the one it used to (PR #200 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -243,8 +246,9 @@ const SHAPE_MAX_DEPTH = 4;
 // as caller-controlled as a value: `{ "Bearer eyJ...": "x" }` put the token in the body as a key
 // even once the values had been reduced to types (PR #129 review). Truncating an unsafe key is no
 // good either - 40 characters of a token is still 40 characters of a token - so it is replaced
-// whole, by its position and length. Same rule and same replacement as line.schema.ts and the
-// shipper, so one bad name reads the same wherever it surfaces.
+// whole, by this walk's own count of replacements. Same rule and same replacement as
+// line.schema.ts and the shipper: an ordinal over the same keys in the same order is the same
+// name on both sides, so one bad name reads alike wherever it surfaces.
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
 /**
  * A key that reads as a field *name*, which is to say it starts with a letter.

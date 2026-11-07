@@ -16,6 +16,15 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-08 — The stale-comment sweep I did not actually sweep (PR #200)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- One finding, and it is the second half of one I had filed against myself an hour earlier. I fixed two comments that still described the deleted `safeKey`, wrote that there is "a check over both files for references to the removed names", and moved on. The check was over **two `.ts` files**. The review found the rest: three field-sanitisation bullets in this service's `AGENTS.md` still instruct a maintainer to replace a name "by its position and length" and name `safeKey` as the thing that does it, and the dead-letter shape's own comment says the same.
+- Why that is worse here than an ordinary stale comment: `AGENTS.md` is a **scoped instruction file**, so it is what the next agent reads before touching these files. Guidance saying the old format is required, in a document whose design section now says ordinals, would have had someone put the incompatible spelling back into one of the three walkers that must agree - which is exactly the disagreement the ordinal change removed, reintroduced from the documentation rather than from the code.
+- Also fixed, found in the same sweep rather than from the review: a spec doc comment describing the two passes reporting their own length, 16 chars on stdout and 17 in the row, as though that were still what the test checks. The test asserts the ordinal. The history is worth keeping, so it is now written as why the case exists rather than as what the code does.
+- Four places in all - three bullets and the dead-letter comment, plus the spec - and the sweep this time was over both `.md` files and every `.ts` file in both services, for the deleted name *and* for the phrase describing the old mechanism. The lesson is narrow and worth stating: "I checked" is worth nothing without the scope, and mine was two files out of a service and a doc.
+- Verification: **451 pass**, `tsc --noEmit` clean. Nothing in the fix is executable, so the tests prove only that nothing was broken by it.
+
 ### 2026-11-08 — A comment left standing over the function it described (PR #200)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
