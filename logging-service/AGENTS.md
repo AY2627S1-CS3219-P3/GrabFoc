@@ -1,10 +1,16 @@
 <!--
 AI Assistance Disclosure:
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-11-07
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-11-08
 Scope: Wrote this document from the plan and the four schema answers Cole Lin gave in chat on
   2026-10-16, and kept it in step with each review round on PR #129. The decisions it records are
   his; the wording is Claude's. Where a section records a problem rather than a decision, he raised
   it. The per-section "Origin" notes say which is which.
+Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+Scope: Three field-sanitisation bullets still instructed a maintainer to replace a name by its
+  position and length, and named the function the ordinal change deleted - guidance that would
+  have had the next agent put the old format back into one of the walkers that must agree
+  (PR #200 review).
 Author review: Cole Lin, read and approved.
 -->
 
@@ -284,8 +290,10 @@ _Origin: AI doc, from the plan Cole Lin approved_
 - **Field *names* are sanitised as well as values.** Redaction only ever looked at values, so
   data used as a key — `{ recipients: { "alice@nus.edu.sg": true } }` — travelled untouched
   into stdout, Kafka and the `extra` column (PR #129 review). A name outside
-  `[A-Za-z0-9_.:-]{1,64}` is replaced whole by its position and length, not truncated, since
-  half an address is still half an address. The value under it is kept. The same rule is in
+  `[A-Za-z0-9_.:-]{1,64}` is replaced whole by the walk's own count of replacements in that
+  object - `[key 1]`, `[key 2]` - not truncated, since half an address is still half an address.
+  Nothing of the caller's key reaches the name, which is the point: six rounds of bounding what
+  could go *inside* a replaced name each fell to a spelling the previous bound allowed. The value under it is kept. The same rule is in
   the shipper, in `line.schema.ts` and in the dead-letter shape, and **the three must agree**.
   `__proto__` is replaced too, although it matches the pattern: it is the one name for which
   `out[key] = value` does not define a property but runs `Object.prototype`'s setter, so the
@@ -297,8 +305,9 @@ _Origin: AI doc, from the plan Cole Lin approved_
   the store is the kind of disagreement these reviews keep finding. Knowing that was not the same
   as handling it, and for a *top-level* `__proto__` the store did drop the field, because the walk
   that renames it runs on Zod's output and the name was gone by then. The parse is now preceded by
-  a rename of that one key on the raw input, spelled by `safeKey` itself, so the field arrives
-  where the walkers can see it (PR #129 review).
+  a rename of that one key on the raw input to a placeholder the walkers will not keep, so the
+  field arrives where they can see it and is then replaced by its ordinal like any other unusable
+  name (PR #129 review).
 - **A list is only as good as the spellings in it.** This bullet claimed given and family names
   were covered while the list held only `firstname` and `lastname`, so `givenName` - the spelling
   an OIDC claim and most APIs use - normalised to `givenname`, matched nothing, and went to stdout
@@ -313,7 +322,7 @@ _Origin: AI doc, from the plan Cole Lin approved_
   `ts` and `service` always win — a line claiming another service's name would make the store
   unreadable.
 - It writes the line itself rather than through Nest's logger, which would wrap the JSON in Nest's own timestamp, PID and context and leave a collector digging it out.
-- **A safe-looking key is not a safe key, and nothing here can make it one.** `safeKey` replaces a
+- **A safe-looking key is not a safe key, and nothing here can make it one.** The walkers replace a
   field name that *cannot* be a field name — one with an `@`, a space, 200 characters — because such
   a name is data rather than a name. A review round asked for credential-*shaped* keys to be
   replaced as well, and it is right that `{ attempts: { "123456": true } }` writes a six-digit code
