@@ -3,6 +3,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-05
 Scope: §9 D2 demo checks: replaced the stale `status=INACTIVE` / `ALL` query with `includeInactive=true`, the parameter documented in supplier-service/AGENTS.md and implemented by the Supplier Service.
 Author review (Jian Bing): Checked the whole end-to-end flow locally.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
+Scope: "Where to find things": added the "Deploying to AWS" row (deploy part 2, #142).
+Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
+  infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and the
+  admin locations page load).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
 Scope: §3 "Messaging (Kafka)" [Proposed] (six rules and two proposed changes to [Decided] items) and three §10 open items, written from Jian Bing's walkthrough decisions (redesign spec §9, K1–K13); consumer rules 1–2 proposed by Claude Code and confirmed by him.
 Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided.
@@ -12,6 +17,10 @@ Author review: Jian Bing, 2026-10-18 — read in full; it matches what I decided
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
 Author review: Jian Bing supplied what it states; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+Scope: Added logging-service/ to the repository layout, and recorded the three N2Hs whose GitHub
+assignees differ from the Gantt chart (issue #52 to Cole Lin; #57 and #58 to Jian Bing).
+Author review: Cole Lin, read and approved.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
 Scope: §3 Communication: HTTP for reserve only; transfer and release as credit.commands (Zi Yi's direction).
 Author review: Reviewed
@@ -65,6 +74,7 @@ This file holds **project-wide** context only. Service-specific rules, schemas, 
 | Notification Service | §7 below |
 | Seed data | `data/csv/supplier-seed-data.csv`, `data/images/` |
 | Anything spanning several services | this file: §5 roles, §6 auth, §8 cross-cutting rules |
+| Deploying to AWS (Terraform, secrets, first deploy) | `infra/terraform/README.md`; design in `docs/superpowers/specs/2026-10-23-aws-deployment-design.md` |
 
 - Keep this file lean. New service-specific detail goes in that service's `AGENTS.md`; only project-wide decisions belong here.
 - When the `api-gateway/` or `notification-service/` folder is created, give it its own `AGENTS.md` and move its section there.
@@ -179,6 +189,7 @@ The repo follows the template's **one-service-per-folder** rule (see `README.md`
 ├── credit-service/        # core (template)
 ├── api-gateway/           # extra service, same level
 ├── notification-service/  # extra service, same level
+├── logging-service/       # N2H (issue #52), same level
 ├── frontend/
 ├── data/
 │   ├── csv/supplier-seed-data.csv   # Supplier seed data (from the template)
@@ -190,7 +201,7 @@ The repo follows the template's **one-service-per-folder** rule (see `README.md`
 
 - Each service folder has its own `Dockerfile`, `README.md` and `AGENTS.md`. Put service-specific agent notes in that service's `AGENTS.md`.
 - Each service folder also has its own `compose.yaml`: the service plus the containers only it uses, including its own database. The root `compose.yaml` only `include`s them, so `docker compose up` from the root still starts everything.
-- Any N2H that needs its own service (e.g. centralized logging, real-time chat) gets a new top-level folder, following the same structure.
+- Any N2H that needs its own service (e.g. centralized logging, real-time chat) gets a new top-level folder, following the same structure. `logging-service/` is the first of these.
 - Agent configs, prompts and skills may be added, but core code must stay inside the service folders.
 
 ### Ownership
@@ -215,6 +226,12 @@ Overall plan (from the Gantt chart):
 | Order acceptance/lifecycle/history, containerisation, Real-time chat | Jie Yang |
 | Credit Service, service integration, Admin dashboard | Zi Yi |
 | User Service, UI mockup | Deanson |
+
+Since the Gantt chart was drawn, GitHub assignments have moved three of these N2Hs (checked
+2026-10-21; the rows above stay as the original plan):
+
+- **Centralized Logging** → Cole Lin (issue #52, opened by Zi Yi).
+- **CI** → Jian Bing (#57, closed) and **cloud deployment / CD** → Jian Bing (#58).
 
 **[Open]** Deanson has no N2H assigned yet (every member needs one).
 

@@ -6,6 +6,11 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Wrote the 2026-10-18 Author review text above from Jian Bing's account of what he checked (PR #97).
 # Author review: Jian Bing supplied what it states; the wording is Claude's.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: Left infra/secrets out of the build context (Codex review on PR #146).
+# Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
+#   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
+#   the admin locations page load).
 
 **/node_modules
 **/dist
@@ -15,4 +20,5 @@
 .env
 .env.*
 !.env.example
+infra/secrets
 *.log
