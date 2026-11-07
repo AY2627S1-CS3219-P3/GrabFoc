@@ -12,6 +12,7 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
  * Scope: The denial line now goes through the shipper rather than Nest's logger, so these
  *        read the shipped line and assert the fields it adds (issue #52).
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: Added the unusable-key-set cases and the rotation-after-a-failed-refresh case,
  *        swept from the PR #129 review.

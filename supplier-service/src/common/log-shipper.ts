@@ -6,12 +6,15 @@
  *        has to be repeated here. This copy brings the fixes from the #129 and #145 reviews - all
  *        reads of the caller's input inside the serialisation guard, and a fixed reason instead of
  *        an exception message in the fallback line.
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-25
  * Scope: Call Date.prototype.toISOString rather than the value's own, so an override cannot
  *        run after redaction (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: Sanitise field *names* as well as values, and bound the buffer in bytes as well as
  *        in lines (PR #129 review). Body kept identical to the canonical copy.
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: A field named `__proto__` no longer disappears, and personal-name fields are redacted
  *        (PR #129 review). Body kept identical to the canonical copy.
@@ -76,6 +79,10 @@
  * Scope: Keep a collision name inside the index range a later pass recognises (PR #157 review).
  *        This copy now leads the canonical file, which is on PR #129's branch and not to be
  *        pushed to; the same change belongs there before that PR merges.
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Recognise only the canonical spelling of a marker's numbers, so leading zeroes cannot
+ *        carry digits past the bound (PR #157 review).
  * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
@@ -310,7 +317,7 @@ const MAX_UNNAMED_KEY = 3;
  * which costs nothing: the shape carries a position and a length and no content of its own, so
  * the worst case is a key that says about itself what it would have said anyway.
  */
-const KEY_MARKER = /^\[key (\d{1,6}): (\d{1,6}) chars\]$/;
+const KEY_MARKER = /^\[key (0|[1-9]\d{0,5}): (0|[1-9]\d{0,2}) chars\]$/;
 /**
  * The largest key length a marker reports, and so the largest number it can carry.
  *
@@ -332,7 +339,16 @@ const MAX_REPORTED_LENGTH = 999;
 function isOwnMarker(key: string, total: number): boolean {
   const parts = KEY_MARKER.exec(key);
   if (!parts) return false;
-  return Number(parts[1]) < total && Number(parts[2]) <= MAX_REPORTED_LENGTH;
+  // The length bound is in the pattern, not in a comparison: `Number('000123')` is 123, so a
+  // six-digit spelling satisfied a numeric `<= 999` and the caller's digits went through - an OTP
+  // padded with zeroes walking straight past the bound added to stop exactly that. Both numbers
+  // are now written the only way this code writes them: no leading zeroes, and at most three
+  // digits of length (PR #157 review).
+  //
+  // Six digits of index is more than an object in a log line can reach: a line is capped at 64 KB
+  // and the shortest a key-and-value pair can be in JSON is about six bytes, so roughly 11,000
+  // keys is the ceiling - four digits.
+  return Number(parts[1]) < total;
 }
 
 /**

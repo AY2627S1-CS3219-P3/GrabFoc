@@ -6,6 +6,7 @@
  *        case in this file by hand.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: Added the empty and malformed key-set rows (PR #129 review).
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: Reworked the alg/use cases now that an unusable key set is caught when it is fetched, and
  *        replaced the unknown-kid timing cases, which pinned the behaviour the PR #129 review

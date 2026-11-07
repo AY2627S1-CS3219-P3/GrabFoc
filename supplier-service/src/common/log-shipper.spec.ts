@@ -6,6 +6,9 @@
  *        fix that lands only here had no test here. This covers the collision-name range
  *        (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a marker spelled with leading zeroes (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { LogShipper } from './log-shipper';
 
@@ -69,5 +72,35 @@ describe('a collision name and the range the next pass recognises', () => {
   it('still replaces a marker whose numbers it could not have written', () => {
     const keys = Object.keys(metaOf({ '[key 123456: 6 chars]': 1 }));
     expect(keys[0]).not.toContain('123456');
+  });
+});
+
+/**
+ * `Number('000123')` is 123, so a six-digit spelling satisfied the three-digit bound and the
+ * caller's digits went through - an OTP padded with zeroes, straight past the fix that was added
+ * to stop exactly that. A marker's numbers have to be spelled the way this code spells them
+ * (PR #157 review).
+ */
+describe('a marker spelled with leading zeroes', () => {
+  const keysOf = (meta: Record<string, unknown>) => {
+    shipper().emit({ level: 'info', event: 'probe', meta });
+    return Object.keys((JSON.parse(written[written.length - 1]) as { meta: object }).meta);
+  };
+
+  it.each(['[key 0: 000123 chars]', '[key 00: 16 chars]', '[key 0: 0999 chars]'])(
+    'replaces %s, which this code would never have written',
+    (key) => {
+      const keys = keysOf({ [key]: 1 });
+      expect(keys[0]).not.toBe(key);
+      expect(keys[0]).not.toContain('000');
+    },
+  );
+
+  it('still passes the canonical spelling through', () => {
+    expect(keysOf({ '[key 0: 16 chars]': 1, other: 2 })).toContain('[key 0: 16 chars]');
+  });
+
+  it('still passes a zero length through, which is canonical', () => {
+    expect(keysOf({ '[key 0: 0 chars]': 1, other: 2 })).toContain('[key 0: 0 chars]');
   });
 });
