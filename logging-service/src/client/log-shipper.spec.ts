@@ -75,6 +75,10 @@
  * Scope: Added the case for a write option that reads differently than it assigned, which is the
  *        read-once class inside the fix for the read-once class (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a collision suffix surviving the store's own pass, and for a
+ *        truncation that lands inside a surrogate pair (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -1477,5 +1481,76 @@ describe('a write option that reads differently than it assigned', () => {
     log.emit({ level: 'info', event: 'probe' });
     process.stdout.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }));
     expect(log.counts.writeFailed).toBe(1);
+  });
+});
+
+/**
+ * The disambiguator has to be marker-shaped, not just unique. `[key 0: 16 chars] (2)` matches
+ * neither `KEY_MARKER` nor `SAFE_KEY`, so the Logging Service's own pass replaced it again and the
+ * stored row no longer carried the key the stdout line did - which is the exact disagreement the
+ * fixed point was introduced to remove. My comment on that fix claimed it was "still a fixed point
+ * on a later pass"; it was not (PR #157 review).
+ */
+describe('a collision suffix and the store it is shipped to', () => {
+  const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
+  const MARKER_SHAPE = /^\[key \d+: \d+ chars\]$/;
+
+  const shipped = () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { 'alice@nus.edu.sg': 1, [marker]: 2 } });
+    return JSON.parse(written[written.length - 1]) as Record<string, unknown>;
+  };
+
+  it('writes only marker-shaped names', () => {
+    const meta = shipped().meta as Record<string, unknown>;
+    expect(Object.keys(meta)).toHaveLength(2);
+    for (const key of Object.keys(meta)) expect(key).toMatch(MARKER_SHAPE);
+  });
+
+  it('survives the store unchanged, so the row and the line agree', () => {
+    const line = shipped();
+    const parsed = inboundLineSchema.safeParse(line);
+    expect(parsed.success).toBe(true);
+    const stored = (toRow(parsed.data as never).extra as { meta: Record<string, unknown> }).meta;
+    expect(Object.keys(stored).sort()).toEqual(Object.keys(line.meta as object).sort());
+    expect(Object.values(stored).sort()).toEqual([1, 2]);
+  });
+});
+
+/**
+ * `boundedText` cut the string after `jsonbSafe` had already run, so a cut landing between the two
+ * code units of an emoji left the high surrogate behind. For `originalEvent` on the fallback path
+ * that value goes into `extra` JSONB, whose parser refuses an unpaired surrogate - so the one line
+ * that records a build failure was itself parked (PR #157 review).
+ */
+describe('a truncation that lands inside a surrogate pair', () => {
+  const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+  it('leaves no unpaired surrogate in a cut event', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: `${'e'.repeat(48)}😀${'e'.repeat(40)}` });
+    const event = (JSON.parse(written[0]) as { event: string }).event;
+    expect(LONE.test(event)).toBe(false);
+  });
+
+  it('keeps the cut line storable, which is the point of the bound', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: `${'e'.repeat(48)}😀${'e'.repeat(40)}` });
+    const parsed = inboundLineSchema.safeParse(JSON.parse(written[0]));
+    expect(parsed.success).toBe(true);
+    // The store does not have to change it, which is what "agrees with the store" means here.
+    expect(toRow(parsed.data as never).event).toBe((JSON.parse(written[0]) as { event: string }).event);
+  });
+
+  it('still marks the value as cut', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: `${'e'.repeat(48)}😀${'e'.repeat(40)}` });
+    expect((JSON.parse(written[0]) as { event: string }).event).toContain('[TRUNCATED]');
+  });
+
+  it('leaves a short value with an emoji completely alone', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'ok-😀' });
+    expect((JSON.parse(written[0]) as { event: string }).event).toBe('ok-😀');
   });
 });

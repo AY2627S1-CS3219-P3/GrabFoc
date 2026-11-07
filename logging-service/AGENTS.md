@@ -191,8 +191,11 @@ _Origin: AI doc, from the plan Cole Lin approved_
     now. The brackets stay outside the safe alphabet on purpose. A caller's own key spelled like a
     marker passes through as well, and that is **not** free, as this note used to claim: when an
     unsafe key at the same index reduces to the same text, the second assignment overwrote the
-    first and a field disappeared. The walkers take the next free name instead, suffixed ` (2)`,
-    which `SAFE_KEY` cannot produce and `KEY_MARKER` does not match (PR #129, PR #157 reviews).
+    first and a field disappeared. The walkers take the next free name instead, built from
+    that key's own index and length - a name no other key in the object can produce, and one
+    `KEY_MARKER` matches, so a later pass passes it through. The first version suffixed ` (2)`,
+    which matched neither pattern and so was replaced on the next pass, reintroducing the very
+    disagreement in slower motion (PR #129, PR #157 reviews).
   - **The array walk is bounded, because rebuilding by index gave up what `map` had.**
     `Array.prototype.map` skips holes; a loop over `length` does not, and `length` is
     caller-controlled and free to inflate — `a.length = 0xffffffff` on an empty array is one

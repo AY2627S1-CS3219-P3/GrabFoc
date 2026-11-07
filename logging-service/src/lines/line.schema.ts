@@ -53,6 +53,9 @@
  * Scope: Redact given and family names, and keep a caller key spelled like a marker from
  *        overwriting the key it collides with (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Make the collision name marker-shaped, so the walkers still agree on it (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -380,16 +383,27 @@ const KEY_MARKER = /^\[key \d+: \d+ chars\]$/;
  * and a field was lost. The note on that rule said passing a marker through "costs nothing"; this
  * is what it cost (PR #157 review).
  *
- * The suffix can be mistaken for nothing else: `SAFE_KEY` admits neither a space nor parentheses
- * and `KEY_MARKER` matches neither, so the loop terminates and the result is still a fixed point
- * on a later pass.
+ * The replacement is itself marker-shaped, so a later walker recognises it and passes it through:
+ * a name that survives one pass and not the next is the same disagreement in slower motion.
  */
 function freshKey(out: Record<string, unknown>, key: string, index: number): string {
   const name = safeKey(key, index);
   if (!Object.prototype.hasOwnProperty.call(out, name)) return name;
-  let n = 2;
-  while (Object.prototype.hasOwnProperty.call(out, `${name} (${n})`)) n += 1;
-  return `${name} (${n})`;
+  // Marker-shaped, not just unique. The first version suffixed ` (2)`, which matches neither
+  // KEY_MARKER nor SAFE_KEY - so the next walker replaced it again and the stored row stopped
+  // carrying the key the stdout line did, which is the disagreement the fixed point exists to
+  // remove. The comment here claimed it was still a fixed point; it was not (PR #157 review).
+  //
+  // This key's own index and length, which no other key in this object can produce, and the index
+  // is walked up if a caller's literal marker already sits on that name. The result matches
+  // KEY_MARKER, so a later pass passes it through untouched.
+  let n = index;
+  let candidate = `[key ${n}: ${key.length} chars]`;
+  while (Object.prototype.hasOwnProperty.call(out, candidate)) {
+    n += 1;
+    candidate = `[key ${n}: ${key.length} chars]`;
+  }
+  return candidate;
 }
 
 function safeKey(key: string, index: number): string {
