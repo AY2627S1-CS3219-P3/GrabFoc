@@ -3,14 +3,17 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-29
 Scope: Added an admin-only interface to manage Supplier locations, responsive layout, and recovery after an edit conflict.
 Author review: Jie Yang reviewed the earlier implementation; responsive layout and conflict recovery await his review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Moved the role gate into AdminPage, which adds the admin navigation (#184).
+Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
 */
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
-import { AppShell } from "../../components/app-shell";
-import { getSession, withSessionMutation } from "@/lib/session-client";
+import { AdminPage } from "../admin-page";
+import { withSessionMutation } from "@/lib/session-client";
 import { type Location, type LocationPage, supplierError } from "@/lib/locations";
 
 function timeField(value: string | null) { return value ? `${value.slice(0, 2)}:${value.slice(2, 4)}` : ""; }
@@ -18,10 +21,14 @@ function apiTime(value: string) { return value ? value.replace(":", "") + "hrs" 
 type Filters = { name: string; type: string; building: string; time: string; order: "asc" | "desc" };
 const initialFilters: Filters = { name: "", type: "", building: "", time: "", order: "asc" };
 
-// AI-generated (earlier version reviewed by Jie Yang; latest edits pending review)
+// AI-generated (Claude Code, 2026-11-07; reviewed by Zi Yi): the role gate moved to AdminPage.
 export default function ManageLocationsPage() {
+  return <AdminPage section="locations">{() => <ManageLocations />}</AdminPage>;
+}
+
+// AI-generated (earlier version reviewed by Jie Yang; latest edits pending review)
+function ManageLocations() {
   const router = useRouter();
-  const [allowed, setAllowed] = useState(false);
   const [page, setPage] = useState(1);
   const [draft, setDraft] = useState(initialFilters);
   const [filters, setFilters] = useState(initialFilters);
@@ -39,18 +46,6 @@ export default function ManageLocationsPage() {
 
   useEffect(() => {
     let active = true;
-    getSession().then((session) => {
-      if (!active) return;
-      if (!session.authenticated) router.replace("/signin");
-      else if (session.role !== "ADMIN") router.replace("/home");
-      else setAllowed(true);
-    }).catch(() => { if (active) { setError("Could not check your session."); setLoading(false); } });
-    return () => { active = false; };
-  }, [router]);
-
-  useEffect(() => {
-    if (!allowed) return;
-    let active = true;
     withSessionMutation(() => fetch("/api/session/supplier/location-types", { cache: "no-store" }))
       .then(async (response) => {
         if (!response.ok) throw new Error("Could not load location types.");
@@ -61,7 +56,7 @@ export default function ManageLocationsPage() {
       .catch(() => { if (active) setTypesError("Could not load location types. Please try again."); })
       .finally(() => { if (active) setTypesLoading(false); });
     return () => { active = false; };
-  }, [allowed, typesReload]);
+  }, [typesReload]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { setPage(1); setFilters(draft); }, 300);
@@ -69,7 +64,6 @@ export default function ManageLocationsPage() {
   }, [draft]);
 
   useEffect(() => {
-    if (!allowed) return;
     const controller = new AbortController();
     const query = new URLSearchParams({ includeInactive: "true", page: String(page), pageSize: "20", order: filters.order });
     if (filters.name.trim()) query.set("name", filters.name.trim());
@@ -88,7 +82,7 @@ export default function ManageLocationsPage() {
         if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : "Could not load locations."); setLoading(false); }
       });
     return () => controller.abort();
-  }, [allowed, filters, page, reload, router]);
+  }, [filters, page, reload, router]);
 
   function changeFilter<K extends keyof Filters>(key: K, value: Filters[K]) {
     setLoading(true);
@@ -146,9 +140,7 @@ export default function ManageLocationsPage() {
     finally { setBusy(false); }
   }
 
-  if (!allowed) return <main className="auth-page"><div className="auth-card">{error || "Checking admin access…"}</div></main>;
-
-  return <AppShell section="locations"><div className="section-heading flex-col items-stretch sm:flex-row sm:items-start"><div><h1 className="dashboard-title">Manage Locations</h1><p>Active and inactive campus pickup points</p></div><Link className="outline-link" href="/home">Browse locations</Link></div>
+  return <><div className="section-heading flex-col items-stretch sm:flex-row sm:items-start"><div><h1 className="dashboard-title">Manage Locations</h1><p>Active and inactive campus pickup points</p></div><Link className="outline-link" href="/home">Browse locations</Link></div>
     {error && <p className="auth-message" role="alert">{error}</p>}
     <div className="manage-layout grid grid-cols-1 xl:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
       <section className="manage-list" aria-labelledby="manage-list-title">
@@ -184,5 +176,5 @@ export default function ManageLocationsPage() {
         </form>}
       </section>
     </div>
-  </AppShell>;
+  </>;
 }

@@ -410,6 +410,59 @@ details.order-section[open] summary::before { content: "▾"; }
 details.order-section summary h2 { margin: 0; }
 details.order-section[open] summary { margin-bottom: 18px; }
 .order-section-empty { margin: 12px 0 0; color: var(--auth-muted); font-size: 12px; }
+
+/* AI-generated (Claude Code, 2026-11-07; reviewed by Zi Yi): admin dashboard (#184). */
+.admin-nav { display: flex; gap: 6px; margin-bottom: 18px; overflow-x: auto; border-bottom: 1px solid #e3e6ec; }
+.admin-nav a { padding: 8px 12px; text-decoration: none; border-bottom: 2px solid transparent; color: #6b7280; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.admin-nav a[aria-current="page"] { border-color: var(--auth-blue); color: var(--auth-blue); }
+.admin-cards { gap: 14px; margin-top: 22px; }
+.admin-card { color: inherit; text-decoration: none; display: flex; flex-direction: column; gap: 6px; padding: 16px; border: 1px solid #dce2ec; border-radius: 9px; background: #fff; }
+a.admin-card:hover { border-color: #a8c0ee; }
+.admin-card span { color: var(--auth-muted); font-size: 12px; font-weight: 700; }
+.admin-card strong { font-size: 26px; }
+.admin-card small { color: #526078; font-size: 12px; line-height: 1.5; }
+.admin-table-wrap { overflow-x: auto; margin-top: 12px; border: 1px solid #dce2ec; border-radius: 9px; background: #fff; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin-table th, .admin-table td { padding: 9px 12px; border-top: 1px solid #eef0f4; text-align: left; vertical-align: top; white-space: nowrap; }
+.admin-table th { border-top: 0; color: var(--auth-muted); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.admin-reason { white-space: normal; overflow-wrap: anywhere; }
+.admin-table td.admin-reason { min-width: 220px; }
+.admin-link { padding: 0; text-decoration: none; border: 0; background: none; color: var(--auth-blue); font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
+.admin-link:hover { text-decoration: underline; }
+.admin-facts { margin-top: 14px; }
+.admin-subheading { margin: 20px 0 10px; font-size: 14px; }
+.admin-timeline { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.admin-timeline li { position: relative; padding: 0 0 14px 22px; }
+.admin-timeline li::before { content: ""; position: absolute; left: 0; top: 8px; width: 10px; height: 10px; border-radius: 50%; background: var(--auth-blue); }
+.admin-timeline li:not(:last-child)::after { content: ""; position: absolute; left: 4px; top: 20px; bottom: 0; width: 2px; background: #dce2ec; }
+.admin-timeline li.is-cancelled::before { background: #b42318; }
+.admin-timeline-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.admin-timeline-heading time { color: var(--auth-muted); font-size: 12px; }
+.admin-timeline-reason { margin: 6px 0 0; padding: 8px 10px; border-radius: 6px; background: #fdecea; color: #7a271a; line-height: 1.45; }
+.admin-order-number { font-family: ui-monospace, Menlo, monospace; }
+.admin-description { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.admin-danger-button { min-height: 38px; padding: 0 16px; border: 0; border-radius: 7px; background: #b42318; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+.admin-danger-button:hover:not(:disabled) { background: #912018; }
+.admin-danger-button:disabled { opacity: .45; cursor: not-allowed; }
+.admin-banner { margin-top: 16px; padding: 12px 14px; border: 1px solid #dce2ec; border-left-width: 4px; border-radius: 8px; background: #f8f9fb; font-size: 13px; }
+.admin-banner--danger { border-color: #f1b5b0; border-left-color: #b42318; background: #fdecea; color: #7a271a; }
+.admin-banner strong { font-size: 14px; }
+.admin-banner p { margin: 6px 0 0; line-height: 1.45; overflow-wrap: anywhere; }
+.admin-banner p span { font-weight: 700; }
+.user-picker { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.location-filters .user-picker label { flex: none; }
+.user-picker-label { color: #374151; font-size: 12px; font-weight: 700; }
+.user-picker-chosen { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 6px 6px 6px 10px; border: 1px solid var(--auth-blue); border-radius: 7px; background: #fff; font-size: 13px; }
+.user-picker-chosen small, .user-picker-list small { color: var(--auth-muted); }
+.user-picker-chosen > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-picker-chosen button { width: 28px; height: 28px; border: 0; border-radius: 5px; background: #eef3ff; color: #315ba8; font-size: 16px; cursor: pointer; }
+.user-picker-list { position: absolute; top: 100%; left: 0; right: 0; z-index: 20; max-height: 300px; margin: 4px 0 0; padding: 4px; overflow-y: auto; list-style: none; border: 1px solid #dce2ec; border-radius: 8px; background: #fff; box-shadow: 0 8px 24px rgba(18, 21, 28, .12); }
+.user-picker-list button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 10px; padding: 8px; border: 0; border-radius: 6px; background: none; text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+.user-picker-list button:hover, .user-picker-list button:focus-visible { background: #eef3ff; }
+.user-picker-list button > span { display: flex; min-width: 0; flex-direction: column; }
+.user-picker-list button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-picker-empty { padding: 8px; color: var(--auth-muted); font-size: 13px; }
+.admin-warnings { margin: 0 0 4px; padding-left: 18px; color: #526078; font-size: 13px; line-height: 1.6; }
 /* AI-generated (Claude Code, 2026-11-07; reviewed by Zi Yi): the banner on a finished order (#184). */
 .order-finished-banner { margin: 0 0 16px; padding: 12px 14px; border: 1px solid #dce2ec; border-left-width: 4px; border-radius: 8px; background: #f8f9fb; font-size: 13px; line-height: 1.45; }
 .order-finished-banner--cancelled { border-color: #f1b5b0; border-left-color: #b42318; background: #fdecea; color: #7a271a; }
