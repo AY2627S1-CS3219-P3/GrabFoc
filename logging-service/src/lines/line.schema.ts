@@ -64,6 +64,10 @@
  * Scope: Generate a replaced field name from its own ordinal instead of bounding the
  *        numbers a caller may put inside one (PR #200 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Two comments still described the function the ordinal change deleted - one of them the
+ *        doc comment standing above its replacement (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -202,10 +206,9 @@ const PROTO = '__proto__';
  * built from the same message. That disagreement is the one AGENTS.md already warned about here,
  * and the code did not prevent it on this side (PR #129 review).
  *
- * The new name is spelled by `safeKey` itself, with the key's position among the line's own fields
- * as its index, so it reads the same as a name replaced anywhere else; `safeKey` recognises its own
- * marker and leaves it alone on the way through. Nothing is renamed when the field is absent, which
- * is every ordinary line.
+ * The name only has to survive Zod's object build and be one `extraOf` will not keep, so that walk
+ * replaces it with its own ordinal like every other unusable key and the row reads the same as the
+ * line. Nothing is renamed when the field is absent, which is every ordinary line.
  */
 /**
  * A name for a top-level `__proto__` that survives Zod's object build and is not usable as a field
@@ -484,8 +487,8 @@ export function redactDeep(value: unknown, depth = 0): unknown {
   // Null-prototype, so a field name can only ever define a property on this object. `__proto__`
   // is the one name for which `out[key] = item` does something else - it runs Object.prototype's
   // setter - and the field was then missing from the stored row with its neighbours intact
-  // (PR #129 review). `safeKey` replaces that name too; this is what makes the loss structurally
-  // impossible rather than dependent on the list staying right.
+  // (PR #129 review). `isUsableName` rejects that name too, so the walk below replaces it; this is
+  // what makes the loss structurally impossible rather than dependent on the list staying right.
   const out: Record<string, unknown> = Object.create(null);
   let replaced = 0;
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {

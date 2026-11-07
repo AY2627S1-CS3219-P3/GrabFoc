@@ -39,6 +39,15 @@ Cole Lin's entries for the FoC AI usage log. The template and rules are in
 - Verification: `npm ci` first, because `main` moves this service to Zod 4 while the branch had Zod 3 installed. The new case was run against the unfixed line first and **fails there** - `[key 2]` where the line carries `[key 1]`. It asserts the written line, not the store, because the store renumbers from what reached it and lands on `[key 1]` either way: the two sides agreeing is the property, and the obvious assertion proves nothing. **277 passed**, `tsc --noEmit` clean over every tracked file. The two shipper copies were compared body-for-body against the git blob at PR #200's head, not against the file I had just written.
 - Still outstanding, and not mine to do: 30 untracked Syncthing `*.sync-conflict-*` files are in the working tree, six of them `.ts` files inside `logging-service/src/` and one inside `supplier-service/src/`, and the last is the only source of `tsc` errors locally. They are untracked so CI is unaffected, but they are one `git add -A` away from being committed.
 
+### 2026-11-08 — A comment left standing over the function it described (PR #200)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Found while verifying PR #145's merged tree, not from a review: two comments in `line.schema.ts` still described the function the ordinal change deleted. One of them is the doc comment standing directly **above its replacement**, explaining a mechanism - a marker recognised on sight, an index taken from the key's position - that the function below it does not have and deliberately does not have. A reader following the comment would conclude the fixed point still depends on recognition.
+- This is the class these reviews have filed against me repeatedly: the fix is sound and its comment is wrong. It has been a P1 twice, once where a redaction list's documentation claimed a guarantee the list did not provide. Deleting code is where it bites hardest, because nothing fails and nothing warns - the comment simply outlives its subject.
+- Fixed here rather than in PR #145, whose tree now holds these files too: the canonical home is the Logging Service, and hand-applying one change in two places is what put PR #129's copy a round behind its own canonical last week. The cost is that this PR was settled and the push restarts its reviewer, which is the right trade for a comment that misdescribes the mechanism it sits above.
+- A check of my own fired on my own text: the assertion that no reference to the deleted function remains tripped over the disclosure entry announcing the fix, which names it on purpose. Scoped to the body below the header.
+- Verification: **451 pass**, `tsc --noEmit` clean. The four walkers' shared functions were hashed and are byte-identical across all four files.
+
 ### 2026-11-07 — PR #145's four findings, and giving up on bounding the marker (PR #145)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
