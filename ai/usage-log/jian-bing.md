@@ -125,12 +125,70 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Wrote the 2026-11-07 PR #156 review-recording entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Wrote the 2026-11-07 Envoy request-flow and first-apply restart entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-07 — How Envoy routes requests, and the first-apply restart on #146
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `infra/terraform/README.md`, `infra/terraform/modules/services/main.tf`
+
+**Scenario:** I asked Claude how Envoy works now, for myself and for Deanson's questions about the login flow and
+adding a service. Claude read the gateway, frontend and Terraform code on `feat/edge-routing` and explained it, then
+made a private claude.ai page with two diagrams (local vs AWS, and the eight login steps) and a checklist for adding
+a service; that page is not in the repo. On #146, Codex then flagged that the four app services start together on a
+brand-new environment and can't reach each other until they restart. Claude explained the finding and offered two
+fixes: extend the runbook's one-off restart, or have Terraform restart them automatically. I chose the runbook: an
+environment is rarely recreated, so a one-off manual step costs little, and the automatic step could only really be
+tested on a brand-new environment (the Terraform tests use a mocked AWS).
+
+**Prompts (exact, in order):**
+> I just need u to roughly tell me how the envoy is currently working, kinda confused ngl
+
+> give me an illustration
+
+> [7/11/26 1:48 PM] deanson: like lets say data flow from client to backend
+> [7/11/26 1:48 PM] deanson: client -> cloudfront -> envoy -> backend?
+> [7/11/26 1:48 PM] deanson: lets say something as simple as login
+> [7/11/26 1:48 PM] deanson in reply to deanson:
+> > lets say something as simple as login
+> what happens
+> [7/11/26 1:49 PM] deanson: if I add a new service, what do I need to edit in the envoy etc
+
+> is there a different between local and aws for this flow
+
+> could you create an artefact
+
+> hello where is my artefact
+
+> https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/146?overview=true help em resolve th econversatiosn first
+
+> wait so that means that anytime a push to main is done, if we do runbok omnly, someone has to do a first-aply step
+> manually every single time? also for no.2 how is it harder to test
+
+> okay lets do 1, seems like its lesser friction, and wont be that detgrimental to our workflow since environment
+> rarely gets recreated, so its tardeoff fares better compared to having worst observabiltiy for testing
+
+> Implement this step (answer to Claude's question: fix the Codex finding with the runbook only, push, then reply
+> to and resolve the thread)
+
+**What it produced:** An explanation of Envoy's two listeners and the login flow (in chat and on the private page),
+a reply for Deanson (not committed), a first-apply restart loop in the runbook's step 4 covering the four app
+services and the gateway, a matching comment on the service layers in `modules/services/main.tf`, and a reply on the
+Codex thread before resolving it.
+
+**What I changed or rejected:** Chose the runbook step over a Terraform step that restarts the services
+automatically.
+
+**Verification:** Claude ran `infra/terraform/check.sh`: every stack valid, module tests all passed (global 3/3,
+edge 1/1, network 1/1, server 1/1, services 3/3). My own check: pending.
 
 ### 2026-11-07 — Recording my review of the edge routing (PR #156), and the stack's open threads
 
