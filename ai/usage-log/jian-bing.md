@@ -101,6 +101,12 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 Scope: Wrote the 2026-10-25 AWS infrastructure entry (deploy part 2) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Wrote the 2026-10-26 staging apply and 2026-10-27 edge routing (deploy part 1) entries from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Wrote the 2026-11-06 gateway .env.example entry (PR #156) from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 design-confirmation entry (PR #146) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
@@ -116,12 +122,50 @@ Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code'
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 review-recording entry (PRs #193 and #133) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Wrote the 2026-11-07 PR #156 review-recording entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-07 — Recording my review of the edge routing (PR #156), and the stack's open threads
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** the 18 files where #156 added a pending "Author review" line, three of this log's entries for #156, and
+the inline markers in #156's generated code
+
+**Scenario:** Deanson asked whether the AWS and Envoy work is on main yet and whether #156 matters for his work.
+Claude explained the three stacked PRs (#146 → main, #156 on #146, #191 on #156) and drafted my reply. Claude then
+checked what still blocks #146 and #156, and resolved the two open review threads (the origin key on #146, handled by
+#156; the Notification Service on #191, waiting for Jie Yang's PRs), both of which already had my replies. After I
+told Claude that Jie Yang had approved #156, Claude replaced #156's pending review lines with my review in my words
+and pushed, which re-ran the SoCLaaS review (its last run failed with HTTP 502 from the SoCLaaS server). The
+2026-10-26 staging apply entry's Verification line stays pending: it records the AWS apply, not #156's code.
+
+**Prompts (exact, in order):**
+> pr 133 merged
+
+> actually what did deanson even ask me, and what am i usppose dot reply to him
+
+> are pr 146 and 156 ready to merge right now?
+
+> help me resolve all the conversations in the PRs
+
+> jieyang has approved #156, for the author review lines jsut say that i have looked through the code and think its ok, also just re run coclass on 156
+
+**What it produced:** A chat reply for Deanson (not committed), the two resolved threads, and "Author review (Jian
+Bing, 2026-11-07): Looked through the code and think it's okay." in place of each pending line #156 added; "review
+pending" removed from the inline markers in #156's code.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `api-gateway/test/envoy_routes_test.py` (14/14), parsed the Postman collection and
+`render.py`, ran `node --check` on both edited test files, `bash -n` on `check.sh` and `terraform fmt -check`. My own
+check: looked through the code and think it's okay.
 
 ### 2026-11-06 — Recording my review of the AWS infrastructure (PR #146)
 
@@ -155,6 +199,28 @@ own `.lock.hcl` files excluded).
 **Verification:** Claude ran `infra/terraform/check.sh` (14 test runs passed, 7 stacks valid), the three script
 tests (0 failed), `api-gateway/test/envoy_routes_test.py` (OK) and `actionlint` after the changes. My own check: the
 walkthrough, `check.sh` and the staging site, as recorded above.
+
+### 2026-11-06 — Edge listener settings in the gateway's `.env.example` (PR #156 review)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `api-gateway/.env.example`, `api-gateway/test/envoy_routes_test.py`
+
+**Scenario:** Codex flagged on #156 that the renderer reads `GATEWAY_EDGE_PORT`, `GATEWAY_ORIGIN_KEY` and
+`FRONTEND_URL`, but `api-gateway/.env.example` does not list them (AGENTS.md §8). Claude added a test that every
+variable the renderer and route files read is in the template, watched it fail on those three, then added them.
+
+**Prompts (exact, in order):**
+> okay i told the group, lets make a pr to put platform express back on v11, and help me resolve the covnersaitons and pus hthe 133 conflict
+
+My answer to Claude's question about the new Codex threads: "Fix 4, explain 1 (Recommended)".
+
+**What it produced:** The three settings with safe placeholders (edge port empty, so it stays off; origin key empty)
+and `EnvExampleTest`.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `python3 api-gateway/test/envoy_routes_test.py`: the new test failed listing the three
+names, then 14/14 passed. My own check (2026-11-07): looked through the code and think it's okay.
 
 ### 2026-11-06 — Recording Cole Lin's confirmation of the AWS design (PR #146)
 
@@ -281,6 +347,51 @@ only has a plan, on a local branch."
 ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
 admin locations page load).
 
+### 2026-10-27 — Edge routing: the website through CloudFront, deploy part 1 (issue #141)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain, generate
+**Files:** `api-gateway/envoy/render.py`, `api-gateway/envoy/frontend.lua`, `api-gateway/Dockerfile`,
+`api-gateway/test/**`, `api-gateway/postman/gateway.postman_collection.json`, `api-gateway/README.md`,
+`api-gateway/envoy/README.md`, `frontend/app/not-found.tsx`, `frontend/test/routes.test.mjs`,
+`infra/terraform/**`, the plan `docs/superpowers/plans/2026-10-27-deploy-part1-edge-routing.md`
+
+**Scenario:** The staging CloudFront URL answered `{"error":"Not found"}` and the server's own address
+timed out. Claude explained that both were expected: the address is closed to everyone but CloudFront,
+and Envoy had no route to the frontend yet. We then planned and built part 1: Envoy's edge listener
+(checks CloudFront's `X-Origin-Key`, sends `/gateway/*` to the API and everything else to the
+frontend), a not-found page, Postman's `baseUrl` ending in `/gateway`, and the frontend starting after
+the gateway on ECS. Claude implemented the plan test-first; a separate Claude reviewer checked the
+whole branch.
+
+**Prompts (exact, in order):**
+> [Image #7] [Image #8] seems to not be working,  help figure it out
+
+> wait so the frontend isnt routed right now?
+
+> caan we make it such that it will call localhost:3003 on lcoal and then have an environemnt vairalve to the live clodufornt url and the frontetend calls that in our aws cloud, and then i think we send / to main is reasonable, isnt tha thwo msot website owrk, also lets make a 404 page for the non-api path if they dont exist, or like custom 401 atc apges
+
+> jie yang has read thru and approved these changes
+
+> yes
+
+> alright logged in, im ok to biuild and push image
+
+> ok
+
+> okay confirmed tha tthey are secure [Image #9], then could you help me reoslve the conversation rasied by codex in this pr ?https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/146 and also please do psuh the new features
+
+**What it produced:** The plan and 5 implementation commits (route-renderer, Lua, frontend and
+Terraform changes, each with tests), plus a regression test from the final review (clients can't make
+Envoy retry their requests). Images tagged `fc2f431` were pushed and applied to staging; Claude checked
+the CloudFront URL (pages, `/gateway/*`, the 404 page, the server closed to direct access) and I
+confirmed the session cookies are Secure in Chrome. Claude's own calls are listed in the PR description.
+**What I changed or rejected:** Proposed an environment variable for the gateway URL and `/` going to
+the frontend; Claude showed the variable already exists (`FRONTEND_GATEWAY_URL`, used server-side) and
+should stay pointed at the gateway inside the server, not the CloudFront URL. Dropped a separate 401
+page, because every page already sends signed-out users to `/signin`. Jie Yang approved the gateway
+changes.
+**Verification:** My own check (2026-11-07): looked through the code and think it's okay.
+
 ### 2026-10-27 — Codex review fixes on the AWS infrastructure (PR #146)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug
@@ -303,6 +414,51 @@ a per-environment disk metric, and the GitHub OIDC subject in its immutable form
 **Verification:** My own check (2026-11-06): I went through it with Claude Code's walkthrough and understood it;
 ran `infra/terraform/check.sh` (every stack valid, all tests passed) and checked staging (the locations list and the
 admin locations page load).
+
+### 2026-10-26 — First staging apply (deploy part 2, PR #146)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain
+**Files:** `infra/terraform/**`, `infra/scripts/**`, `api-gateway/envoy/render.py` (IPv4 upstreams)
+
+**Scenario:** Applied deploy part 2 to AWS: the account-wide stack, then staging. Claude explained how
+to fill the secrets file and fixed what only the real deploy showed: the first server launch failing
+while its role propagated, services created at the same moment not finding each other's names, and
+Envoy picking an IPv6 address nothing answers on.
+
+**Prompts (exact, in order; button choices in brackets):**
+> lets apply first
+
+> sorry continue
+
+> [Budget $100; alert email e1155372@u.nus.edu; Apply]
+
+> how do i ge tthe 4 env secrets, and docker is runnign
+
+> its empty right now, i need to get it
+
+> how do i get it, like what should the email be
+
+> does it need to be a business gmail account?
+
+> oh okay i meant to use e1155372@u.nus.edu
+
+> done
+
+> done
+
+> [Apply]
+
+> [I'll fix it, tag Jie Yang]
+
+> [Apply]
+
+**What it produced:** The live staging environment at its CloudFront URL, plus three fix commits on
+PR #146 (`wait_for_capacity_timeout`, layered ECS services, Envoy `V4_PREFERRED`).
+**What I changed or rejected:** Set the $100 budget and the alert email. Rotated the Gmail app password
+after pasting it in chat by mistake. Chose to fix the gateway's IPv6 issue myself and ask Jie Yang to
+review it.
+
+**Verification:** Pending — Jian Bing to record what he checked.
 
 ### 2026-10-25 — AWS infrastructure in Terraform, deploy part 2 (issue #142)
 
