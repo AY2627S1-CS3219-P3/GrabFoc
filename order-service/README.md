@@ -33,11 +33,14 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Host-side broker example localhost:9094 → 127.0.0.1:9094, matching the shared broker (PR #96 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+Scope: Recorded the user.events and supplier.events consumers and the test count (issue #121).
+Author review: Reviewed by Zi Yi, 2026-10-30.
 -->
 
 # Order Service
 
-Database foundation for #50 (under parent #64) plus Phases A–C of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit, accept, lifecycle, cancellation and confirmation endpoints (see [HTTP API](#http-api)). Phase D so far: credit settlement over Kafka (`credit.commands`), the 60 s expiry worker, `order.events` for Notification and the internal active-order lookup; the suspension/deactivation consumers wait for User and Supplier to publish events. The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_settled_at` for credit settlement. Read [AGENTS.md](AGENTS.md) for requirements.
+Database foundation for #50 (under parent #64) plus Phases A–C of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit, accept, lifecycle, cancellation and confirmation endpoints (see [HTTP API](#http-api)). Phase D so far: credit settlement over Kafka (`credit.commands`), the 60 s expiry worker, `order.events` for Notification, the internal active-order lookup, and the `user.events` / `supplier.events` consumers that cancel orders on `UserSuspended` / `SupplierDeactivated` (dead letters on `order.user-events.dlt` / `order.supplier-events.dlt`). The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_settled_at` for credit settlement. Read [AGENTS.md](AGENTS.md) for requirements.
 
 ## Confirmed decisions
 
@@ -384,7 +387,8 @@ Verification on 2026-10-15: all 42 tests passed in `compose.test.yaml` (12 unit,
 After Phase C, all 53 passed (12 unit, 14 database, 27 HTTP). After Phase D step 1 (2026-10-17),
 all 53 passed again, and the runtime image loaded the Kafka client. After the expiry worker,
 56 passed; after `order.events` and the active-order lookup, 61 passed. After the Phase E tests
-(2026-10-19), 64 passed.
+(2026-10-19), 64 passed. After the `SupplierDeactivated` consumer (2026-10-30), 74 integration
+and 13 unit tests passed.
 
 **Manual check with Credit (not automated):** run the root `docker compose up`, create an order,
 take it through to `COMPLETED`, and within about 10 s the courier's `GET /credits/:userId`

@@ -50,13 +50,53 @@ Scope: Added the merge-of-main entry for the User Service order-support branch.
 Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
 Scope: Added the Order Service UserSuspended consumer entry.
-Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+Scope: Added the Order Service SupplierDeactivated consumer entry (issue #121).
+Author review: Reviewed by Zi Yi, 2026-10-30.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-10-30 — Order Service: `SupplierDeactivated` consumer (issue #121)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, refactor
+**Files:** `order-service/src/integrations/{supplier.events,order.events}.ts`,
+`src/orders/orders.{service,repository}.ts`, `src/{app.module,main}.ts`,
+`src/test/orders.api.test.ts`, `AGENTS.md`, `README.md`; `infra/kafka/topics.txt`;
+`docs/order-service-plan.md`
+
+**Scenario:** on branch `feat/order-supplier-deactivated` (from `feat/supplier-deactivated-event`,
+after merging main into it and resolving a `topics.txt` disclosure-header conflict), consume
+Supplier's `SupplierDeactivated` and cancel the orders that use the location.
+
+**Prompts:**
+> i want to merge main into current branch and fix merge conflict
+
+> branch from feat/supplier-deactivated-event, i want to handle issue https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/121
+
+> once picked up, then supplier deactivation should be fine right? so it dont need cancellation after picked up
+
+> the courier still delivers to a location that's now inactive. this should not happen.
+
+**Key responses:** reused the `UserSuspended` consumer's design (dead-letter topic
+`order.supplier-events.dlt`, retry in place, locked recheck per order) and generalised its cancel
+into `systemCancel`, which takes the reason and the lock query. Design inputs it added, flagged for
+review: its own consumer group `order-service.supplier-events`; only orders created before the
+event's `occurredAt` are cancelled, so a replay never cancels orders placed after a restore; a
+create a deactivation cancelled mid-reserve returns 409 `LOCATION_INACTIVE` (as `USER_SUSPENDED`).
+First draft cancelled every nonterminal order (plan §2). **Decided by Zi Yi:** a deactivated
+pickup location cancels only orders not yet picked up; a deactivated delivery location cancels
+every unfinished order, including after pickup. Plan §2, §4, §6 and §8 updated to match.
+Known limit recorded: a create that passed Supplier's active check just before the deactivation
+but saved its order after the event was handled is not cancelled.
+
+**Verification:** `npm test` 13 passed; `compose.test.yaml` integration tests 74 passed, 0 failed
+(new: each state at the pickup and delivery location, unrelated orders, a duplicate and a replayed
+event, races with accept and pick-up, a pick-up committing while the deactivation waits on the row
+lock, create during reserve, dead letters). Reviewed by Zi Yi.
 
 ### 2026-10-21 — Order Service: `UserSuspended` consumer (Phase D)
 

@@ -23,6 +23,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
  * Scope: Added the suspended user's unfinished-order queries and cancelReason (Phase D).
  * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+ * Scope: Added the deactivated location's unfinished-order query (issue #121).
+ * Author review: Reviewed by Zi Yi, 2026-10-30.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -47,6 +50,15 @@ export type OrderList = keyof typeof LISTS;
 
 /** States an order has not finished in; a suspension cancels all of them, AWAITING_CREDIT included. */
 const UNFINISHED = `status NOT IN ('COMPLETED','CANCELLED')`;
+
+/** Unfinished states before pickup; a deactivated pickup location cancels only these. */
+const BEFORE_PICKUP = `status IN ('AWAITING_CREDIT','PENDING','ACCEPTED')`;
+
+/**
+ * Orders a deactivation of location $1 cancels: those delivering there while unfinished, and those
+ * picking up there before pickup (after it, the courier already has the items).
+ */
+const AFFECTED_BY_DEACTIVATION = `((delivery_location_id = $1 AND ${UNFINISHED}) OR (pickup_location_id = $1 AND ${BEFORE_PICKUP}))`;
 
 /** States the expiry worker cancels once window_end has passed. */
 const EXPIRABLE = `'PENDING','ACCEPTED','PICKED_UP','IN_PROGRESS'`;
@@ -382,9 +394,30 @@ export class OrdersRepository {
     return rows.map((row) => row.id);
   }
 
+  /**
+   * Orders the location's deactivation cancels, created before `before`, so a replayed deactivation
+   * never cancels orders placed after the location was restored.
+   */
+  async unfinishedOrderIdsAt(locationId: number, before: Date): Promise<string[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id FROM orders WHERE ${AFFECTED_BY_DEACTIVATION} AND created_at < $2`,
+      [locationId, before],
+    );
+    return rows.map((row) => row.id);
+  }
+
   /** Locks the order only if it is still unfinished; like lockExpired, rechecked after any wait. */
   async lockUnfinished(tx: PoolClient, id: string): Promise<Order | undefined> {
     const { rows } = await tx.query(`SELECT * FROM orders WHERE id = $1 AND ${UNFINISHED} FOR UPDATE`, [id]);
+    return rows[0] && toOrder(rows[0]);
+  }
+
+  /** Locks the order only if the location's deactivation still cancels it; rechecked after any wait. */
+  async lockAffectedByDeactivation(tx: PoolClient, id: string, locationId: number): Promise<Order | undefined> {
+    const { rows } = await tx.query(`SELECT * FROM orders WHERE id = $2 AND ${AFFECTED_BY_DEACTIVATION} FOR UPDATE`, [
+      locationId,
+      id,
+    ]);
     return rows[0] && toOrder(rows[0]);
   }
 
