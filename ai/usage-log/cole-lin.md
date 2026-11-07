@@ -3,7 +3,7 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Moved Cole Lin's section out of ai/usage-log.md into this file (issue #65); entry text unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-10-28
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-11-07
 Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23, 2026-10-25 and the two
   dated 2026-10-27 from the prompts and work
   in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
@@ -17,6 +17,7 @@ Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
 ### 2026-11-07 — Clearing the seven threads this PR had been holding (PRs #157 and #129)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
 - Prompt: "ok work on the other pr now, same thing don't stop until we are sure all conversations resolved".
 - Four of the seven were against this branch's copy of the shipper, whose canonical home is the Logging Service, so they were fixed there and re-synced here - which keeps the two byte-identical as the docs require, and which also meant pushing to a PR that had just been approved. I said that out loud rather than quietly letting the copies diverge.
@@ -24,6 +25,8 @@ Cole Lin's entries for the FoC AI usage log. The template and rules are in
 - Also fixed there: a caller key spelled exactly like a sanitised-key marker overwrote the key it collided with, which is a cost I had explicitly written off as "nothing" when I made markers a fixed point; `requestId` read twice in `build()`, so a getter could key the fallback line to one request while the normal line described another; and an asynchronous stdout failure, where I had written in a comment that a pipe write is synchronous and therefore covered by the try/catch. `console.log` returns before `process.stdout` emits `EPIPE`, and an `error` event with no listener is an uncaught exception, so a broken log pipe would have taken down the service this component exists not to disturb.
 - Two were this branch's own. `image_url` never received the `storable` refinement the other four text fields were given, so a URL carrying a NUL passed validation, reached the INSERT and came back as a driver 500 rather than a 400 - the same class as the fix that introduced it, in the one field that fix did not touch. And this service's `AGENTS.md` header attributed only the JWKS and filter work while I had been adding logging sections to it for two weeks; it carries an entry for them now.
 - The seventh I rejected again, with the evidence updated rather than repeated: the shipper's `lineId` check is said to accept a UUID the store would refuse. `main` has since moved this service to Zod 4, which does check the version and variant bits - but the store's schema lives in the Logging Service, still on Zod 3, and the store is what decides whether a line is kept. So the two still agree. What makes that safe to leave is unchanged: the shipper's spec validates a written line against `inboundLineSchema` itself, so a Zod upgrade in the Logging Service would fail a test rather than quietly cost lines.
+- Two more arrived on this code within the hour, both right. The first was mine twice over: the stdout watcher I had just added keyed itself off `options.write`, a *second* read of the caller's property, inside the commit that fixed a second read of `options.service`. An accessor answering `undefined` for the assignment and a function for the check leaves the default `console.log` sink in use with no watcher on it - the unhandled EPIPE the watcher exists to stop. Fourth appearance of this class and the first time I caused it while fixing it. Fixed on PR #129 and re-synced here.
+- The second was a P1 on this log: its own header scoped Claude's authorship to 28 October while entries for the 6th and 7th sat under it, and the new entries carried neither the **Tool** nor the **Mode** line `ai/usage-log.md` asks for. Both fixed. The older entries lack those lines too, which I have left alone rather than rewriting entries whose author-review lines describe them as they stand.
 - Verification: `npm ci` first, because the working tree had Zod 4 installed from the other branch while this one declares Zod 3. Then **244 passed** here (4 new for `image_url`, 2 of which fail against the unfixed schema) and **443** in the Logging Service, `tsc --noEmit` clean in both, and the two copies of the shipper compared byte for byte against the canonical git blob rather than against the file I had just written.
 
 ### 2026-10-28 — Re-syncing the shipper for a bound only the store was applying (PR #157)
