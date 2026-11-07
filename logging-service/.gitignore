@@ -1,0 +1,7 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-10-16
+# Scope: Generated these ignore rules, matching supplier-service/.gitignore. The root .gitignore
+#   has no node_modules rule, so each service carries its own.
+# Author review: Cole Lin, read and approved.
+node_modules/
+dist/

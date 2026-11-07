@@ -15,6 +15,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Registered the shared Kafka producer, the order.events publisher and the internal controller (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+ * Scope: Registered the user.events consumer (Phase D).
+ * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
  */
 import { INestApplication, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
@@ -27,6 +30,7 @@ import { CreditCommands } from './integrations/credit.commands';
 import { KafkaProducer } from './integrations/kafka.producer';
 import { OrderEvents } from './integrations/order.events';
 import { SupplierClient } from './integrations/supplier.client';
+import { UserEvents } from './integrations/user.events';
 import { ConfirmationsController } from './orders/confirmations.controller';
 import { ConfirmationsService } from './orders/confirmations.service';
 import { InternalController } from './orders/internal.controller';
@@ -46,6 +50,7 @@ import { OrdersService } from './orders/orders.service';
     KafkaProducer,
     CreditCommands,
     OrderEvents,
+    UserEvents,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })
