@@ -1,0 +1,125 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
+Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws-infrastructure.md, Task 8).
+Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
+  infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and the
+  admin locations page load).
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Checks through /gateway; the first-apply gateway redeploy (deploy part 1, #141).
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: The first-apply restart also covers the four app services, which call each other (Codex review on #146).
+Author review: Pending Jian Bing's review.
+-->
+
+# AWS deployment runbook
+
+Terraform for the staging and production environments in the NUS-managed AWS account (design:
+`docs/superpowers/specs/2026-10-23-aws-deployment-design.md`). Local development is unaffected.
+
+```
+infra/terraform/
+├── global/            once per account: state bucket, GitHub OIDC roles, ECR repositories, budget
+├── modules/           network · server (ECS on EC2 + /data volume) · services (every container) · edge (CloudFront)
+└── envs/staging/      one environment = network + server + services + edge
+    envs/production/
+```
+
+**Checks without AWS:** `infra/terraform/check.sh` (format, validate, tests with a mocked AWS) and
+`infra/scripts/test/put-secrets.test.sh`. CI runs both on pull requests.
+
+## Prerequisites
+
+- AWS CLI v2, logged in to the NUS account (`aws sso login` or your usual profile; check with
+  `aws sts get-caller-identity`). Region `ap-southeast-1`.
+- Terraform ≥ 1.10 (CI uses 1.15) and Docker (running).
+
+## 1. Account-wide stack (once)
+
+```bash
+cd infra/terraform/global
+terraform init
+terraform apply -var monthly_budget_usd=50 -var 'budget_emails=["you@u.nus.edu"]'
+terraform output state_bucket          # needed below
+```
+
+`global` keeps its state locally (`terraform.tfstate`, git-ignored): it creates the bucket the other
+stacks use. Keep that file safe, or import the resources again if it's lost.
+
+## 2. Secrets for an environment
+
+Create `infra/secrets/staging.env` with `infra/scripts/new-secrets.sh staging`, fill in its four
+Gmail/admin lines (see `infra/secrets/README.md`), then:
+
+```bash
+infra/scripts/put-secrets.sh staging
+```
+
+## 3. Images
+
+Until the CI deploy workflow exists (deploy part 3, #143):
+
+```bash
+infra/scripts/push-images.sh "$(git rev-parse --short HEAD)"
+```
+
+## 4. The environment
+
+```bash
+cd infra/terraform/envs/staging
+terraform init -backend-config="bucket=<state_bucket>"
+terraform apply -var-file=staging.tfvars -var image_tag=<the tag you pushed> \
+  -var 'alert_emails=["you@u.nus.edu"]'   # disk alarms; confirm the email AWS sends
+terraform output url                    # https://d….cloudfront.net
+```
+
+The first apply starts the server; give it a few minutes to join the cluster. Nothing else to run:
+the one-shot `kafka-init` (topics) and `order-migrate` (Order's tables) run inside the Credit and
+Order service tasks, which start only after they succeed. Services that start before their database
+or Kafka is ready fail their health check or exit, and ECS restarts them until they come up.
+
+**Only on an environment's very first apply:** a Service Connect client only learns the names that
+existed when it started. The four app services start together and call each other (for example
+user-service and order-service each call the other), and the gateway is created before the frontend,
+so some of these calls fail until the caller restarts. Once every service is running, restart them
+once:
+
+```bash
+for service in user-service supplier-service credit-service order-service api-gateway; do
+  aws ecs update-service --cluster foc-<env> --service "$service" --force-new-deployment
+done
+```
+
+Later applies and deploys don't need this: the services and their names already exist, and every
+deploy restarts all services anyway.
+
+## 5. Check it
+
+| Check | Expected |
+|---|---|
+| `aws ecs describe-services --cluster foc-staging --services $(aws ecs list-services --cluster foc-staging --query 'serviceArns[]' --output text)` | every service `runningCount: 1` |
+| `curl -s "$(terraform output -raw url)/gateway/.well-known/jwks.json"` | JSON with a `keys` array |
+| `curl -s -o /dev/null -w '%{http_code}' "$(terraform output -raw url)/gateway/locations"` | `401` (no token) |
+| The URL in a browser | the sign-in page |
+| `curl -m 5 http://<the server's public IP>/` | times out: only CloudFront may reach the server |
+| In a shell on the server: `df -h /data; ls -ln /data` | the volume is mounted; `kafka` is owned by uid 1000 |
+
+CloudFront reaches Envoy's edge listener (container port 8080, `edge_container_port`): `/gateway/*`
+goes to the API, everything else to the website, and only with CloudFront's `X-Origin-Key`.
+
+## Day to day
+
+- **Shell on the server** (no SSH): `aws ssm start-session --target <instance id>` (find it in the
+  EC2 console or `aws ec2 describe-instances --filters Name=tag:Name,Values=foc-staging`).
+- **Logs:** CloudWatch Logs, `/foc/<env>/<service>`, kept 14 days.
+- **Replacing the server** is safe: the new one re-attaches the same `/data` volume and Elastic IP.
+  `aws autoscaling start-instance-refresh --auto-scaling-group-name foc-staging`.
+- **Tearing an environment down:** `terraform destroy` stops at the data volume
+  (`prevent_destroy`), on purpose. To delete the data too, remove that line deliberately first, or
+  `terraform state rm module.server.aws_ebs_volume.data` to keep the volume and destroy the rest.
+
+## Production
+
+Same steps with `production` in place of `staging`, its own `production.env`, and the **same image
+tag** staging was tested with.
