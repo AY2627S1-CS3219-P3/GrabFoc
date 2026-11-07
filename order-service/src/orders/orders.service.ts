@@ -25,6 +25,9 @@
  * Scope: Added cancelForSuspendedUser (UserSuspended consumer, Phase D); a create that a suspension
  *        cancelled now returns 403 USER_SUSPENDED instead of the misleading 503.
  * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+ * Scope: The suspension's CANCELLED history entry records suspendedUserId, so the order page can say whose account it was (#184).
+ * Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { Caller } from '../common/jwt-auth.guard';
@@ -247,13 +250,13 @@ export class OrdersService {
   async cancelForSuspendedUser(userId: string): Promise<number> {
     let cancelled = 0;
     for (const orderId of await this.orders.unfinishedOrderIds(userId)) {
-      if (await this.cancelForSuspension(orderId)) cancelled++;
+      if (await this.cancelForSuspension(orderId, userId)) cancelled++;
     }
     return cancelled;
   }
 
   /** Its CANCELLED history entry is the OrderCancelled event, except from AWAITING_CREDIT. */
-  private cancelForSuspension(orderId: string): Promise<boolean> {
+  private cancelForSuspension(orderId: string, suspendedUserId: string): Promise<boolean> {
     return this.orders.transaction(async (tx) => {
       const order = await this.orders.lockUnfinished(tx, orderId);
       if (!order) return false;
@@ -265,7 +268,7 @@ export class OrdersService {
         action: 'CANCELLED',
         previousStatus: order.status,
         newStatus: 'CANCELLED',
-        changeDetails: { reason: 'USER_SUSPENDED' },
+        changeDetails: { reason: 'USER_SUSPENDED', suspendedUserId },
       });
       return true;
     });
