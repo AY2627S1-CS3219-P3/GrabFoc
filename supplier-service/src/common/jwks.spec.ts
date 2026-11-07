@@ -20,6 +20,9 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
  * Scope: Added the cases for a declared alg the key type cannot serve (PR #157 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a header algorithm the key's own type cannot serve (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { generateKeyPairSync } from 'node:crypto';
 import { config } from '../config';
@@ -393,6 +396,35 @@ describe('a declared alg the key type cannot serve', () => {
   it('still accepts the pairs that do match', async () => {
     stub.keys = [rsa, ec];
     await expect(verifyToken(bearer(signToken(rsa)))).resolves.toMatchObject({ sub: 'user-1' });
+    await expect(verifyToken(bearer(signToken(ec)))).resolves.toMatchObject({ sub: 'user-1' });
+  });
+});
+
+/**
+ * A JWK's `alg` is optional, and when it was absent the header alone chose the verify path. Node
+ * will verify an RSA signature through the ES256 branch - `dsaEncoding` is ignored for RSA - and a
+ * DER-encoded EC signature through the RS256 branch, so a token could declare an algorithm its
+ * key type cannot serve and still be accepted. The key type, not the header, says which algorithm
+ * a key can serve (PR #157 review).
+ */
+describe('a header algorithm the key type cannot serve', () => {
+  const algLess = (key: typeof rsa) => ({ ...key, jwk: { ...key.jwk, alg: undefined } });
+
+  it('rejects an RSA key used through the ES256 branch', async () => {
+    stub.keys = [algLess(rsa)];
+    await expect(verifyToken(bearer(signToken(rsa, {}, { alg: 'ES256' })))).resolves.toBeNull();
+  });
+
+  it('rejects a P-256 key used through the RS256 branch', async () => {
+    stub.keys = [algLess(ec)];
+    await expect(verifyToken(bearer(signToken(ec, {}, { alg: 'RS256' })))).resolves.toBeNull();
+  });
+
+  it('still accepts each alg-less key through its own branch', async () => {
+    stub.keys = [algLess(rsa)];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toMatchObject({ sub: 'user-1' });
+    resetJwksCache();
+    stub.keys = [algLess(ec)];
     await expect(verifyToken(bearer(signToken(ec)))).resolves.toMatchObject({ sub: 'user-1' });
   });
 });

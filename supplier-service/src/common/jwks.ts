@@ -20,9 +20,11 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
  * Scope: A key has to carry the fields this service reads, not merely be an object
  *        (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: Apply the restrictions verifyToken applies when the key set is filtered, and give the
  *        unknown-kid refetch its own clock, recorded only after the endpoint answers.
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: Do not fetch the same key set twice in one request when the cache was cold and the kid is
  *        unknown, and let that one fetch spend the unknown-kid allowance (PR #157 review).
@@ -33,6 +35,10 @@
  * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
  * Scope: Check the declared alg against the key type together, not independently (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Take the algorithm a key may serve from its own type rather than from the token header,
+ *        so a header cannot name an algorithm the key cannot serve (PR #157 review).
  * Author review: Cole Lin, read and approved.
  */
 import { createPublicKey, verify as verifySignature, type JsonWebKey, type KeyObject } from 'crypto';
@@ -83,6 +89,20 @@ function isObject(value: unknown): value is Record<string, unknown> {
  * refused the same key, answering 401 to a cryptographically valid administrator token. The filter
  * and the verifier cannot disagree about a key now (swept from the PR #129 review).
  */
+/**
+ * The one JWT algorithm a key of this type can serve, or null if this service can serve none.
+ *
+ * The same pairing `isUsableKey` applies when filtering the set, read back at verify time so the
+ * filter and the verifier cannot disagree - which is what the comment on that function has claimed
+ * since it was written (PR #157 review).
+ */
+function algFor(jwk: Jwk): 'RS256' | 'ES256' | null {
+  const { kty, crv } = jwk as { kty?: unknown; crv?: unknown };
+  if (kty === 'RSA' && crv === undefined) return 'RS256';
+  if (kty === 'EC' && crv === 'P-256') return 'ES256';
+  return null;
+}
+
 function isUsableKey(value: unknown): value is Record<string, unknown> {
   if (!isObject(value)) return false;
   const { kid, kty, crv, use, alg } = value as {
@@ -245,6 +265,14 @@ export async function verifyToken(authorization: string | undefined): Promise<To
 
   const jwk = await keysFor(header.kid);
   if (!jwk || (jwk.alg && jwk.alg !== alg) || (jwk.use && jwk.use !== 'sig')) return null;
+  // The key's *type* decides which algorithm it can serve, not the header. A JWK's `alg` is
+  // optional, and with it absent the header alone chose the branch below - and Node verifies an
+  // RSA signature perfectly well through the ES256 branch, because `dsaEncoding` is ignored for
+  // RSA. So a token could declare `ES256` against an RSA key and be accepted, which is the kind of
+  // algorithm confusion this check exists to refuse (PR #157 review). Measured, not assumed: the
+  // RSA-through-ES256 direction verified before this check, while a DER-encoded EC signature
+  // through the RS256 branch already failed on its own, and both are covered by cases now.
+  if (algFor(jwk) !== alg) return null;
 
   let publicKey: KeyObject;
   try {
