@@ -67,6 +67,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
  * Scope: Added the cases for an id carrying a lone surrogate being dropped (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for given- and family-name redaction, a caller key spelled like a
+ *        marker, one requestId value per line, and an asynchronous stdout failure (PR #157).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, toRow } from '../lines/line.schema';
 import { LinePublisher, LogShipper, OutboundLine } from './log-shipper';
@@ -1326,5 +1330,122 @@ describe('an id carrying a lone surrogate', () => {
     const parsed = inboundLineSchema.safeParse(line);
     expect(parsed.success).toBe(true);
     expect(toRow(parsed.data as never).userId).toBeNull();
+  });
+});
+
+/**
+ * The list's own documentation claims given and family names are covered. It held `firstname` and
+ * `lastname` and not `givenname`, which is the spelling an OIDC claim and most APIs use - so
+ * `givenName` normalised to `givenname`, matched nothing, and went to stdout and the store in the
+ * clear while the docs said otherwise (PR #157 review).
+ */
+describe('a name field spelled the way an API spells it', () => {
+  const valueFor = (key: string) => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'profile', [key]: 'Alice' });
+    return (JSON.parse(written[written.length - 1]) as Record<string, unknown>)[key];
+  };
+
+  it.each(['givenName', 'given_name', 'familyName', 'family_name', 'surname'])('redacts %s', (key) => {
+    expect(valueFor(key)).toBe('[REDACTED]');
+  });
+
+  it.each(['firstname', 'lastname', 'displayName'])('still redacts %s', (key) => {
+    expect(valueFor(key)).toBe('[REDACTED]');
+  });
+
+  it.each(['eventName', 'name', 'locationName'])('still leaves %s alone, which is catalogue data', (key) => {
+    expect(valueFor(key)).toBe('Alice');
+  });
+});
+
+/**
+ * Two different caller keys could reduce to the same marker: an unsafe key at index 0 becomes
+ * `[key 0: 16 chars]`, and a caller whose own key is spelled exactly like that marker is passed
+ * through unchanged by the fixed-point rule - so the second assignment overwrote the first and a
+ * field disappeared. I wrote that passing a marker through "costs nothing"; this is what it cost
+ * (PR #157 review).
+ */
+describe('a caller key spelled exactly like a marker', () => {
+  const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
+
+  it('does not overwrite the replaced key that collides with it', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { 'alice@nus.edu.sg': 1, [marker]: 2 } });
+    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
+    // Both fields survive, under distinct names, and neither value is lost.
+    expect(Object.keys(meta)).toHaveLength(2);
+    expect(Object.values(meta).sort()).toEqual([1, 2]);
+  });
+
+  it('still passes a marker through unchanged when nothing collides', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe', meta: { [marker]: 2 } });
+    const meta = (JSON.parse(written[0]) as { meta: Record<string, unknown> }).meta;
+    expect(meta[marker]).toBe(2);
+  });
+});
+
+/**
+ * `requestId` was read twice: once to capture it for the fallback line, and again by the
+ * destructuring that builds the envelope. A getter can answer those two reads differently, so the
+ * fallback could be keyed by one request while the normal build described another - the trace gap
+ * the fallback exists to prevent. The same defect as the service name read three times in the
+ * constructor, one function along (PR #157 review).
+ */
+describe('a requestId that changes between reads', () => {
+  const changing = () => {
+    let reads = 0;
+    const input: Record<string, unknown> = { level: 'info', event: 'probe' };
+    Object.defineProperty(input, 'requestId', {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return `r-${reads}`;
+      },
+    });
+    return input;
+  };
+
+  it('puts one value on the line, not one per read', () => {
+    const log = shipper();
+    log.emit(changing() as never);
+    expect((JSON.parse(written[0]) as { requestId: string }).requestId).toBe('r-1');
+  });
+
+  it('keys the fallback with the same value the envelope would have used', async () => {
+    const input = changing();
+    Object.defineProperty(input, 'boom', { enumerable: true, get() { throw new Error('nope'); } });
+    const log = shipper(collecting);
+    log.emit(input as never);
+    await log.flush();
+    expect(published[0].key).toBe('r-1');
+    expect((JSON.parse(written[0]) as { requestId: string }).requestId).toBe('r-1');
+  });
+});
+
+/**
+ * In the documented stdout-only configuration the default sink is `console.log`, and a write to a
+ * pipe whose reader has gone resolves *before* `process.stdout` emits its `EPIPE`. So the
+ * synchronous try/catch around the write saw nothing, `writeFailed` stayed at zero, and the
+ * unhandled stream error would take down the process this component exists not to disturb
+ * (PR #157 review).
+ */
+describe('an asynchronous stdout failure', () => {
+  it('is counted rather than left to terminate the process', () => {
+    // No `write` option: this is the default sink, which is the only configuration that can fail
+    // this way. stdout is left intact - only an `error` event is delivered to it.
+    const log = new LogShipper({ service: 'supplier', newId: () => testId(1) });
+    log.emit({ level: 'info', event: 'probe' });
+    expect(log.counts.writeFailed).toBe(0);
+    process.stdout.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }));
+    expect(log.counts.writeFailed).toBe(1);
+  });
+
+  it('leaves an unused stdout alone when the caller supplied its own sink', () => {
+    const log = shipper();
+    log.emit({ level: 'info', event: 'probe' });
+    process.stdout.emit('error', Object.assign(new Error('EPIPE'), { code: 'EPIPE' }));
+    expect(log.counts.writeFailed).toBe(0);
   });
 });

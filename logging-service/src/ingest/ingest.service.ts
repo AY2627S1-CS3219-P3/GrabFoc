@@ -36,6 +36,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
  * Scope: Replace a key that carries a code rather than naming a field (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Keep a caller key spelled like a marker from overwriting the key it collides with
+ *        in the parked shape (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -268,6 +272,27 @@ const MAX_UNNAMED_KEY = 3;
  */
 const KEY_MARKER = /^\[key \d+: \d+ chars\]$/;
 
+/**
+ * `safeKey`, and then distinct from what the object already holds.
+ *
+ * Two different caller keys can reduce to the same name: an unsafe key at index 0 becomes
+ * `[key 0: 16 chars]`, and a caller whose *own* key is spelled exactly like that marker is passed
+ * through unchanged by the fixed-point rule, so the second assignment silently overwrote the first
+ * and a field was lost. The note on that rule said passing a marker through "costs nothing"; this
+ * is what it cost (PR #157 review).
+ *
+ * The suffix can be mistaken for nothing else: `SAFE_KEY` admits neither a space nor parentheses
+ * and `KEY_MARKER` matches neither, so the loop terminates and the result is still a fixed point
+ * on a later pass.
+ */
+function freshKey(out: Record<string, unknown>, key: string, index: number): string {
+  const name = safeKey(key, index);
+  if (!Object.prototype.hasOwnProperty.call(out, name)) return name;
+  let n = 2;
+  while (Object.prototype.hasOwnProperty.call(out, `${name} (${n})`)) n += 1;
+  return `${name} (${n})`;
+}
+
 function safeKey(key: string, index: number): string {
   // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
   // object runs Object.prototype's setter instead of defining a property, and the field is lost.
@@ -309,7 +334,7 @@ function describeShape(value: unknown, depth = 0): unknown {
   const out: Record<string, unknown> = Object.create(null);
   const entries = Object.entries(value as Record<string, unknown>).slice(0, SHAPE_MAX_KEYS);
   entries.forEach(([key, inner], index) => {
-    out[safeKey(key, index)] = describeShape(inner, depth + 1);
+    out[freshKey(out, key, index)] = describeShape(inner, depth + 1);
   });
   return out;
 }

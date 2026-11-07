@@ -93,6 +93,11 @@
  * Scope: Drop an id carrying a lone surrogate, which the store would encode as U+FFFD and merge
  *        with another id (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Redact given and family names as the docs already claimed, keep a caller key spelled
+ *        like a marker from overwriting one, use one requestId value per line, and count an
+ *        asynchronous stdout failure (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { randomUUID } from 'node:crypto';
 
@@ -214,6 +219,14 @@ const NEVER_LOG = [
   'fullname',
   'firstname',
   'lastname',
+  // The spelling an OIDC claim and most APIs use, which is the one that was missing: `givenName`
+  // normalised to `givenname` and matched nothing in this list, so a student's name went to
+  // stdout and the store in the clear while this file's documentation said given and family names
+  // were covered. `name` on its own stays out, because it would take `eventName` and the location
+  // labels, which are public catalogue data (PR #157 review).
+  'givenname',
+  'familyname',
+  'surname',
   'balance',
   'creditbalance',
   'credits',
@@ -320,6 +333,27 @@ const MAX_UNNAMED_KEY = 3;
  */
 const KEY_MARKER = /^\[key \d+: \d+ chars\]$/;
 
+/**
+ * `safeKey`, and then distinct from what the object already holds.
+ *
+ * Two different caller keys can reduce to the same name: an unsafe key at index 0 becomes
+ * `[key 0: 16 chars]`, and a caller whose *own* key is spelled exactly like that marker is passed
+ * through unchanged by the fixed-point rule, so the second assignment silently overwrote the first
+ * and a field was lost. The note on that rule said passing a marker through "costs nothing"; this
+ * is what it cost (PR #157 review).
+ *
+ * The suffix can be mistaken for nothing else: `SAFE_KEY` admits neither a space nor parentheses
+ * and `KEY_MARKER` matches neither, so the loop terminates and the result is still a fixed point
+ * on a later pass.
+ */
+function freshKey(out: Record<string, unknown>, key: string, index: number): string {
+  const name = safeKey(key, index);
+  if (!Object.prototype.hasOwnProperty.call(out, name)) return name;
+  let n = 2;
+  while (Object.prototype.hasOwnProperty.call(out, `${name} (${n})`)) n += 1;
+  return `${name} (${n})`;
+}
+
 function safeKey(key: string, index: number): string {
   // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
   // object runs Object.prototype's setter instead of defining a property, and the field is lost.
@@ -417,7 +451,9 @@ export function redactFields(value: unknown, depth = 0): unknown {
     // which it calls instead of reading the object — so copying one across would let it return
     // whatever it liked, unredacted, including a replacement for the whole envelope.
     if (typeof item === 'function') return;
-    out[safeKey(key, index)] = isSensitive(key) ? REDACTED : serialisable(redactFields(item, depth + 1));
+    out[freshKey(out, key, index)] = isSensitive(key)
+      ? REDACTED
+      : serialisable(redactFields(item, depth + 1));
   });
   return out;
 }
@@ -467,6 +503,31 @@ function hasControl(value: string): boolean {
     if (code < 0x20 || code === 0x7f) return true;
   }
   return false;
+}
+
+/**
+ * Counters to bump when stdout fails after the write has already returned.
+ *
+ * In the documented stdout-only configuration the sink is `console.log`, and a write to a pipe
+ * whose reader has gone resolves *before* `process.stdout` emits its `EPIPE`. The synchronous
+ * try/catch around the write therefore saw nothing: `writeFailed` stayed at zero, and an `error`
+ * event with no listener is an uncaught exception - so a broken log pipe would terminate the
+ * service this component exists not to disturb (PR #157 review).
+ *
+ * One listener for the module rather than one per shipper: stdout is a single shared stream, and a
+ * listener per instance would trip Node's max-listeners warning in a service that builds several.
+ * Every shipper on the default sink is counted, because a stdout failure is every one of theirs.
+ */
+const stdoutWriters = new Set<() => void>();
+let stdoutWatched = false;
+
+function watchStdout(bump: () => void): void {
+  stdoutWriters.add(bump);
+  if (stdoutWatched) return;
+  stdoutWatched = true;
+  process.stdout.on('error', () => {
+    for (const bumpOne of stdoutWriters) bumpOne();
+  });
 }
 
 function stripControl(value: string): string {
@@ -627,6 +688,9 @@ export class LogShipper {
     }
     this.service = service;
     this.write = options.write;
+    // Only for the default sink: a caller who supplied `write` owns its failures, and the
+    // synchronous catch around that call is the whole guarantee this component can give them.
+    if (!options.write) watchStdout(() => (this.counts.writeFailed += 1));
     this.newId = options.newId;
     this.publisher = options.publisher;
     const flushMs = options.flushMs ?? 1000;
@@ -753,19 +817,29 @@ export class LogShipper {
     // a line that was lost (PR #129 review). Bounded here rather than below, because the bound is
     // what makes it storable and `boundedId` is total: it returns undefined instead of throwing,
     // so it cannot itself be the reason this line fails too.
-    let originalRequestId: string | undefined;
+    let rawRequestId: unknown;
     try {
-      originalRequestId = boundedId(input.requestId, STORE_LIMITS.requestId);
+      rawRequestId = input.requestId;
     } catch {
-      originalRequestId = undefined;
+      rawRequestId = undefined;
     }
+    // Bounded from the value already read, not from a second read of the caller's property. The
+    // envelope below used to read it again through its destructuring, so a getter could answer the
+    // two reads differently and the fallback would be keyed by one request while the normal line
+    // described another - the trace gap this fallback exists to prevent. The same defect as the
+    // service name read three times in the constructor, one function along (PR #157 review).
+    const originalRequestId = boundedId(rawRequestId, STORE_LIMITS.requestId);
 
     try {
       // **Everything** that reads the caller's input happens in here. Destructuring it runs an
       // enumerable getter, and a Proxy trap runs on enumeration, so doing it outside meant a
       // hostile top-level field could still throw out of emit() — which the earlier guard claimed
       // to prevent and did not (PR #145 review).
-      const { level, event, requestId, userId, role, method, path, status, durationMs, ...rest } = input;
+      const { level, event, userId, role, method, path, status, durationMs, ...rest } = input;
+      // `requestId` is deliberately absent from that pattern: it is read once above and that value
+      // is used below. The spread still touches the property, so it is dropped from the metadata
+      // here rather than left to appear a second time as an ordinary field (PR #157 review).
+      delete (rest as { requestId?: unknown }).requestId;
       const safeRest = redactFields(rest) as Record<string, unknown>;
       // Stripped before the bound below, at the one point every service shares, rather than
       // relying on each copy of this file to remember: `?lat=…&lon=…` is the caller's position, and
@@ -776,7 +850,7 @@ export class LogShipper {
       const envelope = {
         level: LEVELS.includes(level) ? level : UNKNOWN_LEVEL,
         event: boundedText(typeof event === 'string' ? event : '', STORE_LIMITS.event) || UNKNOWN_EVENT,
-        requestId: boundedId(requestId, STORE_LIMITS.requestId),
+        requestId: originalRequestId,
         userId: boundedId(userId, STORE_LIMITS.userId),
         role: typeof role === 'string' && ROLES.includes(role) ? role : undefined,
         method: boundedId(method, STORE_LIMITS.method),
@@ -791,7 +865,7 @@ export class LogShipper {
       const given: Record<string, unknown> = {
         level,
         event,
-        requestId,
+        requestId: rawRequestId,
         userId,
         role,
         method,

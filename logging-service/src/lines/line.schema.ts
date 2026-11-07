@@ -49,6 +49,10 @@
  * Scope: Drop an id carrying a lone surrogate, normalise the text fields the same way the shipper
  *        does, and store `ts` at the precision the API returns (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Redact given and family names, and keep a caller key spelled like a marker from
+ *        overwriting the key it collides with (PR #157 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -105,6 +109,14 @@ const NEVER_STORE = [
   'fullname',
   'firstname',
   'lastname',
+  // The spelling an OIDC claim and most APIs use, which is the one that was missing: `givenName`
+  // normalised to `givenname` and matched nothing in this list, so a student's name went to
+  // stdout and the store in the clear while this file's documentation said given and family names
+  // were covered. `name` on its own stays out, because it would take `eventName` and the location
+  // labels, which are public catalogue data (PR #157 review).
+  'givenname',
+  'familyname',
+  'surname',
   'balance',
   'credits',
 ];
@@ -359,6 +371,27 @@ const MAX_UNNAMED_KEY = 3;
  */
 const KEY_MARKER = /^\[key \d+: \d+ chars\]$/;
 
+/**
+ * `safeKey`, and then distinct from what the object already holds.
+ *
+ * Two different caller keys can reduce to the same name: an unsafe key at index 0 becomes
+ * `[key 0: 16 chars]`, and a caller whose *own* key is spelled exactly like that marker is passed
+ * through unchanged by the fixed-point rule, so the second assignment silently overwrote the first
+ * and a field was lost. The note on that rule said passing a marker through "costs nothing"; this
+ * is what it cost (PR #157 review).
+ *
+ * The suffix can be mistaken for nothing else: `SAFE_KEY` admits neither a space nor parentheses
+ * and `KEY_MARKER` matches neither, so the loop terminates and the result is still a fixed point
+ * on a later pass.
+ */
+function freshKey(out: Record<string, unknown>, key: string, index: number): string {
+  const name = safeKey(key, index);
+  if (!Object.prototype.hasOwnProperty.call(out, name)) return name;
+  let n = 2;
+  while (Object.prototype.hasOwnProperty.call(out, `${name} (${n})`)) n += 1;
+  return `${name} (${n})`;
+}
+
 function safeKey(key: string, index: number): string {
   // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
   // object runs Object.prototype's setter instead of defining a property, and the field is lost.
@@ -435,7 +468,7 @@ export function redactDeep(value: unknown, depth = 0): unknown {
   const out: Record<string, unknown> = Object.create(null);
   Object.entries(value as Record<string, unknown>).forEach(([key, item], index) => {
     if (typeof item === 'function') return;
-    out[safeKey(key, index)] = neverStore(key) ? REDACTED : redactDeep(item, depth + 1);
+    out[freshKey(out, key, index)] = neverStore(key) ? REDACTED : redactDeep(item, depth + 1);
   });
   return out;
 }
@@ -447,7 +480,7 @@ function extraOf(line: InboundLine): Record<string, unknown> | null {
   const extra: Record<string, unknown> = Object.create(null);
   Object.entries(line).forEach(([key, value], index) => {
     if (known.has(key)) return;
-    extra[safeKey(key, index)] = neverStore(key) ? REDACTED : redactDeep(value);
+    extra[freshKey(extra, key, index)] = neverStore(key) ? REDACTED : redactDeep(value);
   });
   return Object.keys(extra).length ? extra : null;
 }
