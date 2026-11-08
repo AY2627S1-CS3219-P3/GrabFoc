@@ -37,6 +37,14 @@
  * Scope: Added the cases for a lone surrogate in an envelope field and for the stored timestamp
  *        being the one the API returns (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for given- and family-name redaction, a caller key spelled like a
+ *        marker, one requestId value per line, and an asynchronous stdout failure (PR #157).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Updated the replaced-name cases for the generated ordinal, and dropped the recognition
+ *        cases, which have nothing left to assert (PR #200 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { inboundLineSchema, logQuerySchema, parseOr400, redactDeep, toRow } from './line.schema';
 
@@ -152,7 +160,7 @@ describe('toRow', () => {
     const row = toRow(parse({ ...valid, recipients: { 'alice@nus.edu.sg': true } }).data!);
     const extra = row.extra as { recipients: Record<string, unknown> };
     expect(JSON.stringify(extra)).not.toContain('alice@nus.edu.sg');
-    expect(Object.keys(extra.recipients)[0]).toMatch(/^\[key \d+: \d+ chars\]$/);
+    expect(Object.keys(extra.recipients)[0]).toMatch(/^\[key [1-9]\d*\]$/);
     // The value under it is harmless and still useful.
     expect(Object.values(extra.recipients)[0]).toBe(true);
   });
@@ -436,27 +444,29 @@ describe('a year PostgreSQL has no room for', () => {
 
 /**
  * A key is sanitised more than once on its way into a row: the shipper replaces an unsafe name,
- * and then this side replaces anything that still fails the pattern. The marker did not match the
- * pattern, so the second pass replaced the first one's work and reported the marker's own length -
- * `[key 0: 16 chars]` arrived and `[key 0: 17 chars]` was stored, a row disagreeing with the line
- * on stdout about the one number the marker exists to carry (PR #129 review).
+ * and then this side replaces anything that still fails the pattern. The two used to agree by
+ * recognising each other's marker, which took six rounds of review and was still defeatable; they
+ * agree now because the name is each walk's own count of replacements, so the n-th replacement is
+ * the same key on both sides and gets the same name with nothing recognised (PR #200 review).
+ *
+ * The top-level case is the one that could never work by position: the shipper counts within a
+ * line's metadata and this side counts within a whole line minus its columns. An ordinal over the
+ * same keys in the same order is identical either way.
  */
 describe('a key the producer already sanitised', () => {
-  const marker = `[key 0: ${'alice@nus.edu.sg'.length} chars]`;
-
-  it('survives this side unchanged', () => {
-    const row = toRow(parse({ ...valid, recipients: { [marker]: true } }).data!);
-    expect(Object.keys((row.extra as { recipients: object }).recipients)).toEqual([marker]);
+  it('is given the same name again, nested', () => {
+    const row = toRow(parse({ ...valid, recipients: { '[key 1]': true } }).data!);
+    expect(Object.keys((row.extra as { recipients: object }).recipients)).toEqual(['[key 1]']);
   });
 
-  it('is a fixed point at the top level too, where the index differs', () => {
-    const row = toRow(parse({ ...valid, [marker]: 1 }).data!);
-    expect(Object.keys(row.extra as object)).toEqual([marker]);
+  it('is given the same name again at the top level, where positions differ', () => {
+    const row = toRow(parse({ ...valid, '[key 1]': 1 }).data!);
+    expect(Object.keys(row.extra as object)).toEqual(['[key 1]']);
   });
 
-  it('is the same marker this side would have produced', () => {
+  it('is the name this side would have produced for the key it replaced', () => {
     const row = toRow(parse({ ...valid, recipients: { 'alice@nus.edu.sg': true } }).data!);
-    expect(Object.keys((row.extra as { recipients: object }).recipients)).toEqual([marker]);
+    expect(Object.keys((row.extra as { recipients: object }).recipients)).toEqual(['[key 1]']);
   });
 });
 
@@ -554,19 +564,18 @@ describe('a top-level __proto__ metadata field', () => {
   it('survives as a replaced name rather than disappearing', () => {
     const result = parseRaw('"__proto__":{"attempt":1}');
     expect(result.success).toBe(true);
-    // The index is its position among the line's own keys, which is what `extraOf` would have
-    // given it had the name reached that far - the 9 is `'__proto__'.length`.
-    expect(toRow(result.data!).extra).toEqual({ '[key 5: 9 chars]': { attempt: 1 } });
+    // The first replacement in this object, whatever position the name sat at.
+    expect(toRow(result.data!).extra).toEqual({ '[key 1]': { attempt: 1 } });
   });
 
   it('survives when its value is a primitive, which the setter discards silently', () => {
     const result = parseRaw('"__proto__":"hunter2"');
-    expect(toRow(result.data!).extra).toEqual({ '[key 5: 9 chars]': 'hunter2' });
+    expect(toRow(result.data!).extra).toEqual({ '[key 1]': 'hunter2' });
   });
 
   it('is redacted by name like any other field, not just renamed', () => {
     const result = parseRaw('"__proto__":{"password":"hunter2"}');
-    expect(toRow(result.data!).extra).toEqual({ '[key 5: 9 chars]': { password: '[REDACTED]' } });
+    expect(toRow(result.data!).extra).toEqual({ '[key 1]': { password: '[REDACTED]' } });
   });
 
   it('pollutes neither the parsed object nor Object.prototype', () => {
@@ -582,7 +591,7 @@ describe('a top-level __proto__ metadata field', () => {
   it('leaves a nested one alone, and an ordinary neighbour alone', () => {
     const result = parseRaw('"attempt":{"__proto__":{"x":1}},"tries":2');
     expect(toRow(result.data!).extra).toEqual({
-      attempt: { '[key 0: 9 chars]': { x: 1 } },
+      attempt: { '[key 1]': { x: 1 } },
       tries: 2,
     });
   });
@@ -607,7 +616,7 @@ describe('a key that carries a code rather than naming a field (store)', () => {
     ['a four-digit code', '2026'],
     ['a dashed code', '12-3456'],
   ])('replaces %s used as a key', (_why, key) => {
-    expect(keysOf({ attempts: { [key]: true } })).toEqual(['[key 0: ' + key.length + ' chars]']);
+    expect(keysOf({ attempts: { [key]: true } })).toEqual(['[key 1]']);
   });
 
   // Keyed `buckets`, not `status`: `status` is an envelope field, so the shipper destructures it
@@ -628,10 +637,10 @@ describe('a key that carries a code rather than naming a field (store)', () => {
     },
   );
 
-  it('leaves a marker it has already written alone', () => {
-    // Still a fixed point: the marker starts with `[`, so without this it would be replaced again
-    // on every pass and report its own length instead of the key's.
-    expect(keysOf({ attempts: { '[key 0: 6 chars]': true } })).toEqual(['[key 0: 6 chars]']);
+  it('gives a name it has already written the same name again', () => {
+    // A fixed point without a recognition rule: the name fails the safe pattern, so it is
+    // replaced - and as the first replacement in this object it is replaced by itself.
+    expect(keysOf({ attempts: { '[key 1]': true } })).toEqual(['[key 1]']);
   });
 });
 
@@ -724,5 +733,23 @@ describe('a timestamp with more precision than the API can return', () => {
   it('still accepts the line rather than rejecting the extra precision', () => {
     // The file's standing rule: an odd envelope value costs the field, never the whole line.
     expect(inboundLineSchema.safeParse({ ...base, ts: '2026-11-06T00:00:00.999999Z' }).success).toBe(true);
+  });
+});
+
+/** The store's half of the two list and marker findings on PR #157. */
+describe('the store agrees about names and colliding markers', () => {
+  it.each(['givenName', 'given_name', 'familyName', 'family_name', 'surname'])('redacts %s', (key) => {
+    expect(redactDeep({ [key]: 'Alice' })).toEqual({ [key]: '[REDACTED]' });
+  });
+
+  it.each(['eventName', 'name'])('leaves %s alone', (key) => {
+    expect(redactDeep({ [key]: 'Alice' })).toEqual({ [key]: 'Alice' });
+  });
+
+  it('loses no field when a caller key is spelled like a generated one', () => {
+    // Each replacement takes the next ordinal, so two unusable names cannot land on one key.
+    const out = redactDeep({ 'alice@nus.edu.sg': 1, '[key 1]': 2 }) as Record<string, unknown>;
+    expect(Object.keys(out)).toEqual(['[key 1]', '[key 2]']);
+    expect(Object.values(out)).toEqual([1, 2]);
   });
 });
