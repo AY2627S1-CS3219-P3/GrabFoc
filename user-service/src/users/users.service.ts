@@ -16,6 +16,8 @@
  *   goes to Deanson's outbox table (merge of main).
  * Author review: Reviewed by Zi Yi, 2026-10-20.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+ * Scope: Added getContactEmail for GET /internal/users/:userId/contact (#151).
+ * Author review: pending — Jie Yang to record the review; Deanson / Zi Yi (User owners) to review.
  * Scope: Admin dashboard (#180): suspension reason; reactivate from SUSPENDED too, under the
  *   admin lock, with a UserReactivated outbox row; login recording and the two login reads.
  * Author review: Reviewed by Zi Yi, 2026-11-05.
@@ -111,6 +113,19 @@ export class UsersService implements OnApplicationBootstrap {
       await this.users.updatePasswordHash(userId, passwordHash, tx);
       await this.tokens.revokeAll(userId, tx);
     });
+  }
+
+  // ---------------------------------------------------------------- /internal/users
+
+  /**
+   * GET /internal/users/:userId/contact, for the Notification Service (#151). Any existing user's
+   * email, whatever their status: a suspended user still hears that their orders were cancelled.
+   * The address is returned, never logged.
+   */
+  async getContactEmail(userId: string): Promise<{ email: string }> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new AppError(404, ErrorCode.NOT_FOUND, 'No user has this id.');
+    return { email: this.otp.decrypt(user.emailEncrypted) };
   }
 
   // ---------------------------------------------------------------- /users/me

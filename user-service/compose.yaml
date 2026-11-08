@@ -15,6 +15,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 # Scope: restart: unless-stopped on every long-running container (one-shot init containers excluded).
 # Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+# Scope: Passed USER_INTERNAL_SERVICE_KEY for the /internal/users routes (#151).
+# Author review: pending — Jie Yang to record the review; Deanson / Zi Yi (User owners) to review.
 #
 # The User Service and the containers only it uses. Its database is its own — no other
 # service connects to user-db (root AGENTS.md §3). The root compose.yaml includes this file.
@@ -107,6 +110,8 @@ services:
       USER_ORDER_URL: http://order-service:3005
       # Must equal the Order Service's ORDER_SERVICE_KEY; set it in the root .env.
       USER_ORDER_SERVICE_KEY: ${ORDER_SERVICE_KEY:-}
+      # Callers of /internal/users/** (the Notification Service) send this as X-Service-Key; set it in the root .env.
+      USER_INTERNAL_SERVICE_KEY: ${USER_INTERNAL_SERVICE_KEY:-}
       # From .env.
       LOG_LEVEL: ${LOG_LEVEL:-}
       USER_AES_KEY: ${USER_AES_KEY:-}
