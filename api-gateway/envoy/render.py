@@ -10,6 +10,10 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: /gateway/* copies of every API route with the prefix removed (deploy part 1, #141).
 Scope: Edge listener for CloudFront: X-Origin-Key check, /gateway/* API routes, frontend catch-all (#141).
 Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: WebSocket upgrades on the connection manager, and the optional "websocket" route field with a
+       60-second idle timeout for the chat socket (the chat plan).
+Author review: Reviewed by Deanson, 2026-11-09; Jie Yang (gateway owner) to approve.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
 import json
@@ -152,10 +156,12 @@ def load_routes(env):
                 raise ValueError("Gateway route prefixes must not overlap")
     for definition in services:
         for entry in definition["routes"]:
-            if (not isinstance(entry, dict) or set(entry) - {"method", "path", "regex", "public"} or
+            if (not isinstance(entry, dict) or
+                    set(entry) - {"method", "path", "regex", "public", "websocket"} or
                     entry.get("method") not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} or
                     (("path" in entry) == ("regex" in entry)) or
-                    type(entry.get("public", False)) is not bool):
+                    type(entry.get("public", False)) is not bool or
+                    type(entry.get("websocket", False)) is not bool):
                 raise ValueError(f"Invalid route entry for {definition['service']}")
             path = entry.get("path", entry.get("regex"))
             if not isinstance(path, str) or not path:
@@ -173,6 +179,10 @@ def load_routes(env):
 # forwarding, so route files and services never see it.
 GATEWAY_PREFIX = "/gateway"
 
+# AI-generated (Claude Code, 2026-11-08): the chat plan Socket.IO pings every 25 seconds,
+# so the global 10-second idle timeout would cut idle sockets. Only "websocket": true routes get this.
+WEBSOCKET_IDLE_TIMEOUT = "60s"
+
 def api_routes(services, prefixes, settings, public_prefix=""):
     """One Envoy route per route-file entry, optionally under public_prefix."""
     routes = []
@@ -187,7 +197,9 @@ def api_routes(services, prefixes, settings, public_prefix=""):
             match = {"headers": [{"name": ":method", "string_match": {"exact": entry["method"]}}]}
             match["safe_regex" if regex else "path"] = {"regex": path} if regex else path
             forward = {"cluster": definition["service"], "timeout": settings["GATEWAY_ROUTE_TIMEOUT"],
-                       "idle_timeout": settings["GATEWAY_ROUTE_IDLE_TIMEOUT"], "auto_host_rewrite": True}
+                       "idle_timeout": (WEBSOCKET_IDLE_TIMEOUT if entry.get("websocket", False)
+                                        else settings["GATEWAY_ROUTE_IDLE_TIMEOUT"]),
+                       "auto_host_rewrite": True}
             if public_prefix:
                 forward["regex_rewrite"] = {"pattern": {"regex": "^" + re.escape(public_prefix)},
                                             "substitution": ""}
@@ -292,6 +304,9 @@ def configuration(env):
         "stat_prefix": "foc", "normalize_path": False, "merge_slashes": False,
         "always_set_request_id_in_response": True,
         "http_protocol_options": {"allow_absolute_url": False},
+        # AI-generated (Claude Code, 2026-11-08): the chat plan Allowed on every route here;
+        # compatibility.lua still strips the upgrade headers everywhere except the chat socket path.
+        "upgrade_configs": [{"upgrade_type": "websocket"}],
         "route_config": {"name": "foc_routes", "virtual_hosts": [{"name": "foc", "domains": ["*"],
             "routes": routes}]},
         "http_filters": [

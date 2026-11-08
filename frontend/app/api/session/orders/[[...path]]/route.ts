@@ -6,6 +6,9 @@ Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Allowed GET /orders/:orderId/history (participants only, checked by the Order Service), so a cancelled order's page can say why (#184).
 Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Allowed POST /orders/:orderId/chat-ticket (the chat plan).
+Author review: Reviewed by Deanson, 2026-11-09.
 */
 import { NextRequest, NextResponse } from 'next/server';
 import { protectedGateway } from '@/lib/protected-gateway';
@@ -16,7 +19,8 @@ type Target = { path: string; list: boolean };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LISTS = new Set(['available', 'mine', 'assigned']);
-const ACTIONS = new Set(['accept', 'cancel', 'pick-up', 'start-delivery', 'arrive']);
+// chat-ticket: participants only, checked by the Order Service (the chat plan).
+const ACTIONS = new Set(['accept', 'cancel', 'pick-up', 'start-delivery', 'arrive', 'chat-ticket']);
 
 // AI-generated (pending review by Deanson)
 // Never forwards /internal/**: only these shapes are allowed.

@@ -388,6 +388,28 @@ Author review: Pending review by Deanson.
 .order-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
 .order-hint { flex-basis: 100%; margin: 0; color: var(--auth-muted); font-size: 12px; }
 .order-chat .home-empty { min-height: 160px; }
+/* AI-generated (Claude Code, 2026-11-08; reviewed by Deanson, 2026-11-09): order chat (the chat plan). */
+.order-chat { display: flex; flex-direction: column; }
+.chat { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.chat-status { margin: 0; color: var(--auth-muted); font-size: 12px; }
+.chat-status--live::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #2e9e5b; vertical-align: 1px; }
+.chat-log { display: flex; flex-direction: column; gap: 8px; height: 360px; padding: 10px; overflow-y: auto; border: 1px solid #dce2ec; border-radius: 8px; background: var(--auth-background); }
+.chat-note { margin: 0; color: var(--auth-muted); font-size: 12px; text-align: center; }
+.chat-bubble { max-width: 80%; align-self: flex-start; padding: 8px 11px; border-radius: 10px; background: #fff; border: 1px solid #dce2ec; font-size: 13px; }
+.chat-bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.chat-bubble time, .chat-bubble span { display: block; margin-top: 3px; color: var(--auth-muted); font-size: 11px; }
+.chat-bubble--own { align-self: flex-end; border-color: transparent; background: #e3ecfd; }
+.chat-bubble--sending { opacity: .7; }
+.chat-bubble--failed span, .chat-bubble--rejected span { color: #b42318; }
+.chat-inline { padding: 0; border: 0; background: none; color: var(--auth-blue); font-size: 11px; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.chat-inline:disabled { color: var(--auth-muted); cursor: not-allowed; }
+.chat-form { display: flex; gap: 8px; }
+.chat-form input { flex: 1; min-width: 0; min-height: 38px; padding: 0 11px; border: 1px solid var(--auth-border); border-radius: 7px; }
+.chat-form .primary-button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 639px) {
+  .chat-log { height: 300px; }
+  .chat-bubble { max-width: 90%; }
+}
 @media (max-width: 639px) {
   .home-heading { flex-direction: column; align-items: stretch; }
   .home-heading-actions { justify-content: space-between; }

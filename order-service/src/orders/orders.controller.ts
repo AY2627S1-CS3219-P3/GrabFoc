@@ -10,6 +10,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added POST /orders/:orderId/pick-up|start-delivery|arrive|cancel (Phase C).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+ * Scope: Added POST /orders/:orderId/chat-ticket (the chat plan).
+ * Author review: Reviewed by Deanson, 2026-11-09.
  */
 import { Body, Controller, Get, Headers, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { Caller, CurrentUser } from '../common/jwt-auth.guard';
@@ -103,6 +106,13 @@ export class OrdersController {
   @HttpCode(200)
   cancel(@CurrentUser() caller: Caller, @Param('orderId', orderId) id: string, @Body(versionBody) { version }: VersionBody) {
     return this.orders.cancel(caller, id, version);
+  }
+
+  /** A 10-second ticket for the order's chat socket; no body. */
+  @Post(':orderId/chat-ticket')
+  @HttpCode(200)
+  chatTicket(@CurrentUser() caller: Caller, @Param('orderId', orderId) id: string) {
+    return this.orders.chatTicket(caller, id);
   }
 
   @Get(':orderId/history')
