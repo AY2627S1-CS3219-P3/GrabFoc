@@ -11,6 +11,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: verify() writes a UserRegistered outbox row in the account's transaction (Deanson's design).
  * Author review: pending — Deanson to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+ * Scope: login() records each attempt on an existing account in login_events (#180, plan §4.2).
+ * Author review: Reviewed by Zi Yi, 2026-11-05; as User Service owner, accepted the timing trade-off (P8).
  */
 // AI-generated (reviewed by Deanson)
 import { Injectable, Logger } from '@nestjs/common';
@@ -25,6 +28,7 @@ import { OTP_TTL_SECONDS, OtpPurpose, PENDING_SIGNUP_TTL_SECONDS, otpKey } from 
 import { RedisService } from '../infra/redis/redis.service';
 import { DUMMY_PASSWORD_HASH, OtpService } from '../security/otp.service';
 import { IssuedTokens, TokensService } from '../security/tokens.service';
+import { LoginOutcome } from '../users/login-events.repository';
 import { userRegistered } from '../users/user-events';
 import { UsersService } from '../users/users.service';
 import type { UserRecord } from '../users/users.repository';
@@ -183,12 +187,15 @@ export class AuthService {
 
   /**
    * POST /auth/login (U2.1.2, U2.1.3, U2.3.1). The step order is the security property: an
-   * unknown address and a wrong password must look identical, in body and in timing.
+   * unknown address and a wrong password must look identical in body, and nearly so in timing.
+   * Each attempt on an existing account writes a login_events row, awaited so the audit log has
+   * no silent gaps. An unknown address writes nothing, so a wrong password answers one insert
+   * slower: accepted in plan P8 by Zi Yi (User Service owner).
    */
   async login(dto: LoginDto): Promise<AuthResponse> {
     const emailHash = this.otp.hashEmail(dto.email);
 
-    // 1. A locked address costs no database query and no bcrypt.
+    // 1. A locked address costs no database query and no bcrypt, and is not recorded.
     const lockTtl = await this.redis.getLoginLockTtl(emailHash);
     if (lockTtl > 0) throw this.accountLocked(lockTtl);
 
@@ -196,9 +203,13 @@ export class AuthService {
     const user = await this.usersService.findByEmailHash(emailHash);
     const correct = await this.otp.verifyPassword(dto.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
 
-    // 3. Both failures are the same event: 401 for the first four, 423 on the fifth.
+    // 3. Both failures are the same event: 401 for the first four, 423 on the fifth. Only the
+    //    wrong password is recorded: an unknown address has no account to record it against.
     if (!user || !correct) {
       const failure = await this.redis.recordLoginFailure(emailHash);
+      if (user) {
+        await this.usersService.recordLogin(user.id, failure.locked ? LoginOutcome.LOCKED : LoginOutcome.WRONG_PASSWORD);
+      }
       if (failure.locked) throw this.accountLocked(failure.retryAfterSeconds!);
       throw new AppError(401, ErrorCode.INVALID_CREDENTIALS, 'Email or password is incorrect.');
     }
@@ -207,6 +218,7 @@ export class AuthService {
     await this.redis.clearLoginFailures(emailHash);
 
     if (user.status === UserStatus.DEACTIVATED) {
+      await this.usersService.recordLogin(user.id, LoginOutcome.DEACTIVATED);
       throw new AppError(
         403,
         ErrorCode.ACCOUNT_DEACTIVATED,
@@ -214,10 +226,15 @@ export class AuthService {
       );
     }
     if (user.status === UserStatus.SUSPENDED) {
+      await this.usersService.recordLogin(user.id, LoginOutcome.SUSPENDED);
       throw new AppError(403, ErrorCode.ACCOUNT_SUSPENDED, 'This account has been suspended.');
     }
 
-    return this.toAuthResponse(user, await this.tokens.issue(user));
+    // The SUCCESS row and the session commit together.
+    return this.db.transaction(async (tx) => {
+      await this.usersService.recordLogin(user.id, LoginOutcome.SUCCESS, tx);
+      return this.toAuthResponse(user, await this.tokens.issue(user, tx));
+    });
   }
 
   // ---------------------------------------------------------------- password reset

@@ -20,7 +20,7 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Tests for the not-found page and Secure session cookies behind the proxy (#141, #113); the
 browser channel can be overridden with FOC_TEST_BROWSER_CHANNEL (default still msedge).
-Author review: Pending review.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -579,7 +579,7 @@ test("upstream login 401 and 403 are logged without credentials", async () => {
   assert.equal(emitted.includes("forbidden@u.nus.edu"), false);
 });
 
-// AI-generated (Claude Code, 2026-10-27; pending review): deploy part 1 (#141, #113).
+// AI-generated (Claude Code, 2026-10-27): deploy part 1 (#141, #113).
 test("unknown pages show the not-found page with a way home", async () => {
   const page = await browser.newPage();
   try {

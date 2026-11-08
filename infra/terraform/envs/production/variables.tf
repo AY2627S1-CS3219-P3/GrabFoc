@@ -5,7 +5,7 @@
 #   this stack (every stack valid).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 # Scope: edge_container_port defaults to 8080, the edge listener (deploy part 1, #141).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: image_tag is optional; the staging allowlist (deploy part 3, #143).
 # Author review: Pending Jian Bing's review.

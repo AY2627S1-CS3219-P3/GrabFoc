@@ -2,8 +2,8 @@
 -- Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 -- Scope: Header handling for the edge listener's frontend route (deploy part 1, #141): keep the session
 --        cookie and Host, and take X-Forwarded-Proto only from CloudFront.
--- Author review: Pending Jie Yang's review.
--- AI-generated; review pending. Replaces compatibility.lua on the frontend route only.
+-- Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+-- AI-generated (Claude Code). Replaces compatibility.lua on the frontend route only.
 local removed = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
   "te", "trailers", "transfer-encoding", "upgrade", "forwarded", "x-forwarded-for",
   "x-forwarded-host", "x-forwarded-proto", "x-user-id", "x-user-role"}

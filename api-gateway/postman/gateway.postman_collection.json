@@ -1,6 +1,6 @@
 {
   "info": {
-    "description": "AI Assistance Disclosure:\nTool: Codex (model: GPT-6), date: 2026-10-13\nScope: Combine existing User/Supplier request formats for gateway testing, add safe smoke checks, and adapt missing-token assertions to stock Envoy; remove the duplicate User Service health request.\nAuthor review: Pending human review.\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27\nScope: baseUrl now ends in /gateway, the public API prefix (deploy part 1, #141).\nAuthor review: Pending Jie Yang's review.\n\nFoC Gateway (official Envoy v1.38.6). Import this file into Postman. baseUrl defaults to http://localhost:3003/gateway; for AWS set it to https://<CloudFront URL>/gateway. Only baseUrl changes between the two. Never point it at 3001/3002 when testing the gateway.\n\nStart with Gateway smoke checks: no credentials and no state changes. User and Supplier folders reuse the service collections' workflows and change account/location data. Do not run the whole collection against important accounts: Profile changes email/password and deactivates its generated account; Admin resets the bootstrap admin password, reactivates an account and changes roles; Supplier Write creates/updates/deactivates/restores a location.\n\nExisting USER: set signupEmail and password, then send User Service / Session / Login (locate Login in the imported folder). It saves accessToken and refreshToken. Existing ADMIN: set adminEmail and adminPassword, then send Admin: login only; it saves adminAccessToken. Supplier requests use those same variables automatically. Token values start empty; do not export/share live token or password values.\n\nFor full User workflows, Mailpit must be reachable at mailpitUrl (default http://localhost:8025). Registration/Profile scripts generate account addresses and retrieve OTPs there. Full Admin workflow also needs adminEmail matching USER_BOOTSTRAP_ADMIN_EMAIL and a bootstrapped admin. Run User before Supplier; expired tokens require login/refresh again. Stock gateway 401 errors are text, while forwarded service validation errors remain service JSON. See api-gateway/envoy/behaviour-differences.md.\n\nSource request examples: user-service/postman/user-service.postman_collection.json and supplier-service/postman/supplier.postman_collection.json. Earlier service-specific disclosures remain attributable in those source files.",
+    "description": "AI Assistance Disclosure:\nTool: Codex (model: GPT-6), date: 2026-10-13\nScope: Combine existing User/Supplier request formats for gateway testing, add safe smoke checks, and adapt missing-token assertions to stock Envoy; remove the duplicate User Service health request.\nAuthor review: Pending human review.\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27\nScope: baseUrl now ends in /gateway, the public API prefix (deploy part 1, #141).\nAuthor review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.\n\nFoC Gateway (official Envoy v1.38.6). Import this file into Postman. baseUrl defaults to http://localhost:3003/gateway; for AWS set it to https://<CloudFront URL>/gateway. Only baseUrl changes between the two. Never point it at 3001/3002 when testing the gateway.\n\nStart with Gateway smoke checks: no credentials and no state changes. User and Supplier folders reuse the service collections' workflows and change account/location data. Do not run the whole collection against important accounts: Profile changes email/password and deactivates its generated account; Admin resets the bootstrap admin password, reactivates an account and changes roles; Supplier Write creates/updates/deactivates/restores a location.\n\nExisting USER: set signupEmail and password, then send User Service / Session / Login (locate Login in the imported folder). It saves accessToken and refreshToken. Existing ADMIN: set adminEmail and adminPassword, then send Admin: login only; it saves adminAccessToken. Supplier requests use those same variables automatically. Token values start empty; do not export/share live token or password values.\n\nFor full User workflows, Mailpit must be reachable at mailpitUrl (default http://localhost:8025). Registration/Profile scripts generate account addresses and retrieve OTPs there. Full Admin workflow also needs adminEmail matching USER_BOOTSTRAP_ADMIN_EMAIL and a bootstrapped admin. Run User before Supplier; expired tokens require login/refresh again. Stock gateway 401 errors are text, while forwarded service validation errors remain service JSON. See api-gateway/envoy/behaviour-differences.md.\n\nSource request examples: user-service/postman/user-service.postman_collection.json and supplier-service/postman/supplier.postman_collection.json. Earlier service-specific disclosures remain attributable in those source files.\n\n2026-11-02 (Claude Code, model: Claude Opus 5.5): reactivate's 409 is now USER_ALREADY_ACTIVE, replacing NOT_DEACTIVATED (#180). Author review: reviewed by Zi Yi, 2026-11-05; the full collection ran green under newman against the compose stack (106 requests, 147 assertions).",
     "name": "FoC Gateway - User and Supplier",
     "_postman_id": "75bed629-cb17-49ea-98bc-92d35e0290f7",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -2368,7 +2368,7 @@
                   }
                 ],
                 "url": "{{baseUrl}}/admin/users/{{targetUserId}}/reactivate",
-                "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 NOT_DEACTIVATED unless the target is currently DEACTIVATED (run 'Deactivate account' as that user first to test the success path). 403/401 as above."
+                "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 USER_ALREADY_ACTIVE if the target is already ACTIVE (deactivate or suspend that user first to test the success path). Also lifts a suspension (#180). 403/401 as above."
               },
               "event": [
                 {
@@ -2398,7 +2398,7 @@
                   }
                 ],
                 "url": "{{baseUrl}}/admin/users/{{targetUserId}}/reactivate",
-                "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 NOT_DEACTIVATED unless the target is currently DEACTIVATED (run 'Deactivate account' as that user first to test the success path). 403/401 as above."
+                "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 USER_ALREADY_ACTIVE if the target is already ACTIVE (deactivate or suspend that user first to test the success path). Also lifts a suspension (#180). 403/401 as above."
               },
               "event": [
                 {
@@ -2407,8 +2407,8 @@
                     "type": "text/javascript",
                     "exec": [
                       "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
-                      "pm.test('the error code is NOT_DEACTIVATED', () => {",
-                      "  pm.expect(pm.response.json().error.code).to.eql('NOT_DEACTIVATED');",
+                      "pm.test('the error code is USER_ALREADY_ACTIVE', () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql('USER_ALREADY_ACTIVE');",
                       "});"
                     ]
                   }
@@ -2426,7 +2426,7 @@
                   }
                 ],
                 "url": "{{baseUrl}}/admin/users/00000000-0000-4000-8000-000000000000/reactivate",
-                "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 NOT_DEACTIVATED unless the target is currently DEACTIVATED (run 'Deactivate account' as that user first to test the success path). 403/401 as above."
+                "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 USER_ALREADY_ACTIVE if the target is already ACTIVE (deactivate or suspend that user first to test the success path). Also lifts a suspension (#180). 403/401 as above."
               },
               "event": [
                 {

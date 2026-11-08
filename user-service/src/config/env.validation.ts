@@ -13,6 +13,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
  * Scope: Host-side broker example localhost:9094 → 127.0.0.1:9094, matching the shared broker (PR #96 review).
  * Author review: pending — Jian Bing to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+ * Scope: Added USER_INTERNAL_SERVICE_KEY for the /internal/users routes (#151).
+ * Author review: pending — Jie Yang to record the review; Deanson / Zi Yi (User owners) to review.
  */
 // AI-generated (reviewed by Deanson)
 import { z } from 'zod';
@@ -65,6 +68,9 @@ const EnvSchema = z.object({
   USER_ORDER_URL: z.url('required, e.g. http://order-service:3005 in compose'),
   USER_ORDER_SERVICE_KEY: z.string().min(32, 'required; must equal ORDER_SERVICE_KEY (at least 32 characters)'),
 
+  // Sent by other services (the Notification Service) as X-Service-Key to /internal/users/** (#151).
+  USER_INTERNAL_SERVICE_KEY: z.string().min(32, 'required, at least 32 characters (openssl rand -hex 32)'),
+
   // Kafka for the outbox relay: kafka:9092 in compose, 127.0.0.1:9094 from the host. The
   // service starts even if no broker answers; the relay keeps retrying.
   USER_KAFKA_BROKERS: z.string().min(1, 'required, e.g. kafka:9092 in compose or 127.0.0.1:9094'),
@@ -91,6 +97,7 @@ export interface AppConfig {
   kafkaBrokers: string[];
   outbox: { pollMs: number; maxBackoffMs: number };
   order: { url: string; serviceKey: string };
+  internalServiceKey: string;
 }
 
 /**
@@ -133,5 +140,6 @@ export function validate(raw: Record<string, unknown>): AppConfig {
       .filter(Boolean),
     outbox: { pollMs: env.USER_OUTBOX_POLL_MS, maxBackoffMs: env.USER_OUTBOX_MAX_BACKOFF_MS },
     order: { url: env.USER_ORDER_URL.replace(/\/+$/, ''), serviceKey: env.USER_ORDER_SERVICE_KEY },
+    internalServiceKey: env.USER_INTERNAL_SERVICE_KEY,
   };
 }

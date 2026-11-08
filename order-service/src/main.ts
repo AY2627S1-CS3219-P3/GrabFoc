@@ -18,6 +18,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
  * Scope: Started the user.events consumer (Phase D).
  * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+ * Scope: Started the supplier.events consumer (issue #121).
+ * Author review: Reviewed by Zi Yi, 2026-10-30.
  */
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
@@ -25,6 +28,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule, configureApp } from './app.module';
 import { appConfig } from './config';
 import { OrderEvents } from './integrations/order.events';
+import { SupplierEvents } from './integrations/supplier.events';
 import { UserEvents } from './integrations/user.events';
 import { OrdersService } from './orders/orders.service';
 
@@ -44,6 +48,7 @@ async function bootstrap() {
   const events = app.get(OrderEvents);
   every(1_000, () => events.publishPending());
   await app.get(UserEvents).start(); // UserSuspended cancels the user's orders
+  await app.get(SupplierEvents).start(); // SupplierDeactivated cancels the location's orders
   new Logger('Order').log(`Order Service listening on port ${port}`);
 }
 

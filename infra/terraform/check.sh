@@ -7,7 +7,7 @@
 #   the admin locations page load).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 # Scope: Shared provider cache across the throwaway folders (deploy part 1).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 # The Terraform checks CI runs on every pull request, runnable locally the same way:
 #   infra/terraform/check.sh
 # No AWS credentials needed: init skips the backend and the tests mock the AWS provider.

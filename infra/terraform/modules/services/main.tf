@@ -6,6 +6,9 @@
 #   the admin locations page load).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 # Scope: Gateway edge-listener settings (GATEWAY_EDGE_PORT, FRONTEND_URL); the frontend in its own layer after the gateway (deploy part 1, #141).
+# Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+# Scope: Comment on the layers: the app services also need the one-off first-apply restart (Codex review on #146).
 # Author review: Pending Jian Bing's review.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Deploy part 3 (#143): Mailpit's allowlist and API port, the checks task, the Notification Service,
@@ -408,9 +411,10 @@ resource "aws_ecs_task_definition" "checks" {
 
 # Created in three layers: a Service Connect client only learns the names that already existed when
 # its deployment was created (first live apply, 2026-10-26). Data stores first, then the apps that
-# use them, then Envoy, then the frontend (which calls Envoy). Envoy also calls the frontend, but on
-# an environment's very first apply it starts before the frontend exists: redeploy api-gateway once
-# afterwards (infra/terraform/README.md, deploy part 1).
+# use them, then Envoy, then the frontend (which calls Envoy). Two kinds of call can't be ordered
+# this way: the app services call each other (User and Order each call the other), and Envoy also
+# calls the frontend. So on an environment's very first apply, the app services and api-gateway are
+# restarted once afterwards (infra/terraform/README.md, step 4).
 #
 # ECS has no depends_on between running services: a service whose database or Kafka isn't up yet
 # exits (or fails its health check) and is restarted until it is. A circuit breaker would stop

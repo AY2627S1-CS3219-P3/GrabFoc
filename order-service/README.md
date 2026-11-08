@@ -33,11 +33,20 @@ Author review: Reviewed
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Host-side broker example localhost:9094 → 127.0.0.1:9094, matching the shared broker (PR #96 review).
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+Scope: Recorded the user.events and supplier.events consumers and the test count (issue #121).
+Author review: Reviewed by Zi Yi, 2026-10-30.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+Scope: Documented the admin read routes (#181) and Postman folder 6.
+Author review: Reviewed by Zi Yi, 2026-11-05.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Said which Postman folders leave A with a cancelled order for folder 6 (PR #192 review).
+Author review: Reviewed by Zi Yi, 2026-11-06.
 -->
 
 # Order Service
 
-Database foundation for #50 (under parent #64) plus Phases A–C of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit, accept, lifecycle, cancellation and confirmation endpoints (see [HTTP API](#http-api)). Phase D so far: credit settlement over Kafka (`credit.commands`), the 60 s expiry worker, `order.events` for Notification and the internal active-order lookup; the suspension/deactivation consumers wait for User and Supplier to publish events. The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_settled_at` for credit settlement. Read [AGENTS.md](AGENTS.md) for requirements.
+Database foundation for #50 (under parent #64) plus Phases A–C of `docs/order-service-plan.md`: a NestJS server with authenticated read, create, edit, accept, lifecycle, cancellation and confirmation endpoints (see [HTTP API](#http-api)). Phase D so far: credit settlement over Kafka (`credit.commands`), the 60 s expiry worker, `order.events` for Notification, the internal active-order lookup, and the `user.events` / `supplier.events` consumers that cancel orders on `UserSuspended` / `SupplierDeactivated` (dead letters on `order.user-events.dlt` / `order.supplier-events.dlt`). The schema is in `migrations/001_init.sql`, including the `AWAITING_CREDIT` state, the `CREDIT_RESERVED` history action and `orders.credit_settled_at` for credit settlement. Read [AGENTS.md](AGENTS.md) for requirements.
 
 ## Confirmed decisions
 
@@ -208,9 +217,23 @@ Errors use the User Service envelope `{ "error": { "code", "message", "details" 
 | `GET /orders/:orderId/confirmations` | requester or assigned courier | `{ items }`, oldest first |
 | `POST /orders/:orderId/confirmations` | requester or assigned courier | propose a timing change, cancellation or completion (201) |
 | `POST /orders/:orderId/confirmations/:confirmationId/respond` | the other participant | approve or reject (200) |
+| `GET /admin/orders/overview` | admin | `{ live: { total, byState }, recentCancellations }` |
+| `GET /admin/orders` | admin | any user's orders, filtered (below) |
+| `GET /admin/orders/:orderId/history` | admin | `{ items }` for any order, oldest first |
 
 Lists take `page` (default 1) and `pageSize` (1–100, default 20) and return
 `{ items, page, pageSize, total }`, newest first.
+
+**Admin** routes (`docs/admin-dashboard-plan.md` §5, read-only) need an `ADMIN` token; anyone else
+gets 403 before the query is checked. A role change reaches Order when the token is refreshed
+(≤ 15 minutes), which is acceptable for reads. `GET /admin/orders` also takes `scope` (`live` =
+`PENDING`, `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS`, `ARRIVED`; `past` = `COMPLETED`, `CANCELLED`;
+omitted = both), `state` (must be in `scope`, otherwise 400) and `userId` (requester **or**
+courier). `AWAITING_CREDIT` orders are never listed. The overview's `byState` lists all five live
+states, zeros included; `recentCancellations` holds up to 50 orders cancelled in the last hour,
+newest first, including creates Credit refused (their history says `CREDIT_NOT_RESERVED`). A
+cancellation's reason is in its history entry's `changeDetails.reason`. History of an unknown
+order is 404.
 
 **Create** body: `orderDescription`, `pickupLocationId`, `deliveryLocationId`, `creditOffer`
 (whole number ≥ 1), optional `windowStart` / `windowEnd` (ISO 8601 with offset). Omitted start
@@ -384,7 +407,8 @@ Verification on 2026-10-15: all 42 tests passed in `compose.test.yaml` (12 unit,
 After Phase C, all 53 passed (12 unit, 14 database, 27 HTTP). After Phase D step 1 (2026-10-17),
 all 53 passed again, and the runtime image loaded the Kafka client. After the expiry worker,
 56 passed; after `order.events` and the active-order lookup, 61 passed. After the Phase E tests
-(2026-10-19), 64 passed.
+(2026-10-19), 64 passed. After the `SupplierDeactivated` consumer (2026-10-30), 74 integration
+and 13 unit tests passed.
 
 **Manual check with Credit (not automated):** run the root `docker compose up`, create an order,
 take it through to `COMPLETED`, and within about 10 s the courier's `GET /credits/:userId`
@@ -407,5 +431,7 @@ order and carries `orderId` and `version` from request to request. Access tokens
 so run 0 again on a 401. A full run needs A to have at least 5 available credits (a
 cancelled order's credit returns about 10 s later); a `409 INSUFFICIENT_CREDITS` on a create
 means A has run low, so swap the two accounts. Folders: 1 full order (with the courier's balance before and 11 s after
-completion), 2 requester and mutual cancellation, 3 edit, 4 errors, 5 internal lookup. Background
+completion), 2 requester and mutual cancellation, 3 edit, 4 errors, 5 internal lookup, 6 admin read routes (set
+`adminEmail` / `adminPassword` to an `ADMIN` account; run it after folder 2, 3 or 4, which leave
+A with a cancelled order). Background
 jobs (expiry, `order.events`) have no endpoint; check those as described above.

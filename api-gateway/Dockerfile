@@ -5,7 +5,7 @@
 # Author review: Pending human review.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 # Scope: Copy frontend.lua and expose the edge listener port 8080 (deploy part 1, #141).
-# Author review: Pending Jie Yang's review.
+# Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 # AI-generated; review pending.
 FROM envoyproxy/envoy:v1.38.6@sha256:93a82e7584cb8181ad408e4e49477a3ae1d775f698214841eda4e9309fc06a06
 USER root

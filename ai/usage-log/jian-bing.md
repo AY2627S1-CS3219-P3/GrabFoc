@@ -103,13 +103,13 @@ Scope: Wrote the 2026-10-25 AWS infrastructure entry (deploy part 2) from Jian B
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Wrote the 2026-10-26 staging apply and 2026-10-27 edge routing (deploy part 1) entries from Jian Bing's prompts, taken verbatim from the session transcript.
-Author review: pending — Jian Bing to record what he checked.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 deploy part 3 review-fix entry (PR #191) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 gateway .env.example entry (PR #156) from Jian Bing's prompts, taken verbatim from the session transcript.
-Author review: pending — Jian Bing to record what he checked.
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 design-confirmation entry (PR #146) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
@@ -125,12 +125,224 @@ Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code'
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 review-recording entry (PRs #193 and #133) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Wrote the 2026-11-07 PR #156 review-recording entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Wrote the 2026-11-07 Envoy request-flow and first-apply restart entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Wrote the 2026-11-07 Notification conflicts and Dependabot entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Wrote the 2026-11-08 issues, AWS check and #191 merge entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-08 — Issues for my merged PRs, what runs on AWS, and bringing #191 up to date
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, explain, generate
+**Files:** `infra/terraform/README.md` (first-apply restart), the disclosure headers of
+`infra/terraform/envs/{staging,production}/variables.tf` and `modules/services/tests/services.tftest.hcl`, and this
+log, on #191's branch; on GitHub, issues #205–#222 and the closing comments on 13 existing issues
+
+**Scenario:** #199 had conflicts after Cole Lin's #200 landed; Claude merged main in (only disclosure headers
+conflicted), re-ran logging-service's tests under Zod 4 and pushed, and after #199 merged it closed Dependabot's
+#196 and #170 as superseded. Claude reviewed and merged a new Dependabot PR (#202, `@nestjs/cli` 12 in
+user-service) after checking its Node requirement against the Docker build image. I couldn't sign in to AWS: the
+`default` CLI profile is a different account, and the NUS sandbox uses `aws sso login`. Once I was signed in,
+Claude listed what exists (read-only): only staging; production has never been applied. I asked for an issue for
+every PR I merged into main: Claude created and closed issues #205–#222 for the 18 that had none, and closed 13
+existing issues those PRs had finished, each with a comment naming the PR; I chose to create production only after
+#191 merges. After the Notification chain merged, Claude found Jie Yang had already updated #178, re-approved and
+merged it, then merged main into #191: kept both sides of the disclosure headers and this log, and added
+notification-service, now a fifth app service that calls user-service, to the runbook's first-apply restart.
+
+**Prompts (exact, in order):**
+> can i merge 191 yet
+
+> how about 199?
+
+> [Image #22] there is merge conflict
+
+(Image #22: #199 on GitHub, showing conflicts in `line.schema.ts` and its spec.)
+
+> wait so is there a separate staging and prod enviornment right now on aws?
+
+> [Image #23] 1976 and 170 dependabot pr are still there depsite merigng 199 jsut now
+
+(Image #23: the pull request list, with #196 and #170 still open.)
+
+> [Image #24]
+
+(Image #24: the AWS sign-in page showing "400 Bad Request" after I ran `aws login`.)
+
+> [Image #25] new dependabot mr js dropped
+
+(Image #25: Dependabot's #202.)
+
+> i think for aw sloign, its liekly cause im using the school provided snadbox account[Image #26] [Image #27]
+
+(Image #26: the NUS AWS access portal; Image #27: the CS3219 "AWS Sandbox Guidelines" announcement.)
+
+> ok logged in
+
+> ok, for ALL thr PRs i have made and merged itn omain, i need ALL the correspoding issues created and resolved and
+> tagged pelase
+
+> when r we going to creat ethe prod env? the aws terraform is already on main
+
+My answers to Claude's two questions: "Go ahead as listed" (the issues) and "After #191 merges" (production).
+
+> okay notificaiton has eben emrged, lets merge 191
+
+**What it produced:** The #199 merge commit, the closed #196 and #170, the merged #202 (approved in my name), a
+read-only listing of the AWS account, issues #205–#222 and 13 closed issues, the re-approved and merged #178, and
+the merge of main into #191 with the runbook change.
+
+**What I changed or rejected:** Production waits for #191.
+
+**Verification:** Claude ran logging-service's unit tests after the #199 merge (453/453) and, on the merged #191,
+the six deploy-script tests (0 failed each), `infra/terraform/check.sh` (every stack valid; global 4, edge 1,
+network 1, server 1, services 4 and staging 2 test runs passed), `node --test infra/checks/test/select.test.mjs`
+(6/6) and `actionlint`. It checked the new issues' labels and close reason on GitHub afterwards. My own check:
+pending.
+
+### 2026-11-07 — Updating Jie Yang's Notification PRs, and the Dependabot PRs
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.env.example` and `compose.yaml` on #161's branch, `.env.example` on #178's branch;
+`logging-service/package.json`, `package-lock.json`, `src/lines/line.schema.ts` and its spec;
+`credit-service/package.json`, `package-lock.json` and `src/credits/credit.schemas.ts`
+
+**Scenario:** Jie Yang said I can merge his Notification PRs, which #191 depends on. #161 and #178 had conflicts
+with main, so Claude merged main into both, keeping both sides (only disclosure lines and the root Compose list
+conflicted), and pushed to Jie Yang's branches. Claude found that the Logging and Notification services both publish
+host ports 3006 and 5436, so `docker compose up` would fail once #161 merges; I asked Cole Lin and Jie Yang which one
+moves. Claude then went through the open Dependabot PRs: it approved and merged the four with passing CI (#177,
+#176, #197, #195), replied to a Codex comment on #176 that wrongly called the Dependabot change "Codex-authored", and
+asked Dependabot to rebase #175, which had failed only on the old broken main. The other three (#198, #196, #170)
+needed code changes, made in one PR as #193 did for User and Supplier (Zi Yi agreed to the credit-service part):
+logging-service keeps `@nestjs/platform-express` on v11 with multer forced to 2.5.0, and both services move to Zod 4.
+Logging-service's `lineId` uses `z.guid()`, because Zod 4's `.uuid()` also checks version and variant digits, which
+the shipper's check does not, so the store would have refused lines the shipper sent.
+
+**Prompts (exact, in order):**
+> j[Image #21] y said i can merge notification service already so 191 can be merged
+
+(Image #21: a screenshot of my chat with Jie Yang, where he says to merge the Notification Service.)
+
+> you fix the conflicts, jie yang said i can merge
+
+> could help me merge all the dependabot PRs
+
+> ive messgaed cole lin and jieyang on the port clash, lets wait for them to reply, in the meantime, we can do the
+> depndabot side, im ok to do all 3 in1 fix pr, ziyi said ok
+
+**What it produced:** Merge commits on #161 and #178, four merged Dependabot PRs (approved in my name), the reply
+on #176, the rebase request on #175, and the fix PR for #198, #196 and #170.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `docker compose config` on the merged Compose files, and in both services the type
+check, the unit tests (logging-service 419/419, including a new test that fails with `.uuid()` and passes with
+`z.guid()`; credit-service 142/142) and the build. The integration tests run in CI (Docker was not available
+locally). My own check: pending.
+
+### 2026-11-07 — How Envoy routes requests, and the first-apply restart on #146
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `infra/terraform/README.md`, `infra/terraform/modules/services/main.tf`
+
+**Scenario:** I asked Claude how Envoy works now, for myself and for Deanson's questions about the login flow and
+adding a service. Claude read the gateway, frontend and Terraform code on `feat/edge-routing` and explained it, then
+made a private claude.ai page with two diagrams (local vs AWS, and the eight login steps) and a checklist for adding
+a service; that page is not in the repo. On #146, Codex then flagged that the four app services start together on a
+brand-new environment and can't reach each other until they restart. Claude explained the finding and offered two
+fixes: extend the runbook's one-off restart, or have Terraform restart them automatically. I chose the runbook: an
+environment is rarely recreated, so a one-off manual step costs little, and the automatic step could only really be
+tested on a brand-new environment (the Terraform tests use a mocked AWS).
+
+**Prompts (exact, in order):**
+> I just need u to roughly tell me how the envoy is currently working, kinda confused ngl
+
+> give me an illustration
+
+> [7/11/26 1:48 PM] deanson: like lets say data flow from client to backend
+> [7/11/26 1:48 PM] deanson: client -> cloudfront -> envoy -> backend?
+> [7/11/26 1:48 PM] deanson: lets say something as simple as login
+> [7/11/26 1:48 PM] deanson in reply to deanson:
+> > lets say something as simple as login
+> what happens
+> [7/11/26 1:49 PM] deanson: if I add a new service, what do I need to edit in the envoy etc
+
+> is there a different between local and aws for this flow
+
+> could you create an artefact
+
+> hello where is my artefact
+
+> https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/146?overview=true help em resolve th econversatiosn first
+
+> wait so that means that anytime a push to main is done, if we do runbok omnly, someone has to do a first-aply step
+> manually every single time? also for no.2 how is it harder to test
+
+> okay lets do 1, seems like its lesser friction, and wont be that detgrimental to our workflow since environment
+> rarely gets recreated, so its tardeoff fares better compared to having worst observabiltiy for testing
+
+> Implement this step (answer to Claude's question: fix the Codex finding with the runbook only, push, then reply
+> to and resolve the thread)
+
+**What it produced:** An explanation of Envoy's two listeners and the login flow (in chat and on the private page),
+a reply for Deanson (not committed), a first-apply restart loop in the runbook's step 4 covering the four app
+services and the gateway, a matching comment on the service layers in `modules/services/main.tf`, and a reply on the
+Codex thread before resolving it.
+
+**What I changed or rejected:** Chose the runbook step over a Terraform step that restarts the services
+automatically.
+
+**Verification:** Claude ran `infra/terraform/check.sh`: every stack valid, module tests all passed (global 3/3,
+edge 1/1, network 1/1, server 1/1, services 3/3). My own check: pending.
+
+### 2026-11-07 — Recording my review of the edge routing (PR #156), and the stack's open threads
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** the 18 files where #156 added a pending "Author review" line, three of this log's entries for #156, and
+the inline markers in #156's generated code
+
+**Scenario:** Deanson asked whether the AWS and Envoy work is on main yet and whether #156 matters for his work.
+Claude explained the three stacked PRs (#146 → main, #156 on #146, #191 on #156) and drafted my reply. Claude then
+checked what still blocks #146 and #156, and resolved the two open review threads (the origin key on #146, handled by
+#156; the Notification Service on #191, waiting for Jie Yang's PRs), both of which already had my replies. After I
+told Claude that Jie Yang had approved #156, Claude replaced #156's pending review lines with my review in my words
+and pushed, which re-ran the SoCLaaS review (its last run failed with HTTP 502 from the SoCLaaS server). The
+2026-10-26 staging apply entry's Verification line stays pending: it records the AWS apply, not #156's code.
+
+**Prompts (exact, in order):**
+> pr 133 merged
+
+> actually what did deanson even ask me, and what am i usppose dot reply to him
+
+> are pr 146 and 156 ready to merge right now?
+
+> help me resolve all the conversations in the PRs
+
+> jieyang has approved #156, for the author review lines jsut say that i have looked through the code and think its ok, also just re run coclass on 156
+
+**What it produced:** A chat reply for Deanson (not committed), the two resolved threads, and "Author review (Jian
+Bing, 2026-11-07): Looked through the code and think it's okay." in place of each pending line #156 added; "review
+pending" removed from the inline markers in #156's code.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude ran `api-gateway/test/envoy_routes_test.py` (14/14), parsed the Postman collection and
+`render.py`, ran `node --check` on both edited test files, `bash -n` on `check.sh` and `terraform fmt -check`. My own
+check: looked through the code and think it's okay.
 
 ### 2026-11-06 — Codex review fixes on deploy part 3 (PR #191)
 
@@ -216,7 +428,7 @@ and `EnvExampleTest`.
 **What I changed or rejected:** Nothing.
 
 **Verification:** Claude ran `python3 api-gateway/test/envoy_routes_test.py`: the new test failed listing the three
-names, then 14/14 passed. My own check: pending — Jian Bing to record what he checked.
+names, then 14/14 passed. My own check (2026-11-07): looked through the code and think it's okay.
 
 ### 2026-11-06 — Recording Cole Lin's confirmation of the AWS design (PR #146)
 
@@ -422,7 +634,7 @@ the frontend; Claude showed the variable already exists (`FRONTEND_GATEWAY_URL`,
 should stay pointed at the gateway inside the server, not the CloudFront URL. Dropped a separate 401
 page, because every page already sends signed-out users to `/signin`. Jie Yang approved the gateway
 changes.
-**Verification:** Pending — Jian Bing to record what he checked.
+**Verification:** My own check (2026-11-07): looked through the code and think it's okay.
 
 ### 2026-10-27 — Codex review fixes on the AWS infrastructure (PR #146)
 

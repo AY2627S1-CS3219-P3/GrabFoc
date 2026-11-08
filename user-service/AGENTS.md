@@ -9,13 +9,37 @@ Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
 Scope: Recorded that the Order Service now consumes UserSuspended.
 Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+Scope: Wrote the "Internal API" section (#151).
+Author review: pending — Jie Yang to record the review; Deanson / Zi Yi (User owners) to review.
+Scope: Added UserReactivated, the Notification Service as a UserSuspended consumer, the claim
+  order for three types, and the login_events table (#180, docs/admin-dashboard-plan.md).
+Author review: Reviewed by Zi Yi, 2026-11-05.
 -->
 
 # AGENTS.md — User Service
 
 Read the root [`AGENTS.md`](../AGENTS.md) first. This file holds rules specific to the User
-Service. Only the Events section exists so far; the rest (schema, credentials, tokens, OTPs, role
-lifecycle) is still to be written back after the refactor.
+Service. Only the Events, Login audit and Internal API sections exist so far; the rest (schema,
+credentials, tokens, OTPs, role lifecycle) is still to be written back after the refactor.
+
+## Internal API (`/internal/users`)
+
+_Origin: Team (Jie Yang, 2026-10-27: Notification looks up emails through a User endpoint; shape approved 2026-11-02, #151). Deanson and Zi Yi (User owners) to confirm._
+
+Service-to-service routes. They need `X-Service-Key: <USER_INTERNAL_SERVICE_KEY>` instead of a user
+token (a user token alone gets 401), and the gateway never routes `/internal/**`.
+
+| Route | Caller | Responses |
+|---|---|---|
+| `GET /internal/users/:userId/contact` | Notification Service, when sending an email | 200 `{ "email": "..." }` · 400 not a UUID · 401 missing or wrong key (`SERVICE_KEY_INVALID`) · 404 unknown user |
+
+- **[Decided]** The email is returned for any existing user, whatever their status: a suspended or
+  deactivated user still hears that their orders were cancelled.
+- The email is never logged, and never appears in an error.
+- The key is compared in constant time (`src/common/guards/service-key.guard.ts`, copied from Order).
+- `USER_INTERNAL_SERVICE_KEY` is required at startup (at least 32 characters). Each caller holds the
+  same value under its own variable.
 
 ## Events (`user.events`)
 
@@ -61,7 +85,27 @@ Sent when `POST /admin/users/:userId/suspend` commits (#72). Same topic, key and
 { "type": "UserSuspended", "eventId": "<uuid>", "userId": "<uuid>", "occurredAt": "<ISO 8601>" }
 ```
 
-Consumer: the Order Service cancels the user's unfinished orders (`order-service/AGENTS.md`).
+Consumers:
+- the Order Service cancels the user's unfinished orders (`order-service/AGENTS.md`);
+- the Notification Service emails the user that the account is suspended (#183).
+
+The suspension reason is stored on the account (`users.suspension_reason`), not in the event.
+
+### `UserReactivated`
+
+_Origin: Team (docs/admin-dashboard-plan.md, P11, #180)._
+
+Sent when `POST /admin/users/:userId/reactivate` commits, from `SUSPENDED` or `DEACTIVATED`. Same
+topic and key as above, plus `previousStatus`; `occurredAt` is the time of the reactivation.
+
+```json
+{ "type": "UserReactivated", "eventId": "<uuid>", "userId": "<uuid>", "occurredAt": "<ISO 8601>", "previousStatus": "SUSPENDED" }
+```
+
+- `previousStatus` is `SUSPENDED` or `DEACTIVATED`, so the email can say "reinstated" or
+  "reactivated".
+- Consumer: the Notification Service (#183). The Order and Credit Services skip it, as they skip
+  any type they don't handle.
 
 ### Delivery: transactional outbox
 
@@ -105,6 +149,34 @@ Consumer: the Order Service cancels the user's unfinished orders (`order-service
   in the transaction that makes the change, and document it here.
 - `created_at` is the transaction's *start* time, not its commit order, so two events for one
   user written by overlapping transactions can be claimed out of order.
-- Today's two types can't overlap: only an ACTIVE account can be suspended, so the suspension's
-  transaction starts after the `UserRegistered` one committed, and an account is suspended at
-  most once. A new type that can overlap another needs the claim order revisited.
+- `UserRegistered` can't overlap the others: only an existing ACTIVE account can be suspended.
+- `UserSuspended` and `UserReactivated` for one user can follow each other, any number of times.
+  Both run under the admin lock (`withAdminLock`, which locks the caller and every active
+  admin), so two admins' requests run one after the other, never together. A
+  `UserReactivated` written right after a `UserSuspended` could still, in theory, be claimed
+  first; the only effect would be the "reinstated" email arriving before the "suspended" one.
+  Accepted (#180). A new type needs the same check.
+
+## Login audit (`login_events`)
+
+_Origin: Team (docs/admin-dashboard-plan.md §4.1–§4.2, D5, D6, D9, P7, P8; #180)._
+
+`AuthService.login` writes one row per attempt on an existing account, for the admin dashboard
+(`GET /admin/users/login-summary`, `GET /admin/users/:userId/login-events`).
+
+| Attempt | `outcome` |
+|---|---|
+| Wrong password | `WRONG_PASSWORD` |
+| Wrong password that starts the lock | `LOCKED` |
+| Correct password, account `SUSPENDED` / `DEACTIVATED` | `SUSPENDED` / `DEACTIVATED` |
+| Tokens issued (same transaction as the session) | `SUCCESS` |
+| Unknown email, or the address already locked | nothing |
+
+- A failed login is `WRONG_PASSWORD` or `LOCKED`. More than 10 in 24 hours flags the account.
+- The insert is awaited: if it fails, the login fails, so the log has no silent gaps.
+- **Timing trade-off (P8):** only a wrong password writes a row, so it answers one insert slower
+  than an unknown email. Accepted by Zi Yi (User Service owner).
+- No retention or purge yet (P7).
+- Columns `users.suspension_reason` and `users.suspended_at` are set by suspend and cleared by
+  reactivate. Both, and the table, are in `001_init.sql` (edited in place): an existing user-db
+  must be reset once (`docker volume rm foc_user-db-data`, or `docker compose down -v`).

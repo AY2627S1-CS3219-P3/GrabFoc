@@ -11,6 +11,10 @@ Author review: Reviewed by Zi Yi, 2026-10-20.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
 Scope: Merge of main: events now go through the `outbox` table; listed UserRegistered.
 Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+Scope: Admin dashboard (#180): suspend reason, reactivate from SUSPENDED, USER_ALREADY_ACTIVE,
+       login-summary and login-events, login recording, UserReactivated.
+Author review: Reviewed by Zi Yi, 2026-11-05.
 -->
 
 # User Service — API reference
@@ -79,7 +83,7 @@ Every error has the same shape:
 | 409 | `LAST_ADMIN` | The change would leave no active admin | — |
 | 409 | `CANNOT_MODIFY_SELF` | An admin demoting themselves while other admins exist, or suspending themselves | — |
 | 409 | `USER_NOT_ACTIVE` | Role change or suspension of a non-active user | — |
-| 409 | `NOT_DEACTIVATED` | Reactivating an account that is not deactivated | — |
+| 409 | `USER_ALREADY_ACTIVE` | Reactivating an account that is already `ACTIVE` | — |
 | 409 | `HAS_ACTIVE_ORDERS` | Deactivating (or requesting its code) while requester or courier on an order not `COMPLETED`/`CANCELLED` | — |
 | 423 | `ACCOUNT_LOCKED` | Too many failed logins | `retryAfterSeconds` |
 | 429 | `RATE_LIMITED` | Too many codes requested | `retryAfterSeconds` |
@@ -145,6 +149,8 @@ All OTPs are sent by email (Mailpit at `http://localhost:8025` in development).
 | PATCH | `/admin/users/:userId/role` | Bearer, ADMIN | 200 |
 | POST | `/admin/users/:userId/reactivate` | Bearer, ADMIN | 200 |
 | POST | `/admin/users/:userId/suspend` | Bearer, ADMIN | 200 |
+| GET | `/admin/users/login-summary` | Bearer, ADMIN | 200 |
+| GET | `/admin/users/:userId/login-events` | Bearer, ADMIN | 200 |
 
 ### Response shapes
 
@@ -164,7 +170,9 @@ All OTPs are sent by email (Mailpit at `http://localhost:8025` in development).
 ```
 `countryCode` and `mobileNumber` are `null` only for the bootstrap admin.
 
-**AdminProfile** (`/admin/users*`): SelfProfile plus `"role"`, `"status"` and `"createdAt"` (ISO 8601).
+**AdminProfile** (`/admin/users*`): SelfProfile plus `"role"`, `"status"`, `"createdAt"` (ISO 8601)
+and the status details, each `null` unless the account is in that status:
+`"suspensionReason"`, `"suspendedAt"` (while `SUSPENDED`) and `"deactivatedAt"` (while `DEACTIVATED`).
 
 ### Public
 
@@ -205,6 +213,11 @@ Errors: 400 · 404 `NOT_FOUND` (no pending sign-up) · 429 · 503
 ```
 `200 AuthResponse`
 Errors: 400 · 401 `INVALID_CREDENTIALS` · 403 `ACCOUNT_DEACTIVATED` / `ACCOUNT_SUSPENDED` · 423 `ACCOUNT_LOCKED`
+
+Each attempt on an existing account is recorded for the admin login audit
+(`GET /admin/users/login-summary`): a wrong password, the one that starts a lock, a correct password
+on a suspended or deactivated account, and a success. An unknown email and an attempt while
+already locked are not.
 
 #### `POST /auth/refresh`
 ```json
@@ -319,16 +332,48 @@ Both filters optional. Newest first. Any other query parameter is a 400.
 Errors: 400 (bad body or malformed `:userId`) · 403 `FORBIDDEN` (caller is no longer an active admin) · 404 `NOT_FOUND` · 409 `USER_NOT_ACTIVE` / `CANNOT_MODIFY_SELF` / `LAST_ADMIN`
 
 #### `POST /admin/users/:userId/reactivate`
-No body. Keeps the target's role.
+No body. A `SUSPENDED` or `DEACTIVATED` account; keeps the target's role and clears
+`suspensionReason`, `suspendedAt` and `deactivatedAt`. Publishes `UserReactivated` (below).
 `200 AdminProfile` with `status: "ACTIVE"`
-Errors: 400 (malformed `:userId`) · 403 `FORBIDDEN` · 404 `NOT_FOUND` · 409 `NOT_DEACTIVATED`
+Errors: 400 (malformed `:userId`) · 403 `FORBIDDEN` · 404 `NOT_FOUND` · 409 `USER_ALREADY_ACTIVE`
 
 #### `POST /admin/users/:userId/suspend`
-No body. Only an `ACTIVE` account, and not your own. Ends every session of the target; login then
-answers 403 `ACCOUNT_SUSPENDED`. Publishes `UserSuspended` on `user.events` (below), so the Order
-Service cancels the user's ongoing orders. There is no endpoint to lift a suspension yet.
-`200 AdminProfile` with `status: "SUSPENDED"`
-Errors: 400 (malformed `:userId`) · 403 `FORBIDDEN` · 404 `NOT_FOUND` · 409 `CANNOT_MODIFY_SELF` / `USER_NOT_ACTIVE`
+```json
+{ "reason": "Repeated no-shows as a courier" }
+```
+`reason` is required: trimmed, 1–500 characters. Only an `ACTIVE` account, and not your own. Ends
+every session of the target; login then answers 403 `ACCOUNT_SUSPENDED`. Publishes `UserSuspended`
+on `user.events` (below), so the Order Service cancels the user's ongoing orders. Lift it with
+`POST /admin/users/:userId/reactivate`.
+`200 AdminProfile` with `status: "SUSPENDED"` and the reason
+Errors: 400 (missing or bad `reason`, unknown field, malformed `:userId`) · 403 `FORBIDDEN` · 404 `NOT_FOUND` · 409 `CANNOT_MODIFY_SELF` / `USER_NOT_ACTIVE`
+
+#### `GET /admin/users/login-summary`
+Failed logins are a wrong password on an existing account (`WRONG_PASSWORD` or `LOCKED`).
+- `failedLast24h`: failed logins in the last 24 hours.
+- `lockedNow`: accounts whose lock started in the last 15 minutes. A password reset lifts a lock
+  early, but the account is still counted until its 15 minutes pass.
+- `flagged`: accounts with more than 10 failed logins in the last 24 hours, most first.
+- `recentFailures`: failed logins in the last hour, newest first, at most 50.
+```json
+{
+  "failedLast24h": 37,
+  "lockedNow": 1,
+  "flagged": [
+    { "userId": "uuid", "displayName": "Bob Lee", "status": "ACTIVE", "failedCount": 14, "lastFailedAt": "2026-11-02T08:00:00.000Z" }
+  ],
+  "recentFailures": [
+    { "userId": "uuid", "displayName": "Bob Lee", "outcome": "WRONG_PASSWORD", "occurredAt": "2026-11-02T08:00:00.000Z" }
+  ]
+}
+```
+
+#### `GET /admin/users/:userId/login-events?page=1&pageSize=20`
+Every recorded attempt for one user, newest first. `page` from 1 (default 1), `pageSize` 1–100
+(default 20). `outcome` is one of `SUCCESS`, `WRONG_PASSWORD`, `LOCKED` (the wrong password that
+started a lock), `SUSPENDED` or `DEACTIVATED`.
+`200 { "items": [{ "outcome": "WRONG_PASSWORD", "occurredAt": "…" }], "page": 1, "pageSize": 20, "total": 3 }`
+Errors: 400 (bad paging, unknown parameter, malformed `:userId`) · 404 `NOT_FOUND`
 
 ---
 
@@ -342,11 +387,15 @@ before the publish is marked resends it with the same `eventId`, so consumers mu
 | `type` | When | Consumers |
 |---|---|---|
 | `UserRegistered` | an account is created (sign-up verification, first-admin bootstrap) | Credit Service (creates the wallet) |
-| `UserSuspended` | `POST /admin/users/:userId/suspend` committed | Order Service (cancels the user's ongoing orders) |
+| `UserSuspended` | `POST /admin/users/:userId/suspend` committed | Order Service (cancels the user's ongoing orders); Notification Service (emails the user, #183) |
+| `UserReactivated` | `POST /admin/users/:userId/reactivate` committed | Notification Service (emails the user, #183) |
 
 ```json
 { "type": "UserSuspended", "eventId": "uuid", "occurredAt": "2026-10-19T08:00:00.000Z", "userId": "uuid" }
+{ "type": "UserReactivated", "eventId": "uuid", "occurredAt": "2026-11-02T08:00:00.000Z", "userId": "uuid", "previousStatus": "SUSPENDED" }
 ```
+
+`previousStatus` is `SUSPENDED` or `DEACTIVATED`. Neither event carries the suspension reason.
 
 Consumers should ignore types they don't handle, and fields they don't use. Delivery details:
 [`AGENTS.md`](AGENTS.md#events-userevents).

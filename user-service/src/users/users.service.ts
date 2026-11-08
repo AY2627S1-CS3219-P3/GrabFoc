@@ -15,6 +15,12 @@
  *   writes a UserSuspended outbox row in the same transaction (#72). 2026-10-20: the row now
  *   goes to Deanson's outbox table (merge of main).
  * Author review: Reviewed by Zi Yi, 2026-10-20.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+ * Scope: Added getContactEmail for GET /internal/users/:userId/contact (#151).
+ * Author review: pending — Jie Yang to record the review; Deanson / Zi Yi (User owners) to review.
+ * Scope: Admin dashboard (#180): suspension reason; reactivate from SUSPENDED too, under the
+ *   admin lock, with a UserReactivated outbox row; login recording and the two login reads.
+ * Author review: Reviewed by Zi Yi, 2026-11-05.
  */
 // AI-generated (reviewed by Deanson)
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
@@ -35,8 +41,9 @@ import { RedisService } from '../infra/redis/redis.service';
 import { OtpService } from '../security/otp.service';
 import { TokensService } from '../security/tokens.service';
 import { AdminProfile, SelfProfile } from './dto/profile.response';
+import { LoginEventPage, LoginEventsRepository, LoginOutcome, LoginSummary } from './login-events.repository';
 import { OrderClient } from './order.client';
-import { userRegistered, userSuspended } from './user-events';
+import { userReactivated, userRegistered, userSuspended } from './user-events';
 import { NewUser, UserFilter, UserRecord, UsersRepository } from './users.repository';
 
 /** The bootstrap admin's display name; the owner can change it with PATCH /users/me. */
@@ -74,6 +81,7 @@ export class UsersService implements OnApplicationBootstrap {
     private readonly orders: OrderClient,
     private readonly config: ConfigService<AppConfig, true>,
     private readonly outbox: OutboxRepository,
+    private readonly loginEvents: LoginEventsRepository,
   ) {}
 
   // ---------------------------------------------------------------- used by AuthService
@@ -94,12 +102,30 @@ export class UsersService implements OnApplicationBootstrap {
     return this.users.insertIfAbsent(user, tx);
   }
 
+  /** One login attempt on an existing account (plan §4.2). Awaited: a failed write fails the login. */
+  recordLogin(userId: string, outcome: LoginOutcome, tx?: PoolClient): Promise<void> {
+    return this.loginEvents.record(userId, outcome, tx);
+  }
+
   /** New password and the end of every session, in one transaction. */
   async setPassword(userId: string, passwordHash: string): Promise<void> {
     await this.db.transaction(async (tx) => {
       await this.users.updatePasswordHash(userId, passwordHash, tx);
       await this.tokens.revokeAll(userId, tx);
     });
+  }
+
+  // ---------------------------------------------------------------- /internal/users
+
+  /**
+   * GET /internal/users/:userId/contact, for the Notification Service (#151). Any existing user's
+   * email, whatever their status: a suspended user still hears that their orders were cancelled.
+   * The address is returned, never logged.
+   */
+  async getContactEmail(userId: string): Promise<{ email: string }> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new AppError(404, ErrorCode.NOT_FOUND, 'No user has this id.');
+    return { email: this.otp.decrypt(user.emailEncrypted) };
   }
 
   // ---------------------------------------------------------------- /users/me
@@ -270,46 +296,66 @@ export class UsersService implements OnApplicationBootstrap {
     return result.profile;
   }
 
-  /**
-   * POST /admin/users/:userId/reactivate. Only a DEACTIVATED account; the role is kept. No lock:
-   * this only ever adds an active admin back. The caller is re-checked in the database, so a
-   * demoted or deactivated admin's still-valid token cannot reactivate anyone.
-   */
-  async reactivate(callerId: string, targetId: string): Promise<AdminProfile> {
-    const caller = await this.users.findById(callerId);
-    if (!caller || caller.role !== Role.ADMIN || caller.status !== UserStatus.ACTIVE) {
-      throw this.notActiveAdmin();
-    }
+  /** GET /admin/users/login-summary (UC2, UC6). */
+  loginSummary(): Promise<LoginSummary> {
+    return this.loginEvents.summary();
+  }
 
-    const target = await this.users.findById(targetId);
-    if (!target) {
+  /** GET /admin/users/:userId/login-events (UC5). 404 for an unknown user, not an empty page. */
+  async listLoginEvents(userId: string, page: number, pageSize: number): Promise<LoginEventPage> {
+    if (!(await this.users.findById(userId))) {
       throw new AppError(404, ErrorCode.NOT_FOUND, 'No such user.');
     }
-    if (target.status !== UserStatus.DEACTIVATED) {
-      throw new AppError(409, ErrorCode.NOT_DEACTIVATED, 'Only a deactivated account can be reactivated.');
-    }
+    return this.loginEvents.listForUser(userId, page, pageSize);
+  }
 
-    await this.users.reactivate(target.id);
-    const updated = await this.users.findById(target.id);
+  /**
+   * POST /admin/users/:userId/reactivate. A SUSPENDED or DEACTIVATED account; the role is kept.
+   * Under the admin lock like suspend, so the caller is re-checked in the database (a demoted
+   * admin's still-valid token cannot act) and the status and UserReactivated commit together.
+   */
+  async reactivate(callerId: string, targetId: string): Promise<AdminProfile> {
+    const result = await this.withAdminLock(callerId, async (ctx) => {
+      if (ctx.activeAdminIds === null) {
+        throw this.notActiveAdmin();
+      }
 
+      const target = await this.users.findByIdForUpdate(targetId, ctx.tx);
+      if (!target) {
+        throw new AppError(404, ErrorCode.NOT_FOUND, 'No such user.');
+      }
+      if (target.status === UserStatus.ACTIVE) {
+        throw new AppError(409, ErrorCode.USER_ALREADY_ACTIVE, 'This account is already active.');
+      }
+
+      await this.users.reactivate(target.id, ctx.tx);
+      await this.outbox.add(userReactivated(target.id, target.status), ctx.tx);
+      return {
+        profile: this.toAdminProfile((await this.users.findById(target.id, ctx.tx))!),
+        from: target.status,
+      };
+    });
+
+    // Logged only after the transaction has committed.
     this.logger.log(
       auditLine(AuditEvent.ADMIN_ACTION, {
         actorId: callerId,
-        targetId: target.id,
+        targetId,
         action: 'REACTIVATE',
-        from: UserStatus.DEACTIVATED,
+        from: result.from,
         to: UserStatus.ACTIVE,
       }),
     );
-    return this.toAdminProfile(updated!);
+    return result.profile;
   }
 
   /**
    * POST /admin/users/:userId/suspend. Only an ACTIVE account, and never the caller's own (so the
    * last-admin rule always holds: the caller stays). Status, session revoke and the UserSuspended
-   * outbox row commit together, so the Order Service always hears of it.
+   * outbox row commit together, so the Order Service always hears of it. The reason is stored,
+   * never logged: free text can hold personal data (root AGENTS.md §8).
    */
-  async suspend(callerId: string, targetId: string): Promise<AdminProfile> {
+  async suspend(callerId: string, targetId: string, reason: string): Promise<AdminProfile> {
     const profile = await this.withAdminLock(callerId, async (ctx) => {
       if (ctx.activeAdminIds === null) {
         throw this.notActiveAdmin();
@@ -326,7 +372,7 @@ export class UsersService implements OnApplicationBootstrap {
         throw new AppError(409, ErrorCode.USER_NOT_ACTIVE, 'Only an active user can be suspended.');
       }
 
-      await this.users.suspend(target.id, ctx.tx);
+      await this.users.suspend(target.id, reason, ctx.tx);
       await this.tokens.revokeAll(target.id, ctx.tx);
       await this.outbox.add(userSuspended(target.id), ctx.tx);
       return this.toAdminProfile((await this.users.findById(target.id, ctx.tx))!);
@@ -481,6 +527,9 @@ export class UsersService implements OnApplicationBootstrap {
       role: user.role,
       status: user.status,
       createdAt: user.createdAt.toISOString(),
+      suspensionReason: user.suspensionReason,
+      suspendedAt: user.suspendedAt?.toISOString() ?? null,
+      deactivatedAt: user.deactivatedAt?.toISOString() ?? null,
     };
   }
 

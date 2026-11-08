@@ -7,9 +7,15 @@ Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkth
   admin locations page load).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Checks through /gateway; the first-apply gateway redeploy (deploy part 1, #141).
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: The first-apply restart also covers the four app services, which call each other (Codex review on #146).
 Author review: Pending Jian Bing's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 Scope: The Delivery section; images, tags and the Mailpit allowlist (deploy part 3, #143).
+Author review: Pending Jian Bing's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Merging main into #191: the first-apply restart also covers notification-service, the fifth app service.
 Author review: Pending Jian Bing's review.
 -->
 
@@ -89,13 +95,20 @@ the one-shot `kafka-init` (topics) and `order-migrate` (Order's tables) run insi
 Order service tasks, which start only after they succeed. Services that start before their database
 or Kafka is ready fail their health check or exit, and ECS restarts them until they come up.
 
-**Only on an environment's very first apply:** the gateway is created before the frontend, so it
-can't reach it yet (a Service Connect client only learns the names that existed when it started).
-Once every service is running, redeploy the gateway once:
+**Only on an environment's very first apply:** a Service Connect client only learns the names that
+existed when it started. The five app services start together and call each other (for example
+user-service and order-service each call the other, and notification-service calls user-service),
+and the gateway is created before the frontend, so some of these calls fail until the caller
+restarts. Once every service is running, restart them once:
 
 ```bash
-aws ecs update-service --cluster foc-<env> --service api-gateway --force-new-deployment
+for service in user-service supplier-service credit-service order-service notification-service api-gateway; do
+  aws ecs update-service --cluster foc-<env> --service "$service" --force-new-deployment
+done
 ```
+
+Later applies and deploys don't need this: the services and their names already exist, and every
+deploy restarts all services anyway.
 
 ## 5. Check it
 
