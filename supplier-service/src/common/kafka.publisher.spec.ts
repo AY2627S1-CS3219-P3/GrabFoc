@@ -99,9 +99,19 @@ it('does not cache a failed connection, so the next flush tries again', async ()
   expect(producer.connect).toHaveBeenCalledTimes(2);
 });
 
-it('is quiet on shutdown when it never connected', async () => {
+it('is quiet on shutdown when it never tried to connect', async () => {
   await publisher().stop();
   expect(producer.disconnect).not.toHaveBeenCalled();
+});
+
+it('still disconnects when the connect failed, because the attempt can hold resources', async () => {
+  producer.connect.mockRejectedValueOnce(new Error('broker is down'));
+  const p = publisher();
+  await expect(p.publish([{ value: '{}' }])).rejects.toThrow('broker is down');
+  // The failed attempt clears `connected` so the next flush can retry - which used to mean
+  // shutdown saw nothing to close and left the native handle alive for the life of the process.
+  await p.stop();
+  expect(producer.disconnect).toHaveBeenCalledTimes(1);
 });
 
 it('swallows a failed disconnect, so shutdown is not what a log line breaks', async () => {

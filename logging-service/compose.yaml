@@ -11,12 +11,12 @@
 #        compose file already uses (PR #129 review).
 # Author review: Cole Lin, read and approved.
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+# Scope: Host ports moved to 3007 and 5437; the Notification Service also chose 3006 and 5436, so
+#        one of the two had to move and this is the N2H. The container ports are unchanged.
+# Author review: Cole Lin, read and approved.
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
 # Scope: Point ingest at the shared broker: #75 merged, so the comment saying to wait for it
 #        was the only thing keeping the store empty (issue #52).
-# Author review: Cole Lin, read and approved.
-# Scope: Host ports moved to 3007 and 5437; the Notification Service (#161) also chose 3006 and 5436, so one of the two had to move and this is the N2H.
-#        The container ports are unchanged.
 # Author review: Cole Lin, read and approved.
 #
 # The Logging Service and the database only it uses (root AGENTS.md §3). The root compose.yaml

@@ -8,6 +8,10 @@
  * Scope: Review: carry the request id in a header as well as the key, because the store's
  *        consumer drops the key and a dead letter would lose its correlation (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: disconnect on shutdown even when the connect failed, since the attempt can
+ *        already hold native resources (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Logger } from '@nestjs/common';
@@ -30,6 +34,7 @@ export class KafkaLinePublisher implements LinePublisher {
   private readonly kafka: KafkaJS.Kafka;
   private readonly producer: KafkaJS.Producer;
   private connected?: Promise<void>;
+  private attempted = false;
 
   constructor(
     private readonly topic: string,
@@ -65,6 +70,12 @@ export class KafkaLinePublisher implements LinePublisher {
   /** Connects once. A failed attempt is not cached, so the next flush tries again. */
   private connect(): Promise<void> {
     if (!this.connected) {
+      // `attempted` is kept even when the attempt fails, and `connected` is not: the next flush
+      // has to be free to try again, but shutdown still has to close the client. A failed connect
+      // can have allocated native resources already, and clearing the only marker meant `stop()`
+      // saw nothing to disconnect and left that handle alive for the life of the process
+      // (review).
+      this.attempted = true;
       this.connected = this.producer.connect().catch((err: unknown) => {
         this.connected = undefined;
         throw err;
@@ -75,13 +86,19 @@ export class KafkaLinePublisher implements LinePublisher {
 
   /** Called from this service's shutdown, after the shipper has flushed. */
   async stop(): Promise<void> {
-    if (!this.connected) return;
+    // Whether or not the connect succeeded: an attempt is enough for the client to be holding
+    // something, and disconnecting one that never connected is harmless here because the failure
+    // is caught and logged.
+    if (!this.attempted) return;
+    // Awaited first, so a connect still in flight is not disconnected from underneath.
+    await this.connected?.catch(() => undefined);
     try {
       await this.producer.disconnect();
     } catch (err) {
       this.logger.warn(`Could not disconnect the log producer: ${err instanceof Error ? err.message : err}`);
     } finally {
       this.connected = undefined;
+      this.attempted = false;
     }
   }
 }

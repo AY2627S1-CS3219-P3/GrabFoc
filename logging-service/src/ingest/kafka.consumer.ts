@@ -33,6 +33,10 @@
  * Scope: Review: drain the consumer before closing the producer, and refuse a producer connect
  *        once shutdown has begun, so a handler draining out cannot leave one open (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: leave a consumer's teardown to whichever owner has it, and pause the partition
+ *        before rethrowing so a failing dependency is not re-read in a hot loop (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
@@ -61,6 +65,9 @@ const HEADER = {
  */
 const REQUEST_ID = 'x-request-id';
 
+/** How long a partition rests after a failure worth retrying, as in credit-service's runner. */
+const ERROR_PAUSE_MS = 5000;
+
 /** One Kafka client for the consumer and the dead-letter producer. */
 @Injectable()
 export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
@@ -87,6 +94,7 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
   private producerConnected?: Promise<void>;
   private stopping?: Promise<void>;
   private stopped = false;
+  private readonly pauses = new Set<NodeJS.Timeout>();
 
   /**
    * Subscribes and hands each message to the handler. `eachMessage` stores the offset only after
@@ -127,13 +135,36 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
     // failure accumulated clients, each one a member of the consumer group (review).
     try {
       await consumer.subscribe({ topics: [config.kafkaTopic] });
-      await consumer.run({
-        eachMessage: async ({ topic, partition, message }) =>
-          handler(toInbound(topic, partition, message)),
-      });
+    await consumer.run({
+      eachMessage: async ({ topic, partition, message, pause }) => {
+        try {
+          await handler(toInbound(topic, partition, message));
+        } catch (err) {
+          // Throwing is how the offset is left uncommitted, and it makes the client seek back -
+          // so without a pause the same line is read again immediately, against the dependency
+          // that just failed. `handle()` only throws for what is worth retrying (the store
+          // briefly unreachable, or the dead-letter park itself failing), which is exactly the
+          // case that must not become a hot loop hammering it and flooding this service's own
+          // error output. Same shape as credit-service's runner (review).
+          this.pauseFor(pause, ERROR_PAUSE_MS);
+          this.logger.error(
+            `Could not handle a message from ${topic}; trying again in ` +
+              `${ERROR_PAUSE_MS / 1000}s: ${err instanceof Error ? err.message : err}`,
+          );
+          throw err;
+        }
+      },
+    });
     } catch (err) {
-      if (this.consumer === consumer) this.consumer = undefined;
-      await consumer.disconnect().catch(() => undefined);
+      // Only if shutdown has not already taken this client. `disconnectAll()` clears the field and
+      // then disconnects, so a stop landing while `subscribe()` or `run()` is pending owns the
+      // teardown - and disconnecting here as well would be two concurrent `disconnect()` calls on
+      // the same native client, which is the race the coalescing in `stop()` exists to avoid
+      // (review).
+      if (this.consumer === consumer) {
+        this.consumer = undefined;
+        await consumer.disconnect().catch(() => undefined);
+      }
       throw err;
     }
     // And once more: run() resolves after the consumer is live, so a stop that landed during it
@@ -172,9 +203,26 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
    * held while the destroy hook reported a failure - one client's bad day skipping the other's
    * cleanup entirely (review).
    */
+  /**
+   * Pauses this partition and resumes it after `ms`. The timer is tracked so shutdown can clear it:
+   * a pending resume would otherwise hold a reference to a consumer that is being torn down.
+   */
+  private pauseFor(pause: () => () => void, ms: number): void {
+    const resume = pause();
+    const timer = setTimeout(() => {
+      this.pauses.delete(timer);
+      resume();
+    }, ms);
+    timer.unref();
+    this.pauses.add(timer);
+  }
+
   private async disconnectAll(): Promise<void> {
     const consumer = this.consumer;
     this.consumer = undefined;
+    // A pending resume refers to a consumer that is about to be disconnected.
+    for (const timer of this.pauses) clearTimeout(timer);
+    this.pauses.clear();
     let failure: unknown;
 
     // The consumer first, and fully, before the producer is even looked at. `disconnect()` waits

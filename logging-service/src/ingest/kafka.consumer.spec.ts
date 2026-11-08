@@ -18,6 +18,7 @@ let failConsumerDisconnect = false;
 let failAdminConnect = false;
 let adminDisconnects = 0;
 const consumers: Array<{ disconnect: jest.Mock }> = [];
+let eachMessage: ((p: unknown) => Promise<void>) | undefined;
 let releaseProducerConnect: (() => void) | undefined;
 const producer = {
   connect: jest.fn(async () => {
@@ -46,8 +47,9 @@ jest.mock('@confluentinc/kafka-javascript', () => ({
           subscribe: jest.fn(async () => {
             if (failAt === 'subscribe') throw new Error('subscribe failed');
           }),
-          run: jest.fn(async () => {
+          run: jest.fn(async (opts: { eachMessage: (p: unknown) => Promise<void> }) => {
             consumerRuns += 1;
+            eachMessage = opts.eachMessage;
           }),
           disconnect: jest.fn(async () => {
             if (failConsumerDisconnect) throw new Error('disconnect failed');
@@ -91,6 +93,7 @@ beforeEach(() => {
   failAdminConnect = false;
   adminDisconnects = 0;
   consumers.length = 0;
+  eachMessage = undefined;
   producer.send.mockClear();
   producer.connect.mockClear();
   releaseProducerConnect = undefined;
@@ -289,6 +292,60 @@ describe('a handler still draining as shutdown runs', () => {
     expect(producer.connect).not.toHaveBeenCalled();
     expect(producer.disconnect).not.toHaveBeenCalled();
     await parked;
+  });
+});
+
+describe('a message the handler could not deal with', () => {
+  it('pauses the partition before rethrowing, so the same line is not re-read at once', async () => {
+    jest.useFakeTimers();
+    try {
+      existingTopics = [config.kafkaTopic, config.kafkaDeadLetterTopic];
+      const ingest = new KafkaIngest();
+      await ingest.start(async () => {
+        throw new Error('the store is briefly unreachable');
+      });
+      const resume = jest.fn();
+      const pause = jest.fn(() => resume);
+      // Throwing is how the offset is left uncommitted, and it makes the client seek back - so
+      // without a pause this line is read again immediately, against the dependency that just
+      // failed.
+      await expect(
+        eachMessage?.({ topic: 'logging.lines', partition: 0, message: { offset: '1' }, pause }),
+      ).rejects.toThrow('briefly unreachable');
+      expect(pause).toHaveBeenCalledTimes(1);
+      expect(resume).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(5000);
+      expect(resume).toHaveBeenCalledTimes(1);
+      await ingest.stop();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not resume a partition after shutdown has cleared the pause', async () => {
+    jest.useFakeTimers();
+    try {
+      existingTopics = [config.kafkaTopic, config.kafkaDeadLetterTopic];
+      const ingest = new KafkaIngest();
+      await ingest.start(async () => {
+        throw new Error('down');
+      });
+      const resume = jest.fn();
+      await expect(
+        eachMessage?.({
+          topic: 'logging.lines',
+          partition: 0,
+          message: { offset: '1' },
+          pause: () => resume,
+        }),
+      ).rejects.toThrow();
+      await ingest.stop();
+      await jest.advanceTimersByTimeAsync(10_000);
+      // A pending resume refers to a consumer that has been disconnected.
+      expect(resume).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
