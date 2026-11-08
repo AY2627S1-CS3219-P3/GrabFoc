@@ -4,6 +4,10 @@
  * Scope: Wrote the schema from the design agreed in #148 (#150). notification_dead_letters copies
  *        credit_dead_letters (credit-service/src/db/schema.ts).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Added notification_account_emails for UserSuspended and UserReactivated (#183), as
+ *        approved by Jie Yang on 2026-11-04.
+ * Author review: pending — Jie Yang to record the review.
  */
 
 /**
@@ -68,13 +72,31 @@ CREATE TABLE IF NOT EXISTS notifications (
     UNIQUE (event_id, role)
 );
 
--- Messages from notification.order-events.dlt, copied here so admins can inspect and replay them.
+-- One row per user.events event Notification emails about (#183), which is also the one email it
+-- sends: to that user. The insert (ON CONFLICT DO NOTHING) is the deduplication. Same delivery columns
+-- as notifications; no email address or rendered body.
+CREATE TABLE IF NOT EXISTS notification_account_emails (
+    event_id            UUID PRIMARY KEY,
+    event_type          TEXT NOT NULL CHECK (event_type IN ('UserSuspended','UserReactivated')),
+    user_id             UUID NOT NULL,
+    previous_status     TEXT CHECK (previous_status IN ('SUSPENDED','DEACTIVATED')),  -- UserReactivated only
+    occurred_at         TIMESTAMPTZ NOT NULL,
+    delivery_status     TEXT NOT NULL DEFAULT 'PENDING' CHECK (delivery_status IN ('PENDING','SENT','FAILED')),
+    attempts            INT NOT NULL DEFAULT 0,
+    last_error          TEXT,                 -- also DISCARDED_OLD or SUPERSEDED, never sent
+    provider_message_id TEXT,
+    received_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    sent_at             TIMESTAMPTZ
+);
+-- For "has a later account event for this user been handled?" (the superseded check).
+CREATE INDEX IF NOT EXISTS notification_account_emails_user ON notification_account_emails (user_id, occurred_at);
+-- Messages from the dead-letter topics (notification.order-events.dlt, notification.user-events.dlt), copied here so admins can inspect and replay them.
 -- Same columns and keys as credit_dead_letters.
 CREATE TABLE IF NOT EXISTS notification_dead_letters (
     id                BIGSERIAL PRIMARY KEY,
     event_id          UUID,                   -- null when the message was too malformed to read
-    message_key       TEXT,                   -- the Kafka key: the orderId
-    source_topic      TEXT NOT NULL,          -- where it came from: order.events
+    message_key       TEXT,                   -- the Kafka key: the orderId or userId
+    source_topic      TEXT NOT NULL,          -- where it came from: order.events or user.events
     source_partition  INTEGER,                -- where the original message sat in source_topic,
     source_offset     BIGINT,                 -- which never changes, so a redelivery is one row
     message_type      TEXT,                   -- the event's eventType
