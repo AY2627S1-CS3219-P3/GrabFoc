@@ -83,8 +83,10 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
     }
     if (!this.consumer) {
       this.logger.warn(
-        `LOGGING_KAFKA_BROKERS is set but no consumer is wired in yet (see #75, the shared Kafka ` +
-          `broker). Lines produced to "${config.kafkaTopic}" will wait in the topic until it is.`,
+        `LOGGING_KAFKA_BROKERS is set but no LINE_CONSUMER is provided: ingest is off, the query ` +
+          `API is up. Lines produced to "${config.kafkaTopic}" wait in the topic. app.module.ts ` +
+          `provides KafkaIngest whenever brokers are set, so reaching this means that list was ` +
+          `changed or a test is constructing this service on its own.`,
       );
       return;
     }

@@ -1,0 +1,180 @@
+/*
+ * AI Assistance Disclosure:
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-21
+ * Scope: Generated the Kafka consumer and dead-letter producer behind the seams in consumer.ts,
+ *        following credit-service/src/messaging/kafka.runner.ts and kafka.connection.ts (the same
+ *        client, the same offset handling, the same dead-letter headers).
+ * Author review: pending — Cole Lin to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Brought the 2026-10-21 draft up to the seam as it stands. Three things had moved under
+ *        it: DeadLetters.send takes the redacted body to park rather than reading the raw message,
+ *        InboundMessage carries the inbound headers, and a dead letter must keep the original
+ *        x-request-id. The draft parked the raw bytes, which is what the seam was changed in
+ *        review to prevent (issue #52).
+ * Author review: Cole Lin, read and approved.
+ */
+import { KafkaJS } from '@confluentinc/kafka-javascript';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { config } from '../config';
+import { DeadLetters, InboundMessage, LineConsumer, MessageHandler } from './consumer';
+
+// AI-generated (reviewed by Cole Lin).
+
+/**
+ * Headers added to a dead-lettered message, the same names Credit uses in
+ * `credit-service/src/messaging/messages.ts`, so one admin screen can read every service's dead
+ * letters without knowing which service wrote them.
+ */
+const HEADER = {
+  error: 'x-error',
+  sourceTopic: 'x-source-topic',
+  sourcePartition: 'x-source-partition',
+  sourceOffset: 'x-source-offset',
+  deadLetteredAt: 'x-dead-lettered-at',
+} as const;
+
+/**
+ * The request id, carried from the inbound message onto the dead letter. A republished line that
+ * loses it cannot be tied back to the request that caused it, which is the one thing this service
+ * exists to make possible - so it is copied rather than regenerated (`DeadLetters` in consumer.ts).
+ */
+const REQUEST_ID = 'x-request-id';
+
+/** One Kafka client for the consumer and the dead-letter producer. */
+@Injectable()
+export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
+  private readonly logger = new Logger('Kafka');
+  private readonly kafka = new KafkaJS.Kafka({
+    kafkaJS: {
+      clientId: 'logging-service',
+      brokers: config.kafkaBrokers,
+      logLevel: KafkaJS.logLevel.WARN,
+    },
+  });
+
+  // idempotent: a send the client retries internally must not write the message twice.
+  private readonly producer = this.kafka.producer({ kafkaJS: { idempotent: true } });
+  private consumer?: KafkaJS.Consumer;
+  private producerReady = false;
+
+  /**
+   * Subscribes and hands each message to the handler. `eachMessage` stores the offset only after
+   * the handler resolves, so a crash mid-line redelivers it rather than losing it (root AGENTS.md
+   * §3, rule 2) — and `handle()` only throws for failures worth retrying.
+   *
+   * `fromBeginning` so a fresh group reads lines produced before this service first started;
+   * duplicates from that are harmless, because the store keys on `lineId`.
+   */
+  async start(handler: MessageHandler): Promise<void> {
+    await this.ensureTopics();
+    this.consumer = this.kafka.consumer({
+      kafkaJS: { groupId: config.kafkaGroupId, fromBeginning: true },
+    });
+    await this.consumer.connect();
+    await this.consumer.subscribe({ topics: [config.kafkaTopic] });
+    await this.consumer.run({
+      eachMessage: async ({ topic, partition, message }) =>
+        handler(toInbound(topic, partition, message)),
+    });
+    this.logger.log(`Consuming ${config.kafkaTopic} as ${config.kafkaGroupId}`);
+  }
+
+  async stop(): Promise<void> {
+    await this.consumer?.disconnect();
+    this.consumer = undefined;
+    if (this.producerReady) {
+      await this.producer.disconnect();
+      this.producerReady = false;
+    }
+  }
+
+  onModuleDestroy(): Promise<void> {
+    return this.stop();
+  }
+
+  /**
+   * Parks a message this service will not store (Kafka rule 6).
+   *
+   * **`body` is what gets published, not `message.value`.** A rejected line has not been through
+   * redaction, so parking the bytes that arrived would copy whatever a caller put in them into a
+   * second topic - and a dead-letter topic is the one place a human goes looking, which is exactly
+   * where unredacted data should not be. The caller passes a redacted copy, or `null` when the
+   * bytes could not be parsed and so cannot be inspected safely; `null` is published as a
+   * value-less message whose headers still say where to find the original, which Kafka keeps in
+   * the source topic for its retention period (`DeadLetters` in consumer.ts).
+   */
+  async send(message: InboundMessage, reason: string, body: string | null): Promise<void> {
+    if (!this.producerReady) {
+      await this.producer.connect();
+      this.producerReady = true;
+    }
+    const requestId = message.headers?.[REQUEST_ID];
+    await this.producer.send({
+      topic: config.kafkaDeadLetterTopic,
+      messages: [
+        {
+          // Keyed by the source offset rather than the line's requestId: a dead letter may have
+          // failed to parse at all, so there is no requestId in the body to trust.
+          key: message.offset ?? null,
+          value: body,
+          headers: {
+            [HEADER.error]: reason,
+            [HEADER.sourceTopic]: message.topic ?? config.kafkaTopic,
+            [HEADER.sourcePartition]: `${message.partition ?? ''}`,
+            [HEADER.sourceOffset]: message.offset ?? '',
+            [HEADER.deadLetteredAt]: new Date().toISOString(),
+            // Only when the inbound message had one: an empty header reads as "there was no
+            // request", which is a different claim from "the id is unknown".
+            ...(requestId ? { [REQUEST_ID]: requestId } : {}),
+          },
+        },
+      ],
+    });
+  }
+
+  /**
+   * `infra/kafka/topics.txt` is the single list and broker auto-creation is off (rule 4), so a
+   * missing topic means that file was not updated. Say which one, at startup, instead of waiting
+   * for the first line to vanish.
+   */
+  private async ensureTopics(): Promise<void> {
+    const admin = this.kafka.admin();
+    await admin.connect();
+    try {
+      const existing = new Set(await admin.listTopics());
+      const missing = [config.kafkaTopic, config.kafkaDeadLetterTopic].filter((t) => !existing.has(t));
+      if (missing.length) {
+        throw new Error(
+          `These topics are missing from the broker: ${missing.join(', ')}. ` +
+            'Add them to infra/kafka/topics.txt and re-run the kafka-init container; services never ' +
+            'create topics themselves.',
+        );
+      }
+    } finally {
+      await admin.disconnect();
+    }
+  }
+}
+
+/** A consumed message in the shape the ingest path expects. A repeated header keeps its last value. */
+export function toInbound(
+  topic: string,
+  partition: number,
+  message: KafkaJS.KafkaMessage,
+): InboundMessage {
+  // Carried through the seam, not dropped: the dead-letter path copies `x-request-id` from here,
+  // and the draft this file came from built the message without them while its own comment said
+  // otherwise. The seam gained them in review; this is that change applied.
+  const headers: Record<string, string> = {};
+  for (const [name, raw] of Object.entries(message.headers ?? {})) {
+    const value = Array.isArray(raw) ? raw[raw.length - 1] : raw;
+    if (value !== undefined && value !== null) headers[name] = value.toString();
+  }
+  return {
+    topic,
+    partition,
+    offset: message.offset,
+    value: message.value ? message.value.toString() : '',
+    headers,
+  };
+}

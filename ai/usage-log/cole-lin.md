@@ -17,6 +17,22 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-08 — Closing the log-line loop, and three pieces of work that had never been committed (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: "what else do we have to work on? I told you to order it before", then "use the drafts as the starting point, fix the drift".
+- Surveyed before planning, and the survey changed the order. The Logging Service was built, running in Compose and **collecting nothing**: no service passed a publisher, nothing provided `LINE_CONSUMER`, and its own `LOGGING_KAFKA_BROKERS` was empty because a comment said to wait for the shared broker - which had merged. Wiring three more services to stdout would have added no capability at all, so closing the loop for the one service already wired went first.
+- Then the real find, before writing any code: **most of this was already written and had never been committed.** Three separate pieces, all sitting as Syncthing conflict copies in the working tree, none with any counterpart in the repository:
+  - `kafka.consumer.ts` - the Kafka consumer and dead-letter producer behind the seams, authored 21 October.
+  - `supplier-service/src/common/kafka.publisher.ts` - the publisher that hands this service's lines to the topic, same day.
+  - `infra/kafka/.gitattributes` - `* text eol=lf`, with a comment describing exactly the failure I hit an hour later.
+- Measured the drift rather than trusting the drafts. The config names all still matched, but the consumer would not compile: the dead-letter seam had gained a third parameter in review, and it mattered. The draft published `message.value` - the bytes that arrived, unredacted - and its own comment defended that choice. The seam now takes a **redacted body** precisely because a dead-letter topic is the one place a human goes looking, which is where unredacted data should not be. The draft also dropped the inbound headers in `toInbound` while its comment claimed to keep them, so the request id could not be copied onto a dead letter. Fixed all three; the publisher needed nothing but a topic in config.
+- Nine new cases for the consumer, run against the draft's behaviour first: **six fail there**. The other three pass either way and are marked as controls in the file rather than counted - including one that looks like a proof and is not, since the draft never copied the request id at all, so "leaves it off when there was none" was green before the fix.
+- **Two things that break `docker compose up` on this machine, found by trying it rather than by reading.** `kafka-init` died with `set: line 16: illegal option -`, which is a CRLF shell script inside a Linux container: no topics are created, so every Kafka demo on a Windows checkout is dead, and the `.gitattributes` that fixes it was the third uncommitted draft. Then the image would not build, because `COPY src ./src` pulls the conflict copies in and `nest build` compiles them - four errors, all from stale drafts, one of them the very signature drift I had just fixed. The clutter I had called cosmetic this morning stops the service being built at all; `**/*.sync-conflict-*` is in `.dockerignore` now.
+- Verified end to end rather than by unit test: an isolated Compose project, so none of my own volumes were touched. Topics created, the service logging `Consuming logging.lines as logging-service`, then a line emitted through the **real** `LogShipper` and `KafkaLinePublisher` at `localhost:9094`, and read back out of the store: `supplier | info | request_completed | e2e-1794120803004 | GET | /locations | 200 | 7`. Then the project and its volumes removed and my own containers left stopped as they were.
+- One correction to something I wrote this morning: I listed the sync-conflict files as a tidiness item for the team to decide on. They are not. They break the build and they hid three pieces of finished work for two and a half weeks.
+- Verification: **462 pass** in the Logging Service and **288** here, `tsc --noEmit` clean over every tracked file in both.
+
 ### 2026-11-08 — A host port two services both claimed (issue #52 / PR #161)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

@@ -27,6 +27,10 @@
  * Scope: Updated the replaced-name cases: the name is generated from its ordinal now, so the
  *        recognition cases have nothing left to assert (PR #200 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: The no-consumer warning no longer names an issue number, so assert what it says instead
+ *        (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { Logger } from '@nestjs/common';
 import { config } from '../config';
@@ -106,10 +110,15 @@ describe('starting up', () => {
     expect(consumer.handler).toBeUndefined();
   });
 
-  it('says so, rather than failing, when a broker is set but no consumer is wired in (#75)', async () => {
+  it('says so, rather than failing, when a broker is set but no consumer is wired in', async () => {
     const withoutConsumer = new IngestService(lines as unknown as LinesService);
     await expect(withoutConsumer.onApplicationBootstrap()).resolves.toBeUndefined();
-    expect(warn.mock.calls.flat().join(' ')).toContain('#75');
+    // The two facts a reader needs from that line: nothing is being consumed, and the lines are
+    // still in the topic rather than lost. Asserted instead of the issue number the message used
+    // to carry, which stopped being the reason once the consumer existed.
+    const warned = warn.mock.calls.flat().join(' ');
+    expect(warned).toContain('ingest is off');
+    expect(warned).toContain(config.kafkaTopic);
   });
 
   /**

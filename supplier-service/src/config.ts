@@ -10,6 +10,9 @@
  *        CI were checked.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: Added SUPPLIER_KAFKA_BROKERS and SUPPLIER_OUTBOX_POLL_MS (issue #120).
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Added SUPPLIER_LOG_TOPIC, the topic the log shipper publishes to (issue #52).
+ * Author review: Cole Lin, read and approved.
  * Author review: pending — Jie Yang to record what he checked.
  */
 import { existsSync } from 'fs';
@@ -69,6 +72,9 @@ export const config = {
     .split(',')
     .map((b) => b.trim())
     .filter(Boolean),
+  // The Logging Service's ingest topic (issue #52). It must exist in infra/kafka/topics.txt:
+  // services never create topics, so a name that is not in that list silently goes nowhere.
+  logTopic: process.env.SUPPLIER_LOG_TOPIC || 'logging.lines',
   outboxPollMs,
 };
 
