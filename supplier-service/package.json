@@ -1,4 +1,5 @@
 {
+  "_disclosure": "AI Assistance Disclosure:\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06\nScope: @nestjs/platform-express back to ^11.2.8, and an override keeping multer at 2.5.0 (GHSA-q7qp-rjg7-q26m) (PR #193). package-lock.json is npm's output for that change.\nAuthor review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it; CI passed (user-service and supplier-service tests and builds). Approved and merged by Deanson Choo (#193).",
   "name": "supplier-service",
   "version": "0.1.0",
   "private": true,
@@ -16,12 +17,12 @@
   "dependencies": {
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
-    "@nestjs/platform-express": "^11.2.6",
+    "@nestjs/platform-express": "^11.2.8",
     "csv-parse": "^7.0.2",
     "pg": "^8.13.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "zod": "^3.24.0"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
@@ -54,5 +55,8 @@
       "/node_modules/",
       "\\.int\\.spec\\.ts$"
     ]
+  },
+  "overrides": {
+    "multer": "2.5.0"
   }
 }

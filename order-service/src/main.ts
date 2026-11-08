@@ -15,6 +15,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Scheduled the 1 s order.events publisher (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
+ * Scope: Started the user.events consumer (Phase D).
+ * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
  */
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
@@ -22,6 +25,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule, configureApp } from './app.module';
 import { appConfig } from './config';
 import { OrderEvents } from './integrations/order.events';
+import { UserEvents } from './integrations/user.events';
 import { OrdersService } from './orders/orders.service';
 
 async function bootstrap() {
@@ -39,6 +43,7 @@ async function bootstrap() {
   // Every second, so Notification can email within NFR3.4's 10 s.
   const events = app.get(OrderEvents);
   every(1_000, () => events.publishPending());
+  await app.get(UserEvents).start(); // UserSuspended cancels the user's orders
   new Logger('Order').log(`Order Service listening on port ${port}`);
 }
 
