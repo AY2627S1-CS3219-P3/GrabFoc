@@ -47,8 +47,8 @@ it('sends one batch to the topic, keeping each line as it was written', async ()
     {
       topic: 'logging.lines',
       messages: [
-        { key: 'r-1', value: '{"lineId":"a"}' },
-        { key: 'r-1', value: '{"lineId":"b"}' },
+        { key: 'r-1', value: '{"lineId":"a"}', headers: { 'x-request-id': 'r-1' } },
+        { key: 'r-1', value: '{"lineId":"b"}', headers: { 'x-request-id': 'r-1' } },
       ],
     },
   ]);
@@ -66,6 +66,20 @@ it('sends a keyless line as a null key rather than the string "undefined"', asyn
   await publisher().publish([{ value: '{}' }]);
   const [{ messages }] = sent as Array<{ messages: Array<{ key: string | null }> }>;
   expect(messages[0].key).toBeNull();
+});
+
+it('carries the request id as a header too, since the key does not survive the trip', async () => {
+  await publisher().publish([{ key: 'r-7', value: '{}' }]);
+  const [{ messages }] = sent as Array<{ messages: Array<{ headers?: Record<string, string> }> }>;
+  // The store's consumer builds its inbound message from the headers and drops the key, so a line
+  // later dead-lettered would lose the only thing tying it back to its request.
+  expect(messages[0].headers).toEqual({ 'x-request-id': 'r-7' });
+});
+
+it('sends no headers at all for a line with no request', async () => {
+  await publisher().publish([{ value: '{}' }]);
+  const [{ messages }] = sent as Array<{ messages: Array<{ headers?: Record<string, string> }> }>;
+  expect(messages[0].headers).toBeUndefined();
 });
 
 it('connects once across flushes', async () => {

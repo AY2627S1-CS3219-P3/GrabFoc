@@ -71,6 +71,11 @@ services:
       CREDIT_JWT_ISSUER: ${CREDIT_JWT_ISSUER:-}
       CREDIT_JWT_AUDIENCE: ${CREDIT_JWT_AUDIENCE:-}
       CREDIT_KAFKA_BROKERS: kafka:9092
+      # Forwarded explicitly: this environment list is an allowlist, and the root .env only
+      # supplies values for interpolation - it does not reach the container. Without this
+      # line a configured topic changes what the store consumes and not what this service
+      # publishes, and the store goes quiet.
+      CREDIT_LOG_TOPIC: ${CREDIT_LOG_TOPIC:-logging.lines}
       # One retry topic per entry must be listed in infra/kafka/topics.txt; Credit checks at startup.
       CREDIT_RETRY_DELAYS: ${CREDIT_RETRY_DELAYS:-1s,5s,30s,2m,10m}
     # Published for local testing with Postman. The gateway never routes here: these are

@@ -9,6 +9,10 @@
  *        the shipper's `LinePublisher` as it stands: the batch shape and the per-line key still
  *        match, so the body is unchanged (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: carry the request id in a header as well as the key, because the store's
+ *        consumer drops the key and a dead letter would lose its correlation (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Logger } from '@nestjs/common';
@@ -48,9 +52,18 @@ export class KafkaLinePublisher implements LinePublisher {
     await this.connect();
     await this.producer.send({
       topic: this.topic,
-      // The key is the requestId the shipper set, so one request's lines stay in one partition and
-      // in the order they happened (root AGENTS.md §3, rule 5).
-      messages: lines.map((line) => ({ key: line.key ?? null, value: line.value })),
+      // The key is the requestId the shipper set, so one request's lines stay in one partition
+      // and in the order they happened (root AGENTS.md §3, rule 5).
+      //
+      // And again as a header, because the key does not survive the trip: the store's consumer
+      // builds its inbound message from the headers and drops the key, so a line that is later
+      // dead-lettered would lose the one thing that ties it back to its request. The header is
+      // the only copy the dead letter can carry.
+      messages: lines.map((line) => ({
+        key: line.key ?? null,
+        value: line.value,
+        ...(line.key ? { headers: { 'x-request-id': line.key } } : {}),
+      })),
     });
   }
 

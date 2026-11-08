@@ -76,6 +76,11 @@ services:
       # The shared broker (infra/kafka). No depends_on: Supplier only publishes, and events wait in
       # supplier_outbox while Kafka is down, so this file still runs on its own.
       SUPPLIER_KAFKA_BROKERS: kafka:9092
+      # Forwarded explicitly: this environment list is an allowlist, and the root .env only
+      # supplies values for interpolation - it does not reach the container. Without this
+      # line a configured topic changes what the store consumes and not what this service
+      # publishes, and the store goes quiet.
+      SUPPLIER_LOG_TOPIC: ${SUPPLIER_LOG_TOPIC:-logging.lines}
       SUPPLIER_OUTBOX_POLL_MS: ${SUPPLIER_OUTBOX_POLL_MS:-}
     ports:
       - "3002:3002"

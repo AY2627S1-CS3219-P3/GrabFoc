@@ -110,6 +110,18 @@ describe('starting up', () => {
     expect(consumer.handler).toBeUndefined();
   });
 
+  it('comes up with ingest off when the consumer cannot start at all', async () => {
+    const failing = {
+      start: jest.fn().mockRejectedValue(new Error('no brokers available')),
+      stop: jest.fn(),
+    };
+    const service = new IngestService(lines as unknown as LinesService, failing, deadLetters);
+    // The query API needs no broker, so an unreachable one must not take it down: without this,
+    // bootstrap rejects, Nest exits, and the container dies with it.
+    await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
+    expect(errored.mock.calls.flat().join(' ')).toContain('Ingest is off');
+  });
+
   it('says so, rather than failing, when a broker is set but no consumer is wired in', async () => {
     const withoutConsumer = new IngestService(lines as unknown as LinesService);
     await expect(withoutConsumer.onApplicationBootstrap()).resolves.toBeUndefined();

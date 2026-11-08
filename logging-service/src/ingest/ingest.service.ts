@@ -54,6 +54,10 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
  * Scope: Describe the replacement the walk now makes, not the one it used to (PR #200 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: a broker that cannot be reached no longer takes the query API down with it,
+ *        which is what every message in this method already promised (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -106,7 +110,20 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
       );
       return;
     }
-    await this.consumer.start((message) => this.handle(message));
+    // Guarded, because a broker that is not reachable must not take this service down with it.
+    // start() connects an admin client and a consumer; without this, an unresolvable or unhealthy
+    // broker rejects here, Nest's bootstrap fails, the container exits, and the query API - which
+    // needs no broker at all - goes with it. Every message in this method promises the opposite:
+    // "ingest is off, the query API is up". Lines wait in the topic, which is what it is for.
+    try {
+      await this.consumer.start((message) => this.handle(message));
+    } catch (err) {
+      this.logger.error(
+        `Could not start consuming "${config.kafkaTopic}": ${err instanceof Error ? err.message : err}. ` +
+          `Ingest is off and the query API is up; lines wait in the topic.`,
+      );
+      return;
+    }
     this.logger.log(`Consuming "${config.kafkaTopic}" as "${config.kafkaGroupId}"`);
   }
 

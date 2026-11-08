@@ -1,0 +1,917 @@
+/*
+ * AI Assistance Disclosure:
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Copied from logging-service/src/client/log-shipper.ts, the canonical copy. This
+ *        repository has no shared package, so common code is copied, not imported: a change
+ *        there has to be repeated here, and the bodies are kept byte-identical (issue #52).
+ * Author review: Cole Lin, read and approved.
+ */
+import { randomUUID } from 'node:crypto';
+
+// AI-generated (reviewed by Cole Lin).
+
+/**
+ * The canonical copy of the shipper every service uses. This repository has no shared package, so
+ * copy this file into `<service>/src/common/log-shipper.ts` rather than importing it across
+ * folders — and when it changes here, change it there. It lives under src/ so `npm test` covers
+ * it; the Logging Service itself does not use it.
+ *
+ * It deliberately has no Kafka client: a `LinePublisher` is handed in, so a service takes on the
+ * client (`@confluentinc/kafka-javascript`, the one Credit pinned in #85) only when it has a
+ * broker to talk to. Until the shared broker (#75) exists, every service passes no publisher and
+ * logs to stdout only, exactly as it does today.
+ */
+
+export type Level = 'debug' | 'info' | 'warn' | 'error';
+
+/** What a caller passes. `event` is the only required part; the rest is whatever it was about. */
+export interface LineInput {
+  level: Level;
+  /**
+   * A fixed name for what happened - `access_denied`, `jwks_unavailable` - and **never** text
+   * built from a request. It is an envelope field, so it is the one thing here that redaction
+   * cannot help with: `redactFields` works on field *names*, and the value of `event` is written
+   * through on the ordinary path and echoed as `originalEvent` on the fallback path alike. A
+   * reviewer read the fallback as the leak; it is not, because the ordinary path carries the same
+   * value to the same two places. The rule is about what may go in this field at all, and it
+   * applies to every call site (PR #129 review).
+   */
+  event: string;
+  requestId?: string;
+  userId?: string;
+  role?: string;
+  method?: string;
+  /**
+    * The path. Anything from the first `?` is removed before the line is written, so a caller's
+    * coordinates cannot reach a log line that also names them — passing a full URL here is safe.
+    */
+  path?: string;
+  status?: number;
+  durationMs?: number;
+  [field: string]: unknown;
+}
+
+/** One line on its way to the topic. */
+export interface OutboundLine {
+  /**
+   * The Kafka message key. Kafka keeps order only per key (root AGENTS.md §3, rule 5), so lines
+   * are keyed by `requestId`: one request's lines land in one partition, in the order they
+   * happened. A line with no request (a startup or purge line) has no key and may be interleaved,
+   * which costs nothing because there is no sequence to preserve.
+   */
+  key?: string;
+  value: string;
+}
+
+/** Whatever actually puts lines on the topic. */
+export interface LinePublisher {
+  publish(lines: OutboundLine[]): Promise<void>;
+}
+
+export interface ShipperOptions {
+  /** This service's name, as it will appear in the `service` column. */
+  service: string;
+  publisher?: LinePublisher;
+  /** Lines held while a publish is in flight. Beyond this, lines are dropped. */
+  maxBuffer?: number;
+  /**
+   * Bytes held while a publish is in flight, across all buffered lines. A count alone is not a
+   * bound: 1,000 lines carrying a megabyte of metadata each is a gigabyte held by the component
+   * whose whole purpose is not to disrupt the service it logs for (PR #129 review).
+   */
+  maxBufferBytes?: number;
+  /** A single line larger than this is written to stdout but never buffered. */
+  maxLineBytes?: number;
+  /** How often the buffer is drained, in milliseconds. */
+  flushMs?: number;
+  /** Where the line goes locally. Replaced in tests. */
+  write?: (line: string) => void;
+  /** Minted per line. Replaced in tests so output is predictable. */
+  newId?: () => string;
+}
+
+/**
+ * Field names whose values must never reach a log line, matched case-insensitively and ignoring
+ * `-` and `_`, so `X-Service-Key`, `service_key` and `serviceKey` are all caught. Adapted from
+ * user-service/src/common/logger.ts, which has the same list for the same reason (root AGENTS.md:
+ * never log passwords, tokens, OTPs or unmasked personal data).
+ */
+const NEVER_LOG = [
+  'password',
+  'newpassword',
+  'currentpassword',
+  'passwordhash',
+  'otp',
+  'otphash',
+  'code',
+  'token',
+  'accesstoken',
+  'refreshtoken',
+  'tokenhash',
+  'authorization',
+  'servicekey',
+  'xservicekey',
+  'privatekey',
+  'secret',
+  'email',
+  'newemail',
+  'emailhash',
+  'mobile',
+  'mobilenumber',
+  // Personal data rather than credentials, and just as unloggable: a display name identifies a
+  // student on sight, and `phone` sat outside `mobile` (root AGENTS.md: never log unmasked
+  // personal data). Found on the ingest side of this list in the PR #129 review.
+  'phone',
+  'displayname',
+  'fullname',
+  'firstname',
+  'lastname',
+  // The spelling an OIDC claim and most APIs use, which is the one that was missing: `givenName`
+  // normalised to `givenname` and matched nothing in this list, so a student's name went to
+  // stdout and the store in the clear while this file's documentation said given and family names
+  // were covered. `name` on its own stays out, because it would take `eventName` and the location
+  // labels, which are public catalogue data (PR #157 review).
+  'givenname',
+  'familyname',
+  'surname',
+  'balance',
+  'creditbalance',
+  'credits',
+];
+
+/**
+ * `value` with the characters PostgreSQL's JSONB cannot represent removed: a NUL, and a surrogate
+ * with no partner. JSONB stores text, and PG text cannot hold a NUL at all; an unpaired surrogate
+ * reaches the server as a `\\ud800` escape, which its JSON parser refuses. Either one costs the
+ * **whole line** - the insert fails with a class-22 error, ingest reads that as permanently
+ * unstorable, and a line the schema had just accepted is parked instead of being searchable
+ * (PR #129 review). The round before brought `method` and `path` inside what their TEXT columns
+ * accept; this is the same pairing one level down, in `extra`.
+ *
+ * Removed rather than rejected, and the other way round from the envelope fields: `extra` is
+ * free-form metadata, so a tab or a newline in a `note` is content and is kept. Only what JSONB
+ * cannot carry comes out, and taking out a character costs less than losing the line. Written as
+ * loops rather than regexes so the escape sequences cannot be mangled by an editing tool.
+ */
+function unstorableInJsonb(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code === 0 || (code >= 0xd800 && code <= 0xdfff)) return true;
+  }
+  return false;
+}
+
+function jsonbSafe(value: string): string {
+  // A valid surrogate pair trips the check above and comes back out of the loop unchanged, which
+  // is why this is a fast path and not the decision itself.
+  if (!unstorableInJsonb(value)) return value;
+  let out = '';
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code === 0) continue;
+    if (code >= 0xd800 && code <= 0xdbff) {
+      // A high surrogate is kept only with the low surrogate that completes it. charCodeAt past
+      // the end is NaN, so the last character of a string falls through to the drop below.
+      const low = value.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        out += value[i] + value[i + 1];
+        i += 1;
+      }
+      continue;
+    }
+    // A low surrogate reached on its own: the pair above consumes the valid ones.
+    if (code >= 0xdc00 && code <= 0xdfff) continue;
+    out += value[i];
+  }
+  return out;
+}
+
+const REDACTED = '[REDACTED]';
+const TRUNCATED = '[TRUNCATED]';
+// A field name a caller would plausibly write. Only values were ever redacted, so a caller passing
+// `{ recipients: { 'alice@nus.edu.sg': true } }` shipped an address as a field name with nothing
+// flagged (PR #129 review). An unsafe name is replaced whole, not truncated: half an address is
+// still half an address. The same rule is in the logging service's line.schema.ts and in its
+// dead-letter shape, and the three must agree.
+//
+// A filter for keys that *cannot* be field names, not a proof that the rest are safe. A later
+// round asked for credential-shaped keys to go too, and `{ attempts: { '123456': true } }` really
+// is a six-digit code shipped verbatim - but nothing tells it apart from `{ byStatus: { '404': 3 }
+// }` or `{ byYear: { '2026': 5 } }`, which are ordinary aggregates. Redaction matches names, so it
+// cannot identify a secret by its contents, in a key any more than in a value. The rule that helps
+// is the call-site one in root AGENTS.md: never log an OTP or a handover code, as a value *or* as a
+// field name. `otp` and `code` are in the list above, so `{ otp: { ... } }` is caught by its
+// parent's name.
+const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
+/**
+ * A key that reads as a field *name*, which is to say it starts with a letter.
+ *
+ * Redaction matches names, so a secret in the *key* position has no name to match on:
+ * `{ attempts: { "123456": true } }` carries a six-digit OTP that `isSensitive` cannot see, and
+ * the safe alphabet above admitted it because its characters are unremarkable (PR #129 review).
+ * The test is deliberately structural rather than a guess at content - no entropy, no "looks like
+ * a token" - because this component cannot tell a secret from a number by looking at it. What it
+ * can tell is that a *name* is not a bare number, and that something which is not a name and is
+ * long enough to hold a code is data someone put in the key position.
+ */
+const NAMED_KEY = /^[A-Za-z]/;
+/**
+ * How long a key that is not a name may be before it is replaced.
+ *
+ * Three keeps the bucket labels that carry real diagnostic value - `{ counts: { "403": 12 } }`,
+ * small indices - and replaces the shortest credential this product has. The OTP length is still
+ * being settled (the mockup shows 4, the proposal is 6, root AGENTS.md section 10), so it is set
+ * to the *shorter* of the two: choosing 6 would leave the guard silently useless if the 4-digit
+ * mockup wins the argument. The cost is that a key like `2026` is replaced, which is a visible
+ * loss in a line rather than a silent one, and this is the number to change if that cost turns
+ * out to matter more than the codes it catches.
+ */
+const MAX_UNNAMED_KEY = 3;
+/**
+ * Whether a key can be used as a field name as it stands.
+ *
+ * A name is spelled from the safe alphabet, starts with a letter unless it is too short to carry
+ * anything, and is not `__proto__` - which passes the pattern but is never a usable property name,
+ * because assigning it runs `Object.prototype`'s setter instead of defining a field. Zod's own
+ * object build drops that key too, which is why it has to be replaced before the store sees it.
+ */
+function isUsableName(key: string): boolean {
+  if (!SAFE_KEY.test(key) || key === '__proto__') return false;
+  return NAMED_KEY.test(key) || key.length <= MAX_UNNAMED_KEY;
+}
+
+/**
+ * The stand-in for a name that cannot be used: `[key 1]`, `[key 2]`, by order of replacement.
+ *
+ * Six rounds of review bounded what a caller could put *inside* a replaced name, and each bound
+ * fell to a spelling the previous one allowed: the length field disagreed between passes, the
+ * fixed point let a caller key shaped like a marker through, the collision suffix broke the fixed
+ * point, the numeric limit fell to leading zeroes (`Number('000000')` is 0), and the index range
+ * still left four digits in a wide enough object. `[key 12: 34 chars]` carries four digits and
+ * `[key 123: 456 chars]` six (PRs #129, #145, #157, #200 reviews).
+ *
+ * So no caller text is trusted at all. The ordinal is this walk's own count, which a caller cannot
+ * influence; it cannot collide with a kept name, because a kept name comes from an alphabet with
+ * no brackets or spaces in it; and it is a fixed point by construction - a later walk over the
+ * same keys in the same order reaches the same key at the same ordinal and writes the same name,
+ * with no recognition rule left to get wrong.
+ *
+ * That last property is why the three walkers agree without sharing anything: the shipper walks a
+ * line's metadata, the store walks the whole line and skips the columns it knows, and the parked
+ * shape walks what it could parse - but the *replacements* they make are the same keys in the same
+ * order, so the ordinals match. The earlier design depended on each walker computing the same
+ * position, which they never did.
+ *
+ * What is given up is the replaced name's length. It was diagnostic at best, and it was the field
+ * every one of those bypasses travelled in.
+ */
+function replacedName(ordinal: number): string {
+  return `[key ${ordinal}]`;
+}
+
+const MAX_DEPTH = 6;
+/**
+ * How many elements of one array are walked. `length` is caller-controlled and costs nothing to
+ * inflate - `a.length = 0xffffffff` on an empty array is one assignment - and rebuilding by index
+ * then reads every hole: 4.29 billion of them, measured at about 55 seconds of blocked event loop,
+ * on `emit()`'s own synchronous path inside the request being logged. `Array.prototype.map` skipped
+ * holes, so bounding the walk is what the rebuild gave up and has to buy back (PR #129 review). An
+ * array this long could not have reached the store anyway: the line would not fit `maxLineBytes`.
+ */
+const MAX_ARRAY_ITEMS = 1000;
+
+/**
+ * Matched as a **substring** of the normalised key, not as the whole key: `adminToken`,
+ * `passwordResetToken`, `apiSecret` and `customerEmail` all have to be caught, and listing every
+ * compound anyone might invent is not possible (PR #129 review). This over-redacts — `tokenCount`
+ * goes too — which is the right direction to err in for a log line.
+ */
+function isSensitive(key: string): boolean {
+  // Every separator, not just `-` and `_`: SAFE_KEY permits `.` and `:` too, so `pass.word`
+  // normalised to `pass.word`, matched nothing in the list, and `{ 'pass.word': 'hunter2' }`
+  // reached stdout, the topic and the store's `extra` column in the clear (PR #129 review).
+  // Stripping more can only add matches, never lose one: every name in the list is plain
+  // lowercase alphanumeric, so a name that was a contiguous substring before still is.
+  const normalised = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return NEVER_LOG.some((name) => normalised.includes(name));
+}
+
+/**
+ * A copy of `value` with every sensitive field replaced, at any depth. Redaction is by field name,
+ * so it only works on structured data: never interpolate a secret into a message string, because
+ * nothing can strip it back out. A line is written once and may end up in a store anyone with
+ * access can query, so this is the last point at which anything can be removed.
+ */
+export function redactFields(value: unknown, depth = 0): unknown {
+  // Strings first: these land in the store's `extra` JSONB column, which cannot hold a NUL or a
+  // lone surrogate - and a value it cannot hold costs the whole line. See `jsonbSafe` above.
+  if (typeof value === 'string') return jsonbSafe(value);
+  if (value === null || typeof value !== 'object') return value;
+  // Beyond the limit the subtree is replaced, not returned: returning it would serialise a secret
+  // nested deeper than this verbatim, and would let a cycle through to JSON.stringify, which
+  // throws — crashing the caller over a log line (PR #130 review).
+  if (depth > MAX_DEPTH) return TRUNCATED;
+  // An ISO string, not the object. JSON.stringify would call the Date's toJSON — and a Date with
+  // its own toJSON, or a subclass overriding it, could return anything at all, after redaction
+  // has finished (PR #129 review). This is what an honest Date serialised to anyway.
+  // Date.prototype.toISOString, not value.toISOString(): a subclass or an own override would
+  // otherwise run after redaction has decided this field is safe, and could return a token from
+  // an innocent-looking field (PR #145 review).
+  if (value instanceof Date) return Date.prototype.toISOString.call(value);
+  if (Array.isArray(value)) {
+    // Built by index into a plain array rather than with `value.map`: `Array.prototype.map` goes
+    // through `Symbol.species`, so mapping a subclass returned another instance of that subclass -
+    // prototype and all - and `JSON.stringify` then called its inherited `toJSON` *after*
+    // redaction had finished, free to return anything. Dropping own function values does not help:
+    // a class puts `toJSON` on the prototype, where `Object.entries` never looks. An overridden
+    // `map` would have been caller code running inside the walk as well (PR #129 review).
+    const items: unknown[] = [];
+    // `length` read once and capped: see MAX_ARRAY_ITEMS. Once, because a property read on an
+    // object the caller still owns is caller code wherever it appears - the same lesson as the
+    // service name in the constructor, one level in - so the cut below compares `total` rather
+    // than reading it again.
+    const total = value.length;
+    const length = Math.min(total, MAX_ARRAY_ITEMS);
+    for (let i = 0; i < length; i += 1) {
+      items.push(serialisable(redactFields(value[i], depth + 1)));
+    }
+    // Marked rather than cut silently, as a subtree beyond MAX_DEPTH is.
+    if (total > length) items.push(TRUNCATED);
+    return items;
+  }
+  // Null-prototype, so a field named `__proto__` becomes an own property like any other. On a
+  // plain `{}`, `out['__proto__'] = item` runs Object.prototype's setter instead of defining a
+  // property, so that field vanished from the line - silently, with every neighbouring field
+  // intact, which is the worst way to lose one from a record kept for audit (PR #129 review).
+  // JSON.stringify and object spread both read own enumerable properties, so the envelope below
+  // is built from this unchanged, and no caller's field name can reach a prototype.
+  const out: Record<string, unknown> = Object.create(null);
+  // Counts the names this walk has replaced in this object, which is what the stand-in is built
+  // from. Deliberately not the key's position: a position has to agree with whatever walk reads
+  // the line next, and an ordinal over the same keys in the same order agrees by itself.
+  let replaced = 0;
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    // A function is dropped. JSON.stringify ignores functions anyway, except an own `toJSON`,
+    // which it calls instead of reading the object — so copying one across would let it return
+    // whatever it liked, unredacted, including a replacement for the whole envelope.
+    // Skipped *before* the count, like a function above it: `JSON.stringify` drops a field whose
+    // value is `undefined`, so numbering one spent an ordinal the written line never carried - and
+    // the store, renumbering from what reached it, stored a different name than stdout showed. The
+    // ordinals only agree while both walks see the same keys (PR #200 review).
+    if (typeof item === 'function' || item === undefined) continue;
+    const name = isUsableName(key) ? key : replacedName((replaced += 1));
+    out[name] = isSensitive(key) ? REDACTED : serialisable(redactFields(item, depth + 1));
+  }
+  return out;
+}
+
+/**
+ * JSON cannot serialise every value a caller might pass: a `bigint` makes JSON.stringify throw,
+ * which would replace the operation being logged with a TypeError (PR #129 review). emit() must
+ * never throw, so the unsupported primitives become text.
+ */
+function serialisable(value: unknown): unknown {
+  if (typeof value === 'bigint') return `${value}`;
+  if (typeof value === 'symbol') return value.toString();
+  if (typeof value === 'number' && !Number.isFinite(value)) return `${value}`;
+  return value;
+}
+
+/**
+ * The store's bounds on the envelope, from logging-service/src/lines/line.schema.ts. A value
+ * outside them does not cost the field - it costs the **whole line**, because `inboundLineSchema`
+ * rejects the line and ingest parks it in the dead-letter topic. A caller who controls one field
+ * can therefore keep a line it would rather nobody queried out of the searchable store while
+ * leaving it on a producer's stdout, where nobody looks: a 500-character URL did exactly that to
+ * an `access_denied` line (PR #129 review). So every bound the store applies is applied here
+ * first, and the two sides cannot disagree. When one changes there, change it here - the spec
+ * checks a shipped line against that schema itself rather than against these numbers, so a bound
+ * added there and forgotten here fails a test rather than quietly costing lines.
+ */
+const STORE_LIMITS = { service: 40, event: 60, requestId: 200, userId: 100, method: 10, path: 400 } as const;
+const LEVELS: readonly Level[] = ['debug', 'info', 'warn', 'error'];
+const ROLES: readonly string[] = ['ADMIN', 'USER'];
+/**
+ * A line whose level this cannot read is surfaced rather than filed as routine: the store's enum
+ * would otherwise reject it outright, and a line nobody can explain is worth a reader's attention
+ * more than it is worth burying in `info`.
+ */
+const UNKNOWN_LEVEL: Level = 'error';
+const UNKNOWN_EVENT = 'line_event_missing';
+
+/**
+ * `value` with control characters removed. The store refuses them in most of these fields because
+ * a line-oriented reader breaks on them - and losing a whole line over one stray tab in a header
+ * is the outcome this is here to prevent.
+ */
+function hasControl(value: string): boolean {
+  for (const ch of value) {
+    const code = ch.codePointAt(0) as number;
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/**
+ * Counters to bump when stdout fails after the write has already returned.
+ *
+ * In the documented stdout-only configuration the sink is `console.log`, and a write to a pipe
+ * whose reader has gone resolves *before* `process.stdout` emits its `EPIPE`. The synchronous
+ * try/catch around the write therefore saw nothing: `writeFailed` stayed at zero, and an `error`
+ * event with no listener is an uncaught exception - so a broken log pipe would terminate the
+ * service this component exists not to disturb (PR #157 review).
+ *
+ * One listener for the module rather than one per shipper: stdout is a single shared stream, and a
+ * listener per instance would trip Node's max-listeners warning in a service that builds several.
+ * Every shipper on the default sink is counted, because a stdout failure is every one of theirs.
+ */
+/**
+ * The envelope's own field names, so the metadata walk can skip them without reading them.
+ *
+ * `requestId` is in here for a second reason: it is read once before the build and that value is
+ * used throughout, so this walk must not touch its getter again (PR #157 review).
+ */
+const ENVELOPE_FIELDS = new Set([
+  'level',
+  'event',
+  'requestId',
+  'userId',
+  'role',
+  'method',
+  'path',
+  'status',
+  'durationMs',
+]);
+
+const stdoutWriters = new Set<() => void>();
+let stdoutWatched = false;
+
+function watchStdout(bump: () => void): void {
+  stdoutWriters.add(bump);
+  if (stdoutWatched) return;
+  stdoutWatched = true;
+  process.stdout.on('error', () => {
+    for (const bumpOne of stdoutWriters) bumpOne();
+  });
+}
+
+function stripControl(value: string): string {
+  if (!hasControl(value)) return value;
+  let out = '';
+  for (const ch of value) {
+    const code = ch.codePointAt(0) as number;
+    if (code >= 0x20 && code !== 0x7f) out += ch;
+  }
+  return out;
+}
+
+/**
+ * `value` when the store would hold it in that field, otherwise undefined: the field is left out
+ * and the line itself still gets through. An id is dropped rather than cut, because the first 100
+ * characters of a 300-character userId read as a *different* student's id, and a cut requestId
+ * groups one request's lines under another's. An absent field is honest; a wrong one reads as
+ * fact.
+ */
+function boundedId(value: unknown, max: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  // Dropped rather than stripped, for the same reason it is not cut: a tab taken out of
+  // `trace<TAB>1` leaves `trace1`, which may be some other request's id.
+  //
+  // `unstorableInJsonb` is in that list because of what the *column* does with the value, not
+  // because of JSONB: a lone surrogate is a valid JavaScript string and not valid UTF-8, so `pg`
+  // encodes it as U+FFFD on the way to a TEXT column. `u\ud8001` and `u\ud8011` are different
+  // ids that arrive as the same bytes, so two students' lines merge under one userId - which is
+  // worse than losing the field, and the reason this function drops rather than cleans. Cleaning
+  // it here would be the `trace1` mistake with different characters (PR #129 review).
+  // `jsonbSafe(value) === value` rather than `unstorableInJsonb`, which is a coarse pre-check that
+  // fires on any surrogate code unit, both halves of a valid pair included: testing it directly
+  // dropped an id containing an emoji. Surviving normalisation unchanged is the exact question.
+  const storable = !hasControl(value) && jsonbSafe(value) === value;
+  return value.length >= 1 && value.length <= max && storable ? value : undefined;
+}
+
+/**
+ * `value` cut to `max`, marked, and never dropped: `event` and `path` are the two fields a reader
+ * searches by, and the leading characters are the informative part of both. The marker sits inside
+ * the bound, so the result is still storable, and it says the value was longer rather than passing
+ * a cut path off as the resource that was asked for.
+ */
+function boundedText(value: string, max: number): string {
+  // `jsonbSafe` as well as `stripControl`, because this function's third caller is the fallback
+  // line's `originalEvent`, which is not an envelope field and so lands in the store's `extra`
+  // JSONB. For `event` and `path` it changes nothing worth keeping: they go to TEXT columns, where
+  // a lone surrogate is encoded rather than refused (PR #129 review).
+  const text = jsonbSafe(stripControl(value));
+  if (text.length <= max) return text;
+  // `jsonbSafe` again *after* the cut: it ran before, and the cut itself can land between the two
+  // code units of an emoji and leave the high surrogate behind. On the fallback path this value is
+  // `originalEvent`, which lands in the store's `extra` JSONB - whose parser refuses an unpaired
+  // surrogate - so the one line that records a build failure was itself parked (PR #157 review).
+  // Dropping the half character can only shorten the result, so the bound still holds.
+  return `${jsonbSafe(text.slice(0, max - TRUNCATED.length))}${TRUNCATED}`;
+}
+
+/**
+ * setInterval takes a signed 32-bit delay and silently reduces anything else - a larger number, a
+ * fraction, zero, NaN - to about 1 ms. With a publisher wired in that is a flush loop for the life
+ * of the process, from the component whose whole purpose is not to disturb the service it logs for
+ * (PR #129 review). PurgeService guards its own timer for the same reason, by clamping; this one
+ * refuses, because `flushMs` is written in code rather than read from the environment, and a
+ * constructor is allowed to fail where `emit()` is not.
+ */
+const MAX_TIMER_MS = 2_147_483_647;
+
+/**
+ * A bound a comparison can act on.
+ *
+ * `flushMs` was checked in this constructor and these three limits were not: the one option whose
+ * misuse `setInterval` makes loud was guarded, and the three whose misuse is silent were taken as
+ * given. Every use of them is a `>`, and `NaN` makes a `>` false - so such a limit does not
+ * tighten the bound, it *removes* it, and `maxBufferBytes: NaN` leaves this component holding an
+ * unbounded buffer, in the one component whose job is not to disrupt the service it logs for.
+ * `Number(process.env.MAX_BUFFER_BYTES)` with the variable unset is exactly that value, which is
+ * how it arrives from a deployment rather than from a test (PR #129 review).
+ *
+ * `Number.isInteger` refuses `NaN` and `Infinity` alike - the same reason the store's schema needs
+ * no separate check for either on `status` and `durationMs`. A zero or a negative is refused from
+ * the same line because it points the other way: it bounds *everything*, and every line is then
+ * dropped by a component that is supposed to be shipping them.
+ */
+function positiveLimit(value: number, option: string): number {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 1) return value;
+  // Interpolated only once it is known to be a number. It is a local by this point, so nothing
+  // can change underneath it, but a non-number cast through this parameter would otherwise run
+  // its own `toString` from inside the error path.
+  const shown = typeof value === 'number' ? value : typeof value;
+  throw new RangeError(`${option} must be a whole number of at least 1, not ${shown}`);
+}
+
+/**
+ * What the store accepts as a `lineId` - the same shape `z.string().uuid()` matches. A regex is
+ * safe here where it was not for the control characters: there is no escape sequence in it for an
+ * editing tool to mangle.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** `value` when the store would hold it in that column, otherwise undefined. */
+function boundedInt(value: unknown, min: number, max: number): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : undefined;
+}
+
+export class LogShipper {
+  private readonly buffer: OutboundLine[] = [];
+  /**
+   * Lines and bytes handed to a publish that has not settled yet.
+   *
+   * They have left `buffer`, but the closure in `flush` still holds the batch, so they are still
+   * in memory and still have to be counted. Releasing the budget on splice let `emit()` fill a
+   * second complete buffer while the first was in flight: 2,000 lines and 8 MB retained against
+   * documented bounds of 1,000 and 4 MB (PR #129 review). The comment that used to sit on that
+   * line argued the opposite - "once the batch is out of it the budget is free again" - and it was
+   * wrong about where the memory is, not about what the policy should be.
+   */
+  private inFlightLines = 0;
+  private inFlightBytes = 0;
+  private readonly maxBuffer: number;
+  private readonly maxBufferBytes: number;
+  private readonly maxLineBytes: number;
+  /** Bytes currently buffered. Kept as a running total rather than recomputed per emit. */
+  private bufferedBytes = 0;
+  private timer?: NodeJS.Timeout;
+  private publishing?: Promise<void>;
+  /**
+   * The validated service name. Read once here rather than from `this.options` per line: the caller
+   * keeps the object it passed, and the check in the constructor only ever saw the value that was
+   * in it then. Mutating it afterwards misattributed every later line - or, with an overlong or
+   * control-bearing name, made every later line unstorable - without passing that check again
+   * (PR #129 review).
+   */
+  private readonly service: string;
+  /**
+   * The rest of the options, held for the same reason as the name above: a property read on an
+   * object the caller still owns is itself caller code. Guarding the *call* to `newId` was not
+   * enough - `this.options.newId` ran before the guard, and `this.options.publisher` in `emit()`
+   * ran outside one altogether, so an accessor or a Proxy trap that throws escaped `emit()` anyway.
+   * After this constructor there is nothing of the caller's left to read (PR #129 review).
+   */
+  private readonly write?: (line: string) => void;
+  private readonly newId?: () => string;
+  private readonly publisher?: LinePublisher;
+  readonly counts = { emitted: 0, dropped: 0, oversize: 0, failed: 0, clamped: 0, writeFailed: 0, idFailed: 0 };
+
+  constructor(options: ShipperOptions) {
+    // Checked at construction, not per line: a name outside the store's bound makes every line
+    // this service will ever write unstorable, and the startup that configured it is the only
+    // place that can say so. emit() must never throw - a constructor may, and this is a
+    // configuration error rather than a log call.
+    // Read once, then checked and kept. This read the caller's property twice for the check and
+    // a third time for the assignment, so an accessor or a Proxy could answer the check with a
+    // valid name and the assignment with an over-long one - and that name is then on every line
+    // this shipper writes, each of which the store refuses. Holding the options was the right
+    // move; reading one of them three times inside the constructor was the same bug one level in
+    // (PR #129 review).
+    const service = options.service;
+    if (boundedId(service, STORE_LIMITS.service) !== service) {
+      throw new RangeError(
+        `service must be 1-${STORE_LIMITS.service} characters and hold no control characters: the ` +
+          `log store rejects every line from a service named otherwise`,
+      );
+    }
+    this.service = service;
+    this.write = options.write;
+    // Only for the default sink: a caller who supplied `write` owns its failures, and the
+    // synchronous catch around that call is the whole guarantee this component can give them.
+    //
+    // `this.write`, not `options.write`. Reading the option again here was the read-once defect
+    // inside the commit that fixed the read-once defect: an accessor answering `undefined` for the
+    // assignment above and a function for this check leaves the default `console.log` sink in use
+    // with no watcher on it, which is the unhandled asynchronous EPIPE this exists to stop. The
+    // question is which sink is in use, so the answer has to come from the field that holds it
+    // (PR #157 review).
+    if (!this.write) watchStdout(() => (this.counts.writeFailed += 1));
+    this.newId = options.newId;
+    this.publisher = options.publisher;
+    const flushMs = options.flushMs ?? 1000;
+    // Checked whether or not a publisher is wired in: a delay setInterval cannot schedule is a
+    // mistake worth reporting at the line that made it, not only in the configurations that
+    // happen to schedule it.
+    if (!Number.isInteger(flushMs) || flushMs < 1 || flushMs > MAX_TIMER_MS) {
+      throw new RangeError(
+        `flushMs must be a whole number of milliseconds between 1 and ${MAX_TIMER_MS}: setInterval ` +
+          `silently reduces anything else to about 1 ms, which with a publisher is a flush loop`,
+      );
+    }
+    this.maxBuffer = positiveLimit(options.maxBuffer ?? 1000, 'maxBuffer');
+    // 4 MB and 64 KB: a log line that does not fit in 64 KB is a bug in the caller, and 4 MB is
+    // small enough that holding it through a broker outage is not what takes a service down.
+    this.maxBufferBytes = positiveLimit(options.maxBufferBytes ?? 4 * 1024 * 1024, 'maxBufferBytes');
+    this.maxLineBytes = positiveLimit(options.maxLineBytes ?? 64 * 1024, 'maxLineBytes');
+    // The pair, not just each on its own. A line larger than the whole buffer clears the oversize
+    // check and then trips the buffer check on every emit, so it is dropped every time and counted
+    // against the broker rather than against the caller who sent it - and these counters are the
+    // only thing this component says out loud about what it discarded.
+    if (this.maxLineBytes > this.maxBufferBytes) {
+      throw new RangeError(
+        `maxLineBytes (${this.maxLineBytes}) must not exceed maxBufferBytes (${this.maxBufferBytes}): a ` +
+          `line too large for the buffer is dropped on every emit and counted as a full buffer`,
+      );
+    }
+    if (this.publisher) {
+      this.timer = setInterval(() => void this.flush(), flushMs);
+      // Never hold the process open just to ship a log line.
+      this.timer.unref();
+    }
+  }
+
+  /**
+   * Records one line and returns immediately: nothing here is awaited, so a slow or dead broker
+   * cannot slow a request down. The line reaches stdout first, so a line dropped from a full
+   * buffer is still in the container log — which is what makes dropping acceptable rather than
+   * lossy. If the local sink is itself broken that justification weakens, and `counts.writeFailed`
+   * is what says so; there is nothing better to do about it from in here.
+   */
+  emit(input: LineInput): void {
+    const { payload, key } = this.build(this.newLineId(), new Date().toISOString(), input);
+    this.counts.emitted += 1;
+    // Guarded like the build above it. `write` is a documented option, so it is caller-supplied
+    // code - and the default is no safer: stdout in a container is a pipe, a pipe write is
+    // synchronous on Linux, and a reader that goes away raises EPIPE on the caller's own stack.
+    // This statement was the one left outside the guard, so a dead sink threw into the request it
+    // was logging and turned it into a 500: the component whose whole purpose is not to disturb
+    // the service it logs for taking that service down (PR #129 review). Counted rather than
+    // reported, because there is nowhere to report a broken log sink *to*.
+    try {
+      (this.write ?? console.log)(payload);
+    } catch {
+      this.counts.writeFailed += 1;
+    }
+
+    // Deliberately after that catch rather than inside an else: a broken local sink is a reason to
+    // ship the line harder, not to stop, because the topic is then the only copy of it.
+    if (!this.publisher) return;
+    const bytes = Buffer.byteLength(payload);
+    // Counted apart from an ordinary drop: a line too big to ship at all says something about the
+    // caller, while a full buffer says something about the broker.
+    if (bytes > this.maxLineBytes) {
+      this.counts.oversize += 1;
+      return;
+    }
+    // Both halves count what is retained, which is the buffer plus whatever a pending publish is
+    // still holding (PR #129 review).
+    const lines = this.buffer.length + this.inFlightLines;
+    const retained = this.bufferedBytes + this.inFlightBytes;
+    if (lines >= this.maxBuffer || retained + bytes > this.maxBufferBytes) {
+      this.counts.dropped += 1;
+      return;
+    }
+    this.buffer.push({ key, value: payload });
+    this.bufferedBytes += bytes;
+  }
+
+  /**
+   * An id for one line. `newId` is a documented option, so it is caller-supplied code running on
+   * the request's own stack - and it ran *before* `build()`, so an exception from it escaped
+   * `emit()` altogether, which is the one thing this component must not do. The same hole the
+   * local `write` had, in the same statement, one argument along (PR #129 review).
+   *
+   * The default stands in rather than the line being dropped: the store refuses a line with no id,
+   * so losing the line would be the worse of the two failures. Counted, because a generator that
+   * throws on every call would otherwise leave no trace at all.
+   */
+  private newLineId(): string {
+    if (!this.newId) return randomUUID();
+    let id: unknown;
+    try {
+      id = this.newId();
+    } catch {
+      this.counts.idFailed += 1;
+      return randomUUID();
+    }
+    // Checked, not trusted. `lineId` is the one envelope field that can be neither dropped nor
+    // cut - the store requires a UUID of it - so a generator returning a counter or an adapter's
+    // own id would cost every line this service writes, which is the cost `service` is checked at
+    // construction to avoid. This one is per line, so it is checked per line (PR #129 review).
+    if (typeof id === 'string' && UUID.test(id)) return id;
+    this.counts.idFailed += 1;
+    return randomUUID();
+  }
+
+  /**
+   * JSON for one line, or a line saying it could not be built. Nothing a caller passes may turn a
+   * log call into an exception on the path being logged.
+   */
+  private build(lineId: string, ts: string, input: LineInput): { payload: string; key?: string } {
+    // Read once, defensively, so the fallback line can still say which event failed.
+    let originalEvent: string | null = null;
+    try {
+      originalEvent = typeof input.event === 'string' ? input.event : null;
+    } catch {
+      originalEvent = null;
+    }
+
+    // Read the same way and for the same reason. The fallback is the only record that a log call
+    // failed, and it carried no requestId - so in the one service whose purpose is following a
+    // request across services, the gap it left in a trace read as a line nobody wrote rather than
+    // a line that was lost (PR #129 review). Bounded here rather than below, because the bound is
+    // what makes it storable and `boundedId` is total: it returns undefined instead of throwing,
+    // so it cannot itself be the reason this line fails too.
+    let rawRequestId: unknown;
+    try {
+      rawRequestId = input.requestId;
+    } catch {
+      rawRequestId = undefined;
+    }
+    // Bounded from the value already read, not from a second read of the caller's property. The
+    // envelope below used to read it again through its destructuring, so a getter could answer the
+    // two reads differently and the fallback would be keyed by one request while the normal line
+    // described another - the trace gap this fallback exists to prevent. The same defect as the
+    // service name read three times in the constructor, one function along (PR #157 review).
+    const originalRequestId = boundedId(rawRequestId, STORE_LIMITS.requestId);
+
+    try {
+      // **Everything** that reads the caller's input happens in here. Destructuring it runs an
+      // enumerable getter, and a Proxy trap runs on enumeration, so doing it outside meant a
+      // hostile top-level field could still throw out of emit() — which the earlier guard claimed
+      // to prevent and did not (PR #145 review).
+      const { level, event, userId, role, method, path, status, durationMs } = input;
+      // Walked by key and filtered, rather than collected with an object rest. The rest operation
+      // *reads* every own enumerable property to copy it - `requestId` included - so deleting the
+      // copy afterwards was too late: a one-shot getter that answers once and throws on the second
+      // read threw in here, and the real event was replaced by the fallback although the id had
+      // already been captured. The previous comment admitted the read and treated it as harmless
+      // (PR #157 review). `Object.keys` runs an ownKeys trap but no getters, so the envelope's own
+      // fields - which are read above, once each - are the only properties read at all.
+      // Null prototype, as every other object built here is: assigning a key named `__proto__` to
+      // an ordinary `{}` runs Object.prototype's setter instead of defining a property, and the
+      // field is lost. The object rest this replaced defined properties rather than assigning
+      // them, so it did not have that problem - two existing cases caught the difference.
+      const rest: Record<string, unknown> = Object.create(null);
+      for (const key of Object.keys(input)) {
+        if (ENVELOPE_FIELDS.has(key)) continue;
+        rest[key] = (input as Record<string, unknown>)[key];
+      }
+      const safeRest = redactFields(rest) as Record<string, unknown>;
+      // Stripped before the bound below, at the one point every service shares, rather than
+      // relying on each copy of this file to remember: `?lat=…&lon=…` is the caller's position, and
+      // this line carries their userId (root AGENTS.md: never log unmasked personal data).
+      const withoutQuery = path === undefined ? undefined : `${path}`.split('?')[0];
+      // Every field the store bounds, brought inside that bound. An `undefined` here is left out
+      // of the line by JSON.stringify, which is exactly what the store's `.optional()` means.
+      const envelope = {
+        level: LEVELS.includes(level) ? level : UNKNOWN_LEVEL,
+        event: boundedText(typeof event === 'string' ? event : '', STORE_LIMITS.event) || UNKNOWN_EVENT,
+        requestId: originalRequestId,
+        userId: boundedId(userId, STORE_LIMITS.userId),
+        role: typeof role === 'string' && ROLES.includes(role) ? role : undefined,
+        method: boundedId(method, STORE_LIMITS.method),
+        path: withoutQuery === undefined ? undefined : boundedText(withoutQuery, STORE_LIMITS.path),
+        status: boundedInt(status, 100, 599),
+        durationMs: boundedInt(durationMs, 0, 2147483647),
+      };
+      // One count per line, not per field: it says some producer is handing the store values it
+      // will not take - a bug in that producer worth finding - and it is the only trace left, now
+      // that the line itself goes on without them. Compared against the query-stripped path, so
+      // this shipper's own rule does not read as a clamp and fire on every request line.
+      const given: Record<string, unknown> = {
+        level,
+        event,
+        requestId: rawRequestId,
+        userId,
+        role,
+        method,
+        path: withoutQuery,
+        status,
+        durationMs,
+      };
+      if (Object.entries(envelope).some(([field, value]) => value !== given[field])) {
+        this.counts.clamped += 1;
+      }
+      const payload = JSON.stringify({
+        // The caller's own fields go in FIRST, so the envelope always wins: a line claiming
+        // `service: "gateway"` or its own `ts` would make the store unreadable.
+        ...safeRest,
+        lineId,
+        ts,
+        service: this.service,
+        ...envelope,
+      });
+      // The bounded id, not the caller's: a key the store will not hold would group one request's
+      // lines in a partition under an id that never appears in the stored line.
+      return { payload, key: envelope.requestId };
+    } catch {
+      // A fixed reason, never the exception's message: the exception came from the caller's own
+      // getter, so its message is caller-controlled text and could carry the very secret the
+      // field-name redaction exists to remove (PR #129 review).
+      return {
+        payload: JSON.stringify({
+          lineId,
+          ts,
+          service: this.service,
+          level: 'error',
+          event: 'line_unserialisable',
+          // Left out of the line entirely when there is no usable one, which is what the store's
+          // `.optional()` means - rather than a null, which would read as "this had no request".
+          requestId: originalRequestId,
+          reason: 'the line could not be built',
+          // Bounded like `event` itself. This is caller text on a path that exists *because* the
+          // caller's object misbehaved, and the fixed `reason` beside it is fixed for that same
+          // reason; shipping it unbounded would put an arbitrary amount of it on stdout and on the
+          // topic (PR #129 review).
+          originalEvent: originalEvent === null ? null : boundedText(originalEvent, STORE_LIMITS.event),
+        }),
+        // Keyed like any other line, so the failure lands in the partition already holding that
+        // request's lines, in the order it happened (root AGENTS.md section 3, rule 5).
+        key: originalRequestId,
+      };
+    }
+  }
+
+  /** Drains the buffer. Safe to call while one is already running; one publish at a time. */
+  async flush(): Promise<void> {
+    if (this.publishing) return this.publishing;
+    if (!this.publisher || !this.buffer.length) return;
+    const batch = this.buffer.splice(0, this.buffer.length);
+    // Moved from one account to the other rather than written off: the batch is still held by the
+    // closure below until the publish settles. Lines are never put back - they are on stdout - so
+    // this is about what is in memory now, not about retrying them.
+    const batchBytes = this.bufferedBytes;
+    this.inFlightLines += batch.length;
+    this.inFlightBytes += batchBytes;
+    this.bufferedBytes = 0;
+    const publisher = this.publisher;
+    const pending = (async () => {
+      try {
+        // Awaited inside the promise, so a publisher that throws synchronously is still caught
+        // here rather than before `this.publishing` has been assigned (PR #130 review).
+        await publisher.publish(batch);
+      } catch {
+        // The lines are already on stdout, so losing them here is a counted inconvenience, not a
+        // reason to grow the buffer without limit or to crash a service that was only logging.
+        this.counts.failed += batch.length;
+      }
+    })();
+    this.publishing = pending;
+    try {
+      await pending;
+    } finally {
+      // By identity: clearing unconditionally could wipe a newer publish's guard, and leaving a
+      // settled promise in place would make every later flush() a no-op, disabling shipping for
+      // the life of the process.
+      if (this.publishing === pending) this.publishing = undefined;
+      // By this batch's own numbers, not reset to zero: only one publish is in flight at a time
+      // today, and subtracting what this one added stays correct if that ever stops being true.
+      this.inFlightLines -= batch.length;
+      this.inFlightBytes -= batchBytes;
+    }
+  }
+
+  /** Flushes what is left and stops the timer. Call from onModuleDestroy. */
+  async stop(): Promise<void> {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = undefined;
+    // Twice, deliberately: the first await is the publish already in flight, which flush() joins
+    // rather than starting a second one; the second sends whatever was buffered while it ran.
+    await this.flush();
+    await this.flush();
+  }
+}

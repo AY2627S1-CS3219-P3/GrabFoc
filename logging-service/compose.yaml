@@ -26,8 +26,8 @@
 # Run only this service, from the root:       docker compose -f logging-service/compose.yaml --env-file .env up --build
 # Just its database, for the integration tests: docker compose -f logging-service/compose.yaml up -d logging-db
 #
-# Ingest reads logging.lines from the shared broker. Unset LOGGING_KAFKA_BROKERS to turn it off;
-# the query API runs either way, so this service does not need the broker to come up.
+# Ingest reads logging.lines from the shared broker. The query API runs either way: a broker that
+# cannot be reached is logged and ingest stays off, rather than taking the service down.
 
 # The same project name as the root file, so a standalone run reuses the same containers and
 # named volumes — and so the same database.
@@ -84,10 +84,12 @@ services:
       # answers 503 on its first JWKS fetch - with no way round it. Point it at a reachable
       # User Service (`http://host.docker.internal:3001/...`) for that run (PR #129 review).
       LOGGING_JWKS_URL: ${LOGGING_JWKS_URL:-http://user-service:3001/.well-known/jwks.json}
-      # The shared broker (infra/kafka), merged in #75. Set to empty in .env to turn ingest
-      # off and run the query API alone; the service starts either way, and an unreachable
-      # broker is retried by the client rather than failing startup.
-      LOGGING_KAFKA_BROKERS: ${LOGGING_KAFKA_BROKERS:-kafka:9092}
+      # The shared broker (infra/kafka). Set directly rather than interpolated: Compose's
+      # ${VAR:-default} falls back when the variable is unset *or empty*, and .env.example ships
+      # every variable empty, so an empty value could never have turned ingest off the way an
+      # earlier version of this comment claimed. To run the query API alone, run the service
+      # outside Compose with LOGGING_KAFKA_BROKERS unset.
+      LOGGING_KAFKA_BROKERS: kafka:9092
       LOGGING_KAFKA_TOPIC: ${LOGGING_KAFKA_TOPIC:-logging.lines}
       LOGGING_KAFKA_GROUP_ID: ${LOGGING_KAFKA_GROUP_ID:-logging-service}
       LOGGING_KAFKA_DLT_TOPIC: ${LOGGING_KAFKA_DLT_TOPIC:-logging.lines.dlt}

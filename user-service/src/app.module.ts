@@ -6,6 +6,10 @@
  *   the JWKS/health controllers (replaces user-service/src/app.module.ts; original disclosure:
  *   Claude Code, Claude Opus 5, 2026-09-25).
  * Author review: 10-15 part reviewed by Deanson, 2026-10-15. 10-16 changes: successfully reviewed by Deanson, 2026-10-16.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Registered the correlation-id and per-request log middleware, and the shipper's
+ *        shutdown hook, so this service's lines reach the Logging Service (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -14,6 +18,7 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import * as path from 'path';
 import { AuthModule } from './auth/auth.module';
 import { AuthGuard } from './common/guards/auth.guard';
+import { LogShipping } from './common/log';
 import { validate } from './config/env.validation';
 import { InfraModule } from './infra/infra.module';
 import { SecurityModule } from './security/security.module';
@@ -33,6 +38,8 @@ import { JwksController } from './utils/jwks.controller';
   ],
   controllers: [JwksController, HealthController],
   providers: [
+    // Flushes the buffered log lines and closes the producer on shutdown.
+    LogShipping,
     // Every route needs a valid access token unless it is @Public().
     { provide: APP_GUARD, useClass: AuthGuard },
     // Validates every request body/query/param whose type is a createZodDto class.

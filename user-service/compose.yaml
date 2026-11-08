@@ -122,6 +122,11 @@ services:
       # deliberately no depends_on on kafka or kafka-init: the service must start and accept
       # sign-ups with Kafka down, and the relay keeps retrying until the broker and topic exist.
       USER_KAFKA_BROKERS: kafka:9092
+      # Forwarded explicitly: this environment list is an allowlist, and the root .env only
+      # supplies values for interpolation - it does not reach the container. Without this
+      # line a configured topic changes what the store consumes and not what this service
+      # publishes, and the store goes quiet.
+      USER_LOG_TOPIC: ${USER_LOG_TOPIC:-logging.lines}
       USER_OUTBOX_POLL_MS: ${USER_OUTBOX_POLL_MS:-}
       USER_OUTBOX_MAX_BACKOFF_MS: ${USER_OUTBOX_MAX_BACKOFF_MS:-}
     ports:

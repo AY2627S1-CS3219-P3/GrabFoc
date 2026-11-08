@@ -9,9 +9,12 @@
  *        Logging Service's store and not only this container's stdout. The shared broker (#75)
  *        this was waiting for is merged (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: defer to LogShipper.stop(), which exists for this and flushes twice; one
+ *        flush left the last buffered lines to be discarded by the disconnect (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
-import { config } from '../config';
 import { KafkaLinePublisher } from './kafka.publisher';
 import { LogShipper } from './log-shipper';
 
@@ -25,12 +28,20 @@ import { LogShipper } from './log-shipper';
  * is no injector to ask. The shipper takes its publisher at construction and never afterwards,
  * which is deliberate: there is no window in which a line is emitted against a half-wired shipper.
  *
+ * Read from the environment rather than from this service's config for the same reason every
+ * other copy of this file does: `log` is built before Nest has an injector to ask, and a logging
+ * component must never be the reason a service fails to start.
+ *
  * Constructing it costs nothing and connects nothing: `KafkaLinePublisher` connects on its first
  * publish. With no brokers set - every test run, and any standalone run - nothing is built at all,
  * the shipper starts no flush timer, and lines go to stdout exactly as before.
  */
-const publisher = config.kafkaBrokers.length
-  ? new KafkaLinePublisher(config.logTopic, config.kafkaBrokers)
+const brokers = (process.env.SUPPLIER_KAFKA_BROKERS || '')
+  .split(',')
+  .map((broker) => broker.trim())
+  .filter(Boolean);
+const publisher = brokers.length
+  ? new KafkaLinePublisher(process.env.SUPPLIER_LOG_TOPIC || 'logging.lines', brokers)
   : undefined;
 
 /**
@@ -41,7 +52,7 @@ const publisher = config.kafkaBrokers.length
 export const log = new LogShipper({ service: 'supplier', publisher });
 
 /**
- * Flushes what is buffered and closes the producer on shutdown.
+ * Stops the shipper and closes the producer on shutdown.
  *
  * Registered in `app.module.ts` so Nest's `enableShutdownHooks()` reaches it. Without this the
  * last flush interval's worth of lines is lost on every deploy - which are the lines about
@@ -52,7 +63,12 @@ export class LogShipping implements OnApplicationShutdown {
   async onApplicationShutdown(): Promise<void> {
     if (!publisher) return;
     try {
-      await log.flush();
+      // stop(), not flush(): it clears the interval and then flushes *twice*, because the first
+      // flush only joins the publish already in flight and the second sends what was buffered
+      // while that one ran. A single flush leaves those last lines in the buffer, and the
+      // disconnect below then throws them away - which are the lines about whatever was
+      // happening as the container went down. The shipper documents this; I had not read it.
+      await log.stop();
     } catch (err) {
       // Never from here: flush() resolves even when a publish fails, and the lines are on stdout
       // regardless. Caught anyway so a shutdown cannot be the thing a log line breaks.

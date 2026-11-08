@@ -86,6 +86,39 @@ describe('a consumed message reaching the seam', () => {
   });
 });
 
+describe('starting up', () => {
+  const topic = config.kafkaTopic;
+  const dlt = config.kafkaDeadLetterTopic;
+  afterEach(() => {
+    (config as { kafkaTopic: string }).kafkaTopic = topic;
+    (config as { kafkaDeadLetterTopic: string }).kafkaDeadLetterTopic = dlt;
+  });
+
+  it('refuses a dead-letter topic equal to the source topic', async () => {
+    (config as { kafkaDeadLetterTopic: string }).kafkaDeadLetterTopic = config.kafkaTopic;
+    // Otherwise the first refused line is parked back onto the topic it came from, rejected again
+    // because a dead-letter body is not a valid log line, and republished without end.
+    await expect(new KafkaIngest().start(async () => undefined)).rejects.toThrow(
+      /both "logging\.lines"/,
+    );
+  });
+});
+
+describe('shutting down', () => {
+  it('disconnects once even when both destroy hooks call it at the same time', async () => {
+    const ingest = new KafkaIngest();
+    await ingest.send(
+      { value: '{}', topic: 'logging.lines', offset: '1', headers: {} },
+      'reason',
+      '{}',
+    );
+    producer.disconnect.mockClear();
+    // Nest runs provider destroy hooks concurrently with Promise.all, and two of them call this.
+    await Promise.all([ingest.stop(), ingest.stop()]);
+    expect(producer.disconnect).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('parking a line this service will not store', () => {
   const inbound: InboundMessage = {
     value: '{"this":"is what arrived, unredacted"}',

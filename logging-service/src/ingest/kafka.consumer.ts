@@ -12,6 +12,11 @@
  *        x-request-id. The draft parked the raw bytes, which is what the seam was changed in
  *        review to prevent (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: refuse a dead-letter topic equal to the source topic, which would republish a
+ *        refused line without end, and coalesce stop() behind one promise because Nest runs the
+ *        two destroy hooks that call it concurrently (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
@@ -56,6 +61,7 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
   private readonly producer = this.kafka.producer({ kafkaJS: { idempotent: true } });
   private consumer?: KafkaJS.Consumer;
   private producerReady = false;
+  private stopping?: Promise<void>;
 
   /**
    * Subscribes and hands each message to the handler. `eachMessage` stores the offset only after
@@ -79,7 +85,19 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
     this.logger.log(`Consuming ${config.kafkaTopic} as ${config.kafkaGroupId}`);
   }
 
-  async stop(): Promise<void> {
+  /**
+   * Coalesced behind one promise, because this has two callers and Nest runs destroy hooks
+   * concurrently with `Promise.all`: `IngestService.onModuleDestroy` stops the consumer it was
+   * given, and this class's own hook stops itself. Both would otherwise pass the checks below and
+   * call `disconnect()` on the same native client at the same time, which races its teardown and
+   * can reject out of an ordinary SIGTERM.
+   */
+  stop(): Promise<void> {
+    this.stopping ??= this.disconnectAll();
+    return this.stopping;
+  }
+
+  private async disconnectAll(): Promise<void> {
     await this.consumer?.disconnect();
     this.consumer = undefined;
     if (this.producerReady) {
@@ -138,6 +156,16 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
    * for the first line to vanish.
    */
   private async ensureTopics(): Promise<void> {
+    // Before connecting anything: parking a rejected line onto the topic being consumed feeds it
+    // straight back in, and a dead-letter body is not a valid log line, so it is rejected and
+    // parked again, forever, growing the topic as it goes.
+    if (config.kafkaTopic === config.kafkaDeadLetterTopic) {
+      throw new Error(
+        `LOGGING_KAFKA_TOPIC and LOGGING_KAFKA_DLT_TOPIC are both "${config.kafkaTopic}". A line ` +
+          'this service refuses would be parked back onto the topic it was read from and ' +
+          'republished without end; set the dead-letter topic to a different name.',
+      );
+    }
     const admin = this.kafka.admin();
     await admin.connect();
     try {
