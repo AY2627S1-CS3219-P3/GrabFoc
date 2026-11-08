@@ -12,6 +12,9 @@ Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Added HistoryEntry, getHistory(), detailOf(), suspendedSide() and cancelledBecause(), so a cancelled order's page can say why and whose account was suspended (#184).
 Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: cancelledBecause() words a SUPPLIER_DEACTIVATED cancellation (#121's reason).
+Author review: Pending review by Zi Yi.
 */
 import { withSessionMutation } from '@/lib/session-client';
 import { type FieldIssue, parseServiceError } from '@/lib/service-errors';
@@ -224,6 +227,7 @@ export function cancelledBecause(entry: HistoryEntry, order: Order, viewer: 'req
     case 'REQUESTER_CANCELLED': return viewer === 'requester' ? 'you cancelled it.' : 'the requester cancelled it.';
     case 'MUTUAL_CANCELLATION': return 'the requester and the courier agreed to cancel it.';
     case 'EXPIRED': return 'its delivery window ended before it was finished.';
+    case 'SUPPLIER_DEACTIVATED': return 'its pickup or delivery location was deactivated.';
     case 'CREDIT_NOT_RESERVED': return viewer === 'requester' ? "your credits couldn't be reserved." : "the requester's credits couldn't be reserved.";
     default: return null;
   }

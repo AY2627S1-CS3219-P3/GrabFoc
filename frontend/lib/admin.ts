@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Added the admin dashboard's types, fetchers and React Query keys (docs/admin-dashboard-plan.md §8, #184).
 Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Worded a SUPPLIER_DEACTIVATED cancellation in the order timeline (#121's reason).
+Author review: Pending review by Zi Yi.
 */
 import { useQuery } from '@tanstack/react-query';
 import { withSessionMutation } from '@/lib/session-client';
@@ -145,6 +148,7 @@ const CANCEL_REASON: Record<string, string> = {
   MUTUAL_CANCELLATION: 'The requester and the courier agreed to cancel it.',
   EXPIRED: 'Its delivery window ended before it was finished.',
   USER_SUSPENDED: 'An admin suspended the account of the requester or the courier.',
+  SUPPLIER_DEACTIVATED: 'An admin deactivated its pickup or delivery location.',
   CREDIT_NOT_RESERVED: 'The requester’s credits could not be reserved, usually because they did not have enough.',
 };
 /** A cancellation's reason in plain words, naming whose account a suspension was on when the entry says. */
