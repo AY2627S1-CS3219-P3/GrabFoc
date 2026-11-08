@@ -2,6 +2,11 @@
 # Tool: Codex (model: GPT-6), date: 2026-10-13
 # Scope: Exclude secrets, dependencies and obsolete native build artifacts from stock Envoy packaging.
 # Author review: Pending Jie Yang's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Excluded Syncthing's *.sync-conflict-* copies from this build context, which the
+#   repository-root .dockerignore never reaches because this service builds from its own
+#   directory (issue #52).
+# Author review: Cole Lin, read and approved.
 
 node_modules
 dist
@@ -11,3 +16,9 @@ dist
 *.log
 .build
 envoy/__pycache__
+
+# Syncthing's conflict copies. They sit next to the file they diverged from, so `COPY src` pulls
+# them into the image and the build compiles them - and they are older than the file they came
+# from, so they fail. The repository-root .dockerignore cannot help here: this service's build
+# context is its own directory, so Docker reads this file instead (issue #52).
+**/*.sync-conflict-*

@@ -208,6 +208,47 @@ class RouteFilesTest(unittest.TestCase):
         endpoint = order["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
         self.assertEqual(endpoint["address"]["socket_address"], {"address": "order", "port_value": 3005})
 
+    # AI-generated (Claude Code, 2026-11-08; pending review by Jie Yang)
+    def test_access_log_matches_the_log_store_shape(self):
+        """The gateway's line reads like every service's, so collecting it needs no mapping."""
+        config = self.renderer.configuration(self.env)
+        hcm = (config["static_resources"]["listeners"][0]["filter_chains"][0]
+               ["filters"][0]["typed_config"])
+        logs = hcm["access_log"]
+        base = logs[0]["typed_config"]["log_format"]["json_format"]
+        # The field names the Logging Service stores. lineId is absent on purpose: Envoy has no
+        # UUID source, and one request can emit two of these entries, so whatever collects this
+        # stdout has to mint it.
+        self.assertEqual(set(base), {"event", "level", "ts", "requestId", "method", "service",
+                                     "upstream", "status", "durationMs", "path"})
+        self.assertEqual(base["event"], "request_completed")
+        self.assertEqual(base["level"], "info")
+        self.assertEqual(base["ts"], "%START_TIME(%Y-%m-%dT%H:%M:%S.%3fZ)%")
+        self.assertNotIn("lineId", base)
+        # `service` is this gateway, as a literal, not %UPSTREAM_CLUSTER%: the store requires a
+        # service and refuses the whole line when one is null, which the operator renders for a
+        # request that reaches no upstream. The upstream keeps its own field.
+        self.assertEqual(base["service"], "gateway")
+        self.assertEqual(base["upstream"], "%UPSTREAM_CLUSTER%")
+        # Left as plain operators on purpose: this Envoy renders a value that is exactly one
+        # operator with the operator's own type, so these arrive as JSON numbers, which is what
+        # the store requires. Checked by running Envoy, not from the documentation.
+        self.assertEqual(base["status"], "%RESPONSE_CODE%")
+        self.assertEqual(base["durationMs"], "%DURATION%")
+        # An outcome worth finding on its own gets its own entry, with its own event and level -
+        # level cannot be derived from the status inside a json_format.
+        outcomes = []
+        for entry in logs[1:]:
+            fmt = entry["typed_config"]["log_format"]["json_format"]
+            comparison = entry["filter"]["status_code_filter"]["comparison"]
+            outcomes.append((fmt["event"], fmt["level"], comparison["op"],
+                             comparison["value"]["default_value"]))
+            # Same field set as the base line, whatever the outcome.
+            self.assertEqual(set(fmt), set(base))
+        self.assertEqual(outcomes, [("unauthorized_access", "warn", "EQ", 401),
+                                    ("unauthorized_access", "warn", "EQ", 403),
+                                    ("upstream_error", "error", "GE", 500)])
+
     # AI-generated (Claude Code, 2026-11-06; reviewed by Zi Yi, 2026-11-07; pending review by Jie Yang)
     def test_admin_dashboard_reads_reach_their_service_with_jwt(self):
         config = self.renderer.configuration(self.env)

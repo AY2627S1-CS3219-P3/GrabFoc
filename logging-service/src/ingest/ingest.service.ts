@@ -54,6 +54,18 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
  * Scope: Describe the replacement the walk now makes, not the one it used to (PR #200 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: a broker that cannot be reached no longer takes the query API down with it,
+ *        which is what every message in this method already promised (issue #52).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: retry a consumer that could not start, rather than leaving ingest off for the
+ *        life of a healthy container and an empty store nobody notices (issue #52).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: do not announce consuming when the attempt failed and a retry is pending
+ *        (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -67,6 +79,9 @@ import { DEAD_LETTERS, DeadLetters, InboundMessage, LINE_CONSUMER, LineConsumer 
 export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('Ingest');
   readonly counts = { stored: 0, duplicate: 0, rejected: 0, failed: 0, deadLettered: 0, deadLetterFailed: 0 };
+
+  private stopped = false;
+  private retry?: NodeJS.Timeout;
 
   constructor(
     private readonly lines: LinesService,
@@ -83,8 +98,10 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
     }
     if (!this.consumer) {
       this.logger.warn(
-        `LOGGING_KAFKA_BROKERS is set but no consumer is wired in yet (see #75, the shared Kafka ` +
-          `broker). Lines produced to "${config.kafkaTopic}" will wait in the topic until it is.`,
+        `LOGGING_KAFKA_BROKERS is set but no LINE_CONSUMER is provided: ingest is off, the query ` +
+          `API is up. Lines produced to "${config.kafkaTopic}" wait in the topic. app.module.ts ` +
+          `provides KafkaIngest whenever brokers are set, so reaching this means that list was ` +
+          `changed or a test is constructing this service on its own.`,
       );
       return;
     }
@@ -104,11 +121,52 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
       );
       return;
     }
-    await this.consumer.start((message) => this.handle(message));
-    this.logger.log(`Consuming "${config.kafkaTopic}" as "${config.kafkaGroupId}"`);
+    // No log line here: startConsuming() resolves whether or not it succeeded, because a failure
+    // schedules a retry rather than rejecting - so announcing success from this point said the
+    // service was consuming while nothing was, and an operator reading it would have called ingest
+    // healthy with an empty store. The success line is inside the branch that earned it (review).
+    await this.startConsuming();
+  }
+
+  /**
+   * Starts consuming, and keeps trying if it cannot.
+   *
+   * Guarded first because a broker that is not reachable must not take this service down: `start()`
+   * connects an admin client and a consumer, and an unhandled rejection here fails Nest's
+   * bootstrap, exits the container, and takes the query API - which needs no broker at all - with
+   * it. Every message in this method promises the opposite.
+   *
+   * Retried because giving up once is almost as bad. On a fresh `docker compose up` this service
+   * waits only for its own database, so it reaches this point while Kafka is still starting and
+   * before kafka-init has created the topics - and `onApplicationBootstrap` runs once. The
+   * container stays healthy, the query API answers, and the store silently never fills, which is
+   * the one failure nobody would notice. `depends_on` is not the fix: this compose file is also
+   * run on its own, where no `kafka` service exists to depend on.
+   *
+   * Backs off to 30s and keeps going: the broker coming back is a normal event, not an error.
+   */
+  private async startConsuming(attempt = 0): Promise<void> {
+    if (this.stopped || !this.consumer) return;
+    try {
+      await this.consumer.start((message) => this.handle(message));
+      this.logger.log(`Consuming "${config.kafkaTopic}" as "${config.kafkaGroupId}"`);
+    } catch (err) {
+      if (this.stopped) return;
+      const delay = Math.min(30_000, 1000 * 2 ** attempt);
+      this.logger.error(
+        `Could not start consuming "${config.kafkaTopic}": ${err instanceof Error ? err.message : err}. ` +
+          `The query API is up and lines wait in the topic; retrying in ${delay}ms.`,
+      );
+      this.retry = setTimeout(() => void this.startConsuming(attempt + 1), delay);
+      // Never hold the process open just to retry a log consumer.
+      this.retry.unref();
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
+    // Before stopping, so an in-flight retry does not start a consumer after teardown.
+    this.stopped = true;
+    if (this.retry) clearTimeout(this.retry);
     await this.consumer?.stop();
   }
 
