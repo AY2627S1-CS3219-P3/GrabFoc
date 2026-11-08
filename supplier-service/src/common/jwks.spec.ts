@@ -4,7 +4,31 @@
  * Scope: Generated these unit tests for bearer-token verification against a stub JWKS server.
  * Author review (Jian Bing): Ran `npm test` on 2026-10-01 (157 passed) and verified each test
  *        case in this file by hand.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+ * Scope: Added the empty and malformed key-set rows (PR #129 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Reworked the alg/use cases now that an unusable key set is caught when it is fetched, and
+ *        replaced the unknown-kid timing cases, which pinned the behaviour the PR #129 review
+ *        found wrong: the first miss refetches immediately, and only repeats are rate-limited.
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+ * Scope: Added the case where the cold-cache fetch is itself the miss (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a key whose type the verifier cannot use at all (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a declared alg the key type cannot serve (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a header algorithm the key's own type cannot serve (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Added the cases for a key whose key_ops does not permit verification (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  */
+import { generateKeyPairSync } from 'node:crypto';
 import { config } from '../config';
 import { JwksStub, makeKey, signToken } from '../test/jwks-stub';
 import { JwksUnavailableError, resetJwksCache, verifyToken } from './jwks';
@@ -78,13 +102,28 @@ describe('rejected tokens (null)', () => {
     await expect(verifyToken(bearer(signToken(rsa, {}, { alg: 'HS256' })))).resolves.toBeNull();
   });
 
-  it('rejects a token whose alg differs from the one its key was published for', async () => {
-    stub.keys = [{ ...rsa, jwk: { ...rsa.jwk, alg: 'PS256' } }];
-    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toBeNull();
+  /**
+   * The published alg and use are now checked when the key set is *fetched*, not only when a token
+   * arrives, so these two cases split in half (PR #129 review, swept here).
+   *
+   * When such a key is the only one, the set holds nothing this service can verify with, and the
+   * honest answer is "we cannot judge your token" - 503 - rather than 401, which says the caller's
+   * token is bad. When a usable key sits beside it, the unusable one is simply filtered out, and a
+   * token that names it is an unknown kid: 401, as before.
+   */
+  it.each([
+    ['an alg we do not accept', { alg: 'PS256' }],
+    ['a key published for encryption', { use: 'enc' }],
+  ])('treats a set holding only %s as unavailable, not as a bad token', async (_why, patch) => {
+    stub.keys = [{ ...rsa, jwk: { ...rsa.jwk, ...patch } }];
+    await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);
   });
 
-  it('rejects a token matched to a key published for encryption, not signing', async () => {
-    stub.keys = [{ ...rsa, jwk: { ...rsa.jwk, use: 'enc' } }];
+  it.each([
+    ['an alg we do not accept', { alg: 'PS256' }],
+    ['a key published for encryption', { use: 'enc' }],
+  ])('rejects a token naming %s when a usable key sits beside it', async (_why, patch) => {
+    stub.keys = [{ ...rsa, jwk: { ...rsa.jwk, ...patch } }, ec];
     await expect(verifyToken(bearer(signToken(rsa)))).resolves.toBeNull();
   });
 
@@ -142,9 +181,21 @@ describe('when the JWKS cannot be used', () => {
     ['invalid JSON', { status: 200, body: '<html>not json' }],
     ['a null body', { status: 200, body: 'null' }],
     ['no keys array', { status: 200, body: '{"keys":"nope"}' }],
+    ['an empty key set', { status: 200, body: '{"keys":[]}' }],
+    ['a key set holding null', { status: 200, body: '{"keys":[null]}' }],
+    ['a key set holding a string', { status: 200, body: '{"keys":["not-a-key"]}' }],
+    ['a key set holding an empty object', { status: 200, body: '{"keys":[{}]}' }],
+    ['a key with no kid', { status: 200, body: '{"keys":[{"kty":"RSA"}]}' }],
+    ['a key with no kty', { status: 200, body: '{"keys":[{"kid":"k1"}]}' }],
   ])('throws JwksUnavailableError on %s', async (_label, reply) => {
     stub.respond = () => reply;
     await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);
+  });
+
+  it('keeps working when a key set holds one good key beside a junk entry', async () => {
+    stub.respond = () => ({ status: 200, body: JSON.stringify({ keys: [{}, rsa.jwk] }) });
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.not.toBeNull();
+    stub.respond = undefined;
   });
 
   it('throws JwksUnavailableError when the server is unreachable', async () => {
@@ -184,20 +235,83 @@ describe('key caching', () => {
     expect(stub.fetches).toBe(2);
   });
 
-  it('refetches for an unknown kid only once 30 seconds have passed', async () => {
+  /**
+   * The rate limit is on repeated *misses*, not on the last ordinary fetch. Gated on the cache's
+   * own timestamp, a rotation seconds after a normal fetch was answered with 401 until that cache
+   * aged out - up to 30 seconds of telling a valid administrator their token was bad (PR #129
+   * review, swept here).
+   */
+  /**
+   * A cold cache plus an unknown kid went to the endpoint twice in one request: once because the
+   * cache was empty, then again because the kid was missing from the set it had just loaded. Double
+   * the traffic on exactly the requests that are already failing, and a second fetch that fails
+   * turns an honest 401 into a 503 (PR #157 review).
+   */
+  it('fetches the key set once when a cold cache already has the answer', async () => {
+    await expect(verifyToken(bearer(signToken(makeKey('never-published'))))).resolves.toBeNull();
+    expect(stub.fetches).toBe(1);
+  });
+
+  it('picks up a rotated key on the first unknown kid, without waiting', async () => {
     await verifyToken(bearer(signToken(rsa)));
     const rotated = makeKey('rsa-2');
     stub.keys = [rsa, ec, rotated];
 
-    // Within 30 s: no refetch, so the new key is not known yet.
-    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toBeNull();
-    expect(stub.fetches).toBe(1);
+    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toEqual({ sub: 'user-1', role: 'USER' });
+    expect(stub.fetches).toBe(2);
+  });
 
-    // After 30 s: one refetch picks up the rotated key.
+  it('does not refetch again for another unknown kid within 30 seconds', async () => {
+    await verifyToken(bearer(signToken(rsa)));
+    // The first miss spends the allowance.
+    await expect(verifyToken(bearer(signToken(makeKey('gone-1'))))).resolves.toBeNull();
+    expect(stub.fetches).toBe(2);
+
+    const rotated = makeKey('rsa-2');
+    stub.keys = [rsa, ec, rotated];
+    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toBeNull();
+    expect(stub.fetches).toBe(2);
+
+    // After 30 s the allowance is back.
     const start = Date.now();
     jest.spyOn(Date, 'now').mockReturnValue(start + 31 * 1000);
     await expect(verifyToken(bearer(signToken(rotated)))).resolves.toEqual({ sub: 'user-1', role: 'USER' });
+    expect(stub.fetches).toBe(3);
+  });
+
+  /**
+   * The cold-cache fetch is itself the endpoint's answer about that kid, so it has to spend the
+   * allowance. It did not, so the gate was still open on the *next* request: while invalid tokens
+   * kept arriving, every one of them went to the endpoint, instead of one per 30 seconds
+   * (PR #157 review).
+   */
+  it('spends the allowance when the cold-cache fetch is itself the miss', async () => {
+    await expect(verifyToken(bearer(signToken(makeKey('gone-1'))))).resolves.toBeNull();
+    expect(stub.fetches).toBe(1);
+
+    await expect(verifyToken(bearer(signToken(makeKey('gone-2'))))).resolves.toBeNull();
+    expect(stub.fetches).toBe(1);
+
+    // Still a rate limit and not a lockout: a rotation is picked up once the window is over.
+    const rotated = makeKey('rsa-2');
+    stub.keys = [rsa, ec, rotated];
+    jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 31 * 1000);
+    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toEqual({ sub: 'user-1', role: 'USER' });
     expect(stub.fetches).toBe(2);
+  });
+
+  it('retries an unknown kid once the endpoint recovers from a failed refresh', async () => {
+    await verifyToken(bearer(signToken(rsa)));
+    const rotated = makeKey('rsa-2');
+
+    stub.respond = () => ({ status: 500, body: '{}' });
+    await expect(verifyToken(bearer(signToken(rotated)))).rejects.toBeInstanceOf(JwksUnavailableError);
+
+    // Recovers straight away: the miss is recorded only once the endpoint has answered, so this
+    // is not held off for the rest of the rate-limit window.
+    stub.respond = undefined;
+    stub.keys = [rsa, ec, rotated];
+    await expect(verifyToken(bearer(signToken(rotated)))).resolves.toEqual({ sub: 'user-1', role: 'USER' });
   });
 
   it('makes one refetch for 20 simultaneous requests with a new kid', async () => {
@@ -215,5 +329,144 @@ describe('key caching', () => {
     await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);
     stub.respond = undefined;
     await expect(verifyToken(bearer(signToken(rsa)))).resolves.not.toBeNull();
+  });
+});
+
+/**
+ * The filter checked `alg` only when the key carried one, and proved usability by *importing* the
+ * key. An Ed25519 or P-384 JWK with no `alg` imports perfectly well and this service can verify
+ * with neither: a caller naming that kid with an `RS256` header reached
+ * `verify('sha256', ..., ed25519Key, ...)`, which throws `ERR_OSSL_INVALID_DIGEST` - an unhandled
+ * 500 out of the auth path, from an unauthenticated request. And when it was the only key, the set
+ * counted as usable rather than unavailable (PR #157 review).
+ */
+describe('a key whose type this service cannot verify with', () => {
+  const unusable = (kid: string, make: () => { publicKey: { export: (o: { format: 'jwk' }) => object } }) => {
+    const { publicKey } = make();
+    // Deliberately no `alg`: a key that declares one was already filtered out.
+    return { kid, alg: 'RS256' as const, privateKey: rsa.privateKey, jwk: { ...publicKey.export({ format: 'jwk' }), kid, use: 'sig' } };
+  };
+
+  const ed = () => unusable('ed-1', () => generateKeyPairSync('ed25519'));
+  const p384 = () => unusable('ec-384', () => generateKeyPairSync('ec', { namedCurve: 'P-384' }));
+
+  it.each([
+    ['an Ed25519 key', ed],
+    ['a P-384 key', p384],
+  ])('treats a set holding only %s as unavailable, not as a bad token', async (_why, build) => {
+    const key = build();
+    stub.keys = [key as never];
+    await expect(verifyToken(bearer(signToken(rsa, {}, { kid: key.kid })))).rejects.toBeInstanceOf(
+      JwksUnavailableError,
+    );
+  });
+
+  it.each([
+    ['an Ed25519 key', ed],
+    ['a P-384 key', p384],
+  ])('rejects a token naming %s when a usable key sits beside it', async (_why, build) => {
+    const key = build();
+    stub.keys = [key as never, rsa];
+    await expect(verifyToken(bearer(signToken(rsa, {}, { kid: key.kid })))).resolves.toBeNull();
+  });
+
+  it('still accepts an RSA key that declares no alg', async () => {
+    stub.keys = [{ ...rsa, jwk: { ...rsa.jwk, alg: undefined } }];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toMatchObject({ sub: 'user-1' });
+  });
+
+  it('still accepts a P-256 key that declares no alg', async () => {
+    stub.keys = [{ ...ec, jwk: { ...ec.jwk, alg: undefined } }];
+    await expect(verifyToken(bearer(signToken(ec)))).resolves.toMatchObject({ sub: 'user-1' });
+  });
+});
+
+/**
+ * The two restrictions were checked independently: a declared `alg` had to be RS256 or ES256, and
+ * the key type had to be RSA or P-256 - but not *together*. An RSA key declaring `alg: "ES256"`
+ * satisfies both and can serve neither, because `verifyToken` requires the header alg to equal the
+ * key's. The set cached as healthy and every caller got 401, where a set holding nothing
+ * verifiable is supposed to answer 503 (PR #157 review).
+ */
+describe('a declared alg the key type cannot serve', () => {
+  it.each([
+    ['an RSA key declaring ES256', () => ({ ...rsa, jwk: { ...rsa.jwk, alg: 'ES256' } })],
+    ['a P-256 key declaring RS256', () => ({ ...ec, jwk: { ...ec.jwk, alg: 'RS256' } })],
+  ])('treats a set holding only %s as unavailable', async (_why, build) => {
+    stub.keys = [build() as never];
+    await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);
+  });
+
+  it('still accepts the pairs that do match', async () => {
+    stub.keys = [rsa, ec];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toMatchObject({ sub: 'user-1' });
+    await expect(verifyToken(bearer(signToken(ec)))).resolves.toMatchObject({ sub: 'user-1' });
+  });
+});
+
+/**
+ * A JWK's `alg` is optional, and when it was absent the header alone chose the verify path. Node
+ * will verify an RSA signature through the ES256 branch - `dsaEncoding` is ignored for RSA - and a
+ * DER-encoded EC signature through the RS256 branch, so a token could declare an algorithm its
+ * key type cannot serve and still be accepted. The key type, not the header, says which algorithm
+ * a key can serve (PR #157 review).
+ */
+describe('a header algorithm the key type cannot serve', () => {
+  const algLess = (key: typeof rsa) => ({ ...key, jwk: { ...key.jwk, alg: undefined } });
+
+  it('rejects an RSA key used through the ES256 branch', async () => {
+    stub.keys = [algLess(rsa)];
+    await expect(verifyToken(bearer(signToken(rsa, {}, { alg: 'ES256' })))).resolves.toBeNull();
+  });
+
+  it('rejects a P-256 key used through the RS256 branch', async () => {
+    stub.keys = [algLess(ec)];
+    await expect(verifyToken(bearer(signToken(ec, {}, { alg: 'RS256' })))).resolves.toBeNull();
+  });
+
+  it('still accepts each alg-less key through its own branch', async () => {
+    stub.keys = [algLess(rsa)];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toMatchObject({ sub: 'user-1' });
+    resetJwksCache();
+    stub.keys = [algLess(ec)];
+    await expect(verifyToken(bearer(signToken(ec)))).resolves.toMatchObject({ sub: 'user-1' });
+  });
+});
+
+/**
+ * `key_ops` is the JWK field that says what a key may be *used for*, and when it is present it is
+ * exhaustive. A key published with `key_ops: ["encrypt"]` has an ordinary RSA signing shape, so it
+ * imported and passed the filter on `use` alone - meaning anyone holding the matching private key
+ * could authenticate with a key the issuer had explicitly not authorised for verification
+ * (PR #145 review).
+ */
+describe('a key whose key_ops does not permit verification', () => {
+  const withOps = (ops: unknown) => ({ ...rsa, jwk: { ...rsa.jwk, key_ops: ops } });
+
+  it.each([
+    ['encrypt only', ['encrypt']],
+    ['wrapKey only', ['wrapKey']],
+    ['an empty list', []],
+  ])('treats a set holding only a key for %s as unavailable', async (_why, ops) => {
+    stub.keys = [withOps(ops) as never];
+    await expect(verifyToken(bearer(signToken(rsa)))).rejects.toBeInstanceOf(JwksUnavailableError);
+  });
+
+  it('rejects a token naming it when a usable key sits beside it', async () => {
+    stub.keys = [withOps(['encrypt']) as never, ec];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toBeNull();
+  });
+
+  it.each([
+    ['verify alone', ['verify']],
+    ['verify among others', ['verify', 'sign']],
+  ])('still accepts a key permitting %s', async (_why, ops) => {
+    stub.keys = [withOps(ops) as never];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toMatchObject({ sub: 'user-1' });
+  });
+
+  it('still accepts a key that declares no key_ops at all', async () => {
+    stub.keys = [rsa];
+    await expect(verifyToken(bearer(signToken(rsa)))).resolves.toMatchObject({ sub: 'user-1' });
   });
 });

@@ -6,12 +6,15 @@
  *        has to be repeated here. This copy brings the fixes from the #129 and #145 reviews - all
  *        reads of the caller's input inside the serialisation guard, and a fixed reason instead of
  *        an exception message in the fallback line.
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-25
  * Scope: Call Date.prototype.toISOString rather than the value's own, so an override cannot
  *        run after redaction (PR #145 review).
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: Sanitise field *names* as well as values, and bound the buffer in bytes as well as
  *        in lines (PR #129 review). Body kept identical to the canonical copy.
+ * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
  * Scope: A field named `__proto__` no longer disappears, and personal-name fields are redacted
  *        (PR #129 review). Body kept identical to the canonical copy.
@@ -80,7 +83,28 @@
  *        caller's option (PR #157 review). Body kept identical to the canonical copy.
  * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
- * Scope: Generate a replaced field name from its own ordinal (PR #200 review). Body kept
+ * Scope: Make the collision name marker-shaped and normalise a truncated value after the cut
+ *        (PR #157 review). Body kept identical to the canonical copy.
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Trust a marker only by its own numbers, and build the metadata remainder without
+ *        reading requestId again (PR #157 review). Body kept identical to the canonical copy.
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Keep a collision name inside the index range a later pass recognises (PR #157 review).
+ *        This copy led the canonical file for a day, which the ordinal change below closed.
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Recognise only the canonical spelling of a marker's numbers, so leading zeroes cannot
+ *        carry digits past the bound (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Bound a marker's index to three digits as well as to the object's range, so an in-range
+ *        index cannot carry a four-digit code (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Generate a replaced field name from its own ordinal, which ended six rounds of bounding
+ *        what a caller could put inside one (PR #145 and PR #200 reviews). Body kept
  *        identical to the canonical copy.
  * Author review: Cole Lin, read and approved.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
