@@ -36,6 +36,24 @@
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-06
  * Scope: Replace a key that carries a code rather than naming a field (PR #129 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Keep a caller key spelled like a marker from overwriting the key it collides with
+ *        in the parked shape (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Make the collision name marker-shaped, so the walkers still agree on it (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Trust a marker only when its numbers are ones this walk could have written, so a caller
+ *        key shaped like one cannot carry its own digits through (PR #157 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-07
+ * Scope: Generate a replaced field name from its own ordinal instead of bounding the
+ *        numbers a caller may put inside one (PR #200 review).
+ * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Describe the replacement the walk now makes, not the one it used to (PR #200 review).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -228,8 +246,9 @@ const SHAPE_MAX_DEPTH = 4;
 // as caller-controlled as a value: `{ "Bearer eyJ...": "x" }` put the token in the body as a key
 // even once the values had been reduced to types (PR #129 review). Truncating an unsafe key is no
 // good either - 40 characters of a token is still 40 characters of a token - so it is replaced
-// whole, by its position and length. Same rule and same replacement as line.schema.ts and the
-// shipper, so one bad name reads the same wherever it surfaces.
+// whole, by this walk's own count of replacements. Same rule and same replacement as
+// line.schema.ts and the shipper: an ordinal over the same keys in the same order is the same
+// name on both sides, so one bad name reads alike wherever it surfaces.
 const SAFE_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
 /**
  * A key that reads as a field *name*, which is to say it starts with a letter.
@@ -256,32 +275,38 @@ const NAMED_KEY = /^[A-Za-z]/;
  */
 const MAX_UNNAMED_KEY = 3;
 /**
- * The replacement below, recognised on sight. A key is sanitised more than once on its way into a
- * stored row - by the shipper, then by this side's own pass over the same object, then by the
- * dead-letter shape if the line is parked - and the marker does not match SAFE_KEY, so each pass
- * replaced the previous one's work and reported *its* length instead. `alice@nus.edu.sg` left as
- * `[key 0: 16 chars]` and was stored as `[key 0: 17 chars]`, so the row disagreed with the line on
- * stdout and on the topic about the one number the marker exists to carry (PR #129 review). It is
- * a fixed point now. A caller's own key spelled exactly like a marker passes through as well,
- * which costs nothing: the shape carries a position and a length and no content of its own, so
- * the worst case is a key that says about itself what it would have said anyway.
+ * Whether a key can be used as a field name as it stands.
+ *
+ * A name is spelled from the safe alphabet, starts with a letter unless it is too short to carry
+ * anything, and is not `__proto__` - which passes the pattern but is never a usable property name,
+ * because assigning it runs `Object.prototype`'s setter instead of defining a field.
  */
-const KEY_MARKER = /^\[key \d+: \d+ chars\]$/;
+function isUsableName(key: string): boolean {
+  if (!SAFE_KEY.test(key) || key === '__proto__') return false;
+  return NAMED_KEY.test(key) || key.length <= MAX_UNNAMED_KEY;
+}
 
-function safeKey(key: string, index: number): string {
-  // `__proto__` passes the pattern but is never a usable field name: assigning it to an ordinary
-  // object runs Object.prototype's setter instead of defining a property, and the field is lost.
-  // The objects built below have null prototypes, so nothing is lost there - but the store's
-  // inbound schema builds its own object through Zod, which does drop that name, so it is
-  // replaced here rather than shipped and the two sides cannot disagree (PR #129 review).
-  if (KEY_MARKER.test(key)) return key;
-  // A name, or short enough that it cannot be carrying anything. A credential that does start
-  // with a letter still passes, and nothing here can catch that: the rule that covers it is the
-  // one in AGENTS.md about what may go in key position at all.
-  const named = NAMED_KEY.test(key) || key.length <= MAX_UNNAMED_KEY;
-  return SAFE_KEY.test(key) && named && key !== '__proto__'
-    ? key
-    : `[key ${index}: ${key.length} chars]`;
+/**
+ * The stand-in for a name that cannot be used: `[key 1]`, `[key 2]`, by order of replacement.
+ *
+ * Six rounds of review bounded what a caller could put *inside* a replaced name, and each bound
+ * fell to a spelling the previous one allowed: the length field disagreed between passes, the
+ * fixed point let a caller key shaped like a marker through, the collision suffix broke the fixed
+ * point, the numeric limit fell to leading zeroes (`Number('000000')` is 0), and the index range
+ * still left four digits in a wide enough object (PRs #129, #145, #157 and #200 reviews).
+ *
+ * So no caller text is trusted at all. The ordinal is this walk's own count, which a caller cannot
+ * influence; it cannot collide with a kept name, because a kept name comes from an alphabet with
+ * no brackets or spaces in it; and it is a fixed point by construction - a later walk over the
+ * same keys in the same order reaches the same key at the same ordinal and writes the same name.
+ *
+ * That is also why the three walkers agree without sharing anything: the shipper walks a line's
+ * metadata, the store walks the whole line and skips its columns, and this shape walks what could
+ * be parsed - but the *replacements* are the same keys in the same order, so the ordinals match.
+ * The earlier design needed each walker to compute the same position, which they never did.
+ */
+function replacedName(ordinal: number): string {
+  return `[key ${ordinal}]`;
 }
 
 /**
@@ -307,10 +332,13 @@ function describeShape(value: unknown, depth = 0): unknown {
   // Object.prototype's setter, and that field would be missing from the shape with no sign it was
   // ever there - in the one record that exists to say what arrived (PR #129 review).
   const out: Record<string, unknown> = Object.create(null);
-  const entries = Object.entries(value as Record<string, unknown>).slice(0, SHAPE_MAX_KEYS);
-  entries.forEach(([key, inner], index) => {
-    out[safeKey(key, index)] = describeShape(inner, depth + 1);
-  });
+  let replaced = 0;
+  for (const [key, inner] of Object.entries(value as Record<string, unknown>).slice(0, SHAPE_MAX_KEYS)) {
+    // As in the other two walkers: a field that will not be written must not spend an ordinal.
+    if (inner === undefined) continue;
+    const name = isUsableName(key) ? key : replacedName((replaced += 1));
+    out[name] = describeShape(inner, depth + 1);
+  }
   return out;
 }
 
