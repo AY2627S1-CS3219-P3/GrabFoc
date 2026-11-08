@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Wrote up Deanson's screen requirements (Home, Orders, Order detail) as an integration plan, adding the current state of the code, the shared groundwork, the testing steps and the open items.
 Author review: Pending: Deanson to review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Finished orders now stay on the detail page with a banner, cancelled ones saying why, and their cards are links (asked for by Zi Yi in #184 review; needs Deanson's agreement).
+Author review: Reviewed by Zi Yi, 2026-11-07; pending Deanson's agreement.
 -->
 
 # Order Service ↔ frontend integration plan
@@ -123,7 +126,7 @@ A **"Create Order"** button at the top right, shown in requester mode only. It o
   - **Completed** and **Cancelled:** collapsible, closed by default, with counts in the headings. They stay open across the 10 s refreshes.
 - **Fetching:** the API has no status filter, so `listAllOrders()` in `lib/orders.ts` fetches every page (`pageSize=100`, at most 10 pages) and `groupOrders()` splits the orders. Nothing is paginated in the UI.
   - A backend `status` filter would be an API change (an interface decision under the AI policy) and isn't needed for now.
-- **Cards** reuse `order-card.tsx`, plus the order's status. Active cards open `/orders/:id`. Completed and cancelled cards **aren't clickable**, because the detail page sends finished orders back to `/home`.
+- **Cards** reuse `order-card.tsx`, plus the order's status. All cards open `/orders/:id`, including completed and cancelled ones (changed 2026-11-07, #184 review; previously finished cards weren't clickable).
 
 ### Requester tab, `PENDING` orders only
 - **Pencil icon:** opens an edit modal that reuses the create modal's form. It calls `PATCH /orders/:id` with `version` and only the fields that changed: description, pickup or delivery. The credit offer is shown read-only, because the API doesn't allow changing it.
@@ -137,13 +140,14 @@ Caching the polled endpoints on the backend, e.g. with Redis.
 ## 4. Order detail page (`app/orders/[id]/page.tsx`, new)
 
 - Polls `GET /orders/:id` every 10 s.
-- **Finished orders:** if the order's `status` is `CANCELLED` or `COMPLETED`, redirect to `/home` with `router.replace`. This covers both opening a finished order and a poll that finds the order finished while the page is open, e.g. after the expiry job, a mutual cancellation, or an approved completion.
-  - Finished orders aren't listed on the Orders page (§3), so this mostly covers direct links and orders that finish while the page is open.
+- **Finished orders** (changed 2026-11-07, #184 review; previously redirected to `/home`): a `CANCELLED` or `COMPLETED` order stays on the page with a banner, and polling stops.
+  - A cancelled order's banner says why, from the `reason` in its `/history` entry, worded for the viewer: e.g. a courier sees "This order was cancelled: the requester's account has been suspended." Without this, an order cancelled by a suspension vanished from the courier's screen with no explanation.
+  - The proxy forwards `GET /orders/:orderId/history`; the Order Service lets only the participants read it.
 - **Top right:** "Viewing as Requester" or "Viewing as Courier", found by comparing the order's `requesterId` and `courierId` with the caller's id. Someone who is neither, viewing an order that's still available, sees no label.
 - **Body:** two columns side by side, stacked on mobile.
   - **Left column:**
     - the order description;
-    - the status, as a horizontal lifecycle line: `PENDING → ACCEPTED → PICKED_UP → IN_PROGRESS → ARRIVED → COMPLETED` (finished orders redirect instead, see above);
+    - the status, as a horizontal lifecycle line: `PENDING → ACCEPTED → PICKED_UP → IN_PROGRESS → ARRIVED → COMPLETED` (hidden for a cancelled order, which shows its banner instead);
     - the pickup name;
     - the drop-off name;
     - the credit offer;
@@ -164,7 +168,7 @@ Caching the polled endpoints on the backend, e.g. with Redis.
 
 - Accept and Reject call `POST /orders/:id/confirmations/:confirmationId/respond` with `{ "response": "ACCEPTED" }` or `{ "response": "REJECTED" }`.
 - The response is the resolved confirmation, not the order. On success, invalidate `['order', id]` and `['confirmations', id]`.
-- When an approved cancellation or completion makes the order `CANCELLED` or `COMPLETED`, the finished-order redirect above sends both users to `/home`. The responder is redirected straight away; the proposer within 10 s.
+- When an approved cancellation or completion makes the order `CANCELLED` or `COMPLETED`, both users see the finished-order banner above: the responder straight away, the proposer within 10 s.
 
 ### Action buttons: viewing as courier
 There are always two buttons at the bottom of the left column: **Action** and **Cancel**.
@@ -265,8 +269,8 @@ There are always two buttons at the bottom of the left column: **Action** and **
   2. B accepts it. B then gets a 409 `COURIER_BUSY` when accepting a second order.
   3. A edits a `PENDING` order, then cancels one.
   4. The detail page shows the right "viewing as" label for each user.
-  5. Opening a cancelled order, or having it cancelled while the detail page is open, sends the user to `/home` (within 10 s for the second case).
-  6. In both Orders tabs, finished orders sit in the collapsed **Completed** and **Cancelled** sections, with correct counts, and those cards aren't links.
+  5. Opening a cancelled order, or having it cancelled while the detail page is open, shows the cancelled banner with the reason (within 10 s for the second case).
+  6. In both Orders tabs, finished orders sit in the collapsed **Completed** and **Cancelled** sections, with correct counts, and those cards open the order.
   7. As courier B: Pick up → Start delivery → Arrived, with the lifecycle line moving each time. At `ARRIVED`, B presses Request Completion. B sees WAITING, and Cancel is disabled with a hint; within 10 s, A sees NEEDS YOUR RESPONSE.
   8. A accepts: the order is `COMPLETED`, and both users end up on `/home`.
   9. On another order, A proposes a cancellation and B rejects it: the box disappears and the order is unchanged. Then B proposes one and A accepts: both users end up on `/home`. Every Cancel asks for confirmation first.
@@ -284,7 +288,7 @@ There are always two buttons at the bottom of the left column: **Action** and **
 | ⚠ Window ending (§4 note 7): courier steps fail before the expiry job runs; `IN_PROGRESS` orders are cancelled | Later phase (serious) |
 | Showing rejected proposals | Deferred |
 | Notification bell outside the order page | Deferred |
-| Order history on the detail page | Not planned yet |
+| Order history on the detail page | Only a cancellation's reason is shown (#184 review); the full timeline is not planned |
 | Backend `status` filter for `/orders/mine` and `/orders/assigned` | Not needed for now: the frontend fetches every page. ⚠ It would be an API change under the AI policy. |
 
 ### Order-service endpoints and fields not used yet
@@ -293,7 +297,6 @@ These exist in the order-service, but this plan doesn't call them. All are defer
 
 | Endpoint or field | What it does | Why not used |
 |---|---|---|
-| `GET /orders/:orderId/history` | Every change to the order, oldest first: actor, action, old and new status, details | Order history on the detail page isn't planned yet. |
 | `POST /orders/:orderId/confirmations` with `{ "kind": "TIMING_CHANGE", windowStart, windowEnd }` | Proposes a new window once the order is accepted | Window adjustment is deferred (decision 8). |
 | `windowStart` / `windowEnd` in `POST /orders` | Sets the window on create (default: now to +24 h) | The window is read-only for now; the backend defaults are used. |
 | `windowStart` / `windowEnd` in `PATCH /orders/:orderId` | Changes the window of a `PENDING` order | Same: editable windows are deferred. |

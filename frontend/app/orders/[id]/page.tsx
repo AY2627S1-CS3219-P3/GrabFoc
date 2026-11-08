@@ -6,6 +6,9 @@ Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added the coloured status badge next to the order description.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Finished orders stay on the page instead of redirecting to /home, with a banner; a cancelled order says why (#184).
+Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
 */
 "use client";
 
@@ -17,9 +20,9 @@ import { ErrorToast } from "../../components/error-feedback";
 import { ConfirmModal } from "../../components/modal";
 import { StatusBadge } from "../../components/order-card";
 import { SessionScreen, useSession } from "../../components/use-session";
-import { advanceOrder, cancelOrder, type Confirmation, formatTime, getConfirmations, getOrder, isConflict, isFinished,
-  isUnauthorized, type Order, OrderError, orderKeys, type OrderStatus, POLL_MS, propose, respond, STATUS_LABEL,
-  type Step } from "@/lib/orders";
+import { advanceOrder, cancelledBecause, cancelOrder, type Confirmation, formatTime, getConfirmations, getHistory, getOrder,
+  isActive, isConflict, isUnauthorized, type Order, OrderError, orderKeys, type OrderStatus, POLL_MS, propose, respond,
+  STATUS_LABEL, type Step } from "@/lib/orders";
 
 type Role = "requester" | "courier";
 
@@ -50,7 +53,9 @@ function OrderDetail({ id, userId }: { id: string; userId?: string }) {
   // dataUpdatedAt of the proposals when Request Completion got a 409; the next fetch clears it (decision 1).
   const [completionBlockedAt, setCompletionBlockedAt] = useState<number | null>(null);
 
-  const orderQuery = useQuery({ queryKey: orderKeys.order(id), queryFn: () => getOrder(id), refetchInterval: POLL_MS });
+  // A finished order can't change again, so stop polling it.
+  const orderQuery = useQuery({ queryKey: orderKeys.order(id), queryFn: () => getOrder(id),
+    refetchInterval: (query) => query.state.data && !isActive(query.state.data) ? false : POLL_MS });
   const order = orderQuery.data;
   const role: Role | null = !order || !userId ? null
     : order.requesterId === userId ? "requester" : order.courierId === userId ? "courier" : null;
@@ -59,14 +64,19 @@ function OrderDetail({ id, userId }: { id: string; userId?: string }) {
     refetchInterval: POLL_MS, enabled: role !== null && order !== undefined && IN_DELIVERY.includes(order.status) });
   const pending = proposals.data?.find((proposal) => proposal.status === "PENDING");
 
-  // Finished orders, and orders this user can't see, send them home (plan §4).
+  // A cancellation's reason is in its history entry; only fetched once the order is cancelled.
+  const history = useQuery({ queryKey: orderKeys.history(id), queryFn: () => getHistory(id),
+    enabled: role !== null && order?.status === "CANCELLED" });
+  const cancellation = history.data?.findLast((entry) => entry.action === "CANCELLED");
+
+  // Orders this user can't see send them home (plan §4). Finished orders stay, with a banner saying so.
   useEffect(() => {
     const error = orderQuery.error ?? proposals.error;
     if (isUnauthorized(error)) router.replace("/signin");
     else if (orderQuery.error instanceof OrderError && [400, 403, 404].includes(orderQuery.error.status)) {
       router.replace("/home?notice=order-unavailable");
-    } else if (order && isFinished(order)) router.replace("/home");
-  }, [order, orderQuery.error, proposals.error, router]);
+    }
+  }, [orderQuery.error, proposals.error, router]);
 
   function failed(error: Error) {
     if (isUnauthorized(error)) { router.replace("/signin"); return; }
@@ -117,6 +127,7 @@ function OrderDetail({ id, userId }: { id: string; userId?: string }) {
   const busy = step.isPending || directCancel.isPending || proposal.isPending || answer.isPending;
   const inDelivery = IN_DELIVERY.includes(order.status);
   const other = role === "requester" ? "courier" : "requester";
+  const because = cancellation && cancelledBecause(cancellation, order, role);
   const current = LIFECYCLE.indexOf(order.status);
   const completionBlocked = completionBlockedAt !== null && completionBlockedAt === proposals.dataUpdatedAt;
   // While proposals are loading we don't yet know whether one is pending, so hold the proposal buttons.
@@ -131,13 +142,19 @@ function OrderDetail({ id, userId }: { id: string; userId?: string }) {
       <div><h1>Order details</h1><p>Created {formatTime(order.createdAt)}</p></div>
       {role && <span className="status-pill">Viewing as {role === "requester" ? "Requester" : "Courier"}</span>}
     </div>
+    {order.status === "CANCELLED" && <p className="order-finished-banner order-finished-banner--cancelled" role="status">
+      <strong>This order was cancelled</strong>{because ? `: ${because}` : "."}
+    </p>}
+    {order.status === "COMPLETED" && <p className="order-finished-banner order-finished-banner--completed" role="status">
+      <strong>This order was completed.</strong>
+    </p>}
     <div className="order-detail grid grid-cols-1 md:grid-cols-2">
       <section className="order-panel" aria-label="Order">
         <div className="order-panel-heading">
           <h2>{order.orderDescription}</h2>
           <StatusBadge status={order.status} />
         </div>
-        {order.status !== "AWAITING_CREDIT" && <ol className="order-lifecycle" aria-label={`Status: ${STATUS_LABEL[order.status]}`}>
+        {order.status !== "AWAITING_CREDIT" && order.status !== "CANCELLED" && <ol className="order-lifecycle" aria-label={`Status: ${STATUS_LABEL[order.status]}`}>
             {LIFECYCLE.map((status, index) => <li key={status}
               className={index < current ? "is-done" : index === current ? "is-current" : undefined}
               aria-current={index === current ? "step" : undefined}>{STATUS_LABEL[status]}</li>)}

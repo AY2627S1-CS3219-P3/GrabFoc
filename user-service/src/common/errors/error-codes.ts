@@ -7,6 +7,8 @@
  * Scope: Added HAS_ACTIVE_ORDERS (#71).
  * Author review: Reviewed by Zi Yi, 2026-10-20.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+ * Scope: Added SERVICE_KEY_INVALID for the /internal/users routes (#151), matching the Order Service.
+ * Author review: pending — Jie Yang to record the review; Deanson / Zi Yi (User owners) to review.
  * Scope: Replaced NOT_DEACTIVATED with USER_ALREADY_ACTIVE: reactivate also takes SUSPENDED (#180).
  * Author review: Reviewed by Zi Yi, 2026-11-05.
  */
@@ -25,6 +27,7 @@ export const ErrorCode = {
   // 401
   TOKEN_INVALID: 'TOKEN_INVALID',
   INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  SERVICE_KEY_INVALID: 'SERVICE_KEY_INVALID',
   // 403
   FORBIDDEN: 'FORBIDDEN',
   ACCOUNT_DEACTIVATED: 'ACCOUNT_DEACTIVATED',

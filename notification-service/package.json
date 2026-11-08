@@ -2,7 +2,7 @@
   "name": "notification-service",
   "version": "0.1.0",
   "private": true,
-  "description": "FoC Notification Service. AI Assistance Disclosure: Claude Code (Claude Opus 5.5), 2026-10-30; scaffold (#149), following credit-service/package.json. 2026-11-01: Kafka client, Zod and the integration and Kafka test scripts (#150, #152). Author review: pending, Jie Yang to record the review.",
+  "description": "FoC Notification Service. AI Assistance Disclosure: Claude Code (Claude Opus 5.5), 2026-10-30; scaffold (#149), following credit-service/package.json. 2026-11-01: Kafka client, Zod and the integration and Kafka test scripts (#150, #152). Author review: pending, Jie Yang to record the review. 2026-11-08: zod ^4.6.6 (zod memory-exhaustion advisory, #224), and an override keeping multer at 2.5.0 with @nestjs/platform-express on ^11.2.8, as user-service did in #193 (#225).",
   "engines": {
     "node": ">=22.12"
   },
@@ -18,12 +18,12 @@
     "@confluentinc/kafka-javascript": "1.11.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
-    "@nestjs/platform-express": "^11.2.6",
+    "@nestjs/platform-express": "^11.2.8",
     "nodemailer": "^10.3.1",
     "pg": "^8.13.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "zod": "^3.25.76"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
@@ -61,5 +61,8 @@
   },
   "allowScripts": {
     "@confluentinc/kafka-javascript@1.11.0": true
+  },
+  "overrides": {
+    "multer": "2.5.0"
   }
 }
