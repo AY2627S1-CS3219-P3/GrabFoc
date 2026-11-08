@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: Added POST /admin/users/:userId/suspend (#72).
  * Author review: Reviewed by Zi Yi, 2026-10-20.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+ * Scope: Suspend takes a reason; GET login-summary and :userId/login-events (#180).
+ * Author review: Reviewed by Zi Yi, 2026-11-05.
  */
 // AI-generated (reviewed by Deanson)
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
@@ -14,6 +17,8 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '../common/enums/role.enum';
 import { ChangeRoleDto } from './dto/change-role.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
+import { PageQueryDto } from './dto/page-query.dto';
+import { SuspendUserDto } from './dto/suspend-user.dto';
 import { UsersService } from './users.service';
 
 // Every route needs ADMIN; a USER gets 403 from AuthGuard before any handler runs.
@@ -25,6 +30,16 @@ export class UsersAdminController {
   @Get()
   listUsers(@Query() query: ListUsersQueryDto) {
     return this.usersService.listUsers(query);
+  }
+
+  @Get('login-summary')
+  loginSummary() {
+    return this.usersService.loginSummary();
+  }
+
+  @Get(':userId/login-events')
+  listLoginEvents(@Param('userId', ParseUUIDPipe) userId: string, @Query() query: PageQueryDto) {
+    return this.usersService.listLoginEvents(userId, query.page, query.pageSize);
   }
 
   // ParseUUIDPipe: a malformed id is a 400, not a Postgres error.
@@ -45,7 +60,11 @@ export class UsersAdminController {
 
   @Post(':userId/suspend')
   @HttpCode(200)
-  suspend(@CurrentUser('id') callerId: string, @Param('userId', ParseUUIDPipe) userId: string) {
-    return this.usersService.suspend(callerId, userId);
+  suspend(
+    @CurrentUser('id') callerId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: SuspendUserDto,
+  ) {
+    return this.usersService.suspend(callerId, userId, dto.reason);
   }
 }

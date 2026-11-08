@@ -9,6 +9,12 @@ Author review: Reviewed by Zi Yi, 2026-10-21; pending Jie Yang's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added the Order Service upstream address.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
+Scope: Postman baseUrl ends in /gateway, locally and on AWS (#141).
+Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Listed the admin dashboard's User reads (#182).
+Author review: Reviewed by Zi Yi, 2026-11-07; pending review by Jie Yang.
 -->
 
 # API Gateway
@@ -18,12 +24,13 @@ The Compose stack runs official Envoy v1.38.6, with its built-in JWT verificatio
 no native compilation or custom registry release is required.
 See [build and tests](envoy/README.md) and [behaviour differences](envoy/behaviour-differences.md).
 Import the [gateway Postman collection](postman/gateway.postman_collection.json)
-to test User and Supplier routes through port 3003. Its collection description
-contains login and smoke-test instructions. The legacy Node gateway has been removed.
+to test the routes through the gateway. Its `baseUrl` is `http://localhost:3003/gateway`
+locally and `https://<CloudFront URL>/gateway` on AWS; nothing else changes. Its collection
+description contains login and smoke-test instructions. The legacy Node gateway has been removed.
 
 _Origin: AI doc; implementation of the gateway direction recorded in the project `AGENTS.md`._
 
-The gateway routes only implemented User Service methods and paths. Public routes are `POST /auth/register`, `/auth/register/verify`, `/auth/register/resend-otp`, `/auth/login`, `/auth/refresh`, `/auth/password/forgot`, `/auth/password/reset`, and `GET /.well-known/jwks.json`. Protected User routes are `POST /auth/logout`; `GET` and `PATCH /users/me`; `POST /users/me/otp`, `/users/me/email`, `/users/me/email/verify`, `/users/me/password`, and `/users/me/deactivate`; `PATCH /users/me/mobile`; `GET /admin/users`; `PATCH /admin/users/:userId/role`; `POST /admin/users/:userId/reactivate`; and `POST /admin/users/:userId/suspend`. The `/auth` prefix is configurable. Unknown methods and paths, including `/internal/**`, return 404.
+The gateway routes only implemented User Service methods and paths. Public routes are `POST /auth/register`, `/auth/register/verify`, `/auth/register/resend-otp`, `/auth/login`, `/auth/refresh`, `/auth/password/forgot`, `/auth/password/reset`, and `GET /.well-known/jwks.json`. Protected User routes are `POST /auth/logout`; `GET` and `PATCH /users/me`; `POST /users/me/otp`, `/users/me/email`, `/users/me/email/verify`, `/users/me/password`, and `/users/me/deactivate`; `PATCH /users/me/mobile`; `GET /admin/users`, `/admin/users/login-summary` and `/admin/users/:userId/login-events`; `PATCH /admin/users/:userId/role`; `POST /admin/users/:userId/reactivate`; and `POST /admin/users/:userId/suspend`. The `/auth` prefix is configurable. Unknown methods and paths, including `/internal/**`, return 404.
 
 Supplier routes are `GET /location-types`, `GET` and `POST /locations`, `GET` and `PATCH /locations/:locationId`, and `POST /locations/:locationId/deactivate` or `/restore`. All require a valid User Service bearer JWT. The `/locations` prefix is configurable.
 

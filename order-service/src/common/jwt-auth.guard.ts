@@ -7,8 +7,11 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Skips controllers marked @Internal(), which use the service key instead (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+ * Scope: Added @AdminOnly() for the admin dashboard read routes (#181).
+ * Author review: Reviewed by Zi Yi, 2026-11-05.
  */
-import { CanActivate, ExecutionContext, Injectable, createParamDecorator } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable, SetMetadata, createParamDecorator } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { createRemoteJWKSet, errors, jwtVerify, type JWTVerifyGetKey } from 'jose';
@@ -63,6 +66,10 @@ export const CurrentUser = createParamDecorator((_data: unknown, context: Execut
   return caller;
 });
 
+const ADMIN_ONLY = 'adminOnly';
+/** Every route on the controller needs an ADMIN token; anyone else gets 403 before validation runs. */
+export const AdminOnly = () => SetMetadata(ADMIN_ONLY, true);
+
 /** Registered globally: every route needs a valid token, except @Internal() ones (service key). */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -75,6 +82,9 @@ export class JwtAuthGuard implements CanActivate {
     if (this.reflector.get<boolean>(INTERNAL, context.getClass())) return true;
     const req = context.switchToHttp().getRequest<AuthedRequest>();
     req.caller = await verifyBearer(req.header('authorization'), this.jwks);
+    if (this.reflector.get<boolean>(ADMIN_ONLY, context.getClass()) && req.caller.role !== 'ADMIN') {
+      throw new AppError(403, ErrorCode.FORBIDDEN, 'Only admins can view this.');
+    }
     return true;
   }
 }

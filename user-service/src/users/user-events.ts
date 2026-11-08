@@ -6,9 +6,13 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-20
  * Scope: Added the UserSuspended builder (#72), same shape as UserRegistered.
  * Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10-21.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+ * Scope: Added the UserReactivated builder (#180), the same shape plus previousStatus.
+ * Author review: Reviewed by Zi Yi, 2026-11-05.
  */
 // AI-generated (reviewed by Deanson)
 import { randomUUID } from 'crypto';
+import { UserStatus } from '../common/enums/user-status.enum';
 import type { OutboxEvent } from '../infra/outbox/outbox.repository';
 import type { UserRecord } from './users.repository';
 
@@ -44,5 +48,23 @@ export function userSuspended(userId: string): OutboxEvent {
     eventType: 'UserSuspended',
     topic: USER_EVENTS_TOPIC,
     payload: { type: 'UserSuspended', eventId, userId, occurredAt: new Date().toISOString() },
+  };
+}
+
+/**
+ * Sent when an admin reactivates a SUSPENDED or DEACTIVATED account (#180). `previousStatus`
+ * lets the Notification Service say "reinstated" or "reactivated".
+ */
+export function userReactivated(
+  userId: string,
+  previousStatus: UserStatus.SUSPENDED | UserStatus.DEACTIVATED,
+): OutboxEvent {
+  const eventId = randomUUID();
+  return {
+    id: eventId,
+    aggregateId: userId,
+    eventType: 'UserReactivated',
+    topic: USER_EVENTS_TOPIC,
+    payload: { type: 'UserReactivated', eventId, userId, occurredAt: new Date().toISOString(), previousStatus },
   };
 }
