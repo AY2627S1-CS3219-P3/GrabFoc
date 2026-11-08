@@ -8,7 +8,12 @@
  * Scope: Review: defer to LogShipper.stop(), which exists for this and flushes twice; one
  *        flush left the last buffered lines to be discarded by the disconnect (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: read the repo-root .env here, because this module is imported before the
+ *        service config or Nest has loaded it (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
+import * as path from 'path';
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { KafkaLinePublisher } from './kafka.publisher';
 import { LogShipper } from './log-shipper';
@@ -24,6 +29,18 @@ import { LogShipper } from './log-shipper';
  * service's copy of this file reads the same two variables the same way, so they differ only in
  * the names.
  */
+// Loaded here because this file is imported before anything else has read it: a service whose
+// config calls loadEnvFile does so when *its* module runs, and user-service's ConfigModule reads
+// the file during bootstrap - both after this line. Without it, a local run with the settings only
+// in the repo-root .env saw no brokers, built no publisher, and shipped every line to stdout while
+// looking entirely healthy. loadEnvFile does not overwrite a variable that is already set, so in
+// Compose the container's own environment still wins (review).
+try {
+  process.loadEnvFile(path.resolve(__dirname, '../../../.env'));
+} catch {
+  // No .env, which is every containerised run and most test runs.
+}
+
 const brokers = (process.env.USER_KAFKA_BROKERS || '')
   .split(',')
   .map((broker) => broker.trim())

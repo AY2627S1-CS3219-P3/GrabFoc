@@ -110,7 +110,7 @@ describe('starting up', () => {
     expect(consumer.handler).toBeUndefined();
   });
 
-  it('comes up with ingest off when the consumer cannot start at all', async () => {
+  it('comes up with the query API when the consumer cannot start at all', async () => {
     const failing = {
       start: jest.fn().mockRejectedValue(new Error('no brokers available')),
       stop: jest.fn(),
@@ -119,7 +119,51 @@ describe('starting up', () => {
     // The query API needs no broker, so an unreachable one must not take it down: without this,
     // bootstrap rejects, Nest exits, and the container dies with it.
     await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
-    expect(errored.mock.calls.flat().join(' ')).toContain('Ingest is off');
+    expect(errored.mock.calls.flat().join(' ')).toContain('retrying');
+    await service.onModuleDestroy();
+  });
+
+  it('keeps retrying, because giving up once leaves a healthy container with an empty store', async () => {
+    jest.useFakeTimers();
+    try {
+      const failing = {
+        start: jest
+          .fn()
+          .mockRejectedValueOnce(new Error('kafka is still starting'))
+          .mockResolvedValueOnce(undefined),
+        stop: jest.fn(),
+      };
+      const service = new IngestService(lines as unknown as LinesService, failing, deadLetters);
+      await service.onApplicationBootstrap();
+      expect(failing.start).toHaveBeenCalledTimes(1);
+      // On a fresh compose up this service waits only for its own database, so it reaches startup
+      // before kafka is healthy and before the topics exist. One attempt would mean the store
+      // never fills and nothing says so.
+      await jest.advanceTimersByTimeAsync(1000);
+      expect(failing.start).toHaveBeenCalledTimes(2);
+      await service.onModuleDestroy();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not start a consumer after teardown', async () => {
+    jest.useFakeTimers();
+    try {
+      const failing = {
+        start: jest.fn().mockRejectedValue(new Error('kafka is gone')),
+        stop: jest.fn(),
+      };
+      const service = new IngestService(lines as unknown as LinesService, failing, deadLetters);
+      await service.onApplicationBootstrap();
+      await service.onModuleDestroy();
+      await jest.advanceTimersByTimeAsync(60_000);
+      // One attempt, from bootstrap: the pending retry is cancelled rather than connecting a
+      // consumer to a service that is shutting down.
+      expect(failing.start).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('says so, rather than failing, when a broker is set but no consumer is wired in', async () => {

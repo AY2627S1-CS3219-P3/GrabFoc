@@ -14,6 +14,9 @@
     "start:dev": "nest start --watch",
     "test:int": "jest --config jest.int.config.js"
   },
+  "allowScripts": {
+    "@confluentinc/kafka-javascript@1.11.0": true
+  },
   "dependencies": {
     "@confluentinc/kafka-javascript": "1.11.0",
     "@nestjs/common": "^11.0.0",

@@ -58,6 +58,10 @@
  * Scope: Review: a broker that cannot be reached no longer takes the query API down with it,
  *        which is what every message in this method already promised (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: retry a consumer that could not start, rather than leaving ingest off for the
+ *        life of a healthy container and an empty store nobody notices (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -71,6 +75,9 @@ import { DEAD_LETTERS, DeadLetters, InboundMessage, LINE_CONSUMER, LineConsumer 
 export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('Ingest');
   readonly counts = { stored: 0, duplicate: 0, rejected: 0, failed: 0, deadLettered: 0, deadLetterFailed: 0 };
+
+  private stopped = false;
+  private retry?: NodeJS.Timeout;
 
   constructor(
     private readonly lines: LinesService,
@@ -110,24 +117,49 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
       );
       return;
     }
-    // Guarded, because a broker that is not reachable must not take this service down with it.
-    // start() connects an admin client and a consumer; without this, an unresolvable or unhealthy
-    // broker rejects here, Nest's bootstrap fails, the container exits, and the query API - which
-    // needs no broker at all - goes with it. Every message in this method promises the opposite:
-    // "ingest is off, the query API is up". Lines wait in the topic, which is what it is for.
-    try {
-      await this.consumer.start((message) => this.handle(message));
-    } catch (err) {
-      this.logger.error(
-        `Could not start consuming "${config.kafkaTopic}": ${err instanceof Error ? err.message : err}. ` +
-          `Ingest is off and the query API is up; lines wait in the topic.`,
-      );
-      return;
-    }
+    await this.startConsuming();
     this.logger.log(`Consuming "${config.kafkaTopic}" as "${config.kafkaGroupId}"`);
   }
 
+  /**
+   * Starts consuming, and keeps trying if it cannot.
+   *
+   * Guarded first because a broker that is not reachable must not take this service down: `start()`
+   * connects an admin client and a consumer, and an unhandled rejection here fails Nest's
+   * bootstrap, exits the container, and takes the query API - which needs no broker at all - with
+   * it. Every message in this method promises the opposite.
+   *
+   * Retried because giving up once is almost as bad. On a fresh `docker compose up` this service
+   * waits only for its own database, so it reaches this point while Kafka is still starting and
+   * before kafka-init has created the topics - and `onApplicationBootstrap` runs once. The
+   * container stays healthy, the query API answers, and the store silently never fills, which is
+   * the one failure nobody would notice. `depends_on` is not the fix: this compose file is also
+   * run on its own, where no `kafka` service exists to depend on.
+   *
+   * Backs off to 30s and keeps going: the broker coming back is a normal event, not an error.
+   */
+  private async startConsuming(attempt = 0): Promise<void> {
+    if (this.stopped || !this.consumer) return;
+    try {
+      await this.consumer.start((message) => this.handle(message));
+      this.logger.log(`Consuming "${config.kafkaTopic}" as "${config.kafkaGroupId}"`);
+    } catch (err) {
+      if (this.stopped) return;
+      const delay = Math.min(30_000, 1000 * 2 ** attempt);
+      this.logger.error(
+        `Could not start consuming "${config.kafkaTopic}": ${err instanceof Error ? err.message : err}. ` +
+          `The query API is up and lines wait in the topic; retrying in ${delay}ms.`,
+      );
+      this.retry = setTimeout(() => void this.startConsuming(attempt + 1), delay);
+      // Never hold the process open just to retry a log consumer.
+      this.retry.unref();
+    }
+  }
+
   async onModuleDestroy(): Promise<void> {
+    // Before stopping, so an in-flight retry does not start a consumer after teardown.
+    this.stopped = true;
+    if (this.retry) clearTimeout(this.retry);
     await this.consumer?.stop();
   }
 

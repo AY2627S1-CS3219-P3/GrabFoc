@@ -13,7 +13,12 @@
  * Scope: Review: defer to LogShipper.stop(), which exists for this and flushes twice; one
  *        flush left the last buffered lines to be discarded by the disconnect (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: read the repo-root .env here, because this module is imported before the
+ *        service config or Nest has loaded it (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
+import * as path from 'path';
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { KafkaLinePublisher } from './kafka.publisher';
 import { LogShipper } from './log-shipper';
@@ -21,42 +26,55 @@ import { LogShipper } from './log-shipper';
 // AI-generated (reviewed by Cole Lin).
 
 /**
- * The Kafka publisher, or undefined when no brokers are configured.
+ * Read from the environment rather than from this service's validated config, deliberately.
  *
- * Built here rather than injected, because `log` below is a module-level singleton that the auth
- * guard and the request middleware import directly - they run outside Nest's lifecycle, so there
- * is no injector to ask. The shipper takes its publisher at construction and never afterwards,
- * which is deliberate: there is no window in which a line is emitted against a half-wired shipper.
- *
- * Read from the environment rather than from this service's config for the same reason every
- * other copy of this file does: `log` is built before Nest has an injector to ask, and a logging
- * component must never be the reason a service fails to start.
- *
- * Constructing it costs nothing and connects nothing: `KafkaLinePublisher` connects on its first
- * publish. With no brokers set - every test run, and any standalone run - nothing is built at all,
- * the shipper starts no flush timer, and lines go to stdout exactly as before.
+ * `log` below is a module-level singleton that the guard and the middleware import directly, so it
+ * is built before Nest has an injector to ask - and a logging component must never be the reason a
+ * service fails to start, which a config that throws on a missing variable would make it. Every
+ * service's copy of this file reads the same two variables the same way, so they differ only in
+ * the names.
  */
+// Loaded here because this file is imported before anything else has read it: a service whose
+// config calls loadEnvFile does so when *its* module runs, and user-service's ConfigModule reads
+// the file during bootstrap - both after this line. Without it, a local run with the settings only
+// in the repo-root .env saw no brokers, built no publisher, and shipped every line to stdout while
+// looking entirely healthy. loadEnvFile does not overwrite a variable that is already set, so in
+// Compose the container's own environment still wins (review).
+try {
+  process.loadEnvFile(path.resolve(__dirname, '../../../.env'));
+} catch {
+  // No .env, which is every containerised run and most test runs.
+}
+
 const brokers = (process.env.SUPPLIER_KAFKA_BROKERS || '')
   .split(',')
   .map((broker) => broker.trim())
   .filter(Boolean);
+
+/**
+ * The Kafka publisher, or undefined when no brokers are configured.
+ *
+ * Constructing it costs nothing and connects nothing: `KafkaLinePublisher` connects on its first
+ * publish. With no brokers set - every test run, and any standalone run - nothing is built at all,
+ * the shipper starts no flush timer, and lines go to stdout only.
+ */
 const publisher = brokers.length
   ? new KafkaLinePublisher(process.env.SUPPLIER_LOG_TOPIC || 'logging.lines', brokers)
   : undefined;
 
 /**
- * This service's log lines, in the shape the Logging Service stores (issue #52). Lines always go
- * to stdout; with a publisher wired in they are also buffered and shipped to `config.logTopic`,
- * where the Logging Service's ingest reads them.
+ * This service's log lines, in the shape the Logging Service stores (issue #52). Lines always go to
+ * stdout; with a publisher wired in they are also buffered and shipped to the topic its ingest
+ * reads.
  */
 export const log = new LogShipper({ service: 'supplier', publisher });
 
 /**
  * Stops the shipper and closes the producer on shutdown.
  *
- * Registered in `app.module.ts` so Nest's `enableShutdownHooks()` reaches it. Without this the
- * last flush interval's worth of lines is lost on every deploy - which are the lines about
- * whatever was happening as the container went down, the ones most worth having.
+ * Registered in `app.module.ts` so Nest's `enableShutdownHooks()` reaches it. Without this the last
+ * flush interval's worth of lines is lost on every deploy - which are the lines about whatever was
+ * happening as the container went down, the ones most worth having.
  */
 @Injectable()
 export class LogShipping implements OnApplicationShutdown {

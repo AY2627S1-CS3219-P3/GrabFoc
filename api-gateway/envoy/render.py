@@ -285,7 +285,20 @@ def configuration(env):
     if env.get("GATEWAY_JWT_AUDIENCE"):
         provider["audiences"] = [env["GATEWAY_JWT_AUDIENCE"]]
     lua = Path(__file__).with_name("compatibility.lua").read_text()
-    logs = {"event": "request_completed", "requestId": "%REQ(X-REQUEST-ID)%",
+    # The field names and types the Logging Service stores (issue #52), so a line from here reads
+    # the same as one from any service and a collector needs no per-source mapping.
+    #
+    # `lineId` is deliberately absent, and it is the one field Envoy cannot supply: the store wants
+    # a UUID primary key and Envoy's access log has no UUID generator. X-REQUEST-ID is a UUID only
+    # when Envoy minted it - a client may send its own, and the services accept any token matching
+    # [A-Za-z0-9._:-]{1,128} - so using it here would produce lines the store rejects. Whatever
+    # collects this stdout has to mint `lineId`, which it has to do anyway: one request can emit
+    # two entries below, and they cannot share a primary key.
+    #
+    # Nothing ships these lines today. Envoy has no Kafka access logger, so the gateway's record
+    # lives in its container log; this change is so that collecting it later needs no Envoy work.
+    logs = {"event": "request_completed", "level": "info",
+            "ts": "%START_TIME(%Y-%m-%dT%H:%M:%S.%3fZ)%", "requestId": "%REQ(X-REQUEST-ID)%",
             "method": "%REQ(:METHOD)%", "service": "%UPSTREAM_CLUSTER%", "status": "%RESPONSE_CODE%",
             "durationMs": "%DURATION%", "path": "%DYNAMIC_METADATA(foc:path)%"}
     hcm = {"@type": TYPE + "envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager",
@@ -307,11 +320,19 @@ def configuration(env):
         "access_log": [{"name": "envoy.access_loggers.stdout", "typed_config": {
             "@type": TYPE + "envoy.extensions.access_loggers.stream.v3.StdoutAccessLog",
             "log_format": {"json_format": logs}}}]}
-    for event, code in [("unauthorized_access", 401), ("unauthorized_access", 403)]:
+    # A second line for an outcome worth finding on its own, with its own event and level. This
+    # mirrors the services, where a refused request writes both `request_completed` and
+    # `access_denied` sharing a requestId - so a "how many denials" query picks one event and stays
+    # with it. `level` cannot be computed from the status in a json_format, which is why severity
+    # is expressed as a filtered entry rather than a field on the first one.
+    extra = [("unauthorized_access", "warn", {"op": "EQ", "value": {"default_value": 401}}),
+             ("unauthorized_access", "warn", {"op": "EQ", "value": {"default_value": 403}}),
+             ("upstream_error", "error", {"op": "GE", "value": {"default_value": 500}})]
+    for event, level, comparison in extra:
         hcm["access_log"].append({"name": "envoy.access_loggers.stdout", "filter": {
-            "status_code_filter": {"comparison": {"op": "EQ", "value": {"default_value": code}}}},
+            "status_code_filter": {"comparison": comparison}},
             "typed_config": {"@type": TYPE + "envoy.extensions.access_loggers.stream.v3.StdoutAccessLog",
-                "log_format": {"json_format": {**logs, "event": event}}}})
+                "log_format": {"json_format": {**logs, "event": event, "level": level}}}})
     # Multiple endpoints are exposed only through explicit test configuration.
     upstreams = []
     for definition in services:
