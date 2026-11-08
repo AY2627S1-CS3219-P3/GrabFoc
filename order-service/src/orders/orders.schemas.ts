@@ -10,6 +10,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-15
  * Scope: Added the confirmation proposal/response schemas and the Confirmation type (Phase C).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+ * Scope: Added AdminOrdersQuery and the live/past admin scopes (#181).
+ * Author review: Reviewed by Zi Yi, 2026-11-05.
  */
 import { z } from 'zod';
 
@@ -68,6 +71,25 @@ export type ProposeBody = z.infer<typeof ProposeBody>;
 
 export const RespondBody = z.object({ response: z.enum(['ACCEPTED', 'REJECTED']) }).strict();
 export type RespondBody = z.infer<typeof RespondBody>;
+
+/** What an admin sees as live or past. AWAITING_CREDIT is in neither, so it is never listed. */
+export const ADMIN_SCOPES = {
+  live: ['PENDING', 'ACCEPTED', 'PICKED_UP', 'IN_PROGRESS', 'ARRIVED'],
+  past: ['COMPLETED', 'CANCELLED'],
+} as const;
+
+/** No scope means both, e.g. for one user's whole record. */
+export const AdminOrdersQuery = PageQuery.extend({
+  scope: z.enum(['live', 'past']).optional(),
+  state: z.enum([...ADMIN_SCOPES.live, ...ADMIN_SCOPES.past]).optional(),
+  userId: z.string().uuid().optional(), // requester or courier
+})
+  .strict()
+  .refine(({ scope, state }) => !scope || !state || (ADMIN_SCOPES[scope] as readonly string[]).includes(state), {
+    message: 'This state is not in the chosen scope.',
+    path: ['state'],
+  });
+export type AdminOrdersQuery = z.infer<typeof AdminOrdersQuery>;
 
 export type OrderStatus =
   | 'AWAITING_CREDIT' // created, Credit has not confirmed the hold yet

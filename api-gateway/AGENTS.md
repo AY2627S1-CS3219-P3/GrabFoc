@@ -6,6 +6,9 @@ Author review: Jie Yang reviewed earlier notes; Envoy approach approved by the u
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added the Credit balance and history routes to the routing rule (#61), as approved by Jie Yang.
 Author review: pending — Jie Yang to record the review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Added the admin dashboard's User and Order read routes to the routing rule (#182).
+Author review: Reviewed by Zi Yi, 2026-11-07; pending approval by Jie Yang (gateway owner).
 -->
 
 # API Gateway agent notes
@@ -14,7 +17,7 @@ _Origin: AI doc; implements the project-wide gateway direction in `../AGENTS.md`
 
 - The gateway is the frontend's entry point and verifies bearer access tokens against User Service JWKS for protected routes.
 - User Service owns registration and sign-in. Supplier Service owns location data and authorization. Do not add business logic or persistent data here.
-- Route only the implemented User, Supplier and Order methods and paths, plus Credit's two read routes (`GET /credits/:userId` and `GET /credits/:userId/transactions`, approved by Jie Yang on 2026-10-22). The `/auth`, `/locations`, `/orders` and `/credits` prefixes remain configurable; keep upstream paths unchanged. The Order routes (`30-order.routes.json`) were approved by Jie Yang on 2026-10-22 and cover only what the frontend uses; never route Order's `/internal/**`, Credit's `/internal/credits/**` or `/admin/credits/**`.
+- Route only the implemented User, Supplier and Order methods and paths, plus Credit's two read routes (`GET /credits/:userId` and `GET /credits/:userId/transactions`, approved by Jie Yang on 2026-10-22). The `/auth`, `/locations`, `/orders` and `/credits` prefixes remain configurable; keep upstream paths unchanged. The Order routes (`30-order.routes.json`) were approved by Jie Yang on 2026-10-22 and cover only what the frontend uses. The admin dashboard (#182, `../docs/admin-dashboard-plan.md` §7) adds `GET /admin/users/login-summary`, `GET /admin/users/:userId/login-events`, `GET /admin/orders`, `GET /admin/orders/overview` and `GET /admin/orders/:orderId/history`, all JWT-protected; the services enforce the ADMIN role. Never route Order's `/internal/**`, Credit's `/internal/credits/**` or `/admin/credits/**`.
 - Compose packages the official Envoy v1.38.6 image with `Dockerfile`. `envoy/render.py` renders routes and startup configuration. The user accepted stock JWT/error/request-ID behaviour on 2026-10-13; differences are in `envoy/behaviour-differences.md`. The gateway checks public versus authenticated access, not service roles.
 - User-approved exception: confirmed JWKS fetch/parse failures and empty/unusable key sets return 503, using verifier metadata in the Lua response filter. Invalid tokens and unknown key IDs retain authentication errors. Regression-test failure codes against the pinned Envoy image when upgrading.
 - Envoy service routes live in `envoy/routes/*.routes.json`, loaded in filename order. Declare the service name, its URL environment variable and explicit methods/paths there; JWT is required unless `public` is explicitly true. Add approved service routes through these files rather than hard-coding them in the renderer. See `envoy/README.md` for prefixes and tests.

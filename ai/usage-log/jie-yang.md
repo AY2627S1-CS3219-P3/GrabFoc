@@ -1480,6 +1480,16 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Verification: Existing implementation checks passed: TypeScript build, root Compose configuration, 14 Docker PostgreSQL integration tests, production migration and schema persistence after container replacement. Pre-commit git diff --check passed.
 - Author review: User explicitly requested commit; human implementation review remains required before merge.
 
+## 2026-10-19 — Supplier publishes SupplierDeactivated (issue #120)
+
+- Tool and mode: Claude Code (model: Claude Opus 5.5), generate and debug.
+- Usage scenario: Implement issue #120 so the Order Service can cancel orders whose pickup or drop-off location is deactivated, and open a PR.
+- Exact user prompts: “Supplier: publish SupplierDeactivated when a location is deactivated #120 Let's implement this and open a PR”; “it should go into jie yang .md, the outbox table looks good, relay looks good too”.
+- Key responses: Gave a plan first, warning that the event contract (interface), the `supplier_outbox` table (schema) and the outbox relay (design pattern) are design decisions under the AI policy, and that the issue's contract still needs the Supplier owners' confirmation. After I approved the table and relay, it implemented: `supplier.events` in `infra/kafka/topics.txt`; the `supplier_outbox` table; a deactivation that saves the event in the same transaction; a relay that polls every `SUPPLIER_OUTBOX_POLL_MS`, claims rows with `FOR UPDATE SKIP LOCKED`, sends them oldest first, stops at the first failure and marks each sent row; and a Kafka producer (`@confluentinc/kafka-javascript@1.11.0`, as in Credit) that connects on the first send, so the service starts while Kafka is down. `SUPPLIER_KAFKA_BROKERS` is optional, so the service still runs on its own.
+- Verification by Claude Code: `npm test` (161 passed) and `npm run test:int` against supplier-db (58 passed, including new tests: one event per deactivation, none on 404/409/restore, an event saved during an outage sent once afterwards, no reordering after a failed send). End-to-end run against the real broker: the service started with Kafka stopped, a deactivation stayed unsent in the outbox, and after Kafka started it arrived on `supplier.events` with key `"3"` and the contract shape. That run found that `kafka-init` fails on this Windows checkout (`core.autocrlf` turns `create-topics.sh` into CRLF); this was already in the repo and is not fixed in this change.
+- Files: `infra/kafka/topics.txt`, `.env.example`, `supplier-service/{AGENTS.md,README.md,compose.yaml,package.json,package-lock.json}`, `supplier-service/src/{app.module.ts,config.ts,config.spec.ts,db/schema.ts,locations/locations.service.ts,test/database.ts,test/env.setup.ts}`, `supplier-service/src/messaging/*`.
+- Human review: Pending. Jie Yang to review the PR; Cole Lin / Jian Bing to confirm the contract and outbox table.
+
 ## 2026-10-22 — Restart policy for every long-running container
 
 - AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate, 2026-10-22 (Asia/Singapore).

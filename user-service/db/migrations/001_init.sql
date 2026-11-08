@@ -5,6 +5,10 @@
 -- Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 -- Scope: Updated the SUSPENDED comment (#72).
 -- Author review: Reviewed by Zi Yi, 2026-10-20.
+-- Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+-- Scope: Suspension reason and time columns, the login_outcome enum and login_events (#180,
+--   docs/admin-dashboard-plan.md §4.1). Edited in place: reset user-db once to apply it.
+-- Author review: Reviewed and approved by Zi Yi (User Service owner), 2026-11-05.
 --
 -- Keep in sync with the "Schema" section of user-service/AGENTS.md.
 
@@ -24,7 +28,9 @@ CREATE TABLE users (
     status            user_status  NOT NULL DEFAULT 'ACTIVE',
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    deactivated_at    TIMESTAMPTZ                                -- cleared on reactivation
+    deactivated_at    TIMESTAMPTZ,                               -- cleared on reactivation
+    suspension_reason TEXT,                                      -- set by suspend, cleared on reactivation
+    suspended_at      TIMESTAMPTZ                                -- same
 );
 
 CREATE TABLE refresh_tokens (
@@ -37,3 +43,17 @@ CREATE TABLE refresh_tokens (
 );
 
 CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens (user_id);
+
+-- One row per login attempt on an existing account (#180). Unknown emails and attempts while
+-- the address is already locked are not recorded.
+CREATE TYPE login_outcome AS ENUM ('SUCCESS', 'WRONG_PASSWORD', 'LOCKED', 'SUSPENDED', 'DEACTIVATED');
+
+CREATE TABLE login_events (
+    id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID          NOT NULL REFERENCES users(id),
+    outcome     login_outcome NOT NULL,                        -- LOCKED = the wrong password that started a lock
+    occurred_at TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_login_events_time      ON login_events (occurred_at);
+CREATE INDEX idx_login_events_user_time ON login_events (user_id, occurred_at);

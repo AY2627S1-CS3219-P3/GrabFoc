@@ -8,6 +8,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: Added suspend() (#72).
  * Author review: Reviewed by Zi Yi, 2026-10-20.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+ * Scope: suspension_reason and suspended_at; suspend() takes the reason and reactivate() clears it (#180).
+ * Author review: Reviewed by Zi Yi, 2026-11-05.
  */
 // AI-generated (reviewed by Deanson)
 import { Injectable } from '@nestjs/common';
@@ -34,6 +37,8 @@ export interface UserRecord {
   createdAt: Date;
   updatedAt: Date;
   deactivatedAt: Date | null;
+  suspensionReason: string | null;
+  suspendedAt: Date | null;
 }
 
 export interface NewUser {
@@ -61,7 +66,8 @@ export interface UserFilter {
 }
 
 const COLUMNS = `id, display_name, email_encrypted, country_code, mobile_encrypted,
-                 password_hash, role, status, created_at, updated_at, deactivated_at`;
+                 password_hash, role, status, created_at, updated_at, deactivated_at,
+                 suspension_reason, suspended_at`;
 
 interface UserRow {
   id: string;
@@ -75,6 +81,8 @@ interface UserRow {
   created_at: Date;
   updated_at: Date;
   deactivated_at: Date | null;
+  suspension_reason: string | null;
+  suspended_at: Date | null;
 }
 
 function toRecord(row: UserRow): UserRecord {
@@ -90,6 +98,8 @@ function toRecord(row: UserRow): UserRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     deactivatedAt: row.deactivated_at,
+    suspensionReason: row.suspension_reason,
+    suspendedAt: row.suspended_at,
   };
 }
 
@@ -276,9 +286,12 @@ export class UsersRepository {
     return (rowCount ?? 0) > 0;
   }
 
-  async reactivate(userId: string, tx?: PoolClient): Promise<boolean> {
+  /** From SUSPENDED or DEACTIVATED: clears both statuses' columns, since only one can be set. */
+  async reactivate(userId: string, tx: PoolClient): Promise<boolean> {
     const { rowCount } = await this.db.query(
-      "UPDATE users SET status = 'ACTIVE', deactivated_at = NULL, updated_at = now() WHERE id = $1",
+      `UPDATE users SET status = 'ACTIVE', deactivated_at = NULL, suspension_reason = NULL,
+                        suspended_at = NULL, updated_at = now()
+       WHERE id = $1`,
       [userId],
       tx,
     );
@@ -286,10 +299,11 @@ export class UsersRepository {
   }
 
   /** No deactivated_at: that column belongs to self-deactivation. */
-  async suspend(userId: string, tx: PoolClient): Promise<boolean> {
+  async suspend(userId: string, reason: string, tx: PoolClient): Promise<boolean> {
     const { rowCount } = await this.db.query(
-      "UPDATE users SET status = 'SUSPENDED', updated_at = now() WHERE id = $1",
-      [userId],
+      `UPDATE users SET status = 'SUSPENDED', suspension_reason = $2, suspended_at = now(), updated_at = now()
+       WHERE id = $1`,
+      [userId, reason],
       tx,
     );
     return (rowCount ?? 0) > 0;
