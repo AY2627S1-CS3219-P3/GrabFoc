@@ -137,12 +137,60 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Wrote the 2026-11-08 issues, AWS check and #191 merge entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Wrote the 2026-11-08 staging dry run entry (PR #191) from Jian Bing's prompts, taken verbatim from the session transcript except four teammates' email addresses, which are redacted because this repository is public.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-08 — Staging dry run for deploy part 3 (PR #191), and what it found
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `infra/terraform/modules/services/main.tf` and its test, `infra/terraform/modules/server/main.tf` and its
+test, `infra/terraform/envs/staging/staging.tfvars`, `infra/terraform/README.md`; on AWS, staging itself
+
+**Scenario:** The live dry run of #191 on staging (Task 6 of the deploy part 3 plan), with my AWS login. Claude
+cleared Docker's build cache for disk space, built and pushed all nine images as `05a340a`, recorded the tag,
+applied staging, deployed and ran the checks, reporting after each step. It found four problems, and fixed each
+after I chose how: ECS refused Mailpit's new rollout setting while AZ rebalancing was on (turned off on every
+service, test-first); rolling five apps at once overloaded the t3.large so Kafka was restarted and Credit, Order
+and Notification couldn't start (I chose a t3.xlarge for staging); the new User Service needed #180's schema on an
+older database (I chose a migration, PR #227, and then to apply its SQL on staging by hand to bring logins back);
+and the server replacement hung because ECS managed draining waited for tasks that couldn't move until the new
+server had the data volume (Claude released the old server; I chose to turn draining off). Staging was down from
+about 09:45 to 10:23 UTC during the replacement. I also asked for four teammates as staging admins: their
+addresses were added to the Mailpit forwarding list (the GitHub secret and the staging apply), so they can sign
+up, and I promote them.
+
+**Prompts (exact, in order; four teammates' NUS email addresses redacted, the repository is public):**
+> can u add [a teammate's NUS email address] as another admin
+
+My answer to Claude's question on where they should be admins: "option 1, but also add [three more teammates' NUS
+email addresses]".
+
+> alright i restarted docker desktop
+
+My answers to Claude's questions, in order: "Clear cache and run it" (the dry run); "Add a migration
+(Recommended)" and "Bigger server" (the User Service schema and the overloaded server); "Now" (replacing the
+server); "Run #227's SQL now (Recommended)" (bringing the User Service back); "Turn off ECS draining (Recommended)"
+(the server replacement hang).
+
+**What it produced:** A passing dry run: `push-images.sh`, the staging apply, `deploy-images.sh` (every layer
+healthy) and `run-checks.sh` (51 requests, 80 assertions, 0 failed; `passed-tag` = `05a340a`), with Mailpit holding
+the checks' emails and relaying none. Commits on #191: AZ rebalancing off on every ECS service, a t3.xlarge for
+staging, ECS managed draining off, and the runbook's "Replacing the server" note. PR #227 for the User Service.
+
+**What I changed or rejected:** A bigger server rather than rolling the apps one at a time; a migration rather than
+one-off SQL or a reset (the one-off SQL was only to bring staging back before #227 merges).
+
+**Verification:** Each Terraform fix has a test that failed first (`services.tftest.hcl` AZ rebalancing,
+`server.tftest.hcl` managed draining); `infra/terraform/check.sh` and `repo-checks.test.sh` pass. On staging: the
+site, gateway health, JWKS and a 401 without a token after the recovery; all 15 services running; the dry run's
+deploy and checks passed. My own check: pending.
 
 ### 2026-11-08 — Issues for my merged PRs, what runs on AWS, and bringing #191 up to date
 

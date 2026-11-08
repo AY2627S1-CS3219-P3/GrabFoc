@@ -17,6 +17,9 @@ Author review: Pending Jian Bing's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Merging main into #191: the first-apply restart also covers notification-service, the fifth app service.
 Author review: Pending Jian Bing's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Replacing the server: the downtime, the refresh preferences, and why ECS managed draining is off.
+Author review: Pending Jian Bing's review.
 -->
 
 # AWS deployment runbook
@@ -129,8 +132,12 @@ goes to the API, everything else to the website, and only with CloudFront's `X-O
 - **Shell on the server** (no SSH): `aws ssm start-session --target <instance id>` (find it in the
   EC2 console or `aws ec2 describe-instances --filters Name=tag:Name,Values=foc-staging`).
 - **Logs:** CloudWatch Logs, `/foc/<env>/<service>`, kept 14 days.
-- **Replacing the server** is safe: the new one re-attaches the same `/data` volume and Elastic IP.
-  `aws autoscaling start-instance-refresh --auto-scaling-group-name foc-staging`.
+- **Replacing the server** is safe, but the environment is down while it happens (about 10 to 20
+  minutes; there is only one server). The old server stops first, then the new one re-attaches the
+  same `/data` volume and Elastic IP and every service starts again:
+  `aws autoscaling start-instance-refresh --auto-scaling-group-name foc-<env> --preferences '{"MinHealthyPercentage":0}'`.
+  This is also how a new `instance_type` takes effect. ECS managed draining is off on purpose: it
+  would wait for the old server's tasks to move, which they can't until the new server has the volume.
 - **Tearing an environment down:** `terraform destroy` stops at the data volume
   (`prevent_destroy`), on purpose. To delete the data too, remove that line deliberately first, or
   `terraform state rm module.server.aws_ebs_volume.data` to keep the volume and destroy the rest.
