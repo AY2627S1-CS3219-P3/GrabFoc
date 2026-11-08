@@ -1662,3 +1662,11 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Merged origin/main into feat/user-internal-contact. Kept both sides of the #180 conflicts (disclosure lines; UsersInternalController and LoginEventsRepository both registered; AGENTS.md section list), and added UsersService's new LoginEventsRepository argument to users-internal.spec.ts. Pushed, requested Zi Yi and Deanson, and commented why it is needed: without it Notification's contact lookups get 404 and every email fails as USER_NOT_FOUND.
 - Verification: User Service type check passed; the 11 users-internal tests passed. The rest of the User suite was not run locally; CI runs it.
 - Author review: pending — Jie Yang to record the review.
+
+## 2026-11-08 — Notification dependency fixes replacing Dependabot #224 and #225 (PR #226)
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), debug and generate, 2026-11-08 (Asia/Singapore).
+- Exact user prompts: “check the dependabots PRs, fix all the dependency issues”, then “why does the CI fail for the dependabots PRs? Fix and merge it”.
+- Key response: #225 bumped @nestjs/platform-express to ^12.4.0 against @nestjs/core 11 (npm ci ERESOLVE); #224's lock file came from a newer npm and lacked webpack (npm ci EUSAGE). In a separate worktree (the main checkout had uncommitted frontend work, left untouched), kept platform-express on ^11.2.8 with an override pinning multer 2.5.0, as #193 did for User and Supplier, moved zod to ^4.6.6, and regenerated the lock with npm 10. Opened PR #226. A first attempt ran in the wrong directory and created an empty root package-lock.json, which was deleted.
+- Verification: type check and build passed; 101/101 unit tests passed on zod 4.6.7. Integration and Kafka tests left to CI.
+- Author review: pending — Jie Yang to record the review.
