@@ -11,6 +11,15 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 # Scope: Added order.events (Order's state-change events for Notification) at Zi Yi's direction.
 # Author review: Reviewed
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-01
+# Scope: Added notification.order-events.dlt (Notification Service, #152).
+# Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+# Scope: Added Notification's retry topics (#154).
+# Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+# Scope: Added Notification's user.events retry and dead-letter topics (#183).
+# Author review: pending — Jie Yang to record the review.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
 # Scope: Added supplier.events (issue #120).
 # Author review: pending — Jie Yang to record what he checked.
@@ -49,9 +58,25 @@ credit.commands.retry.2 1
 credit.commands.retry.3 1
 credit.commands.retry.4 1
 
+# Notification's retries, for order.events and user.events: one per entry in NOTIFICATION_RETRY_DELAYS
+# (default 1s,5s,30s,2m,10m), in order. Change both together; the Notification Service refuses to
+# start if they don't match.
+notification.order-events.retry.0 1
+notification.order-events.retry.1 1
+notification.order-events.retry.2 1
+notification.order-events.retry.3 1
+notification.order-events.retry.4 1
+notification.user-events.retry.0 1
+notification.user-events.retry.1 1
+notification.user-events.retry.2 1
+notification.user-events.retry.3 1
+notification.user-events.retry.4 1
+
 # Dead-letter topics, one per consumer and source topic (rule 6)
 credit.commands.dlt 1
 credit.user-events.dlt 1
+notification.order-events.dlt 1
+notification.user-events.dlt 1
 order.user-events.dlt 1
 order.supplier-events.dlt 1
 logging.lines.dlt 1
