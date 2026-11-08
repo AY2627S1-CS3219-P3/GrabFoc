@@ -17,6 +17,17 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-08 — Two more, one of them the gap I had flagged and left (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Two findings. The first is the one I had named in my own overview and chosen not to fix: User calls Order for the active-orders check and forwarded no request id, so the deactivation check was stored as a second, unjoinable trace. Flagging a gap and leaving it is fine when it is someone else's; this one was two lines and the helper was already in the file, so it was my own scope call that was wrong. Fixed.
+- The second is a race in a fix from the round before, and a good one. `start()` is slow - it connects an admin client, then the consumer connects and subscribes - and a SIGTERM landing in any of those gaps ran `stop()` to completion while `this.consumer` was still undefined. The memoised stop promise then reported teardown done, and when `start()` resumed it built a consumer **nothing could ever disconnect**: a client left consuming, holding native resources, after Nest had shut down.
+  - Fixing it nearly broke the previous fix. My first attempt chained each `stop()` onto the last, which would have made two concurrent destroy hooks run two disconnects - the exact thing the memoisation was added for. The shape that keeps both: a `stopped` flag set synchronously, so a `start()` working through its awaits gives up, and the promise held **only while it is in flight**, so concurrent callers share one teardown while a later call still disconnects whatever exists by then.
+  - `start()` checks that flag after every await, and assigns `this.consumer` only once the client is connected: assigning it earlier would let `stop()` disconnect a half-built client.
+- My own test for the race failed first for the wrong reason - the Kafka mock returned no topics, so `ensureTopics()` threw before the race could happen. Made the topic list controllable, then confirmed the case genuinely depends on the fix by removing the two flag checks: it fails, and only it.
+- Added the cases for the outbound header too, which the existing suites could not have caught: a unit test has no request context, so `requestIdHeader()` returns nothing and the old assertions passed either way. Three cases now, on the mechanism rather than the call sites.
+- Verification: **480** in the Logging Service, **293** Supplier, **142** Credit, **52** User, **13** Order, `tsc --noEmit` clean in all five.
+
 ### 2026-11-08 — The gateway's log shape, and five findings including two that would have spoiled the demo (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

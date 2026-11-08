@@ -17,6 +17,10 @@
  *        refused line without end, and coalesce stop() behind one promise because Nest runs the
  *        two destroy hooks that call it concurrently (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: a start racing shutdown no longer leaves a consumer running that nothing can
+ *        disconnect (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
@@ -62,6 +66,7 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
   private consumer?: KafkaJS.Consumer;
   private producerReady = false;
   private stopping?: Promise<void>;
+  private stopped = false;
 
   /**
    * Subscribes and hands each message to the handler. `eachMessage` stores the offset only after
@@ -72,16 +77,35 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
    * duplicates from that are harmless, because the store keys on `lineId`.
    */
   async start(handler: MessageHandler): Promise<void> {
+    // Checked after every await, because this method is slow - `ensureTopics()` connects an admin
+    // client, then the consumer connects and subscribes - and a SIGTERM arriving in any of those
+    // gaps runs stop() to completion while `this.consumer` is still undefined. stop() then caches
+    // that finished promise, so when this resumed it built a consumer nothing could ever
+    // disconnect: a client left consuming, holding native resources, after Nest had shut down.
+    // The local variable matters too - assigning `this.consumer` before it is connected would let
+    // stop() disconnect a half-built client (review).
     await this.ensureTopics();
-    this.consumer = this.kafka.consumer({
+    if (this.stopped) return;
+    const consumer = this.kafka.consumer({
       kafkaJS: { groupId: config.kafkaGroupId, fromBeginning: true },
     });
-    await this.consumer.connect();
-    await this.consumer.subscribe({ topics: [config.kafkaTopic] });
-    await this.consumer.run({
+    await consumer.connect();
+    if (this.stopped) {
+      await consumer.disconnect().catch(() => undefined);
+      return;
+    }
+    this.consumer = consumer;
+    await consumer.subscribe({ topics: [config.kafkaTopic] });
+    await consumer.run({
       eachMessage: async ({ topic, partition, message }) =>
         handler(toInbound(topic, partition, message)),
     });
+    // And once more: run() resolves after the consumer is live, so a stop that landed during it
+    // has already finished and would otherwise leave this one running.
+    if (this.stopped) {
+      await this.stop();
+      return;
+    }
     this.logger.log(`Consuming ${config.kafkaTopic} as ${config.kafkaGroupId}`);
   }
 
@@ -93,7 +117,16 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
    * can reject out of an ordinary SIGTERM.
    */
   stop(): Promise<void> {
-    this.stopping ??= this.disconnectAll();
+    // Set first, so a start() still working through its awaits sees it and gives up rather than
+    // building a consumer this call could never reach.
+    this.stopped = true;
+    // Held only while it is in flight, which keeps both properties: concurrent hooks share one
+    // teardown, and a later call still disconnects whatever is there now - `start()` may have
+    // created a consumer after an earlier stop had already settled, and a cached finished promise
+    // would have reported that one disconnected while it was still consuming.
+    this.stopping ??= this.disconnectAll().finally(() => {
+      this.stopping = undefined;
+    });
     return this.stopping;
   }
 

@@ -18,7 +18,7 @@ import { Reflector } from '@nestjs/core';
 import type { NextFunction, Request, Response } from 'express';
 import { config } from '../config';
 import { AuthedRequest, JwtAuthGuard } from './auth';
-import { UNROUTED, logPath, requestIdMiddleware, requestIdOf, resolveRequestId } from './request-id';
+import { UNROUTED, logPath, requestIdHeader, requestIdMiddleware, requestIdOf, resolveRequestId } from './request-id';
 
 // AI-generated (reviewed by Cole Lin).
 
@@ -171,5 +171,43 @@ describe('the requestId in the access_denied log', () => {
     } finally {
       (config as { devAuth: boolean }).devAuth = devAuth;
     }
+  });
+});
+
+/**
+ * The header an outbound call carries. This is the mechanism every service's internal clients use
+ * - Order calling Supplier and Credit, User calling Order - and before it they sent no id at all,
+ * so the far side minted its own and the two halves of one flow were stored under ids that cannot
+ * be joined. Tested here once; the call sites are a two-line spread each.
+ */
+describe('the header for a call to another service', () => {
+  const run = (headers: Record<string, string>, body: () => void) =>
+    new Promise<void>((resolve) => {
+      requestIdMiddleware(
+        { headers, method: 'GET' } as unknown as Request,
+        { setHeader: () => undefined } as unknown as Response,
+        () => {
+          body();
+          resolve();
+        },
+      );
+    });
+
+  it('carries the id of the request being handled', async () => {
+    await run({ 'x-request-id': 'r-42' }, () => {
+      expect(requestIdHeader()).toEqual({ 'x-request-id': 'r-42' });
+    });
+  });
+
+  it('carries a minted id when the caller supplied none', async () => {
+    await run({}, () => {
+      expect(requestIdHeader()['x-request-id']).toMatch(UUID);
+    });
+  });
+
+  it('is empty outside a request, so a job or a test adds no header', () => {
+    // Nothing rather than an empty value: an empty header reads as "there was no request", and the
+    // far side would mint an id anyway.
+    expect(requestIdHeader()).toEqual({});
   });
 });

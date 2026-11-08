@@ -11,6 +11,8 @@
 
 // Hoisted by jest above the imports, so the class under test builds its client from this.
 const sent: Array<Record<string, unknown>> = [];
+let consumerRuns = 0;
+let existingTopics: string[] = [];
 const producer = {
   connect: jest.fn().mockResolvedValue(undefined),
   disconnect: jest.fn().mockResolvedValue(undefined),
@@ -27,13 +29,17 @@ jest.mock('@confluentinc/kafka-javascript', () => ({
       consumer = () => ({
         connect: jest.fn(),
         subscribe: jest.fn(),
-        run: jest.fn(),
+        run: jest.fn(async () => {
+          consumerRuns += 1;
+        }),
         disconnect: jest.fn(),
       });
       admin = () => ({
         connect: jest.fn(),
         disconnect: jest.fn(),
-        listTopics: jest.fn().mockResolvedValue([]),
+        // Empty by default, which is what the missing-topic case needs; a test that wants start()
+        // to get past it pushes the names in.
+        listTopics: jest.fn(async () => existingTopics),
       });
     },
   },
@@ -52,6 +58,8 @@ function message(fields: Partial<Record<'value' | 'offset' | 'headers', unknown>
 
 beforeEach(() => {
   sent.length = 0;
+  consumerRuns = 0;
+  existingTopics = [];
   producer.send.mockClear();
   producer.connect.mockClear();
 });
@@ -114,6 +122,35 @@ describe('shutting down', () => {
     );
     producer.disconnect.mockClear();
     // Nest runs provider destroy hooks concurrently with Promise.all, and two of them call this.
+    await Promise.all([ingest.stop(), ingest.stop()]);
+    expect(producer.disconnect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a start that races shutdown', () => {
+  it('leaves no consumer running when stop lands while start is still working', async () => {
+    existingTopics = [config.kafkaTopic, config.kafkaDeadLetterTopic];
+    const ingest = new KafkaIngest();
+    const starting = ingest.start(async () => undefined);
+    // SIGTERM in the gap: ensureTopics() connects an admin client, then the consumer connects and
+    // subscribes, and a stop completing in any of those gaps used to leave start() free to build
+    // a consumer that nothing could ever disconnect.
+    await ingest.stop();
+    await starting;
+    // Nothing was handed a live consumer, so a further stop has nothing to disconnect.
+    producer.disconnect.mockClear();
+    await ingest.stop();
+    expect(consumerRuns).toBe(0);
+  });
+
+  it('still coalesces two concurrent stops into one teardown', async () => {
+    const ingest = new KafkaIngest();
+    await ingest.send(
+      { value: '{}', topic: 'logging.lines', offset: '1', headers: {} },
+      'reason',
+      '{}',
+    );
+    producer.disconnect.mockClear();
     await Promise.all([ingest.stop(), ingest.stop()]);
     expect(producer.disconnect).toHaveBeenCalledTimes(1);
   });
