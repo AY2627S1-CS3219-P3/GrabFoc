@@ -1654,3 +1654,11 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: Found #161 blocked by main's ruleset (the latest push, by Jian Bing, needs approval from someone else). Merged #189, #188, #187 and #185 down the stack; merged the scaffold branch and origin/main into feat/notification-consumer, keeping both sides of the conflicts in .env.example, .github/workflows/ci.yml (Logging and Notification jobs) and infra/kafka/topics.txt (all of main's topics kept); merged #169 into the scaffold branch. Requested Zi Yi and Deanson to review #161 and commented the reason.
 - Verification: docker compose config passed; no duplicate host ports or env names; Notification build and 101 unit tests passed. Integration and Kafka tests were skipped at Jie Yang's request (Docker had been stopped); CI on #161 runs them.
 - Author review: pending — Jie Yang to record the review.
+
+## 2026-11-08 — Updating #178 (User internal contact endpoint) with main
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate, 2026-11-08 (Asia/Singapore).
+- Exact user prompts: “WAIT 178 needs to be merged too right?? FIX THE CONFLICTS”, then “#178 needs to be merged for the internal endpoint or Notif service isnt calling anything?”
+- Key response: Merged origin/main into feat/user-internal-contact. Kept both sides of the #180 conflicts (disclosure lines; UsersInternalController and LoginEventsRepository both registered; AGENTS.md section list), and added UsersService's new LoginEventsRepository argument to users-internal.spec.ts. Pushed, requested Zi Yi and Deanson, and commented why it is needed: without it Notification's contact lookups get 404 and every email fails as USER_NOT_FOUND.
+- Verification: User Service type check passed; the 11 users-internal tests passed. The rest of the User suite was not run locally; CI runs it.
+- Author review: pending — Jie Yang to record the review.
