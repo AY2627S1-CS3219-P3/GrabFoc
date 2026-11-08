@@ -51,12 +51,84 @@ Author review: Reviewed and tested by Zi Yi on the merged compose stack, 2026-10
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
 Scope: Added the Order Service UserSuspended consumer entry.
 Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+Scope: Added the Order Service admin read routes (#181) entry.
+Author review: Reviewed by Zi Yi, 2026-11-05.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Recorded removing the zod build fix from PR #192, and the Postman folder 6 fix from its review.
+Author review: Reviewed by Zi Yi, 2026-11-06.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-05 — Order Service: admin dashboard read routes (#181)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate, explain
+**Files:** `order-service/src/orders/admin.controller.ts` (new), `src/orders/orders.{schemas,repository}.ts`,
+`src/common/{jwt-auth.guard,zod-validation.pipe}.ts`, `src/app.module.ts`,
+`src/test/orders.api.test.ts`, `postman/order-service.postman_collection.json`, `README.md`,
+`AGENTS.md`
+
+**Scenario:** build §5 of `docs/admin-dashboard-plan.md` (issue #181, part of #179) on branch
+`feat/admin-order-service`: the read-only admin routes behind the dashboard's order overview,
+order list and order history.
+
+**Prompts:**
+> implement #181
+
+> list the files you changed/added and what you changed or what you add. and what did you do about the zod dependency thing?
+
+> so what zod version are we using? initially it was zod3, then it changed to zod4, then it causes errors. so should we use zod 3 or zod4
+
+> what is adminList?
+
+> i have reviewed the files changed and added
+
+> add the usage log in first
+
+> reviewed, commit in a few relevant PRs and open the PR
+
+> i think can remove the zod fix first, my teammate will do handle it
+
+> check https://github.com/AY2627S1-CS3219-P3/GrabFoc/pull/192 bot comment, then let me know if it needs fixing, dont fix anything yet
+
+> fix Postman folder 6 issue
+
+**What it produced:**
+- `GET /admin/orders/overview` (counts for all five live states, zeros included, and up to 50
+  orders cancelled in the last hour, newest first), `GET /admin/orders` (filtered by `scope`,
+  `state` and `userId` as requester or courier, paged, never `AWAITING_CREDIT`) and
+  `GET /admin/orders/:orderId/history` (404 for an unknown order);
+- an `@AdminOnly()` marker that `JwtAuthGuard` checks, so a USER gets 403 before the query is
+  validated, as the User Service's `@Roles` does (the plan had each handler check the role);
+- `AdminOrdersQuery` (strict; a state outside its scope is a 400) and three repository queries
+  (`adminList`, `countByStatus`, `recentCancellations`) using only bound parameters;
+- five integration tests, a skipped `UserReactivated` check in the existing `user.events` test,
+  and README, `AGENTS.md` and Postman folder 6 updates.
+
+**Flagged:**
+- The Order Service on main no longer compiled: Dependabot's #174 moved zod from 3.25.76 to
+  4.6.6, and zod 4 removed the `ZodTypeDef` type that `zod-validation.pipe.ts` imported. Nobody
+  noticed because order-service is not in the CI matrix. The AI fixed the type
+  (`ZodType<T, unknown>`) so the routes could be built and tested.
+- On zod 3 or 4: the AI recommended staying on 4, because the alert (GHSA-mrhx-c7xc-m3w5) has no
+  3.x fix and the User and Supplier services are on 4. It noted that credit-service is still on
+  zod 3.
+- The issue needs Jie Yang's approval as well (`AGENTS.md`: "Do not infer additional admin
+  powers"); `AGENTS.md` records it as decided by Zi Yi, Jie Yang to confirm.
+- The gateway does not route `/admin/orders` yet (#182).
+
+**What I changed or rejected:** Reviewed every changed and added file; no edits. Removed the zod
+fix from PR #192, because a teammate is fixing it separately; until that fix is on main, this
+branch does not build. From Codex's review of PR #192, asked the AI to fix only the Postman
+folder 6 comment: the README and collection said to run it "after another folder", but only
+folders 2, 3 and 4 leave A with a cancelled order; they now say so.
+
+**Verification:** with the zod fix applied locally, `npm test`: 13 passed; `compose.test.yaml`: 68
+passed on main with only the zod fix, then 73 passed (5 new) with the routes. Postman folder 6 has not been run yet.
 
 ### 2026-10-21 — Order Service: `UserSuspended` consumer (Phase D)
 
