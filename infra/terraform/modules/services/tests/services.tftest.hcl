@@ -9,6 +9,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Deploy part 3 (#143): Mailpit's allowlist and API port, the checks task, the Notification Service.
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+# Scope: The AZ-rebalancing check (the staging dry run failed on it).
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -145,6 +148,11 @@ run "staging" {
       for s in local.ecs_services : s.desired_count == 1 && !one(s.deployment_circuit_breaker).enable
     ])
     error_message = "One copy of each service; ECS keeps restarting a service until its dependencies are up."
+  }
+  # AI-generated (Claude Code), review pending: the 2026-11-08 staging apply failed on exactly this.
+  assert {
+    condition     = alltrue([for s in local.ecs_services : s.availability_zone_rebalancing == "DISABLED"])
+    error_message = "AZ rebalancing is off on every service: one server in one zone has nothing to rebalance, and ECS refuses a stop-before-replace rollout (maximum 100%) while it is on."
   }
   assert {
     condition = [

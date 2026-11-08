@@ -14,6 +14,9 @@
 # Scope: Deploy part 3 (#143): Mailpit's allowlist and API port, the checks task, the Notification Service,
 #        and a health check for the gateway (deploy-images.sh waits for HEALTHY).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+# Scope: AZ rebalancing off on every service (the staging dry run failed on Mailpit's 100% maximum).
+# Author review: Pending Jian Bing's review.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
@@ -449,6 +452,8 @@ resource "aws_ecs_service" "data" {
 
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
+  # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code), review pending
 
   service_connect_configuration {
     enabled   = true
@@ -485,6 +490,8 @@ resource "aws_ecs_service" "app" {
 
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
+  # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code), review pending
 
   service_connect_configuration {
     enabled   = true
@@ -521,6 +528,8 @@ resource "aws_ecs_service" "edge" {
 
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
+  # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code), review pending
 
   service_connect_configuration {
     enabled   = true
@@ -557,6 +566,8 @@ resource "aws_ecs_service" "web" {
 
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
+  # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code), review pending
 
   service_connect_configuration {
     enabled   = true
