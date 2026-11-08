@@ -5,6 +5,12 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-01
 # Scope: Waits for kafka-init and passes the broker address (#152).
 # Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+# Scope: SMTP (Mailpit), User Service and frontend link settings (#153).
+# Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+# Scope: NOTIFICATION_RETRY_DELAYS (#154).
+# Author review: pending — Jie Yang to record the review.
 
 name: foc
 
@@ -40,10 +46,26 @@ services:
       # Topics are created only by kafka-init (root AGENTS.md §3 Messaging, rule 4).
       kafka-init:
         condition: service_completed_successfully
+      # Mailpit is defined in user-service/compose.yaml; its inbox is on http://localhost:8025.
+      mailpit:
+        condition: service_started
     # No env_file: only the variables below reach this container.
     environment:
       NOTIFICATION_PORT: 3006
       NOTIFICATION_KAFKA_BROKERS: kafka:9092
+      # One retry topic per delay in infra/kafka/topics.txt; change both together.
+      NOTIFICATION_RETRY_DELAYS: ${NOTIFICATION_RETRY_DELAYS:-1s,5s,30s,2m,10m}
+      NOTIFICATION_SMTP_HOST: mailpit
+      NOTIFICATION_SMTP_PORT: 1025
+      NOTIFICATION_SMTP_USER: ${NOTIFICATION_SMTP_USER:-}
+      NOTIFICATION_SMTP_PASS: ${NOTIFICATION_SMTP_PASS:-}
+      NOTIFICATION_SMTP_FROM: ${NOTIFICATION_SMTP_FROM:-FoC <no-reply@foc.local>}
+      # No depends_on on user-service: while User is down, emails are saved as FAILED, not lost.
+      NOTIFICATION_USER_URL: http://user-service:3001
+      # The same secret User checks on /internal/users; set USER_INTERNAL_SERVICE_KEY in the root .env.
+      NOTIFICATION_USER_SERVICE_KEY: ${USER_INTERNAL_SERVICE_KEY:-}
+      # The button in every email. The frontend's local address unless .env says otherwise.
+      NOTIFICATION_FRONTEND_URL: ${NOTIFICATION_FRONTEND_URL:-http://localhost:3000}
       # The password goes in PGPASSWORD, which the PostgreSQL driver reads directly, not in the URL:
       # a password containing / # ? or @ would break the URL (PR #48 review).
       NOTIFICATION_DATABASE_URL: postgres://foc@notification-db:5432/notification

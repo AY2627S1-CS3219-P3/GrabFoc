@@ -4,6 +4,9 @@
  * Scope: Generated the order event handling (#152): deduplication, the stale check and the
  *        recipient rows, in one transaction, as agreed in #148.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Comments now point at SenderService (#153).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -16,7 +19,7 @@ import { recipientsFor } from './recipients';
  * - DUPLICATE: its event id was seen before; nothing changed.
  * - DISCARDED_STALE: an earlier state than the last one handled, or after a final state.
  * - DISCARDED_NO_AUDIENCE: a state nobody is emailed about (PENDING).
- * - QUEUED: recipient rows were created, waiting to be sent (#153).
+ * - QUEUED: recipient rows were created; SenderService sends them next.
  */
 export type EventOutcome = 'DUPLICATE' | 'DISCARDED_STALE' | 'DISCARDED_NO_AUDIENCE' | 'QUEUED';
 
@@ -86,7 +89,7 @@ export class OrderEventsService {
         [event.eventId, recipient.role, recipient.userId],
       );
     }
-    // The event stays PROCESSING until its emails are sent (#153).
+    // The event stays PROCESSING until SenderService has saved every email's result.
     return 'QUEUED';
   }
 

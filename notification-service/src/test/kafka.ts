@@ -3,6 +3,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-01
  * Scope: Copied the Kafka test helpers from credit-service/src/test/kafka.ts (#152).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: createTestTopics waits until the broker lists the new topics (fixes a flaky setup).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { randomUUID } from 'crypto';
@@ -39,6 +42,12 @@ export async function createTestTopics(admin: KafkaJS.Admin, topics: Topics): Pr
     const reasons = ((err as { errors?: { message?: string }[] }).errors ?? []).map((e) => e.message);
     throw new Error(`Couldn't create the test topics: ${(err as Error).message}: ${reasons.join('; ')}`);
   }
+  // createTopics can return before the broker's metadata lists every new topic; the runner's startup
+  // check would then report one as missing.
+  await waitFor(async () => {
+    const listed = new Set(await admin.listTopics());
+    return names.every((name) => listed.has(name));
+  }, 30_000);
   return () => admin.deleteTopics({ topics: names, timeout: 30_000 });
 }
 
