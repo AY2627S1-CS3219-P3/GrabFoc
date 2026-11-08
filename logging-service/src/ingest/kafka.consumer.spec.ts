@@ -264,6 +264,34 @@ describe('a producer connect that races shutdown', () => {
   });
 });
 
+describe('a handler still draining as shutdown runs', () => {
+  it('leaves no producer connected when the handler parks a dead letter during the drain', async () => {
+    existingTopics = [config.kafkaTopic, config.kafkaDeadLetterTopic];
+    const ingest = new KafkaIngest();
+    let parked: Promise<void> | undefined;
+    // consumer.disconnect() waits for an in-flight eachMessage handler, and that handler can try
+    // to park a line - which used to open a producer connection in the window teardown had
+    // already passed, so stop() returned with it still connected.
+    consumers[0] = consumers[0] ?? ({} as never);
+    await ingest.start(async () => undefined);
+    const made = consumers[consumers.length - 1] as unknown as { disconnect: jest.Mock };
+    made.disconnect = jest.fn(async () => {
+      parked = ingest
+        .send({ value: '{}', topic: 'logging.lines', offset: '5', headers: {} }, 'late', '{}')
+        .catch(() => undefined);
+      await parked;
+    });
+    producer.connect.mockClear();
+    producer.disconnect.mockClear();
+    await ingest.stop();
+    // The park is refused rather than served: its offset stays uncommitted and the broker
+    // redelivers it on the next start, which is the safe outcome.
+    expect(producer.connect).not.toHaveBeenCalled();
+    expect(producer.disconnect).not.toHaveBeenCalled();
+    await parked;
+  });
+});
+
 describe('parking a line this service will not store', () => {
   const inbound: InboundMessage = {
     value: '{"this":"is what arrived, unredacted"}',

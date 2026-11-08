@@ -29,6 +29,10 @@
  * Scope: Review: disconnect an admin client whose connect failed, and hold the producer's
  *        connection as a promise so shutdown can wait for one in flight (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: drain the consumer before closing the producer, and refuse a producer connect
+ *        once shutdown has begun, so a handler draining out cannot leave one open (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
@@ -171,22 +175,36 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
   private async disconnectAll(): Promise<void> {
     const consumer = this.consumer;
     this.consumer = undefined;
+    let failure: unknown;
+
+    // The consumer first, and fully, before the producer is even looked at. `disconnect()` waits
+    // for an in-flight `eachMessage` handler to finish, and that handler can park a dead letter -
+    // so reading the producer's state before this drained could miss a connection the handler
+    // opened afterwards and return with it still connected (review).
+    try {
+      await consumer?.disconnect();
+    } catch (err) {
+      failure = err;
+    }
+
+    // Only now, with nothing left that could open one. Waits for an in-flight connect before
+    // disconnecting, so a producer that finished connecting during shutdown is still closed; a
+    // connect that failed leaves nothing to close, which is what the rejected branch means.
     const connecting = this.producerConnected;
     this.producerConnected = undefined;
-    const outcomes = await Promise.allSettled([
-      consumer?.disconnect(),
-      // Waits for an in-flight connect before disconnecting, so a producer that finishes
-      // connecting during shutdown is still closed. A connect that failed leaves nothing to
-      // close, which is what the rejected branch means.
-      connecting?.then(
+    try {
+      await connecting?.then(
         () => this.producer.disconnect(),
         () => undefined,
-      ),
-    ]);
-    // Still reported: a teardown that could not finish is worth knowing about. The first failure
-    // is enough - they are the same kind of problem, and both have been attempted by now.
-    const failed = outcomes.find((o) => o.status === 'rejected');
-    if (failed && failed.status === 'rejected') throw failed.reason;
+      );
+    } catch (err) {
+      failure ??= err;
+    }
+
+    // Still reported: a teardown that could not finish is worth knowing about - but only after
+    // both clients have been attempted, which is why this is sequential rather than a short
+    // circuit. The first failure is enough; they are the same kind of problem.
+    if (failure) throw failure;
   }
 
   onModuleDestroy(): Promise<void> {
@@ -230,8 +248,21 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
     });
   }
 
-  /** Connects once. A failed attempt is not cached, so the next dead letter tries again. */
+  /**
+   * Connects once. A failed attempt is not cached, so the next dead letter tries again.
+   *
+   * Refused once shutdown has begun. `consumer.disconnect()` waits for an in-flight `eachMessage`
+   * handler, and that handler can still try to park a dead letter - which would open a producer
+   * connection in the window teardown has already passed. Refusing it rejects the handler instead,
+   * which leaves the message's offset uncommitted, so the broker redelivers it on the next start:
+   * the line is parked late rather than lost, and nothing is left connected (review).
+   */
   private connectProducer(): Promise<void> {
+    if (this.stopped) {
+      return Promise.reject(
+        new Error('This service is shutting down; the dead letter will be redelivered instead.'),
+      );
+    }
     this.producerConnected ??= this.producer.connect().catch((err: unknown) => {
       this.producerConnected = undefined;
       throw err;

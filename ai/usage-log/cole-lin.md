@@ -17,6 +17,16 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-08 — The third-order version of the same race (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- One finding, and it is the same race a level deeper than the last two: `consumer.disconnect()` **waits for an in-flight `eachMessage` handler**, and that handler can still park a dead letter - which opens a producer connection in the window teardown has already read past. Shutdown then returned with a connected native producer and nothing left to close it. My previous fix read the producer's state and the consumer's in parallel, deliberately, so that one client's failure could not skip the other's cleanup; that parallelism is exactly what made this possible.
+- Fixed as two things, which together leave no window: teardown is **sequential** now - the consumer is drained first, fully, before the producer is even looked at - and `connectProducer()` refuses once shutdown has begun. The refusal is the better half: the handler's park rejects, so its offset stays uncommitted and the broker redelivers the line on the next start. Parked late rather than lost, and nothing left connected.
+- Kept what the parallel version was for: the consumer's failure is captured rather than thrown, the producer is closed regardless, and the first failure is rethrown at the end - so a teardown that cannot finish is still reported, but only after both clients have been attempted.
+- Proved it: with the refusal removed, the new case fails and only it.
+- Worth stating plainly after four rounds on one file. Each fix was correct and each created the next finding, because every one of them was about *when* a client exists relative to shutdown, and I kept fixing the instance rather than the question. The question was "what can still open a client after stop() has begun", and the answer that closes it is a flag checked at the one place clients are created - not a better ordering.
+- Verification: **487** in the Logging Service, `tsc --noEmit` clean. All 14 checks were green on the previous head.
+
 ### 2026-11-08 — The symmetric halves of the last two fixes (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
