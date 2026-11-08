@@ -12,6 +12,11 @@
  * Scope: Review: read the repo-root .env here, because this module is imported before the
  *        service config or Nest has loaded it (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+ * Scope: Build no publisher under a test runner: a suite that pins the broker variable to an
+ *        unreachable address left a client retrying in the background and the runner failed
+ *        the job on open handles, with every test passing (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import * as path from 'path';
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
@@ -53,7 +58,14 @@ const brokers = (process.env.USER_KAFKA_BROKERS || '')
  * publish. With no brokers set - every test run, and any standalone run - nothing is built at all,
  * the shipper starts no flush timer, and lines go to stdout only.
  */
-const publisher = brokers.length
+// Never under a test runner, whatever the environment says. A suite that pins the broker
+// variable to an unreachable address - which one of these services does deliberately, to
+// prove it does not depend on Kafka - would otherwise have this build a client that keeps
+// retrying in the background: the tests pass, the process never exits cleanly, and the
+// runner fails the job on open handles. No test wants lines shipped anywhere, and a log
+// shipper must never be the reason a suite hangs (review).
+const shipping = brokers.length > 0 && process.env.NODE_ENV !== 'test';
+const publisher = shipping
   ? new KafkaLinePublisher(process.env.USER_LOG_TOPIC || 'logging.lines', brokers)
   : undefined;
 

@@ -17,6 +17,17 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-09 — Every test passed and the job failed anyway (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: no new one - CI caught this one rather than the reviewer, after the Notification Service wiring went in.
+- `Integration and Kafka tests (notification-service)` went red with **40 of 40 tests passing**, and the step exited 1 eighty seconds after printing that summary. That gap is the whole finding: the suite finished and the process would not.
+- The cause is mine and it is specific to this service. Its `src/test/env.setup.ts` pins `NOTIFICATION_KAFKA_BROKERS` to `127.0.0.1:1` **on purpose**, to prove the service does not depend on Kafka. My `log.ts` reads that variable, saw it set, and built a producer against a deliberately dead address - so librdkafka sat in the background retrying, Jest reported "Cannot log after tests are done", and the runner failed the job on open handles. A perfectly reasonable test fixture, used as configuration by a component that had no business reading it in a test.
+- Fixed at the one place a client is created, in all five copies: no publisher under a test runner, whatever the environment says. Two reasons rather than one - no test wants lines shipped anywhere, and a log shipper must never be the reason a suite hangs. The copies stay identical, which the drift guard confirms.
+- Wrote the regression test before trusting the fix, and checked it fails without it: with the guard removed the "builds no Kafka client" case fails and the other passes. It asserts the two facts that matter - no client is constructed while brokers are configured, and lines still reach stdout, which is what a test would want to see.
+- Worth noting what did **not** catch this: every unit suite, every typecheck, and the reviewer. It needed the integration job, which is the only thing that runs the service with a real database and a pinned broker. "All tests pass" and "the job is green" are different claims, and I had been reporting the first as if it settled the second.
+- Verification: **103** in Notification (two new), **494** in the Logging Service, **294** Supplier, `tsc --noEmit` clean, and the drift guard's **14**.
+
 ### 2026-11-09 — The adopter list I updated two rounds before wiring the thing it omits (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
