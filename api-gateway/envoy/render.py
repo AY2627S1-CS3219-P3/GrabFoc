@@ -10,6 +10,14 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: /gateway/* copies of every API route with the prefix removed (deploy part 1, #141).
 Scope: Edge listener for CloudFront: X-Origin-Key check, /gateway/* API routes, frontend catch-all (#141).
 Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: The access log carries the field names the Logging Service stores, so a line from
+  here reads like one from any service: ts, level, and a filtered entry per outcome for the
+  level a format string cannot derive. `service` is the literal gateway rather than
+  %UPSTREAM_CLUSTER%, which is the service routed *to* and renders null when none is
+  reached - the store requires it and refuses the whole line otherwise; the destination is
+  under `upstream`. `lineId` is absent because Envoy has no UUID source (issue #52).
+Author review: Cole Lin, read and approved.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
 import json

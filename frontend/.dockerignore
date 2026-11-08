@@ -2,6 +2,11 @@
 # Tool: Codex (model: GPT-6), date: 2026-09-29
 # Scope: Excluded local dependencies, build output, and environment secrets from the frontend image context.
 # Author review: Pending Jie Yang's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Excluded Syncthing's *.sync-conflict-* copies from this build context, which the
+#   repository-root .dockerignore never reaches because this service builds from its own
+#   directory (issue #52).
+# Author review: Cole Lin, read and approved.
 
 node_modules
 .next

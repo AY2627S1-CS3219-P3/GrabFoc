@@ -11,6 +11,11 @@
 # Scope: A timeout is reported as "did not answer within N s" instead of "could not be reached";
 #   the review request gets 240 s and one retry after a timeout or a 503 (a busy server).
 # Author review (Jian Bing, 2026-11-06): Went through the change with Claude Code's walkthrough and understood it; the 4 tests pass.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Retry a 502 and a 504 as well as a 503: the gateway in front of SoCLaaS failing or
+#   timing out is as transient as the service saying it is busy, and it failed the review
+#   check on every pull request for a day (issue #52).
+# Author review: Cole Lin, read and approved.
 """A diff reviewer using GitHub's REST API and SoCLaaS Chat Completions.
 
 Python 3.10+, standard library only. Never checks out or executes PR content.

@@ -12,6 +12,11 @@
  * Author review (Cole Lin): Read in full; ran `npm test` (176 passed) and checked a supplied id,
  *        a minted one and a rejected one all reach the log line and the response header, and that
  *        a query string never reaches a log line.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+ * Scope: Cases for the header an outbound call carries, which nothing covered: without it
+ *        a call to another service sent no request id, the far side minted its own, and the
+ *        two halves of one flow were stored under ids that cannot be joined (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { ExecutionContext, Logger } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';

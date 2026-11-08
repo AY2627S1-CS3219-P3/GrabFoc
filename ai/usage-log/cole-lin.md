@@ -17,6 +17,16 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-09 — Fourteen files changed without saying so (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: no new one - started by the automated reviewer, under the standing instruction to keep fixing findings until a pull request has none left.
+- The finding was that five `.dockerignore` files had my addition appended under a disclosure header describing only their earlier work, so the change was undisclosed. Correct, and the project document treats missing or misleading attribution as an integrity matter rather than a formatting one.
+- I then did what I should have done the first five times this class came up: **swept the whole branch instead of the five files named.** Of 75 changed files, fourteen carried a disclosure header with nothing from today - the five `.dockerignore` files, five `compose.yaml` files where I had forwarded `*_LOG_TOPIC`, the gateway's `render.py`, which is where the whole access-log change lives, the SoCLaaS retry script, a spec, and `logging-service/package.json`, whose disclosure is a `_disclosure` key rather than a comment and which is where the Kafka dependency and its `allowScripts` entry went in. All fourteen have entries now.
+- Two of the sweep's hits were false positives and are worth recording so the check is not trusted blindly: `envoy_routes_test.py` discloses per test with an `# AI-generated (Claude Code, date; ...)` comment rather than a header entry, and this log's own entry headings are `**Tool:** ... **Mode:**` lines, which a pattern looking for consecutive `Tool` lines reads as a malformed block.
+- Verified the edits did not break what they are in: `docker compose config` over the root file is valid after five header insertions, the gateway's **16** renderer tests pass after editing its module docstring, `package.json` still parses and still carries the dependency and the allowScripts entry, and **494** Logging tests pass.
+- The honest note: this is the sixth round of the attribution class, and the reviewer has had to name the instance each time. A sweep costs one command and I had not run it until asked six times.
+
 ### 2026-11-09 — The same guard, missed in the one service with a different test runner (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
