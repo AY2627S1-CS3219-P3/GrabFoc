@@ -29,6 +29,9 @@
  * Scope: Added cancelForDeactivatedLocation (SupplierDeactivated consumer, issue #121), sharing the
  *        suspension's cancel; a create a deactivation cancelled returns 409 LOCATION_INACTIVE.
  * Author review: Reviewed by Zi Yi, 2026-10-30.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+ * Scope: The suspension's CANCELLED history entry records suspendedUserId, so the order page can say whose account it was (#184).
+ * Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { PoolClient } from 'pg';
@@ -254,7 +257,8 @@ export class OrdersService {
   async cancelForSuspendedUser(userId: string): Promise<number> {
     let cancelled = 0;
     for (const orderId of await this.orders.unfinishedOrderIds(userId)) {
-      if (await this.systemCancel(orderId, 'USER_SUSPENDED', (tx) => this.orders.lockUnfinished(tx, orderId))) cancelled++;
+      const lock = (tx: PoolClient) => this.orders.lockUnfinished(tx, orderId);
+      if (await this.systemCancel(orderId, { reason: 'USER_SUSPENDED', suspendedUserId: userId }, lock)) cancelled++;
     }
     return cancelled;
   }
@@ -269,18 +273,18 @@ export class OrdersService {
     let cancelled = 0;
     for (const orderId of await this.orders.unfinishedOrderIdsAt(locationId, deactivatedAt)) {
       const lock = (tx: PoolClient) => this.orders.lockAffectedByDeactivation(tx, orderId, locationId);
-      if (await this.systemCancel(orderId, 'SUPPLIER_DEACTIVATED', lock)) cancelled++;
+      if (await this.systemCancel(orderId, { reason: 'SUPPLIER_DEACTIVATED' }, lock)) cancelled++;
     }
     return cancelled;
   }
 
   /**
-   * Cancels the order if `lock` still finds it under its row lock. Its CANCELLED history entry is
-   * the OrderCancelled event, except from AWAITING_CREDIT.
+   * Cancels the order if `lock` still finds it under its row lock. `details` is its CANCELLED history
+   * entry's changeDetails; that entry is the OrderCancelled event, except from AWAITING_CREDIT.
    */
   private systemCancel(
     orderId: string,
-    reason: 'USER_SUSPENDED' | 'SUPPLIER_DEACTIVATED',
+    details: { reason: 'USER_SUSPENDED'; suspendedUserId: string } | { reason: 'SUPPLIER_DEACTIVATED' },
     lock: (tx: PoolClient) => Promise<Order | undefined>,
   ): Promise<boolean> {
     return this.orders.transaction(async (tx) => {
@@ -294,7 +298,7 @@ export class OrdersService {
         action: 'CANCELLED',
         previousStatus: order.status,
         newStatus: 'CANCELLED',
-        changeDetails: { reason },
+        changeDetails: details,
       });
       return true;
     });
