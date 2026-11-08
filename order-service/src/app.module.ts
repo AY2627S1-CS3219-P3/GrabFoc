@@ -21,6 +21,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
  * Scope: Registered the supplier.events consumer (issue #121).
  * Author review: Reviewed by Zi Yi, 2026-10-30.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+ * Scope: Registered the admin controller (#181).
+ * Author review: Reviewed by Zi Yi, 2026-11-05.
  */
 import { INestApplication, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
@@ -35,6 +38,7 @@ import { OrderEvents } from './integrations/order.events';
 import { SupplierClient } from './integrations/supplier.client';
 import { SupplierEvents } from './integrations/supplier.events';
 import { UserEvents } from './integrations/user.events';
+import { AdminController } from './orders/admin.controller';
 import { ConfirmationsController } from './orders/confirmations.controller';
 import { ConfirmationsService } from './orders/confirmations.service';
 import { InternalController } from './orders/internal.controller';
@@ -44,7 +48,7 @@ import { OrdersService } from './orders/orders.service';
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [OrdersController, ConfirmationsController, InternalController],
+  controllers: [OrdersController, ConfirmationsController, InternalController, AdminController],
   providers: [
     OrdersService,
     ConfirmationsService,

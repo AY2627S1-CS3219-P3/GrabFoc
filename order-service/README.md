@@ -36,6 +36,12 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
 Scope: Recorded the user.events and supplier.events consumers and the test count (issue #121).
 Author review: Reviewed by Zi Yi, 2026-10-30.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+Scope: Documented the admin read routes (#181) and Postman folder 6.
+Author review: Reviewed by Zi Yi, 2026-11-05.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Said which Postman folders leave A with a cancelled order for folder 6 (PR #192 review).
+Author review: Reviewed by Zi Yi, 2026-11-06.
 -->
 
 # Order Service
@@ -211,9 +217,23 @@ Errors use the User Service envelope `{ "error": { "code", "message", "details" 
 | `GET /orders/:orderId/confirmations` | requester or assigned courier | `{ items }`, oldest first |
 | `POST /orders/:orderId/confirmations` | requester or assigned courier | propose a timing change, cancellation or completion (201) |
 | `POST /orders/:orderId/confirmations/:confirmationId/respond` | the other participant | approve or reject (200) |
+| `GET /admin/orders/overview` | admin | `{ live: { total, byState }, recentCancellations }` |
+| `GET /admin/orders` | admin | any user's orders, filtered (below) |
+| `GET /admin/orders/:orderId/history` | admin | `{ items }` for any order, oldest first |
 
 Lists take `page` (default 1) and `pageSize` (1–100, default 20) and return
 `{ items, page, pageSize, total }`, newest first.
+
+**Admin** routes (`docs/admin-dashboard-plan.md` §5, read-only) need an `ADMIN` token; anyone else
+gets 403 before the query is checked. A role change reaches Order when the token is refreshed
+(≤ 15 minutes), which is acceptable for reads. `GET /admin/orders` also takes `scope` (`live` =
+`PENDING`, `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS`, `ARRIVED`; `past` = `COMPLETED`, `CANCELLED`;
+omitted = both), `state` (must be in `scope`, otherwise 400) and `userId` (requester **or**
+courier). `AWAITING_CREDIT` orders are never listed. The overview's `byState` lists all five live
+states, zeros included; `recentCancellations` holds up to 50 orders cancelled in the last hour,
+newest first, including creates Credit refused (their history says `CREDIT_NOT_RESERVED`). A
+cancellation's reason is in its history entry's `changeDetails.reason`. History of an unknown
+order is 404.
 
 **Create** body: `orderDescription`, `pickupLocationId`, `deliveryLocationId`, `creditOffer`
 (whole number ≥ 1), optional `windowStart` / `windowEnd` (ISO 8601 with offset). Omitted start
@@ -411,5 +431,7 @@ order and carries `orderId` and `version` from request to request. Access tokens
 so run 0 again on a 401. A full run needs A to have at least 5 available credits (a
 cancelled order's credit returns about 10 s later); a `409 INSUFFICIENT_CREDITS` on a create
 means A has run low, so swap the two accounts. Folders: 1 full order (with the courier's balance before and 11 s after
-completion), 2 requester and mutual cancellation, 3 edit, 4 errors, 5 internal lookup. Background
+completion), 2 requester and mutual cancellation, 3 edit, 4 errors, 5 internal lookup, 6 admin read routes (set
+`adminEmail` / `adminPassword` to an `ADMIN` account; run it after folder 2, 3 or 4, which leave
+A with a cancelled order). Background
 jobs (expiry, `order.events`) have no endpoint; check those as described above.

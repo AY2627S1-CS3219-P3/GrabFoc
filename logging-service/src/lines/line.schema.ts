@@ -68,6 +68,10 @@
  * Scope: Two comments still described the function the ordinal change deleted - one of them the
  *        doc comment standing above its replacement (PR #145 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+ * Scope: Zod 4 (Dependabot #196): parseOr400 takes z.ZodType<T, unknown>, since Zod 4 removed
+ *        ZodTypeDef; lineId uses z.guid(), the shape Zod 3's .uuid() and the shipper accept.
+ * Author review: Pending Jian Bing's review.
  */
 import { z } from 'zod';
 import { ProblemException } from '../common/problem';
@@ -246,7 +250,10 @@ function renameTopLevelProto(input: unknown): unknown {
 
 const inboundLineFields = z
   .object({
-    lineId: z.string().uuid(),
+    // AI-generated (Claude Code), review pending: z.guid() is Zod 3's .uuid() shape (any hex in
+    // 8-4-4-4-12). Zod 4's .uuid() also checks the version and variant digits, which the shipper's
+    // UUID check does not, so it would refuse lines the shipper accepted.
+    lineId: z.guid(),
     // ISO-8601 with a Z offset. Zod's .datetime() rejects a local-time string, which is what we
     // want: a timestamp without a zone cannot be compared across containers.
     ts: pgDatetime(),
@@ -610,7 +617,8 @@ export const logQuerySchema = z
 export type LogQuery = z.infer<typeof logQuerySchema>;
 
 /** Parse with a Zod schema, or throw a 400 Problem Details response naming the invalid fields. */
-export function parseOr400<T>(schema: z.ZodType<T, z.ZodTypeDef, unknown>, data: unknown, what: string): T {
+// AI-generated (Claude Code), review pending: Zod 4 has no ZodTypeDef; the second parameter is the input type.
+export function parseOr400<T>(schema: z.ZodType<T, unknown>, data: unknown, what: string): T {
   const result = schema.safeParse(data ?? {});
   if (result.success) return result.data;
   const issues = result.error.issues
