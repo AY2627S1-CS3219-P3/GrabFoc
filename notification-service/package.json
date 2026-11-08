@@ -1,0 +1,68 @@
+{
+  "name": "notification-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FoC Notification Service. AI Assistance Disclosure: Claude Code (Claude Opus 5.5), 2026-10-30; scaffold (#149), following credit-service/package.json. 2026-11-01: Kafka client, Zod and the integration and Kafka test scripts (#150, #152). Author review: pending, Jie Yang to record the review. 2026-11-08: zod ^4.6.6 (zod memory-exhaustion advisory, #224), and an override keeping multer at 2.5.0 with @nestjs/platform-express on ^11.2.8, as user-service did in #193 (#225).",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "nest build",
+    "test": "jest",
+    "test:int": "jest --config jest.int.config.js",
+    "test:kafka": "jest --config jest.kafka.config.js",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch"
+  },
+  "dependencies": {
+    "@confluentinc/kafka-javascript": "1.11.0",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.2.8",
+    "nodemailer": "^10.3.1",
+    "pg": "^8.13.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@types/express": "^5.0.0",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.11.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.14",
+    "typescript": "^5.6.0"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "transform": {
+      "^.+\\.ts$": "ts-jest"
+    },
+    "testEnvironment": "node",
+    "setupFiles": [
+      "<rootDir>/test/env.setup.ts"
+    ],
+    "testMatch": [
+      "**/*.spec.ts"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "\\.int\\.spec\\.ts$",
+      "\\.kafka\\.spec\\.ts$"
+    ]
+  },
+  "allowScripts": {
+    "@confluentinc/kafka-javascript@1.11.0": true
+  },
+  "overrides": {
+    "multer": "2.5.0"
+  }
+}

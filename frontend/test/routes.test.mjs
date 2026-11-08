@@ -21,6 +21,11 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Tests for the not-found page and Secure session cookies behind the proxy (#141, #113); the
 browser channel can be overridden with FOC_TEST_BROWSER_CHANNEL (default still msedge).
 Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Added a mock admin upstream and tests for the admin proxy allowlist, its same-origin check, the USER redirect from /admin/* and the "Admin Panel" link; made the stale-edit test wait for its list reload, which otherwise reached the next test; allowed GET history in the order proxy test (#184).
+Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -121,6 +126,17 @@ const gateway = createServer(async (request, response) => {
     if (!request.headers.authorization) { response.writeHead(401).end(); return; }
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({ method: request.method, path: request.url, body }));
+    return;
+  }
+  // AI-generated (Claude Code, 2026-11-07; reviewed by Zi Yi): echoes what the admin proxy forwarded.
+  if (request.url?.startsWith("/admin/")) {
+    if (!request.headers.authorization) { response.writeHead(401).end(); return; }
+    response.writeHead(200, { "content-type": "application/json" });
+    // The Overview's three reads also get an empty but well-formed answer, so the page renders.
+    const pathname = new URL(request.url, "http://gateway.local").pathname;
+    const shape = { "/admin/orders/overview": { live: { total: 0, byState: {} }, recentCancellations: [] },
+      "/admin/users/login-summary": { failedLast24h: 0, lockedNow: 0, flagged: [], recentFailures: [] }, "/admin/users": { items: [] } }[pathname];
+    response.end(JSON.stringify({ ...shape, method: request.method, path: request.url, body, contentType: request.headers["content-type"] ?? null }));
     return;
   }
   if (request.url?.startsWith("/credits/")) {
@@ -1007,7 +1023,7 @@ test("users browse and filter locations while only admins manage them", async ()
     await user.getByRole("button", { name: "Sign In" }).click();
     await user.waitForURL("**/home");
     await user.getByRole("heading", { name: "COM3 Basement" }).waitFor();
-    assert.equal(await user.getByRole("link", { name: "Manage Locations" }).count(), 0);
+    assert.equal(await user.getByRole("link", { name: "Admin Panel" }).count(), 0);
     await user.getByLabel("Search name").fill("UTown");
     await user.getByRole("heading", { name: "UTown Print" }).waitFor();
     await user.getByRole("heading", { name: "COM3 Basement" }).waitFor({ state: "detached" });
@@ -1021,7 +1037,10 @@ test("users browse and filter locations while only admins manage them", async ()
     await admin.getByLabel("Password").fill("Passw0rdSafe");
     await admin.getByRole("button", { name: "Sign In" }).click();
     await admin.waitForURL("**/home");
-    await admin.getByRole("link", { name: "Manage Locations" }).click();
+    await admin.getByRole("link", { name: "Admin Panel" }).click();
+    await admin.waitForURL("**/admin");
+    await admin.getByRole("heading", { name: "Admin Overview" }).waitFor();
+    await admin.getByRole("navigation", { name: "Admin navigation" }).getByRole("link", { name: "Locations" }).click();
     await admin.waitForURL("**/admin/locations");
     await admin.getByRole("heading", { name: "Manage Locations" }).waitFor();
     await admin.locator("form [name=name]").fill("New Pickup");
@@ -1071,7 +1090,7 @@ test("Supplier browsing and management use responsive Tailwind layouts", async (
     assert.equal(await admin.locator(".location-filters").evaluate((element) => getComputedStyle(element).flexWrap), "nowrap");
     assert.equal(await columns(".location-grid"), 4);
 
-    await admin.getByRole("link", { name: "Manage Locations" }).click();
+    await admin.goto(`${baseUrl}/admin/locations`);
     await admin.waitForURL("**/admin/locations");
     assert.equal(await columns(".manage-layout"), 2);
     await admin.setViewportSize({ width: 390, height: 844 });
@@ -1182,8 +1201,11 @@ test("a stale location edit refreshes the list and clears the old version", asyn
     await admin.getByRole("alert").getByText(/Locations refreshed; select Edit again/).waitFor();
     await admin.locator(".manage-row", { hasText: "Changed by another admin" }).getByRole("button", { name: "Edit" }).click();
     assert.equal(await admin.locator("form [name=name]").inputValue(), "Changed by another admin");
+    // The save reloads the list; let that finish so it can't reach the gateway during the next test.
+    const reloaded = admin.waitForResponse((response) => response.url().includes("/api/session/supplier/locations?"));
     await admin.getByRole("button", { name: "Save Changes" }).click();
     await admin.getByRole("button", { name: "Add Location" }).waitFor();
+    await reloaded;
     assert.equal(requests.filter((request) => request.method === "PATCH" && request.path === `/locations/${location.id}`).at(-1).body.version, location.version + 1);
   } finally {
     locations[index] = location;
@@ -1284,6 +1306,7 @@ test("order proxy forwards only the allowlisted Order endpoints", async () => {
     ["GET", "mine", "/orders/mine"], ["GET", "assigned?page=3", "/orders/assigned?page=3"],
     ["POST", "", "/orders"], ["GET", `${orderId}?ignored=1`, `/orders/${orderId}`], ["PATCH", orderId, `/orders/${orderId}`],
     ...["accept", "cancel", "pick-up", "start-delivery", "arrive"].map((step) => ["POST", `${orderId}/${step}`, `/orders/${orderId}/${step}`]),
+    ["GET", `${orderId}/history`, `/orders/${orderId}/history`],
     ["GET", `${orderId}/confirmations`, `/orders/${orderId}/confirmations`],
     ["POST", `${orderId}/confirmations`, `/orders/${orderId}/confirmations`],
     ["POST", `${orderId}/confirmations/${orderId}/respond`, `/orders/${orderId}/confirmations/${orderId}/respond`],
@@ -1315,6 +1338,65 @@ test("order mutations from another origin are refused before the gateway", async
     method: "POST", headers: orderHeaders("https://example.com"), body: '{"version":1}' });
   assert.equal(response.status, 403);
   assert.equal(requests.length, before);
+});
+
+// AI-generated (Claude Code, 2026-11-07; reviewed by Zi Yi)
+test("admin proxy forwards only the dashboard's routes, with their query", async () => {
+  const allowed = [
+    ["GET", "users?status=SUSPENDED", "/admin/users?status=SUSPENDED"], ["GET", "users/login-summary?x=1", "/admin/users/login-summary"],
+    ["GET", `users/${orderId}/login-events?page=2&pageSize=5`, `/admin/users/${orderId}/login-events?page=2&pageSize=5`],
+    ["POST", `users/${orderId}/suspend`, `/admin/users/${orderId}/suspend`, '{"reason":"No-shows"}'],
+    ["POST", `users/${orderId}/reactivate`, `/admin/users/${orderId}/reactivate`],
+    ["GET", "orders?scope=live&state=PENDING&userId=u&page=2", "/admin/orders?scope=live&state=PENDING&userId=u&page=2"],
+    ["GET", "orders/overview", "/admin/orders/overview"], ["GET", `orders/${orderId}/history?x=1`, `/admin/orders/${orderId}/history`],
+  ];
+  for (const [method, path, upstream, body] of allowed) {
+    const response = await fetch(`${baseUrl}/api/session/admin/${path}`, { method, headers: orderHeaders(baseUrl), body });
+    assert.equal(response.status, 200, `${method} ${path}`);
+    const data = await response.json();
+    assert.equal(data.path, upstream);
+    assert.equal(data.method, method);
+    assert.deepEqual(data.body, body ? JSON.parse(body) : {});
+    assert.equal(data.contentType, body ? "application/json" : null, "reactivate is sent without a body");
+  }
+  const denied = [["GET", "users/not-a-uuid/login-events"], ["PATCH", `users/${orderId}/role`], ["POST", `users/${orderId}/role`],
+    ["GET", `users/${orderId}/suspend`], ["POST", "users"], ["GET", "users/me"], ["POST", "orders/overview"],
+    ["GET", `orders/${orderId}`], ["GET", `orders/${orderId}/history/extra`], ["GET", "credits/dead-letters"], ["GET", "locations"]];
+  const before = requests.length;
+  for (const [method, path] of denied) {
+    const response = await fetch(`${baseUrl}/api/session/admin/${path}`, {
+      method, headers: orderHeaders(baseUrl), ...(method === "GET" ? {} : { body: "{}" }) });
+    assert.equal(response.status, method === "PATCH" ? 405 : 404, `${method} ${path}`);
+  }
+  assert.equal(requests.length, before, "denied paths never reach the gateway");
+});
+
+test("admin suspend from another origin is refused before the gateway", async () => {
+  const before = requests.length;
+  const response = await fetch(`${baseUrl}/api/session/admin/users/${orderId}/suspend`, {
+    method: "POST", headers: orderHeaders("https://example.com"), body: '{"reason":"x"}' });
+  assert.equal(response.status, 403);
+  assert.equal(requests.length, before);
+});
+
+test("a USER opening an admin page is sent to Home and never sees the admin link", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/admin`);
+    await page.waitForURL("**/signin");
+    await page.getByLabel("Email").fill("alex@u.nus.edu");
+    await page.getByLabel("Password").fill("Passw0rdSafe");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.waitForURL("**/home");
+    await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
+    assert.equal(await page.getByRole("link", { name: "Admin Panel" }).count(), 0);
+    const before = requests.length;
+    for (const path of ["/admin", "/admin/orders", "/admin/logins", "/admin/users", `/admin/users/${orderId}`, "/admin/locations"]) {
+      await page.goto(`${baseUrl}${path}`);
+      await page.waitForURL(`${baseUrl}/home`);
+    }
+    assert.ok(!requests.slice(before).some((request) => request.path.startsWith("/admin/")), "no admin data was requested");
+  } finally { await page.close(); }
 });
 
 test("session status includes the user id from the access token", async () => {

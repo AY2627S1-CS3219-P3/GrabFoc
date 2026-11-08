@@ -6,6 +6,9 @@ Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Grouped both tabs into Active / Completed / Cancelled, fetching every page instead of filtering one page.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Completed and cancelled cards now open the order page (#184).
+Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
 */
 "use client";
 
@@ -99,13 +102,13 @@ function OrderList({ tab, onError }: { tab: Tab; onError: (message: string) => v
   </>;
 }
 
-// Finished orders aren't links: the detail page sends finished orders back to /home.
+// AI-generated (Claude Code, 2026-11-07; reviewed by Zi Yi): finished cards open the order, which says how it ended.
 function FinishedSection({ title, orders, empty }: { title: string; orders: Order[]; empty: string }) {
   return <details className="home-section order-section">
     <summary><h2>{title} <span className="order-section-count">{orders.length}</span></h2></summary>
     {orders.length === 0 ? <p className="order-section-empty">{empty}</p>
       : <div className="order-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {orders.map((order) => <OrderCard key={order.id} order={order} showStatus />)}
+        {orders.map((order) => <OrderCard key={order.id} order={order} href={`/orders/${order.id}`} showStatus />)}
       </div>}
   </details>;
 }

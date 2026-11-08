@@ -25,6 +25,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Counted the admin Order routes in the Order check and added a test that the admin dashboard's
 User and Order reads reach the right service with JWT required, while /admin/credits stays unrouted (#182).
 Author review: Reviewed by Zi Yi, 2026-11-07; pending review by Jie Yang.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Expect the new GET /orders/:orderId/history route (#184 review).
+Author review: Reviewed by Zi Yi, 2026-11-07; pending Jie Yang's approval.
 """
 # AI-generated; review pending.
 import importlib.util
@@ -191,7 +194,7 @@ class RouteFilesTest(unittest.TestCase):
         hcm = resources["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
         routes = [r for r in self.unprefixed(hcm["route_config"]["virtual_hosts"][0]["routes"])
                   if r.get("route", {}).get("cluster") == "order"]
-        self.assertEqual(len(routes), 17)
+        self.assertEqual(len(routes), 18)
         for route in routes:
             self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"], "user_token")
             path = route["match"].get("path") or route["match"]["safe_regex"]["regex"]
@@ -199,6 +202,8 @@ class RouteFilesTest(unittest.TestCase):
         static = [r["match"]["path"] for r in routes if "path" in r["match"]]
         self.assertEqual(static, ["/orders/available", "/orders/mine", "/orders/assigned", "/orders",
                                   "/admin/orders", "/admin/orders/overview"])
+        history = [r for r in routes if r["match"].get("safe_regex", {}).get("regex") == "/orders/[^/]+/history"]
+        self.assertEqual([r["match"]["headers"][0]["string_match"]["exact"] for r in history], ["GET"])
         order = next(c for c in resources["clusters"] if c["name"] == "order")
         endpoint = order["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
         self.assertEqual(endpoint["address"]["socket_address"], {"address": "order", "port_value": 3005})

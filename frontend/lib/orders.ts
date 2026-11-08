@@ -9,6 +9,12 @@ Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added STATUS_COLORS, the status badge colours.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
+Scope: Added HistoryEntry, getHistory(), detailOf(), suspendedSide() and cancelledBecause(), so a cancelled order's page can say why and whose account was suspended (#184).
+Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: cancelledBecause() words a SUPPLIER_DEACTIVATED cancellation (#121's reason).
+Author review: Pending review by Zi Yi.
 */
 import { withSessionMutation } from '@/lib/session-client';
 import { type FieldIssue, parseServiceError } from '@/lib/service-errors';
@@ -54,6 +60,16 @@ export type Confirmation = {
   resolvedAt: string | null;
 };
 
+export type HistoryEntry = {
+  id: string;
+  actorId: string | null;
+  action: string;
+  previousStatus: OrderStatus | null;
+  newStatus: OrderStatus | null;
+  changeDetails: unknown;
+  occurredAt: string;
+};
+
 export type OrderList = 'available' | 'mine' | 'assigned';
 export type Step = 'pick-up' | 'start-delivery' | 'arrive';
 export type OrderInput = { orderDescription: string; pickupLocationId: number; deliveryLocationId: number; creditOffer: number };
@@ -68,6 +84,7 @@ export const orderKeys = {
   everything: (list: 'mine' | 'assigned') => ['orders', list, 'all'] as const,
   order: (id: string) => ['order', id] as const,
   confirmations: (id: string) => ['confirmations', id] as const,
+  history: (id: string) => ['order-history', id] as const,
 };
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
@@ -101,7 +118,6 @@ export const STATUS_COLORS: Record<OrderStatus, { background: string; text: stri
 };
 
 export const isActive = (order: Order) => order.status !== 'COMPLETED' && order.status !== 'CANCELLED';
-export const isFinished = (order: Order) => !isActive(order);
 
 /** An Order Service error, with the HTTP status and the service's error code. */
 export class OrderError extends Error {
@@ -183,6 +199,39 @@ export const propose = (id: string, kind: 'CANCELLATION' | 'COMPLETION') =>
 
 export const respond = (id: string, confirmationId: string, response: 'ACCEPTED' | 'REJECTED') =>
   call<Confirmation>(`/${id}/confirmations/${confirmationId}/respond`, 'Could not send your response.', 'POST', { response });
+
+export const getHistory = (id: string) =>
+  call<{ items: HistoryEntry[] }>(`/${id}/history`, 'Could not load the order history.').then((result) => result.items);
+
+/** A text field of a history entry's changeDetails, such as a cancellation's `reason`. */
+export function detailOf(entry: HistoryEntry, key: 'reason' | 'suspendedUserId'): string | null {
+  const value = (entry.changeDetails as Record<string, unknown> | null)?.[key];
+  return typeof value === 'string' ? value : null;
+}
+
+/** Whose suspension cancelled the order; null for entries saved before suspendedUserId was recorded. */
+export function suspendedSide(entry: HistoryEntry, order: Order): 'requester' | 'courier' | null {
+  const userId = detailOf(entry, 'suspendedUserId');
+  return userId === null ? null : userId === order.requesterId ? 'requester' : userId === order.courierId ? 'courier' : null;
+}
+
+// AI-generated (reviewed by Zi Yi)
+/** Why the order was cancelled, worded for the requester or courier looking at it. */
+export function cancelledBecause(entry: HistoryEntry, order: Order, viewer: 'requester' | 'courier' | null): string | null {
+  switch (detailOf(entry, 'reason')) {
+    case 'USER_SUSPENDED': {
+      const side = suspendedSide(entry, order);
+      return side === null ? 'an account on this order has been suspended.'
+        : side === viewer ? 'your account was suspended.' : `the ${side}'s account has been suspended.`;
+    }
+    case 'REQUESTER_CANCELLED': return viewer === 'requester' ? 'you cancelled it.' : 'the requester cancelled it.';
+    case 'MUTUAL_CANCELLATION': return 'the requester and the courier agreed to cancel it.';
+    case 'EXPIRED': return 'its delivery window ended before it was finished.';
+    case 'SUPPLIER_DEACTIVATED': return 'its pickup or delivery location was deactivated.';
+    case 'CREDIT_NOT_RESERVED': return viewer === 'requester' ? "your credits couldn't be reserved." : "the requester's credits couldn't be reserved.";
+    default: return null;
+  }
+}
 
 export function formatTime(value: string): string {
   return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });

@@ -10,6 +10,8 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
 Scope: Recorded that the Order Service now consumes UserSuspended.
 Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+Scope: Wrote the "Internal API" section (#151).
+Author review: pending — Jie Yang to record the review; Deanson / Zi Yi (User owners) to review.
 Scope: Added UserReactivated, the Notification Service as a UserSuspended consumer, the claim
   order for three types, and the login_events table (#180, docs/admin-dashboard-plan.md).
 Author review: Reviewed by Zi Yi, 2026-11-05.
@@ -23,8 +25,26 @@ Author review: Cole Lin, read and approved.
 # AGENTS.md — User Service
 
 Read the root [`AGENTS.md`](../AGENTS.md) first. This file holds rules specific to the User
-Service. Only the Events and Login audit sections exist so far; the rest (schema, credentials,
-tokens, OTPs, role lifecycle) is still to be written back after the refactor.
+Service. Only the Events, Login audit and Internal API sections exist so far; the rest (schema,
+credentials, tokens, OTPs, role lifecycle) is still to be written back after the refactor.
+
+## Internal API (`/internal/users`)
+
+_Origin: Team (Jie Yang, 2026-10-27: Notification looks up emails through a User endpoint; shape approved 2026-11-02, #151). Deanson and Zi Yi (User owners) to confirm._
+
+Service-to-service routes. They need `X-Service-Key: <USER_INTERNAL_SERVICE_KEY>` instead of a user
+token (a user token alone gets 401), and the gateway never routes `/internal/**`.
+
+| Route | Caller | Responses |
+|---|---|---|
+| `GET /internal/users/:userId/contact` | Notification Service, when sending an email | 200 `{ "email": "..." }` · 400 not a UUID · 401 missing or wrong key (`SERVICE_KEY_INVALID`) · 404 unknown user |
+
+- **[Decided]** The email is returned for any existing user, whatever their status: a suspended or
+  deactivated user still hears that their orders were cancelled.
+- The email is never logged, and never appears in an error.
+- The key is compared in constant time (`src/common/guards/service-key.guard.ts`, copied from Order).
+- `USER_INTERNAL_SERVICE_KEY` is required at startup (at least 32 characters). Each caller holds the
+  same value under its own variable.
 
 ## Events (`user.events`)
 
