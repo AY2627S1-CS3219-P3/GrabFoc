@@ -17,6 +17,16 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-09 — The adopter list I updated two rounds before wiring the thing it omits (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: no new one - started by the automated reviewer, under the standing instruction to keep fixing findings until a pull request has none left.
+- One finding, and it is the instruction-file class for the sixth time today, in the sharpest form yet: the list I rewrote two rounds ago to say "**done** for Supplier, User, Credit and Order; still open: the Notification Service" is the same list I then left untouched when I wired the Notification Service an hour later. I fixed a stale status and created a stale status.
+- Both places updated: the adopter list names all five, and the pending item now says the API Gateway's stdout collection is the only thing left. The entry also records what is genuinely particular about Notification, so the next change does not have to rediscover it - no per-request line, because one `/health` route and no caller means a request line says nothing; and two envelope names it cannot use, because its roles are `REQUESTER`/`COURIER` and its `status` is an order state, either of which would have the store refuse the whole line.
+- Swept for the same claim elsewhere rather than fixing the named instance: the only other matches are historical usage-log entries, which were true when written, and a sentence in Notification's own file that is still accurate.
+- The pattern worth naming after six of these: I update documentation as part of a change, and then the *next* change in the same session invalidates what I just wrote, because the documentation is the last thing I touch and the first thing to go stale. The habit that would fix it is re-reading what I wrote about a thing after changing that thing again - not writing it more carefully the first time.
+- Verification: **494** in the Logging Service, unchanged - this round is documentation only.
+
 ### 2026-11-09 — A finding I disproved by running it, and a worse one underneath (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
