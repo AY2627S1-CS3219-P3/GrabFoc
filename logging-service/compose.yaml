@@ -10,6 +10,10 @@
 # Scope: restart: unless-stopped on both long-running containers, the policy every other service's
 #        compose file already uses (PR #129 review).
 # Author review: Cole Lin, read and approved.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+# Scope: Host ports moved to 3007 and 5437; the Notification Service (#161) also chose 3006 and 5436, so one of the two had to move and this is the N2H.
+#        The container ports are unchanged.
+# Author review: Cole Lin, read and approved.
 #
 # The Logging Service and the database only it uses (root AGENTS.md §3). The root compose.yaml
 # includes this file.
@@ -42,8 +46,10 @@ services:
       POSTGRES_PASSWORD: ${LOGGING_POSTGRES_PASSWORD:-change-me-in-dotenv}
       POSTGRES_DB: logging
     ports:
-      # 5436 on the host: user-db has 5432, supplier-db 5434, credit-db 5435.
-      - "5436:5432"
+      # 5437 on the host: user-db has 5432, supplier-db 5434, credit-db 5435, and 5436 went
+      # to notification-db (#161). Inside the container it is still the standard 5432, which
+      # is what LOGGING_DATABASE_URL above points at.
+      - "5437:5432"
     volumes:
       # Named volume, so the data survives `docker compose down` (root AGENTS.md §8).
       - logging-db-data:/var/lib/postgresql/data
@@ -85,8 +91,16 @@ services:
       LOGGING_JWT_ISSUER: ${LOGGING_JWT_ISSUER:-}
       LOGGING_JWT_AUDIENCE: ${LOGGING_JWT_AUDIENCE:-}
     ports:
-      # 3006: user-db has 3001, supplier 3002, gateway 3003, credit 3004, order 3005.
-      - "3006:3006"
+      # 3007 on the host, 3006 inside. Every other service in the repo maps a port to
+      # itself; this one does not, because the Notification Service (#161) publishes 3006
+      # and two containers cannot bind the same host port - `docker compose up` fails
+      # outright with "port is already allocated", and CI never sees it because it tests
+      # each service alone. The container port is unchanged, so LOGGING_PORT, EXPOSE and the
+      # deployed task definition are untouched; only what you type into a browser on your
+      # own machine moves.
+      # Host ports so far: user 3001, supplier 3002, gateway 3003, credit 3004, order 3005,
+      # notification 3006, logging 3007.
+      - "3007:3006"
 
 volumes:
   logging-db-data:
