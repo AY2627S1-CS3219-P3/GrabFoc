@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
  * Scope: Default host localhost → 127.0.0.1, like the Kafka test broker.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: emptyTables also empties notification_account_emails (#183).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
@@ -62,5 +65,7 @@ export async function openTestDatabase(): Promise<Pool> {
 
 /** Empties every table. */
 export async function emptyTables(pool: Pool): Promise<void> {
-  await pool.query('TRUNCATE notifications, notification_order_states, notification_events, notification_dead_letters');
+  await pool.query(
+    'TRUNCATE notifications, notification_order_states, notification_events, notification_dead_letters, notification_account_emails',
+  );
 }

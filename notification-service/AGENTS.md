@@ -15,6 +15,9 @@ Author review: pending — Jie Yang to record the review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
 Scope: Updated "Status" and "Rules" for retries (#154); wrote "Retries (#154)" from Jie Yang's decisions in chat; marked the admin dead-letter endpoints as deferred.
 Author review: pending — Jie Yang to record the review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+Scope: Wrote "Account emails (#183)" from Jie Yang's decisions in chat; updated "Status" and "Purpose".
+Author review: pending — Jie Yang to record the review.
 -->
 
 # AGENTS.md — Notification Service
@@ -29,13 +32,15 @@ _Origin: AI doc_
 - Schema (#150) and `order.events` consumer (#152): each event is deduplicated, checked for staleness and given one `PENDING` row in `notifications` per recipient, in one transaction. Unreadable events go to `notification.order-events.dlt` and are copied into `notification_dead_letters`.
 - Sending (#153): after the event's transaction, each `PENDING` row is sent: the email comes from User's `GET /internal/users/:userId/contact` (#151), then goes out over SMTP. The row becomes `SENT`, or `FAILED` with an error category, and the event `HANDLED` once no row is `PENDING`.
 - Retries (#154): an event with emails that may still go out moves through `notification.order-events.retry.<n>`, then to `notification.order-events.dlt`. An email for an order that has since moved on is dropped as `SUPERSEDED`.
-- Not yet: the admin dead-letter endpoints (deferred), end-to-end and CI (#155), emails for completion/cancellation/timing-change requests (#186). Tracking issue: #147.
+- Account emails (#183): `user.events` is consumed too. `UserSuspended` and `UserReactivated` email that user; other types are skipped. `UserReactivated` only arrives once the User Service publishes it (#180).
+- CI (#155): unit, integration and Kafka tests run in CI. The UI demo is still to do.
+- Not yet: the admin dead-letter endpoints (deferred), emails for completion/cancellation/timing-change requests (#186). Tracking issue: #147.
 
 ## Purpose
 
 _Origin: Team (Backlog NTFR1–3, NFR3.4)_
 
-- Email only. Consumes order-state events and emails the right party. Stores almost nothing.
+- Email only. Consumes order-state events and emails the right party, and account events (`user.events`) and emails that user. Stores almost nothing.
 
 ## Who gets emailed [Decided]
 
@@ -97,3 +102,22 @@ _Origin: Team (Jie Yang, 2026-11-04, from Claude Code's options)_
 - **[Decided]** Before any send, first or retry, an email is dropped if the order has since been handled in a later state: it is saved as `FAILED` with `last_error` `SUPERSEDED`, so emails never arrive out of sequence. Ranks as in the stale check, so `COMPLETED` and `CANCELLED` emails are never superseded.
 - **[Decided]** No long-term recovery (no worker over the dead letters, no replay for now): a notification that arrives much later is of little use.
 - Known gap: if the service crashes after a send pass but before the retry message is written, the redelivered event finds no `PENDING` emails and schedules no retry; those emails stay `FAILED`.
+
+## Account emails (#183)
+
+_Origin: Team (issue #183; Jie Yang approved Claude Code's plan, 2026-11-04)_
+
+| Event on `user.events` | Email to that user |
+|---|---|
+| `UserSuspended` | "Your FoC account has been suspended. Contact an administrator if you think this is a mistake." (no button) |
+| `UserReactivated`, `previousStatus: SUSPENDED` | "Your FoC account has been reinstated. You can log in again." |
+| `UserReactivated`, `previousStatus: DEACTIVATED` | "Your FoC account has been reactivated." |
+
+- **[Decided]** Same consumer group, `notification-service`. Other `user.events` types (e.g. `UserRegistered`) are skipped. Unreadable `UserSuspended`/`UserReactivated` events go to `notification.user-events.dlt` and into `notification_dead_letters`.
+- **[Decided]** One row per event in `notification_account_emails` (`event_id` primary key, so the insert deduplicates), with the same delivery columns as `notifications`. No address or body is stored.
+- **[Decided]** On its first start the group reads `user.events` from the beginning. An event whose `occurredAt` is over an hour old is recorded as `FAILED` with `last_error` `DISCARDED_OLD` and never emailed, so past suspensions aren't emailed.
+- **[Decided]** Before a send, an email is dropped as `SUPERSEDED` if a later account event for that user has been recorded (by `occurredAt`), e.g. a retried "suspended" email after the account was reinstated.
+- **[Decided]** Retried like order emails, through `notification.user-events.retry.<n>` with the same `NOTIFICATION_RETRY_DELAYS`, then `notification.user-events.dlt`.
+- **[Decided]** The suspension reason is never included: the events don't carry it.
+- **[Proposed]** `UserReactivated` (`{ type, eventId, userId, occurredAt, previousStatus }`) is the shape #180 proposes; the User Service owners (Deanson, Zi Yi) define it. Confirm before relying on it.
+- An `OrderCancelled` with reason `USER_SUSPENDED` (sent by Order for each unfinished order of a suspended user) says "It was cancelled because an account on this order was suspended." So a suspended user may get several emails at once.

@@ -12,13 +12,16 @@ Author review: pending — Jie Yang to record the review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
 Scope: Updated the summary for retries (#154).
 Author review: pending — Jie Yang to record the review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+Scope: Updated the summary for account emails (#183).
+Author review: pending — Jie Yang to record the review.
 -->
 
 # Notification Service
 
 Emails the requester and courier when an order changes state. Rules and status: [`AGENTS.md`](AGENTS.md).
 
-**So far (#149, #150, #152, #153, #154):** the service consumes `order.events`, records each event, looks up each recipient's email from the User Service and sends the email. A send that may succeed later (User or SMTP down) is retried after `NOTIFICATION_RETRY_DELAYS` (default `1s,5s,30s,2m,10m`), unless the order has moved on by then (#154).
+**So far (#149, #150, #152, #153, #154, #183):** the service consumes `order.events`, records each event, looks up each recipient's email from the User Service and sends the email. A send that may succeed later (User or SMTP down) is retried after `NOTIFICATION_RETRY_DELAYS` (default `1s,5s,30s,2m,10m`), unless the order has moved on by then (#154). It also consumes `user.events` and emails a user whose account is suspended or reactivated (#183).
 
 Needs `USER_INTERNAL_SERVICE_KEY` in the root `.env` (the same value the User Service checks).
 

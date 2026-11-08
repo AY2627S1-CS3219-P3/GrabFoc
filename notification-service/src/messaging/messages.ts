@@ -8,6 +8,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
  * Scope: Added the x-due-at header for retry topics (#154).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Added the user.events parser for UserSuspended and UserReactivated (#183), following
+ *        order-service/src/integrations/user.events.ts; UserReactivated is #180's proposed shape.
+ * Author review: pending — Jie Yang to record the review.
  */
 import { z } from 'zod';
 
@@ -123,6 +127,49 @@ export function parseOrderEvent(value: Buffer | null): OrderEvent {
   };
 }
 
+// The User Service owns user.events (user-service/AGENTS.md "Events"). Not strict, so fields it adds
+// later are ignored. UserReactivated is the shape #180 proposes; confirm with the User owners.
+const accountEventSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('UserSuspended'), eventId: id, userId: id, occurredAt: z.string().datetime({ offset: true }) }),
+  z.object({
+    type: z.literal('UserReactivated'),
+    eventId: id,
+    userId: id,
+    occurredAt: z.string().datetime({ offset: true }),
+    previousStatus: z.enum(['SUSPENDED', 'DEACTIVATED']),
+  }),
+]);
+
+export type AccountEventType = 'UserSuspended' | 'UserReactivated';
+
+/** A user.events event Notification emails about: a change to the user's own account (#183). */
+export interface AccountEvent {
+  eventId: string;
+  type: AccountEventType;
+  userId: string;
+  occurredAt: Date;
+  /** UserReactivated only. */
+  previousStatus: 'SUSPENDED' | 'DEACTIVATED' | null;
+}
+
+/** A user.events event, or null for a type Notification doesn't email about (e.g. UserRegistered). */
+export function parseUserEvent(value: Buffer | null): AccountEvent | null {
+  const json = parseJson(value);
+  const type = typeof json === 'object' && json !== null ? (json as { type?: unknown }).type : undefined;
+  if (typeof type !== 'string') throw new InvalidMessageError('The message has no type.');
+  if (type !== 'UserSuspended' && type !== 'UserReactivated') return null;
+  const result = accountEventSchema.safeParse(json);
+  if (!result.success) throw new InvalidMessageError(`Invalid ${type} event: ${describeIssues(result.error)}`);
+  const event = result.data;
+  return {
+    eventId: event.eventId,
+    type: event.type,
+    userId: event.userId,
+    occurredAt: new Date(event.occurredAt),
+    previousStatus: event.type === 'UserReactivated' ? event.previousStatus : null,
+  };
+}
+
 /** Best-effort ids for logs and the dead-letter table; nulls when the message can't be read. */
 export function peekIds(value: Buffer | null): { eventId: string | null; orderId: string | null; type: string | null } {
   let json: unknown;
@@ -137,6 +184,7 @@ export function peekIds(value: Buffer | null): { eventId: string | null; orderId
   return {
     eventId: id(fields.eventId),
     orderId: id(asObject(fields.data).orderId),
-    type: typeof fields.eventType === 'string' ? fields.eventType.slice(0, 64) : null,
+    // order.events names it eventType; user.events names it type.
+    type: typeof fields.eventType === 'string' ? fields.eventType.slice(0, 64) : typeof fields.type === 'string' ? fields.type.slice(0, 64) : null,
   };
 }

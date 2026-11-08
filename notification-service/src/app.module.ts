@@ -12,11 +12,15 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
  * Scope: The topics now include one retry topic per NOTIFICATION_RETRY_DELAYS entry (#154).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
+ * Scope: Registered AccountEmailsService (#183).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { Module } from '@nestjs/common';
 import { config } from './config';
 import { DatabaseModule } from './db/database';
 import { DeadLettersService } from './dead-letters/dead-letters.service';
+import { AccountEmailsService } from './events/account-emails.service';
 import { OrderEventsService } from './events/order-events.service';
 import { SenderService } from './events/sender.service';
 import { HealthController } from './health/health.controller';
@@ -36,6 +40,7 @@ import { UserClient } from './users/user.client';
     UserClient,
     Mailer,
     SenderService,
+    AccountEmailsService,
     DeadLettersService,
     KafkaRunner,
   ],
