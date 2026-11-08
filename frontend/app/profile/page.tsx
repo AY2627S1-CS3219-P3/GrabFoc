@@ -6,6 +6,11 @@ Author review: Jie Yang reviewed this file; team visual review remains pending b
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Loaded the signed-in user's credit balance from the Credit Service, with no-wallet and retryable error states, and linked the transaction history page (#61).
 Author review: pending — Jie Yang to record the review.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Dropped the arrow from the transaction-history link (redesign copy rules).
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
@@ -117,8 +122,8 @@ export default function ProfilePage() {
             {balance.kind === "no-wallet" && <p className="data-note">No credit wallet yet. Accounts receive their starting credits when they are created.</p>}
             {balance.kind === "error" && <div className="load-error" role="alert"><p>{balance.message}</p><button type="button" aria-label="Retry credit balance" onClick={() => { setBalance({ kind: "loading" }); setBalanceReload((value) => value + 1); }}>Retry</button></div>}
             {balance.kind === "no-wallet"
-              ? <span className="credit-history" aria-disabled="true">View transaction history →</span>
-              : <Link className="credit-history" href="/credits/history">View transaction history →</Link>}
+              ? <span className="credit-history" aria-disabled="true">View transaction history</span>
+              : <Link className="credit-history" href="/credits/history">View transaction history</Link>}
           </section>
           <div className="profile-stats" aria-label="Order and credit totals">
             <div className="stat-card"><strong>—</strong><span>Orders Requested</span></div>

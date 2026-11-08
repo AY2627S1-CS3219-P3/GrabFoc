@@ -15,6 +15,9 @@ Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: cancelledBecause() words a SUPPLIER_DEACTIVATED cancellation (#121's reason).
 Author review: Pending review by Zi Yi.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Retuned the status badge colours to the redesign palette (PENDING now gold, waiting for a courier).
+Author review: Pending review by Jie Yang.
 */
 import { withSessionMutation } from '@/lib/session-client';
 import { type FieldIssue, parseServiceError } from '@/lib/service-errors';
@@ -100,15 +103,16 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
 
 // AI-generated (pending review by Deanson)
 // Badge colours per status (Deanson, 2026-10-22): a soft background with darker text.
-const GRAY = { background: '#f1f3f6', text: '#4b5563' };
-const LIGHT_BLUE = { background: '#e6f4fe', text: '#0b6aa2' };
-const BLUE = { background: '#e3ecff', text: '#1d4ed8' };
-const GREEN = { background: '#e6f6ec', text: '#1d6b35' };
-const RED = { background: '#fdecea', text: '#b42318' };
+// AI-generated (pending review by Jie Yang): colours from the redesign palette.
+const GRAY = { background: '#eceee9', text: '#5d6779' };
+const GOLD = { background: '#fff4d6', text: '#8a5d00' };
+const BLUE = { background: '#e9eeff', text: '#1a359b' };
+const GREEN = { background: '#e6f5ec', text: '#17714a' };
+const RED = { background: '#fff0ec', text: '#b8301d' };
 
 export const STATUS_COLORS: Record<OrderStatus, { background: string; text: string }> = {
   AWAITING_CREDIT: GRAY,
-  PENDING: LIGHT_BLUE,
+  PENDING: GOLD,
   ACCEPTED: BLUE,
   PICKED_UP: BLUE,
   IN_PROGRESS: BLUE,

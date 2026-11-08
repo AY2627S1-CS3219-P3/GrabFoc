@@ -9,6 +9,9 @@ Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Finished orders stay on the page instead of redirecting to /home, with a banner; a cancelled order says why (#184).
 Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Redesign: page themed by the viewer's role (requester orange / courier blue), sentence-case proposal headings, bike icon on the courier step button.
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
@@ -16,6 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../../components/app-shell";
+import { BikeIcon } from "../../components/icons";
 import { ErrorToast } from "../../components/error-feedback";
 import { ConfirmModal } from "../../components/modal";
 import { StatusBadge } from "../../components/order-card";
@@ -136,7 +140,7 @@ function OrderDetail({ id, userId }: { id: string; userId?: string }) {
   const canCancel = role === "requester" ? order.status === "PENDING" || inDelivery : role === "courier" && inDelivery;
   const nextStep = STEPS[order.status];
 
-  return <AppShell section="orders">
+  return <AppShell section="orders" mode={role ?? undefined}>
     <ErrorToast message={toast} onDismiss={() => setToast("")} />
     <div className="home-heading">
       <div><h1>Order details</h1><p>Created {formatTime(order.createdAt)}</p></div>
@@ -168,10 +172,10 @@ function OrderDetail({ id, userId }: { id: string; userId?: string }) {
 
         {role && pending && <div className={`proposal-box${pending.proposedBy === userId ? "" : " proposal-box--action"}`} role="status">
           {pending.proposedBy === userId ? <>
-            <strong>WAITING</strong>
+            <strong>Waiting for a reply</strong>
             <p>You proposed to {VERB[pending.kind]} the order. The {other} needs to accept before anything changes.</p>
           </> : <>
-            <strong>NEEDS YOUR RESPONSE</strong>
+            <strong>Needs your response</strong>
             <p>The {other} has proposed to {VERB[pending.kind]} the order.</p>
             <div className="order-actions">
               <button type="button" className="primary-button" disabled={busy}
@@ -184,7 +188,7 @@ function OrderDetail({ id, userId }: { id: string; userId?: string }) {
 
         {role && (canCancel || (role === "courier" && inDelivery)) && <div className="order-actions">
           {role === "courier" && nextStep && <button type="button" className="primary-button" disabled={busy}
-            onClick={() => step.mutate({ step: nextStep.step, version: order.version })}>{nextStep.label}</button>}
+            onClick={() => step.mutate({ step: nextStep.step, version: order.version })}><BikeIcon size={16} />{nextStep.label}</button>}
           {role === "courier" && order.status === "ARRIVED" && <button type="button" className="primary-button"
             disabled={busy || proposalsUnknown || Boolean(pending) || completionBlocked}
             onClick={() => proposal.mutate("COMPLETION")}>Request Completion</button>}
