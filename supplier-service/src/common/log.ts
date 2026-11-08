@@ -22,6 +22,10 @@
  *        unreachable address left a client retrying in the background and the runner failed
  *        the job on open handles, with every test passing (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+ * Scope: Review: detect `node --test` as well, which leaves NODE_ENV unset - so the Order
+ *        Service was still building a producer in its tests (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import * as path from 'path';
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
@@ -63,13 +67,25 @@ const brokers = (process.env.SUPPLIER_KAFKA_BROKERS || '')
  * publish. With no brokers set - every test run, and any standalone run - nothing is built at all,
  * the shipper starts no flush timer, and lines go to stdout only.
  */
-// Never under a test runner, whatever the environment says. A suite that pins the broker
-// variable to an unreachable address - which one of these services does deliberately, to
-// prove it does not depend on Kafka - would otherwise have this build a client that keeps
-// retrying in the background: the tests pass, the process never exits cleanly, and the
-// runner fails the job on open handles. No test wants lines shipped anywhere, and a log
-// shipper must never be the reason a suite hangs (review).
-const shipping = brokers.length > 0 && process.env.NODE_ENV !== 'test';
+/**
+ * Whether a test runner is running this. Three signals rather than one, because the repository
+ * uses three runners and only some of them say so: Jest and vitest set `NODE_ENV=test`, while
+ * `node --test` - which the Order Service uses - leaves it unset and sets `NODE_TEST_CONTEXT`
+ * instead. Checking only `NODE_ENV` left Order building a real producer from the repository-root
+ * `.env` that this module loads a few lines above (review).
+ */
+const underTest =
+  process.env.NODE_ENV === 'test' ||
+  Boolean(process.env.NODE_TEST_CONTEXT) ||
+  Boolean(process.env.JEST_WORKER_ID) ||
+  Boolean(process.env.VITEST);
+
+// Never under a test runner, whatever the broker variable says. A suite that pins it to an
+// unreachable address - which one of these services does deliberately, to prove it does not depend
+// on Kafka - would otherwise have this build a client that keeps retrying in the background: the
+// tests pass, the process never exits cleanly, and the runner fails the job on open handles. No
+// test wants lines shipped anywhere, and a log shipper must never be the reason a suite hangs.
+const shipping = brokers.length > 0 && !underTest;
 const publisher = shipping
   ? new KafkaLinePublisher(process.env.SUPPLIER_LOG_TOPIC || 'logging.lines', brokers)
   : undefined;

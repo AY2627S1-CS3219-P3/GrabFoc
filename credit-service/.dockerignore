@@ -1,0 +1,17 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: This service had no .dockerignore while its build context is its own directory, so
+#   nothing was excluded from the image build (issue #52).
+# Author review: Cole Lin, read and approved.
+node_modules
+dist
+.env
+.env.*
+!.env.example
+.git
+
+# Syncthing's conflict copies. They sit next to the file they diverged from, so `COPY src` pulls
+# them into the image and the build compiles them - and they are older than the file they came
+# from, so they fail. The repository-root .dockerignore cannot help here: this service's build
+# context is its own directory, so Docker reads this file instead (issue #52).
+**/*.sync-conflict-*

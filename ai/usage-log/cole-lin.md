@@ -17,6 +17,16 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-09 — The same guard, missed in the one service with a different test runner (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: no new one - started by the automated reviewer, under the standing instruction to keep fixing findings until a pull request has none left.
+- Three findings. The one that matters: the test-runner guard I added an hour earlier checked only `NODE_ENV === 'test'`, and the Order Service runs `node --test`, which **leaves `NODE_ENV` unset** and sets `NODE_TEST_CONTEXT` instead. Since `log.ts` loads the repository-root `.env` itself, a normal `ORDER_KAFKA_BROKERS` there meant Order's tests still built a real producer - the exact failure I had just fixed for Notification, still live one service over. Checking four signals now, and the regression test takes **93 seconds to fail** without the fix, because the client is built and hangs connecting: the CI symptom reproduced locally.
+- Second: the `.dockerignore` rule I added at the repository root protects only Supplier and Logging, because they are the only two services whose Docker build context is the root. The other six build from their own directory, where Docker reads *that* directory's file - and Credit had none at all. The rule is in all six now, and Credit has a file.
+- Third was a P1 on this service's own `AGENTS.md`: its Known problems list still proposed the gateway's `service`/`upstream` rename as an open question for Jie Yang, which the commit before this one implemented. Marked fixed, and recorded the second reason that entry had not spotted - a request reaching no upstream renders `null`, and `service` is required, so the store would have refused the line.
+- The shape of all three is the same and worth naming once: **I fixed a mechanism and not the class.** A guard that keys off one runner's convention, an ignore rule in one of eight build contexts, a status fixed in one of two places that describe it. The question I should be asking after each fix is not "does this work" but "where else does this situation exist" - the reviewer is answering that for me, round after round.
+- Verification: **494** Logging, **294** Supplier, **142** Credit, **103** Notification, **63** User, **14** Order (one new), `tsc --noEmit` clean in all six.
+
 ### 2026-11-09 — Every test passed and the job failed anyway (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

@@ -8,3 +8,9 @@ dist
 .env.*
 !.env.example
 .git
+
+# Syncthing's conflict copies. They sit next to the file they diverged from, so `COPY src` pulls
+# them into the image and the build compiles them - and they are older than the file they came
+# from, so they fail. The repository-root .dockerignore cannot help here: this service's build
+# context is its own directory, so Docker reads this file instead (issue #52).
+**/*.sync-conflict-*
