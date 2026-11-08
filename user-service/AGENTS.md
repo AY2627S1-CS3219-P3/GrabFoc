@@ -15,6 +15,9 @@ Author review: pending — Jie Yang to record the review; Deanson / Zi Yi (User 
 Scope: Added UserReactivated, the Notification Service as a UserSuspended consumer, the claim
   order for three types, and the login_events table (#180, docs/admin-dashboard-plan.md).
 Author review: Reviewed by Zi Yi, 2026-11-05.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: The Login audit note: 003_admin_dashboard.sql replaces the reset for older databases.
+Author review: Pending review by Deanson / Zi Yi (User Service owners).
 Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
 Scope: Added the Logging section. This service now writes a line per request into the Logging
   Service's store and this file did not mention logging at all, which for a scoped instruction file
@@ -183,8 +186,9 @@ _Origin: Team (docs/admin-dashboard-plan.md §4.1–§4.2, D5, D6, D9, P7, P8; #
   than an unknown email. Accepted by Zi Yi (User Service owner).
 - No retention or purge yet (P7).
 - Columns `users.suspension_reason` and `users.suspended_at` are set by suspend and cleared by
-  reactivate. Both, and the table, are in `001_init.sql` (edited in place): an existing user-db
-  must be reset once (`docker volume rm foc_user-db-data`, or `docker compose down -v`).
+  reactivate. Both, and the table, are in `001_init.sql` (edited in place), and
+  `003_admin_dashboard.sql` adds them to a database created before #180 (staging's, or an older
+  local one), so no reset is needed.
 
 ## Logging (issue #52)
 
