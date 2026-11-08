@@ -7,6 +7,10 @@ Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-23 to 2026-10-27
 Scope: Added the standalone-run caveat about LOGGING_JWKS_URL, then removed the claim that this
   service has a health endpoint, which it does not (both PR #129 review).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+Scope: The host ports are 3007 and 5437; the Notification Service (#161) also chose 3006 and 5436, so one of the two had to move and this is the N2H. Said which
+  numbers are the container's and which are the host's, since they now differ.
+Author review: Cole Lin, read and approved.
 -->
 
 # Logging Service
@@ -31,7 +35,10 @@ Or this service and its database alone:
 docker compose -f logging-service/compose.yaml --env-file .env up --build
 ```
 
-It listens on `3006` and `logging-db` on `5436`.
+On your own machine it answers on `3007` and `logging-db` on `5437`. **Inside** the container
+it still listens on `3006` and the database on the standard `5432` - only the published host
+ports moved, because the Notification Service (#161) publishes `3006` and `5436` and two
+containers cannot bind the same host port.
 
 That standalone run starts this service and its database only, so the `user-service` hostname the
 JWKS URL defaults to does not exist on the project network — and because there is no dev-header
@@ -67,7 +74,7 @@ dev-header fallback here, unlike the Supplier Service. Filters: `requestId`, `se
 `userId`, `level`, `status`, `from`, `to`, plus `page` and `pageSize` (at most 200).
 
 ```bash
-curl.exe "http://localhost:3006/logs?requestId=9f3c0b1e-..." -H "Authorization: Bearer $env:ADMIN_TOKEN"
+curl.exe "http://localhost:3007/logs?requestId=9f3c0b1e-..." -H "Authorization: Bearer $env:ADMIN_TOKEN"
 ```
 
 ## Environment
@@ -77,7 +84,7 @@ of its own.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `LOGGING_PORT` | `3006` | Order already publishes 3005 |
+| `LOGGING_PORT` | `3006` | The port **inside** the container. Compose publishes it on the host as `3007`, since Notification (#161) took 3006 there |
 | `LOGGING_KAFKA_GROUP_ID` | `logging-service` | |
 | `LOGGING_PURGE_INTERVAL_MINUTES` | `60` | |
 | `LOGGING_DATABASE_URL` | — | Required |
@@ -89,7 +96,7 @@ of its own.
 | `LOGGING_RETENTION_DAYS` | `30` | The purge job deletes anything older |
 | `LOGGING_PURGE_INTERVAL_MINUTES` | `60` | |
 | `LOGGING_POSTGRES_PASSWORD` | `change-me-in-dotenv` | Used by `compose.yaml` |
-| `LOGGING_TEST_DATABASE_URL` | `logging_test` on `5436` | Integration tests only |
+| `LOGGING_TEST_DATABASE_URL` | `logging_test` on `5437` | Integration tests only |
 
 ## Tests
 

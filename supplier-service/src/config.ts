@@ -8,6 +8,9 @@
  * Author review (Jian Bing): Approved this security trade-off (a bearer token without a JWKS URL
  *        gets 503, never accepted), then approved and merged PR #30 after its review threads and
  *        CI were checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+ * Scope: Added SUPPLIER_KAFKA_BROKERS and SUPPLIER_OUTBOX_POLL_MS (issue #120).
+ * Author review: pending — Jie Yang to record what he checked.
  */
 import { existsSync } from 'fs';
 import * as path from 'path';
@@ -40,6 +43,12 @@ function required(name: string): string {
 // claim to be an ADMIN.
 const devAuth = process.env.SUPPLIER_DEV_AUTH === 'true';
 
+// How often the outbox relay looks for unsent events. `||`, not `??`: unset arrives as "".
+const outboxPollMs = Number(process.env.SUPPLIER_OUTBOX_POLL_MS || 1000);
+if (!Number.isInteger(outboxPollMs) || outboxPollMs <= 0) {
+  throw new Error('SUPPLIER_OUTBOX_POLL_MS must be a positive whole number of milliseconds.');
+}
+
 export const config = {
   port: Number(process.env.SUPPLIER_PORT || 3002),
   databaseUrl: required('SUPPLIER_DATABASE_URL'),
@@ -54,6 +63,13 @@ export const config = {
   jwtIssuer: process.env.SUPPLIER_JWT_ISSUER || undefined,
   jwtAudience: process.env.SUPPLIER_JWT_AUDIENCE || undefined,
   devAuth,
+  // Kafka bootstrap servers, comma-separated: kafka:9092 inside Compose, localhost:9094 from the
+  // host. Optional, so the service can run alone: without it, events wait in supplier_outbox.
+  kafkaBrokers: (process.env.SUPPLIER_KAFKA_BROKERS || '')
+    .split(',')
+    .map((b) => b.trim())
+    .filter(Boolean),
+  outboxPollMs,
 };
 
 if (config.devAuth && process.env.NODE_ENV === 'production') {

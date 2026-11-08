@@ -1,15 +1,41 @@
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5), date: 2026-10-23
+Scope: Added the "every request, not only the failures" section and the request_completed row to
+  the event table, from Cole Lin's decision of the same day (issue #52). Earlier AI-assisted
+  changes to this file are recorded per section in its _Origin:_ lines.
+Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-10-27
+Scope: Recorded the JWKS filtering and the bounded list filters in the Auth section
+  (swept from the PR #129 review).
+Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-27 to 2026-11-07
+Scope: Wrote the logging sections that document this service's copy of the shipper as the PR #129
+  and PR #157 reviews changed it - redaction of names and keys, the bounds the store will accept,
+  the fallback line, and the rule that a filter never refuses what creation accepts. The decisions
+  are Cole Lin's; the wording is Claude's. This entry was missing while those sections were being
+  added, which the PR #157 review caught.
+Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+Scope: Three sections still described behaviour this service no longer has - a replaced field name
+  spelled from its position and length, `path` as the caller's pathname, and a request_completed
+  line that always carries a status and a caller. This is a scoped instruction file, so each would
+  have told the next change to undo a fix (PR #145 review).
+Author review: Cole Lin, read and approved.
+-->
 # AGENTS.md — Supplier (Location) Service
 
 Service-specific context for `supplier-service/`. Read the root [`AGENTS.md`](../AGENTS.md) first: it has the product, terminology, roles, the auth model, cross-cutting rules, the plan-first rule and the **AI-agent rules** (warn before breaking them).
 
 Status legend: **[Decided]** · **[Proposed]** · **[Open]** (defined in the root `AGENTS.md`).
 
-**Scope for now:** simple CRUD on locations. Change history is pending (see Rules).
+**Scope for now:** simple CRUD on locations, plus a `SupplierDeactivated` event (see Events). Change history is pending (see Rules).
 
 **Implementation [Decided]** · _Origin: Team_
 - NestJS (TypeScript, Node.js), PostgreSQL through `pg` with plain parameterized SQL, strict Zod validation.
 - JSON field names are the same as the columns (`id`, `name`, `type`, `building`, `floor`, `location_desc`, `lat`, `lon`, `image_url`, `status`, `version`), except the hours: `open_time` / `close_time`, as `HHMMhrs` strings (stored as minutes in `open_min` / `close_min`).
-- **Auth [Decided]:** every request carries a bearer token issued by the User Service. The gateway verifies it and forwards it unchanged; **this service verifies it again** against the User Service's JWKS (`SUPPLIER_JWKS_URL`) rather than trusting the network, then takes the caller from the `sub` and `role` claims. RS256/ES256 only, `exp` and `nbf` enforced, `iss`/`aud` checked only when configured (same as the gateway). Keys are cached for 5 minutes and refetched when a `kid` is unknown (at most every 30 s). Missing or invalid token → **401**; wrong role → **403**; JWKS unreachable → **503**.
+- **Auth [Decided]:** every request carries a bearer token issued by the User Service. The gateway verifies it and forwards it unchanged; **this service verifies it again** against the User Service's JWKS (`SUPPLIER_JWKS_URL`) rather than trusting the network, then takes the caller from the `sub` and `role` claims. RS256/ES256 only, `exp` and `nbf` enforced, `iss`/`aud` checked only when configured (same as the gateway). Keys are cached for 5 minutes and refetched on the **first** unknown `kid`, with repeat misses rate-limited to one refetch per 30 s — the miss is recorded only once the endpoint answers, so a failed refetch does not hold off the retry. A key the service could not verify with (no `kid` or `kty`, `use` other than `sig`, an alg outside RS256/ES256, or one `crypto` cannot import) is **filtered out when the set is fetched**; a set with nothing usable left is treated as unreachable. Missing or invalid token → **401**; wrong role → **403**; JWKS unreachable, or holding nothing verifiable → **503**, because 401 would tell a valid administrator their token was bad.
+- **A filter never refuses what creation accepts: anything storable stays findable.** A NUL in `?name=`, `?type=` or `?building=` is a **400** — PostgreSQL cannot carry a NUL in a TEXT parameter, so it used to reach the query and come back as a 500 — and a NUL in a `name`, `type`, `building` or `location_desc` **body** is now a 400 as well, where it used to reach the INSERT and come back as a driver 500. Nothing else is refused on either side. The first version of this refused *every* control character, on the filter side only, so an admin could create a building named with a tab, PostgreSQL would store it, and the exact `?building=` filter then rejected that same value with a 400 — leaving the row unreachable through the filter meant to find it (PR #157 review). An unpaired surrogate is not a storage failure and is accepted on both sides: Node encodes it to U+FFFD on the way in and in the filter term alike, so the two agree and the row is found. The length bound follows the same rule: `?name=` is capped at 100, matching what a name may be, while `?type=` and `?building=` are **not** capped, because those columns are stored unbounded. **[Open]** bounding `building` and `type` by length on creation would let the filters bound them too — a schema decision for Cole Lin and Jian Bing, not a filter fix.
 - **Local testing only:** with `SUPPLIER_DEV_AUTH=true` the service falls back to `X-User-Id` / `X-User-Role` headers **when no bearer token is sent**, so it can be tested without the User Service. A real token is always verified, so the headers can never override or downgrade one. The flag is off by default, startup refuses it when `NODE_ENV=production` (which the Dockerfile sets), and it logs a warning at startup when on.
 - Run and test instructions: `README.md`. Postman collection: `postman/supplier.postman_collection.json`.
 
@@ -87,6 +113,21 @@ CREATE TABLE locations (
 CREATE UNIQUE INDEX uq_locations_active_name ON locations (lower(name)) WHERE status = 'ACTIVE';
 ```
 
+`⚠ AI` The outbox table below was proposed by Claude Code and approved by Jie Yang (issue #120); Supplier owners to confirm.
+
+```sql
+-- Events saved in the same transaction as the change, sent to Kafka by the outbox relay (see Events)
+CREATE TABLE supplier_outbox (
+    event_id      UUID PRIMARY KEY,
+    topic         TEXT NOT NULL,
+    msg_key       TEXT NOT NULL,
+    payload       JSONB NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at  TIMESTAMPTZ          -- NULL until sent
+);
+CREATE INDEX ix_supplier_outbox_unpublished ON supplier_outbox (created_at) WHERE published_at IS NULL;
+```
+
 ## API [Decided]
 
 _Origin: Team_
@@ -142,6 +183,30 @@ Searching by a time *t* (in `HHMMhrs` format) returns the locations open at *t*.
 
 Postman needs a real token: log in through the User Service and put it in the collection's `adminToken` / `userToken` variables. The service must be usable through Postman without the UI running (D2 point 3). Keep a Postman collection in `supplier-service/postman/`. Use Postman variables (e.g. `{{token}}`, `{{baseUrl}}`) for tokens and URLs; never commit real tokens or passwords.
 
+## Events published [Proposed]
+
+_Origin: Team (contract proposed in issue #120 from `docs/order-service-plan.md` §5; awaiting confirmation by Cole Lin / Jian Bing); AI doc (outbox and relay design proposed by Claude Code, approved by Jie Yang)_
+
+Supplier owns the `supplier.events` topic and its message shape (root `AGENTS.md` §3 Messaging, rule 3). The Order Service consumes it to cancel orders that use a deactivated location.
+
+- **Topic:** `supplier.events` (3 partitions, listed in `infra/kafka/topics.txt`). **Key:** the location ID as a string, so events for one location stay in order.
+- **`SupplierDeactivated`**, published once for each successful `POST /locations/:locationId/deactivate`:
+  ```json
+  {
+    "eventId": "uuid",
+    "eventType": "SupplierDeactivated",
+    "occurredAt": "ISO-8601",
+    "data": { "locationId": 12 }
+  }
+  ```
+  `locationId` is `locations.id`; there is no separate supplier-account ID.
+- A rejected deactivation (404, or 409 because the location is already `INACTIVE`) publishes nothing. Restore publishes nothing.
+- **Outbox:** the event is inserted into `supplier_outbox` in the same transaction as the status change, so it is saved if and only if the deactivation is.
+- **Relay:** every `SUPPLIER_OUTBOX_POLL_MS` (default 1000) it claims unsent rows oldest first (`FOR UPDATE SKIP LOCKED`, so replicas never send a row twice), sends each to Kafka, and sets `published_at`. A failed send stops the pass, so later events never overtake it; it is retried on the next pass. A Kafka outage delays events but never loses them.
+- **At least once:** a crash between the send and setting `published_at` sends the event again. Consumers must dedupe on `eventId` (rule 1).
+- `SUPPLIER_KAFKA_BROKERS` is optional so the service can run alone: without it, events wait in the outbox until it is set. The producer connects on the first send, so the service starts while Kafka is down.
+- Sent rows are kept; cleaning them up is not designed yet.
+
 ## Logging
 
 _Origin: AI doc, from the root AGENTS.md cross-cutting rule ("log unauthorised access attempts in a consistent structured format") and the correlation design approved by Cole Lin in chat on 2026-10-11. The [Open] item at the end of "Correlation" was raised by the Codex review of PR #130 and is the gateway owner's to settle. The shared log-line schema across all six services is **[Open]** and belongs to the team_
@@ -166,14 +231,87 @@ in this service changes.
 
 | Event | Level | When |
 |---|---|---|
+| `request_completed` | info / warn / error | **Every request**, whatever the outcome. `info` under 400, `warn` for 4xx, `error` for 5xx |
 | `access_denied` | warn | Every 401 and 403 (backlog U5.1.1) |
 | `jwks_unavailable` | error | A 503: the User Service's JWKS can't be reached |
 | `unhandled_error` | error | Every 500, whether or not it arrived as an `HttpException` |
+
+**Every request, not only the failures** _(Origin: Team — Cole Lin, 2026-10-23)_. Until then this
+service logged nothing on a success, so the store could say who was refused but not what anyone
+actually did, and had no durations to compare. `request_completed` carries the method, the path, the
+status, `durationMs` and the caller - but **three of those are conditional, and a consumer that
+treats them as required will misread exactly the lines worth reading**: `status` is absent when the
+client gave up before any header was sent, because Express reports `statusCode` as 200 until
+something sets it and an abandoned request would otherwise count as a delivered success (PR #145
+review); such a line carries `aborted: true` and `level: info`, since nothing failed on this side.
+`userId` and `role` are absent when no caller was ever established, which is every 401 and every
+unauthenticated 404. A field whose value is `undefined` is not written at all, so absent means
+absent rather than null.
+
+It is **middleware**, not a Nest interceptor — `src/common/request-log.ts`. Guards run *before*
+interceptors, so an interceptor never sees a request `JwtAuthGuard` refused: it would miss every 401
+and 403, and 404s for unrouted paths. A `finish` listener catches all of them, including a response
+written by the exception filter. It also listens for `close`, so a request the client gave up on
+still produces a line, marked `aborted`.
+
+**A refused request therefore produces two lines from this service** — `request_completed` and
+`access_denied` — sharing a `requestId`. They answer different questions: the first is the uniform
+per-request record, the second is the one the backlog asks for by name (U5.1.1) and carries the
+reason. The consequence worth writing down: **any "how many denials" query has to pick one event and
+stay with it**, or two counts will disagree. Add the gateway's own lines for the same request and
+there are four records in two places.
 
 **What stays out of the shipped line.** The JWKS failure message names the JWKS URL, and a 500's
 stack can carry whatever the failure touched (a connection string, say). Both still go to Nest's
 logger, which is local to the container; neither reaches the store, which is queryable by anyone
 with access to it.
+
+Within a line, the shipper redacts **by field name, as a substring, at any depth, and on both sides
+of a pair** — a name is as caller-controlled as a value, so `{ recipients: { 'alice@nus.edu.sg':
+true } }` is caught as well as `{ email: ... }`. The set covers credentials *and* personal data,
+including `phone` and display or given names, which identify a student on sight (PR #129 review).
+Two consequences to know about when reading a line: a field whose name is not a plain identifier
+appears as the walk's own count of replacements in that object - `[key 1]`, `[key 2]` - rather than
+as its name, and a field named `__proto__` survives
+only because the redacted copy has a null prototype — on an ordinary object that assignment runs
+the prototype setter, and the field disappears with its neighbours intact.
+
+A name is matched with **every separator removed**, not just `-` and `_`: a key may contain `.` and
+`:`, so `pass.word` normalised to `pass.word`, matched nothing in the list, and
+`{ 'pass.word': 'hunter2' }` went to stdout and the topic in the clear (PR #129 review). And the
+`[key 1]` a replaced name becomes is a **fixed point by construction**: the Logging Service
+sanitises keys again on the way into its own table, and a name carrying its own numbers could not
+survive that second pass - each pass reported its own length, 16 characters on this container's
+stdout and 17 in the row. Six rounds of bounding what a caller could put *inside* a replaced name
+each fell to a spelling the previous bound allowed, so the name is now generated from nothing but
+the walk's position in its own list of replacements. A later walk over the same keys in the same
+order reaches the same key at the same ordinal and writes the same name, with no recognition rule
+left to get wrong (PRs #129, #145, #157 and #200 reviews). **Do not reintroduce a format with
+caller-derived numbers in it**, here or in the canonical copy: the two must agree.
+
+**Bounds the store will accept.** The shipper also brings every field the Logging Service bounds
+inside that bound before writing the line: `path` at 400 characters, `event` at 60, `requestId` at
+200, `userId` at 100, `method` at 10, `service` at 40, plus the two enums for `level` and `role`. A
+value outside any one of them does not cost the field — `inboundLineSchema` refuses the **whole
+line** and ingest parks it — so a request to `/locations/<500 characters>` would once have left its
+`access_denied` line on this container's stdout and kept it out of the searchable store, which is
+where anyone looking for it would look (PR #129 review). That example is **historical**: `path` is
+now the route template, so a caller no longer chooses a single byte of it, and nothing this service
+writes reaches the `path` bound. The clamp is still what keeps a line out of the store when it is
+reached, and the field to watch is any the caller does supply. `event` and `path` are cut and marked;
+an id, method, role, status or duration outside the bound is left out instead, because an id cut to
+length is some other request's id. The `requestId` this service accepts from `x-request-id` is
+already capped at 128 characters, so it stays inside the store's 200 either way. A line this
+happened to increments `log.counts.clamped`.
+
+**A log call that cannot be built stays on its request.** When a caller hands `emit()` an object
+that cannot be read at all - a throwing getter, a hostile Proxy - the shipper writes a
+`line_unserialisable` line instead of the real one, and that line now carries the `requestId` and
+is keyed by it (PR #129 review). It is the only record that a log call failed, and without the id
+the gap it left in a trace read as a line nobody wrote rather than a line that was lost. Every
+`emit()` call in this service passes `requestIdOf(req)`, so every one of those failures is
+traceable: `access_denied` in `src/common/auth.ts`, `jwks_unavailable` beside it, and
+`unhandled_error` in `src/common/problem.ts`.
 
 **Correlation.** Each of those lines carries a `requestId`, which is how a line here is matched to
 the gateway's `request_completed` line for the same request:
@@ -188,9 +326,14 @@ the gateway's `request_completed` line for the same request:
   so it must not turn a working request into a 400. Minting also means direct calls that skip the
   gateway (Postman on `:3002`) still produce joinable lines.
 - The id is echoed back in the `x-request-id` response header, so a bug report can quote it.
-- **`path` is the pathname only, never the query string.** `?lat=…&lon=…` is the caller's
-  position, and a line that carries it also carries `userId` (root AGENTS.md: never log unmasked
-  personal data). The gateway drops query strings for the same reason. See `logPath()`.
+- **`path` is the route template, never the caller's URL.** `/locations/:locationId`, not
+  `/locations/7` and not `/locations/<whatever the caller put there>`; an unmatched path is
+  `/<unrouted>`. A caller chooses every byte of a URL and redaction matches field *names*, so a
+  token or an email in a path segment would reach the store verbatim under a harmless `path` key
+  (PR #145 review). This also covers the query string, which was the original reason for the
+  function: `?lat=…&lon=…` is the caller's position, and a line carrying it also carries
+  `userId` (root AGENTS.md: never log unmasked personal data). The gateway drops query strings too.
+  **Do not change this back to a pathname.** See `logPath()`.
 - See `src/common/request-id.ts`. Service-layer code (`locations.service.ts`) has no request object
   and so logs no id; if that is ever needed, it takes an `AsyncLocalStorage` store.
 

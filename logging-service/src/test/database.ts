@@ -4,6 +4,9 @@
  * Scope: Copied from supplier-service/src/test/database.ts and pointed at a logging_test
  *        database in the logging-db container (host port 5436).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: The logging-db container publishes 5437 now; the Notification Service (#161) also chose 3006 and 5436, so one of the two had to move and this is the N2H.
+ * Author review: Cole Lin, read and approved.
  */
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
@@ -27,12 +30,14 @@ function setting(name: string): string | undefined {
 /**
  * The integration tests use their own database, never the one the running service uses, because
  * they empty the log_lines table before every test. By default it is `logging_test` in the
- * compose logging-db container (`docker compose up logging-db`), on the host port 5436.
+ * compose logging-db container (`docker compose up logging-db`), on the host port 5437. That
+ * is the host port rather than the container's: these tests run on the laptop and not on the
+ * project network, so they connect through the published mapping and move whenever it does.
  */
 export function testDatabaseUrl(): string {
   const password = encodeURIComponent(setting('LOGGING_POSTGRES_PASSWORD') || 'change-me-in-dotenv');
   const url = new URL(
-    setting('LOGGING_TEST_DATABASE_URL') || `postgres://foc:${password}@localhost:5436/logging_test`,
+    setting('LOGGING_TEST_DATABASE_URL') || `postgres://foc:${password}@localhost:5437/logging_test`,
   );
   if (!url.pathname.slice(1).endsWith('_test')) {
     throw new Error(`Refusing to run integration tests against "${url.pathname.slice(1)}": its name must end in _test.`);

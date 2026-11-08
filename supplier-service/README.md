@@ -12,6 +12,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-09-30
 Scope: Rewrote the "Tests" section for the Jest unit and integration tests.
 Author review (Jian Bing): Followed the "Tests" steps on 2026-10-01: `npm test` (157 passed) and
 `npm run test:int` against supplier-db (51 passed).
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
+Scope: Documented the Kafka settings and the outbox integration tests (issue #120).
+Author review: pending — Jie Yang to record what he checked.
 -->
 
 # Supplier Service
@@ -46,7 +49,9 @@ The service is on http://localhost:3002, and its own database on `localhost:5434
    SUPPLIER_JWKS_URL=http://localhost:3001/.well-known/jwks.json
    ```
 
-   `SUPPLIER_PORT` defaults to 3002.
+   `SUPPLIER_PORT` defaults to 3002. To send `SupplierDeactivated` events, also set
+   `SUPPLIER_KAFKA_BROKERS=localhost:9094` (start Kafka with `docker compose up -d kafka kafka-init`);
+   without it, events wait in the `supplier_outbox` table. See `AGENTS.md` → Events published.
 
 3. **Install and start** (from `supplier-service/`):
 
@@ -74,7 +79,8 @@ format, and startup configuration, including that `SUPPLIER_DEV_AUTH=true` is re
 fallback enabled).
 
 The integration tests (`*.int.spec.ts`) run `LocationsService` and the seed loader against a real
-PostgreSQL: filters, paging, sorting, distance, the 409 rules and the seed. Start the database
+PostgreSQL: filters, paging, sorting, distance, the 409 rules, the seed, and the
+`SupplierDeactivated` outbox and relay (with a fake publisher, so no Kafka is needed). Start the database
 first, from the repo root (if you have a root `.env`, `docker compose up -d supplier-db` also works):
 
 ```bash

@@ -1480,6 +1480,16 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Verification: Existing implementation checks passed: TypeScript build, root Compose configuration, 14 Docker PostgreSQL integration tests, production migration and schema persistence after container replacement. Pre-commit git diff --check passed.
 - Author review: User explicitly requested commit; human implementation review remains required before merge.
 
+## 2026-10-19 — Supplier publishes SupplierDeactivated (issue #120)
+
+- Tool and mode: Claude Code (model: Claude Opus 5.5), generate and debug.
+- Usage scenario: Implement issue #120 so the Order Service can cancel orders whose pickup or drop-off location is deactivated, and open a PR.
+- Exact user prompts: “Supplier: publish SupplierDeactivated when a location is deactivated #120 Let's implement this and open a PR”; “it should go into jie yang .md, the outbox table looks good, relay looks good too”.
+- Key responses: Gave a plan first, warning that the event contract (interface), the `supplier_outbox` table (schema) and the outbox relay (design pattern) are design decisions under the AI policy, and that the issue's contract still needs the Supplier owners' confirmation. After I approved the table and relay, it implemented: `supplier.events` in `infra/kafka/topics.txt`; the `supplier_outbox` table; a deactivation that saves the event in the same transaction; a relay that polls every `SUPPLIER_OUTBOX_POLL_MS`, claims rows with `FOR UPDATE SKIP LOCKED`, sends them oldest first, stops at the first failure and marks each sent row; and a Kafka producer (`@confluentinc/kafka-javascript@1.11.0`, as in Credit) that connects on the first send, so the service starts while Kafka is down. `SUPPLIER_KAFKA_BROKERS` is optional, so the service still runs on its own.
+- Verification by Claude Code: `npm test` (161 passed) and `npm run test:int` against supplier-db (58 passed, including new tests: one event per deactivation, none on 404/409/restore, an event saved during an outage sent once afterwards, no reordering after a failed send). End-to-end run against the real broker: the service started with Kafka stopped, a deactivation stayed unsent in the outbox, and after Kafka started it arrived on `supplier.events` with key `"3"` and the contract shape. That run found that `kafka-init` fails on this Windows checkout (`core.autocrlf` turns `create-topics.sh` into CRLF); this was already in the repo and is not fixed in this change.
+- Files: `infra/kafka/topics.txt`, `.env.example`, `supplier-service/{AGENTS.md,README.md,compose.yaml,package.json,package-lock.json}`, `supplier-service/src/{app.module.ts,config.ts,config.spec.ts,db/schema.ts,locations/locations.service.ts,test/database.ts,test/env.setup.ts}`, `supplier-service/src/messaging/*`.
+- Human review: Pending. Jie Yang to review the PR; Cole Lin / Jian Bing to confirm the contract and outbox table.
+
 ## 2026-10-22 — Restart policy for every long-running container
 
 - AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate, 2026-10-22 (Asia/Singapore).
@@ -1512,4 +1522,135 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Files: api-gateway/envoy/routes/40-credit.routes.json, api-gateway/compose.yaml, api-gateway/.env.example, api-gateway/AGENTS.md, api-gateway/envoy/README.md, api-gateway/test/envoy_routes_test.py, api-gateway/test/envoy.integration.mjs, frontend/app/api/session/credits/[...path]/route.ts, frontend/lib/credits.ts, frontend/app/profile/page.tsx, frontend/app/credits/history/page.tsx, frontend/test/routes.test.mjs, ai/usage-log/jie-yang.md.
 - Debugging: The Envoy round-robin test balanced across ports.slice(1), which picked up the new Credit fixture; it now uses slice(1, 3). The frontend fixture profile id "user-1" was changed to a UUID so the Credit route accepts it.
 - Verification: Route-loader tests 5/5. Envoy integration 20/20 after rebuilding foc-envoy:local. Frontend lint clean and production build passed. Frontend route tests: both new tests pass; see the PR for the full-suite result. Live in the browser pane: the profile showed 10 available and 0 reserved for the signed-in account; the history page showed one "Starting credits" +10 row with no horizontal overflow at 768 px or 375 px. Another user's wallet returned 403 from Credit and a malformed id returned 404 from the BFF.
+- Author review: pending — Jie Yang to record the review.
+
+## 2026-10-23 — LF line endings for container scripts (kafka-init failure on Windows)
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), debug and generate, 2026-10-23 (Asia/Singapore).
+- Exact user prompts: “✘ Container foc-kafka-init-1 service "kafka-init" didn't complete suc... whyy”, then “Yes, add a .gitattributes forcing LF for *.sh and infra/kafka/topics.txt, renormalize, and rerun kafka-init.”
+- Scope/usage scenario: Local stack on Windows (core.autocrlf=true), branch main, uncommitted.
+- Key response: The kafka-init log showed `set: line 16: illegal option -`. The working copies of infra/kafka/create-topics.sh and topics.txt had CRLF endings (the index already held LF), so /bin/sh read `set -eu\r`. Added a root .gitattributes with `*.sh text eol=lf` and `infra/kafka/topics.txt text eol=lf`, then re-checked out both files. `git add --renormalize .` also staged data/csv/supplier-seed-data.csv; it was unstaged to keep the change scoped.
+- Files: .gitattributes, ai/usage-log/jie-yang.md.
+- Verification: `git ls-files --eol` shows w/lf for both files. `docker compose up kafka-init` exited 0, and `kafka-topics.sh --list` shows all 10 topics from topics.txt with no trailing carriage returns.
+- Author review: pending — Jie Yang to record the review.
+
+## 2026-10-26 — Notification Service issues (#147–#155) and the User email lookup issue (#151)
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate, 2026-10-26 to 2026-10-27 (Asia/Singapore).
+- Exact user prompts: “this is the GrabFoc project, it uses Kafka for event publishing and subscribing.”, “Firstly can you create the Issues related to implementing Notification Service , go through with me first”, “Create the label You can assign me”, then on 2026-10-27 “Notification will get the user's email through a call on the user's service endpoint, can we create an issue for this and tag the user svs owners?”
+- Scope/usage scenario: Project tracking for the Notification Service (Backlog NTFR1–NTFR3). Issue wording only; no requirements or priorities were invented.
+- Key response: Walked through the issue list with Jie Yang first, then created the `area: notification-service` label, tracking issue #147 and sub-issues #148 (design), #149 (scaffold), #150 (schema), #151 (User email lookup), #152 (consumer), #153 (sending), #154 (retries) and #155 (end-to-end and CI), assigned to Jie Yang. #151 records Jie Yang's decision (2026-10-27) that Notification fetches the email from a User endpoint, and tags the User owners (Deanson, Zi Yi).
+- Files: none (GitHub issues and a label only).
+- Author review: pending — Jie Yang to record the review.
+
+## 2026-10-30 — Notification Service scaffold (#149, PR #161)
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate, 2026-10-30 (Asia/Singapore).
+- Exact user prompts: “can we continue implementing notification system?”, “Approve PR 1”, “Docker is running”, “Commit it”, then “Push and open PR”.
+- Approval context: A new service and top-level folder, so the assistant presented a plan first under root AGENTS.md; Jie Yang approved it ("Approve PR 1").
+- Scope/usage scenario: Branch feat/notification-service-scaffold from main.
+- Key response: NestJS service on port 3006 with its own PostgreSQL (`notification-db`, host port 5436, named volume), `GET /health`, the pool 'error' listener from #137, a two-stage Dockerfile copied from Credit, the service's compose.yaml included from the root, `.env.example` entries, and `notification-service/AGENTS.md` (root §7 moved there unchanged, plus Status and Open items).
+- Debugging: `npm ci` in the Docker build failed ("Missing: webpack@5.112.2 from lock file") because the host has npm 11 and the image npm 10; the lock file was regenerated with npm 10 in a node:22-alpine container.
+- Verification: unit tests and build passed; `docker compose up --build notification-service` started and `/health` answered once Docker was running.
+- Author review: pending — Jie Yang to record the review.
+
+## 2026-10-30 — Notification design walkthrough (#148)
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), explain, 2026-10-30 (Asia/Singapore).
+- Exact user prompts: “what are the other things needed to implement the notification service?”, “repeat of same state is not discard, unreadable events should go to a table too? whats the credit svs implementation? the schema looks good just run through with me and i'll approve or tell u behaviour”, “whats qn 1 asking? 2. Yes final states should block later events 3. No the template stays the same 4. retries can be like credit”, “yes, yes, 1. yes there should be a reason column the email needs it”, then “151 can be settled later? we just establish the rest of the application first”.
+- Approval context: Schema and retry design are design work under the AI policy. The assistant drafted options and a schema (with the policy warning, which it missed on its first schema answer and then gave); every behaviour was set by Jie Yang, table by table.
+- Key response: Recorded Jie Yang's decisions in issue #148: four tables (`notification_events`, `notification_order_states`, `notifications`, `notification_dead_letters` with Credit's columns); templates in code; a stored cancellation `reason`; a repeat of the same state is not stale; COMPLETED and CANCELLED block every later event, by an explicit rank; retries and dead letters like Credit's.
+- Files: none (issue #148 text).
+- Author review: pending — Jie Yang to record the review.
+
+## 2026-11-01 — Notification schema and order.events consumer (#150, #152, PR #169)
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate and debug, 2026-11-01 (Asia/Singapore).
+- Exact user prompts: “what are the design choices?”, “Option A for both”, then “Commit and open PR”.
+- Approval context: The assistant listed the remaining implementation choices with the policy warning; Jie Yang chose option A for both.
+- Scope/usage scenario: Branch feat/notification-consumer, stacked on feat/notification-service-scaffold.
+- Key response: Schema applied on startup (`src/db/schema.ts`); a tolerant Zod parser for Order's `order.events` contract; one transaction per event that deduplicates on the event id, runs the stale check and creates one PENDING row per recipient (`recipientsFor`); unreadable events go to `notification.order-events.dlt` (added to infra/kafka/topics.txt) and are copied into `notification_dead_letters`; offsets are stored only after the database write. Kafka connection, logger and dead-letter recording copied from Credit.
+- Debugging: integration tests first failed on recipient order (enum order is REQUESTER, COURIER) and on a patched client leaking into the shared pool; both fixed in the tests. `@confluentinc/kafka-javascript`'s install script needed `npm approve-scripts`.
+- Verification: 27 unit, 18 integration and 5 Kafka tests passed. Live: sample events via kafka-console-producer showed the duplicate skipped, a late PICKED_UP stale, COMPLETED queuing both parties, CANCELLED after COMPLETED blocked, a no-courier cancellation queuing only the requester, and "not json" in the dead-letter table.
+- Author review: pending — Jie Yang to record the review.
+
+## 2026-11-02 — User internal contact endpoint (#151, PR #178)
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate, 2026-11-02 (Asia/Singapore).
+- Exact user prompts: “maybe we can just make the user service endpoints that we need”, “Approve”, then “Commit and open PR”.
+- Approval context: An interface in another team's service, so the assistant planned first with the policy warning; Jie Yang approved the shape (`GET /internal/users/:userId/contact` → `{ email }`, any account status, X-Service-Key). Deanson and Zi Yi were requested as reviewers.
+- Scope/usage scenario: Branch feat/user-internal-contact from main.
+- Key response: `ServiceKeyGuard` and `@Internal()` (copied from Order's guard: SHA-256 then timingSafeEqual), `UsersInternalController`, `UsersService.getContactEmail`, required `USER_INTERNAL_SERVICE_KEY` (at least 32 characters), `SERVICE_KEY_INVALID`, compose and docs, 11 tests.
+- Verification: all 36 User tests passed. Live: no key, wrong key and a user token gave 401; a bad UUID 400; an unknown user 404; a real user 200 with the decrypted email; through the gateway 404. No email or key appeared in the logs. A random key was appended to the local git-ignored .env without printing it.
+- Author review: pending — Jie Yang to record the review; Deanson / Zi Yi (User owners) to review.
+
+## 2026-11-03 — Notification email sending (#153, PR #185)
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate and debug, 2026-11-03 to 2026-11-04 (Asia/Singapore).
+- Exact user prompts: “Plan #153”, “https://d2vc4gojrvvtgk.cloudfront.net”, “the email can direct them here with a button”, “whats nexct”, “implement the 153 plan”, then “Commit and open PR”.
+- Approval context: The plan (send right after the event's transaction, at least once on a crash, FAILED rows left for #154, HTML emails with a button to NOTIFICATION_FRONTEND_URL) carried the policy warning; Jie Yang approved it with "implement the 153 plan".
+- Scope/usage scenario: Branch feat/notification-sending, stacked on feat/notification-consumer.
+- Key response: `src/mail/templates.ts` (HTML and text per state and recipient, cancellation reason, Open FoC button), `src/mail/mailer.ts` (nodemailer as in User, 5 s timeouts, error categories only), `src/users/user.client.ts` (calls #151), `SenderService` (sends PENDING rows after every delivery, duplicates included; SENT or FAILED; event HANDLED once none is PENDING); new NOTIFICATION_SMTP_*, NOTIFICATION_USER_URL, NOTIFICATION_USER_SERVICE_KEY and NOTIFICATION_FRONTEND_URL settings.
+- Debugging: integration tests failed against `localhost` (reset over IPv6 on this machine) and passed against 127.0.0.1; Kafka tests failed once in setup (cause found and fixed on 2026-11-04, below).
+- Verification: 51 unit, 25 integration and 6 Kafka tests passed. Live in Compose: a COMPLETED event put 2 emails in Mailpit, redelivering it added none, an unknown user was saved as FAILED/USER_NOT_FOUND, and the logs held ids only.
+- Author review: pending — Jie Yang to record the review.
+
+## 2026-11-03 — Explanations: data flow, Kafka, schema, service-to-service calls, request emails
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), explain, 2026-11-03 to 2026-11-04 (Asia/Singapore).
+- Exact user prompts: “explain the data flow and consumer event flows”, “im still confused, how does kafka work”, “#178 PR, can you explain whats going on with that, whatd u add”, “is this how we usually handle service to service calls?”, “Maybe ucan change it to user internal service key”, “what about when we "request completion" is there no order event sent and no notif?”, “waht is the event transaction, what happens when an order event is published explain in detail”, “wait so the event's transaction writes into the notification event table and the notification order states, which keeps track of the current state, and makes sure the event's state is not < current state, what is the recipients for(status)) ????”, then “ok so i have 3 tables right? what is each one used for”.
+- Key response: Explained topics, partitions, keys, consumer groups, offsets, at-least-once delivery and dead-letter/retry topics using FoC's setup; the path from Order's outbox to Notification's transaction, sender and offset commit; what #178 adds and that it follows Credit's and Order's X-Service-Key pattern (the key was already named USER_INTERNAL_SERVICE_KEY, so nothing changed); that confirmation requests publish no event, so no email; and the four Notification tables.
+- Files: none.
+- Author review: not needed (explanations only).
+
+## 2026-11-04 — Local demo of an order's emails
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate (scratch script), 2026-11-04 (Asia/Singapore).
+- Exact user prompts: “can you run the local host and kafka ui so i can check”, then “can you demonstrate the flow”.
+- Scope/usage scenario: Local Compose stack only. The script stayed in the assistant's scratchpad; nothing in the repo changed.
+- Key response: Opened the frontend, Kafka UI and Mailpit in the browser pane. A Node script signed up two test users through the gateway (OTPs read from Mailpit, generated test passwords kept in a scratch file, never printed), created an order, then accepted, picked up, started delivery, arrived and completed it by mutual confirmation.
+- Verification: Notification recorded 5 events as HANDLED with 6 emails SENT, matching "Who gets emailed"; Mailpit showed the 6 emails within about a second of each state change. The first run failed on an invalid Singapore mobile number and left one stray local test account.
+- Author review: pending — Jie Yang to record the review.
+
+## 2026-11-04 — #178 CI failure and review findings
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), debug and explain, 2026-11-04 (Asia/Singapore).
+- Exact user prompts: “why is #178 failing CI, and what are” followed by a pasted review with two findings (whether `findById` returns `emailEncrypted`; cross-service key consistency), then “Leave it to owners”.
+- Key response: The two failing checks fail at `npm ci` with ERESOLVE: Dependabot commits 70978e6 and b67c5ff moved `@nestjs/platform-express` to ^12.3.2 while `@nestjs/common` is ^11.2.7, in user-service and supplier-service, and main fails the same way. Finding 1 verified as not a bug (`COLUMNS` includes `email_encrypted`); finding 2 acknowledged, as Compose copies one key into both services. Jie Yang chose to leave the dependency fix to the User and Supplier owners.
+- Files: none.
+- Author review: pending — Jie Yang to record the review.
+
+## 2026-11-04 — Request-email issue (#186), test fixes, and retries (#154, PR #187)
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate and debug, 2026-11-04 (Asia/Singapore).
+- Exact user prompts: “What else is there to implement for the notification service”, then “Emails for requests (completion, cancellation, timing change), from the earlier discussion. This needs new Order events and backlog entries, so it’s the team’s call. It’s probably best kept as a known limitation for D4. this will probably be done in a separate PR, can you create an issue for this Can you fix the small fixes? And begin working on 154, explain how the retry consumer mechanism works”, “whats the admin replay for?”, “what about using a worker to go through the DLT?”, “notification dead letter is a db table?”, “ideally notifications shouldnt arrive too late, so i think a retry or worker that is for the long term isnt necessary. The retries can be implemented as per the plan, but the retries should ensure that the order hasnt already advanced to a new state”, “ok retries are implemented right wahts next?”, then “commit both and open the PR, start on 155, …”.
+- Approval context: The retry plan listed its decisions with the policy warning. Jie Yang decided: retries as recommended (retryable categories, a retry resends the event's FAILED rows, Credit's delays), an email is dropped if the order has moved on, and no long-term recovery (admin replay deferred, no worker).
+- Key response: Issue #186 (emails for completion, cancellation and timing-change requests; needs a team decision). Test fixes: the test database default uses 127.0.0.1, and `createTestTopics` waits until the broker lists the new topics (the earlier Kafka setup failure was this race). Retries: `notification.order-events.retry.0`–`.4` (NOTIFICATION_RETRY_DELAYS, default 1s,5s,30s,2m,10m), a paused partition until each retry is due, headers trusted only on Notification's retry topics, then the dead-letter topic; FAILED/SUPERSEDED when the order has moved on.
+- Files: notification-service/src (messaging/topics.ts, retries.ts, kafka.runner.ts, kafka.logger.ts, messages.ts; events/sender.service.ts; config.ts; tests), infra/kafka/topics.txt, compose.yaml, .env.example, AGENTS.md, README.md.
+- Verification: 84 unit, 32 integration and 8 Kafka tests passed (Kafka three runs in a row; the setup race reproduced before the fix and not in 4 runs after). Live with Mailpit stopped and restarted: one email sent after recovery, an outdated one dropped as SUPERSEDED, a newer one sent on its first retry. Stopping Mailpit cleared its in-memory inbox. Observed: during an outage the single consumer waits up to 5 s per failed send for every event (not changed; a performance decision for the team).
+- Author review: pending — Jie Yang to record the review.
+
+## 2026-11-04 — Notification tests in CI (#155, PR #188) and account emails (#183, PR #189)
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate, 2026-11-04 (Asia/Singapore).
+- Exact user prompts: “commit both and open the PR, start on 155, We also need to add consumers for UserSuspended and Reactivated and a similar process of sending the email to that particular user”, “Approve as recommended”, then “Commit and open PR”.
+- Approval context: #183 already listed Jie Yang as approver. The plan carried the policy warning for its schema, interface and trade-off points; Jie Yang approved the recommendations: a new `notification_account_emails` table, account events over an hour old recorded but not emailed, SUPERSEDED by a later account event for the user, retries through `notification.user-events.retry.<n>` and `.dlt`, build to #180's proposed `UserReactivated` shape, #183's wording plus a USER_SUSPENDED cancellation reason.
+- Key response: CI: notification-service joins the unit-test matrix, and a new job runs its integration and Kafka tests against PostgreSQL 17 and Kafka 4.1.0 service containers. Account emails: `parseUserEvent`, `AccountEmailsService`, `renderAccountEmail`, topics regrouped into order and user streams, six new topics in infra/kafka/topics.txt.
+- Verification: CI's Kafka container settings were checked locally (healthy; 8/8 Kafka tests) and both Notification jobs passed on GitHub for PR #188. For #183: 101 unit, 40 integration and 11 Kafka tests passed (three runs). NFR3.4 for the demo order: p95 1.46 s, slowest 1.63 s. Live: the existing user.events history held only UserRegistered (skipped); a suspension was SENT, its duplicate sent nothing, a two-hour-old one was DISCARDED_OLD, a reinstatement was SENT; Mailpit got exactly 2 emails.
+- Author review: pending — Jie Yang to record the review; Deanson / Zi Yi to confirm the UserReactivated payload.
+
+## 2026-11-04 — Bringing this log up to date
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate, 2026-11-04 (Asia/Singapore).
+- Exact user prompt: “where is the ai usage log? why havent u been updating it its under jie yang”
+- Key response: The assistant had wrongly taken the log as Jie Yang's to write. It added the entries above, from 2026-10-26 to 2026-11-04, with the exact prompts read from the session transcript.
+- Files: ai/usage-log/jie-yang.md.
+- Author review: pending — Jie Yang to check the entries against the session.
+
+## 2026-11-08 — Folding the Notification PRs into #161 for one merge into main
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate, 2026-11-08 (Asia/Singapore).
+- Exact user prompts: “can we merge the notif PRs now?”, “161 is approved already”, “Waittt  whats the order of merging”, “Do Option A”, then “HURRRY UPPP dont need test la”.
+- Key response: Found #161 blocked by main's ruleset (the latest push, by Jian Bing, needs approval from someone else). Merged #189, #188, #187 and #185 down the stack; merged the scaffold branch and origin/main into feat/notification-consumer, keeping both sides of the conflicts in .env.example, .github/workflows/ci.yml (Logging and Notification jobs) and infra/kafka/topics.txt (all of main's topics kept); merged #169 into the scaffold branch. Requested Zi Yi and Deanson to review #161 and commented the reason.
+- Verification: docker compose config passed; no duplicate host ports or env names; Notification build and 101 unit tests passed. Integration and Kafka tests were skipped at Jie Yang's request (Docker had been stopped); CI on #161 runs them.
 - Author review: pending — Jie Yang to record the review.

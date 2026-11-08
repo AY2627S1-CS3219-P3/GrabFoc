@@ -79,6 +79,7 @@ describe('getContactEmail', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never, // LoginEventsRepository (#180)
     );
     return { service, users, otp };
   }
