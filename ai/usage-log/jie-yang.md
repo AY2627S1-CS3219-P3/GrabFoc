@@ -1646,3 +1646,11 @@ Update `feature/frontend-user-service-integration` from the latest `main`, then 
 - Key response: The assistant had wrongly taken the log as Jie Yang's to write. It added the entries above, from 2026-10-26 to 2026-11-04, with the exact prompts read from the session transcript.
 - Files: ai/usage-log/jie-yang.md.
 - Author review: pending — Jie Yang to check the entries against the session.
+
+## 2026-11-08 — Folding the Notification PRs into #161 for one merge into main
+
+- AI Assistance Disclosure: Claude Code (model: Claude Opus 5.5), generate, 2026-11-08 (Asia/Singapore).
+- Exact user prompts: “can we merge the notif PRs now?”, “161 is approved already”, “Waittt  whats the order of merging”, “Do Option A”, then “HURRRY UPPP dont need test la”.
+- Key response: Found #161 blocked by main's ruleset (the latest push, by Jian Bing, needs approval from someone else). Merged #189, #188, #187 and #185 down the stack; merged the scaffold branch and origin/main into feat/notification-consumer, keeping both sides of the conflicts in .env.example, .github/workflows/ci.yml (Logging and Notification jobs) and infra/kafka/topics.txt (all of main's topics kept); merged #169 into the scaffold branch. Requested Zi Yi and Deanson to review #161 and commented the reason.
+- Verification: docker compose config passed; no duplicate host ports or env names; Notification build and 101 unit tests passed. Integration and Kafka tests were skipped at Jie Yang's request (Docker had been stopped); CI on #161 runs them.
+- Author review: pending — Jie Yang to record the review.
