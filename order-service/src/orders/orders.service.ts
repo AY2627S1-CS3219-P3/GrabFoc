@@ -25,11 +25,16 @@
  * Scope: Added cancelForSuspendedUser (UserSuspended consumer, Phase D); a create that a suspension
  *        cancelled now returns 403 USER_SUSPENDED instead of the misleading 503.
  * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+ * Scope: Added cancelForDeactivatedLocation (SupplierDeactivated consumer, issue #121), sharing the
+ *        suspension's cancel; a create a deactivation cancelled returns 409 LOCATION_INACTIVE.
+ * Author review: Reviewed by Zi Yi, 2026-10-30.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
  * Scope: The suspension's CANCELLED history entry records suspendedUserId, so the order page can say whose account it was (#184).
  * Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
  */
 import { Injectable, Logger } from '@nestjs/common';
+import type { PoolClient } from 'pg';
 import type { Caller } from '../common/jwt-auth.guard';
 import { AppError, ErrorCode } from '../common/errors';
 import { CreditClient } from '../integrations/credit.client';
@@ -178,9 +183,11 @@ export class OrdersService {
       return placed;
     });
     if (placed) return placed;
-    // Something cancelled it first: a suspension, or settleCredits() after this request stalled 30 s.
-    if ((await this.orders.cancelReason(order.id)) === 'USER_SUSPENDED') {
-      throw new AppError(403, ErrorCode.USER_SUSPENDED, 'Your account is suspended.');
+    // Something cancelled it first: a suspension, a deactivation, or settleCredits() after this request stalled 30 s.
+    const reason = await this.orders.cancelReason(order.id);
+    if (reason === 'USER_SUSPENDED') throw new AppError(403, ErrorCode.USER_SUSPENDED, 'Your account is suspended.');
+    if (reason === 'SUPPLIER_DEACTIVATED') {
+      throw new AppError(409, ErrorCode.LOCATION_INACTIVE, 'A location on this order is no longer active.');
     }
     throw new AppError(503, ErrorCode.SERVICE_UNAVAILABLE, 'Creating the order took too long. Try again.');
   }
@@ -250,15 +257,38 @@ export class OrdersService {
   async cancelForSuspendedUser(userId: string): Promise<number> {
     let cancelled = 0;
     for (const orderId of await this.orders.unfinishedOrderIds(userId)) {
-      if (await this.cancelForSuspension(orderId, userId)) cancelled++;
+      const lock = (tx: PoolClient) => this.orders.lockUnfinished(tx, orderId);
+      if (await this.systemCancel(orderId, { reason: 'USER_SUSPENDED', suspendedUserId: userId }, lock)) cancelled++;
     }
     return cancelled;
   }
 
-  /** Its CANCELLED history entry is the OrderCancelled event, except from AWAITING_CREDIT. */
-  private cancelForSuspension(orderId: string, suspendedUserId: string): Promise<boolean> {
+  /**
+   * For SupplierDeactivated: cancels every unfinished order delivering to the location, and every
+   * order picking up there that is not yet picked up (after that the courier has the items; Zi Yi,
+   * 2026-10-30), if created before `deactivatedAt`.
+   * Like cancelForSuspendedUser, a repeat event changes nothing and a failure throws so it is retried.
+   */
+  async cancelForDeactivatedLocation(locationId: number, deactivatedAt: Date): Promise<number> {
+    let cancelled = 0;
+    for (const orderId of await this.orders.unfinishedOrderIdsAt(locationId, deactivatedAt)) {
+      const lock = (tx: PoolClient) => this.orders.lockAffectedByDeactivation(tx, orderId, locationId);
+      if (await this.systemCancel(orderId, { reason: 'SUPPLIER_DEACTIVATED' }, lock)) cancelled++;
+    }
+    return cancelled;
+  }
+
+  /**
+   * Cancels the order if `lock` still finds it under its row lock. `details` is its CANCELLED history
+   * entry's changeDetails; that entry is the OrderCancelled event, except from AWAITING_CREDIT.
+   */
+  private systemCancel(
+    orderId: string,
+    details: { reason: 'USER_SUSPENDED'; suspendedUserId: string } | { reason: 'SUPPLIER_DEACTIVATED' },
+    lock: (tx: PoolClient) => Promise<Order | undefined>,
+  ): Promise<boolean> {
     return this.orders.transaction(async (tx) => {
-      const order = await this.orders.lockUnfinished(tx, orderId);
+      const order = await lock(tx);
       if (!order) return false;
       await this.orders.setStatus(tx, orderId, order.status, 'CANCELLED');
       await this.orders.supersedePending(tx, orderId, ['TIMING_CHANGE', 'CANCELLATION', 'COMPLETION']);
@@ -268,7 +298,7 @@ export class OrdersService {
         action: 'CANCELLED',
         previousStatus: order.status,
         newStatus: 'CANCELLED',
-        changeDetails: { reason: 'USER_SUSPENDED', suspendedUserId },
+        changeDetails: details,
       });
       return true;
     });

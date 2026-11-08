@@ -1,5 +1,5 @@
 {
-  "_disclosure": "AI Assistance Disclosure:\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22\nScope: Added routes for the existing Order Service endpoints the frontend uses (docs/orders/frontend-integration-plan.md); no API or authentication changes. /internal/** is deliberately not routed.\nAuthor review: Route file approved by Jie Yang (gateway owner) on 2026-10-22; implementation pending review by Deanson.\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07\nScope: Added GET /orders/:orderId/history (participants only, checked by the Order Service), so a cancelled order's page can say why (#184 review).\nAuthor review: Reviewed by Zi Yi, 2026-11-07; pending Jie Yang's approval (gateway owner).",
+  "_disclosure": "AI Assistance Disclosure:\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22\nScope: Added routes for the existing Order Service endpoints the frontend uses (docs/orders/frontend-integration-plan.md); no API or authentication changes. /internal/** is deliberately not routed.\nAuthor review: Route file approved by Jie Yang (gateway owner) on 2026-10-22; implementation pending review by Deanson.\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06\nScope: Added the admin dashboard's read routes GET /admin/orders, /admin/orders/overview and /admin/orders/:orderId/history (#182). /admin/orders is not behind the configurable {orders} prefix.\nAuthor review: Reviewed by Zi Yi, 2026-11-07; pending review by Jie Yang (gateway owner).\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07\nScope: Added GET /orders/:orderId/history (participants only, checked by the Order Service), so a cancelled order's page can say why (#184 review).\nAuthor review: Reviewed by Zi Yi, 2026-11-07; pending Jie Yang's approval (gateway owner).",
   "service": "order",
   "urlEnv": "ORDER_SERVICE_URL",
   "prefixes": {
@@ -68,6 +68,18 @@
     {
       "method": "GET",
       "regex": "{orders}/[^/]+/history"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/orders"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/orders/overview"
+    },
+    {
+      "method": "GET",
+      "regex": "/admin/orders/[^/]+/history"
     }
   ]
 }

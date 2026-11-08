@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FoC User Service",
-    "description": "Every route of the User Service, ordered so the whole collection runs top to bottom in the Collection Runner with no manual step: the OTPs are read out of Mailpit's HTTP API by a pre-request script.\n\nNeeds the compose stack up (`docker compose up`) - the service on baseUrl and Mailpit on mailpitUrl.\n\nEach address gets three OTP requests per ten minutes, shared across register, resend and forgot - so every folder here owns its own address and spends that budget deliberately. Every address is generated fresh per run, so the runner is safe to press repeatedly.\n\nThe Admin folder claims the bootstrap admin: set adminEmail to USER_BOOTSTRAP_ADMIN_EMAIL, and start the service on an empty database so the bootstrap has run. It resets that admin's password every run (the new one is left in adminPassword), which spends the admin address's OTP budget, so the full collection runs at most three times per ten minutes.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated the requests, the assertions and the Mailpit OTP lookup. Author review: the full collection run green against the compose stack.\n\n2026-09-28 (model: Claude Opus 5.5): automated the Profile and Admin folders - Mailpit OTP lookups, assertions, a fresh account per folder, and claiming the bootstrap admin. Author review: the full collection run green under newman against the compose stack (70 requests, 101 assertions).\n\nAI Assistance Disclosure (the Profile and Admin requests): Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. 2026-09-28 (model: Claude Sonnet 5): added List users (admin) and Change role (admin) (Step 10 - these routes were marked Postman-verified in admin.controller.ts/admin.service.ts, but the requests used for that were never saved into this collection), the six Step 12 requests (Request OTP through Deactivate account), and Reactivate user (admin) (Step 13). Author review: the six Step 12 requests were exercised via Postman against the compose stack on 2026-09-28 (all endpoints, including the retry-with-the-same-code behaviour on Change email - request and Change password) - see /ai/usage-log.md. Reactivate user (admin) was exercised the same way on 2026-09-28 (deactivate then reactivate, 404 for an unknown id, 409 NOT_DEACTIVATED for an already-ACTIVE target). List users (admin) and Change role (admin) (Step 10) are still unverified through this file specifically, even though the routes themselves were separately confirmed working via ad hoc Postman requests when Step 10 was built.\n\n2026-10-16 (Claude Code, model: Claude Opus 5.5): copied into the refactored service's postman/ folder (now user-service/postman after the rename) and added the Validation folder (per-endpoint 400 cases for the new DTOs). The existing requests and assertions are unchanged: each was checked against the new fields.ts rules and still holds. Author review: successfully reviewed by Deanson, 2026-10-16.\n\n2026-10-19 (Claude Code, model: Claude Opus 5.5): added \"Credits after registration\" (Sign-up) and \"Credits of the bootstrap admin\" (Admin), which check that the UserRegistered outbox event reached the Credit Service. They call Credit directly on creditUrl (:3004), so the collection now needs the full stack (Kafka and the Credit Service), not only the User Service. The admin check needs an admin bootstrapped after the outbox existed (fresh user-db volume); there is no backfill. Author review: pending - Deanson to record what he checked.\n\n2026-10-20 (Claude Code, model: Claude Opus 5.5): added the suspension requests to the end of the Admin folder (403 as a USER, 409 yourself, suspend, 403 login, 401 refresh, 409 again, 404) and '400 malformed userId on suspend' to Validation (#72). Deactivation now asks the Order Service first (#71), so 'Request OTP (deactivation)', 'Deactivate account' and Validation's '400 bad otp' on deactivate need an Order Service that answers 'no active orders' for that user; without one they answer 503. The HAS_ACTIVE_ORDERS and Order-down (503) cases are not here: Postman cannot change what Order answers between requests. Author review: tested by Zi Yi in Postman, 2026-10-20.",
+    "description": "Every route of the User Service, ordered so the whole collection runs top to bottom in the Collection Runner with no manual step: the OTPs are read out of Mailpit's HTTP API by a pre-request script.\n\nNeeds the compose stack up (`docker compose up`) - the service on baseUrl and Mailpit on mailpitUrl.\n\nEach address gets three OTP requests per ten minutes, shared across register, resend and forgot - so every folder here owns its own address and spends that budget deliberately. Every address is generated fresh per run, so the runner is safe to press repeatedly.\n\nThe Admin folder claims the bootstrap admin: set adminEmail to USER_BOOTSTRAP_ADMIN_EMAIL, and start the service on an empty database so the bootstrap has run. It resets that admin's password every run (the new one is left in adminPassword), which spends the admin address's OTP budget, so the full collection runs at most three times per ten minutes.\n\nAI Assistance Disclosure: Tool: Claude Code (model: Claude Opus 5), date: 2026-09-28. Scope: generated the requests, the assertions and the Mailpit OTP lookup. Author review: the full collection run green against the compose stack.\n\n2026-09-28 (model: Claude Opus 5.5): automated the Profile and Admin folders - Mailpit OTP lookups, assertions, a fresh account per folder, and claiming the bootstrap admin. Author review: the full collection run green under newman against the compose stack (70 requests, 101 assertions).\n\nAI Assistance Disclosure (the Profile and Admin requests): Tool: Claude Code (model: Claude Opus 5), date: 2026-09-26. Scope: generated the collection for the three sign-up routes. 2026-09-28 (model: Claude Sonnet 5): added List users (admin) and Change role (admin) (Step 10 - these routes were marked Postman-verified in admin.controller.ts/admin.service.ts, but the requests used for that were never saved into this collection), the six Step 12 requests (Request OTP through Deactivate account), and Reactivate user (admin) (Step 13). Author review: the six Step 12 requests were exercised via Postman against the compose stack on 2026-09-28 (all endpoints, including the retry-with-the-same-code behaviour on Change email - request and Change password) - see /ai/usage-log.md. Reactivate user (admin) was exercised the same way on 2026-09-28 (deactivate then reactivate, 404 for an unknown id, 409 NOT_DEACTIVATED for an already-ACTIVE target). List users (admin) and Change role (admin) (Step 10) are still unverified through this file specifically, even though the routes themselves were separately confirmed working via ad hoc Postman requests when Step 10 was built.\n\n2026-10-16 (Claude Code, model: Claude Opus 5.5): copied into the refactored service's postman/ folder (now user-service/postman after the rename) and added the Validation folder (per-endpoint 400 cases for the new DTOs). The existing requests and assertions are unchanged: each was checked against the new fields.ts rules and still holds. Author review: successfully reviewed by Deanson, 2026-10-16.\n\n2026-10-19 (Claude Code, model: Claude Opus 5.5): added \"Credits after registration\" (Sign-up) and \"Credits of the bootstrap admin\" (Admin), which check that the UserRegistered outbox event reached the Credit Service. They call Credit directly on creditUrl (:3004), so the collection now needs the full stack (Kafka and the Credit Service), not only the User Service. The admin check needs an admin bootstrapped after the outbox existed (fresh user-db volume); there is no backfill. Author review: pending - Deanson to record what he checked.\n\n2026-10-20 (Claude Code, model: Claude Opus 5.5): added the suspension requests to the end of the Admin folder (403 as a USER, 409 yourself, suspend, 403 login, 401 refresh, 409 again, 404) and '400 malformed userId on suspend' to Validation (#72). Deactivation now asks the Order Service first (#71), so 'Request OTP (deactivation)', 'Deactivate account' and Validation's '400 bad otp' on deactivate need an Order Service that answers 'no active orders' for that user; without one they answer 503. The HAS_ACTIVE_ORDERS and Order-down (503) cases are not here: Postman cannot change what Order answers between requests. Author review: tested by Zi Yi in Postman, 2026-10-20.\n\n2026-11-02 (Claude Code, model: Claude Opus 5.5): admin dashboard (#180). Every suspend request sends a reason; 'Suspend user (admin)' checks it is stored; reactivate's 409 is now USER_ALREADY_ACTIVE; added 'Reinstate a suspended account (admin)' to the end of Admin and '400 suspend without a reason' to Validation. Author review: reviewed by Zi Yi, 2026-11-05; the full collection ran green under newman against the compose stack (149 requests, 375 assertions).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -2395,7 +2395,7 @@
               }
             ],
             "url": "{{baseUrl}}/admin/users/{{targetUserId}}/reactivate",
-            "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 NOT_DEACTIVATED unless the target is currently DEACTIVATED (run 'Deactivate account' as that user first to test the success path). 403/401 as above."
+            "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 USER_ALREADY_ACTIVE if the target is already ACTIVE (deactivate or suspend that user first to test the success path). Also lifts a suspension (#180). 403/401 as above."
           },
           "event": [
             {
@@ -2425,7 +2425,7 @@
               }
             ],
             "url": "{{baseUrl}}/admin/users/{{targetUserId}}/reactivate",
-            "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 NOT_DEACTIVATED unless the target is currently DEACTIVATED (run 'Deactivate account' as that user first to test the success path). 403/401 as above."
+            "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 USER_ALREADY_ACTIVE if the target is already ACTIVE (deactivate or suspend that user first to test the success path). Also lifts a suspension (#180). 403/401 as above."
           },
           "event": [
             {
@@ -2434,8 +2434,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
-                  "pm.test('the error code is NOT_DEACTIVATED', () => {",
-                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_DEACTIVATED');",
+                  "pm.test('the error code is USER_ALREADY_ACTIVE', () => {",
+                  "  pm.expect(pm.response.json().error.code).to.eql('USER_ALREADY_ACTIVE');",
                   "});"
                 ]
               }
@@ -2453,7 +2453,7 @@
               }
             ],
             "url": "{{baseUrl}}/admin/users/00000000-0000-4000-8000-000000000000/reactivate",
-            "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 NOT_DEACTIVATED unless the target is currently DEACTIVATED (run 'Deactivate account' as that user first to test the success path). 403/401 as above."
+            "description": "200 with the target's admin-facing profile, status ACTIVE. No body. 404 if targetUserId doesn't exist; 409 USER_ALREADY_ACTIVE if the target is already ACTIVE (deactivate or suspend that user first to test the success path). Also lifts a suspension (#180). 403/401 as above."
           },
           "event": [
             {
@@ -2629,12 +2629,20 @@
             "method": "POST",
             "header": [
               {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
                 "key": "Authorization",
                 "value": "Bearer {{accessToken}}"
               }
             ],
             "url": "{{baseUrl}}/admin/users/{{targetUserId}}/suspend",
-            "description": "accessToken is the target's own session from 'Login after reactivation', a USER. 200 with the target's admin-facing profile, status SUSPENDED. No body. Only an ACTIVE account, and never your own. Revokes every refresh token of the target and publishes UserSuspended on user.events. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE unless the target is ACTIVE; 409 CANNOT_MODIFY_SELF on your own id; 403 for a non-admin caller; 401 with no token."
+            "description": "accessToken is the target's own session from 'Login after reactivation', a USER. 200 with the target's admin-facing profile, status SUSPENDED and the reason. Body: {\"reason\": \"…\"}, trimmed, 1–500 characters (400 otherwise). Only an ACTIVE account, and never your own. Revokes every refresh token of the target and publishes UserSuspended on user.events. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE unless the target is ACTIVE; 409 CANNOT_MODIFY_SELF on your own id; 403 for a non-admin caller; 401 with no token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman test suspension\"\n}"
+            }
           },
           "event": [
             {
@@ -2657,12 +2665,20 @@
             "method": "POST",
             "header": [
               {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
                 "key": "Authorization",
                 "value": "Bearer {{adminAccessToken}}"
               }
             ],
             "url": "{{baseUrl}}/admin/users/{{adminUserId}}/suspend",
-            "description": "200 with the target's admin-facing profile, status SUSPENDED. No body. Only an ACTIVE account, and never your own. Revokes every refresh token of the target and publishes UserSuspended on user.events. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE unless the target is ACTIVE; 409 CANNOT_MODIFY_SELF on your own id; 403 for a non-admin caller; 401 with no token."
+            "description": "200 with the target's admin-facing profile, status SUSPENDED and the reason. Body: {\"reason\": \"…\"}, trimmed, 1–500 characters (400 otherwise). Only an ACTIVE account, and never your own. Revokes every refresh token of the target and publishes UserSuspended on user.events. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE unless the target is ACTIVE; 409 CANNOT_MODIFY_SELF on your own id; 403 for a non-admin caller; 401 with no token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman test suspension\"\n}"
+            }
           },
           "event": [
             {
@@ -2701,12 +2717,20 @@
             "method": "POST",
             "header": [
               {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
                 "key": "Authorization",
                 "value": "Bearer {{adminAccessToken}}"
               }
             ],
             "url": "{{baseUrl}}/admin/users/{{targetUserId}}/suspend",
-            "description": "200 with the target's admin-facing profile, status SUSPENDED. No body. Only an ACTIVE account, and never your own. Revokes every refresh token of the target and publishes UserSuspended on user.events. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE unless the target is ACTIVE; 409 CANNOT_MODIFY_SELF on your own id; 403 for a non-admin caller; 401 with no token."
+            "description": "200 with the target's admin-facing profile, status SUSPENDED and the reason. Body: {\"reason\": \"…\"}, trimmed, 1–500 characters (400 otherwise). Only an ACTIVE account, and never your own. Revokes every refresh token of the target and publishes UserSuspended on user.events. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE unless the target is ACTIVE; 409 CANNOT_MODIFY_SELF on your own id; 403 for a non-admin caller; 401 with no token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman test suspension\"\n}"
+            }
           },
           "event": [
             {
@@ -2719,6 +2743,8 @@
                   "  const body = pm.response.json();",
                   "  pm.expect(body.userId).to.eql(pm.collectionVariables.get('targetUserId'));",
                   "  pm.expect(body.status).to.eql('SUSPENDED');",
+                  "  pm.expect(body.suspensionReason).to.eql('Postman test suspension');",
+                  "  pm.expect(body.suspendedAt).to.be.a('string');",
                   "});"
                 ]
               }
@@ -2795,12 +2821,20 @@
             "method": "POST",
             "header": [
               {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
                 "key": "Authorization",
                 "value": "Bearer {{adminAccessToken}}"
               }
             ],
             "url": "{{baseUrl}}/admin/users/{{targetUserId}}/suspend",
-            "description": "200 with the target's admin-facing profile, status SUSPENDED. No body. Only an ACTIVE account, and never your own. Revokes every refresh token of the target and publishes UserSuspended on user.events. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE unless the target is ACTIVE; 409 CANNOT_MODIFY_SELF on your own id; 403 for a non-admin caller; 401 with no token."
+            "description": "200 with the target's admin-facing profile, status SUSPENDED and the reason. Body: {\"reason\": \"…\"}, trimmed, 1–500 characters (400 otherwise). Only an ACTIVE account, and never your own. Revokes every refresh token of the target and publishes UserSuspended on user.events. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE unless the target is ACTIVE; 409 CANNOT_MODIFY_SELF on your own id; 403 for a non-admin caller; 401 with no token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman test suspension\"\n}"
+            }
           },
           "event": [
             {
@@ -2823,12 +2857,20 @@
             "method": "POST",
             "header": [
               {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
                 "key": "Authorization",
                 "value": "Bearer {{adminAccessToken}}"
               }
             ],
             "url": "{{baseUrl}}/admin/users/00000000-0000-4000-8000-000000000000/suspend",
-            "description": "200 with the target's admin-facing profile, status SUSPENDED. No body. Only an ACTIVE account, and never your own. Revokes every refresh token of the target and publishes UserSuspended on user.events. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE unless the target is ACTIVE; 409 CANNOT_MODIFY_SELF on your own id; 403 for a non-admin caller; 401 with no token."
+            "description": "200 with the target's admin-facing profile, status SUSPENDED and the reason. Body: {\"reason\": \"…\"}, trimmed, 1–500 characters (400 otherwise). Only an ACTIVE account, and never your own. Revokes every refresh token of the target and publishes UserSuspended on user.events. 404 if targetUserId doesn't exist; 409 USER_NOT_ACTIVE unless the target is ACTIVE; 409 CANNOT_MODIFY_SELF on your own id; 403 for a non-admin caller; 401 with no token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Postman test suspension\"\n}"
+            }
           },
           "event": [
             {
@@ -2839,6 +2881,37 @@
                   "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
                   "pm.test('the error code is NOT_FOUND', () => {",
                   "  pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reinstate a suspended account (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminAccessToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/admin/users/{{targetUserId}}/reactivate",
+            "description": "200, status ACTIVE: reactivate also lifts a suspension, and clears the reason (#180). Publishes UserReactivated with previousStatus SUSPENDED."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('the target is ACTIVE again, with no suspension left', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('ACTIVE');",
+                  "  pm.expect(body.suspensionReason).to.eql(null);",
+                  "  pm.expect(body.suspendedAt).to.eql(null);",
                   "});"
                 ]
               }
@@ -5575,12 +5648,59 @@
                 "method": "POST",
                 "header": [
                   {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
                     "key": "Authorization",
                     "value": "Bearer {{adminAccessToken}}"
                   }
                 ],
                 "url": "{{baseUrl}}/admin/users/not-a-uuid/suspend",
-                "description": "Admin endpoints: rejected by the DTO before the service runs, so no OTP, rate-limit or lockout budget is spent."
+                "description": "Admin endpoints: rejected by the DTO before the service runs, so no OTP, rate-limit or lockout budget is spent.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"reason\": \"Postman test suspension\"\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                      "pm.test('the error code is VALIDATION_ERROR', () => {",
+                      "  pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR');",
+                      "});",
+                      "pm.test('does not echo the submitted values', () => {",
+                      "  pm.expect(pm.response.text()).to.not.include('Passw0rdSafe');",
+                      "});"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "400 suspend without a reason",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{adminAccessToken}}"
+                  }
+                ],
+                "url": "{{baseUrl}}/admin/users/00000000-0000-4000-8000-000000000000/suspend",
+                "description": "400 VALIDATION_ERROR: reason is required (#180). Checked before the target is looked up, so any id works.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{}"
+                }
               },
               "event": [
                 {

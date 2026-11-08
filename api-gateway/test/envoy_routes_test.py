@@ -21,6 +21,10 @@ Author review (Jian Bing, 2026-11-07): Looked through the code and think it's ok
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Test that api-gateway/.env.example lists every variable the renderer and route files read (PR #156 review).
 Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Counted the admin Order routes in the Order check and added a test that the admin dashboard's
+User and Order reads reach the right service with JWT required, while /admin/credits stays unrouted (#182).
+Author review: Reviewed by Zi Yi, 2026-11-07; pending review by Jie Yang.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Expect the new GET /orders/:orderId/history route (#184 review).
 Author review: Reviewed by Zi Yi, 2026-11-07; pending Jie Yang's approval.
@@ -190,18 +194,48 @@ class RouteFilesTest(unittest.TestCase):
         hcm = resources["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
         routes = [r for r in self.unprefixed(hcm["route_config"]["virtual_hosts"][0]["routes"])
                   if r.get("route", {}).get("cluster") == "order"]
-        self.assertEqual(len(routes), 15)
+        self.assertEqual(len(routes), 18)
         for route in routes:
             self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"], "user_token")
             path = route["match"].get("path") or route["match"]["safe_regex"]["regex"]
-            self.assertTrue(path.startswith("/orders"))
+            self.assertTrue(path.startswith(("/orders", "/admin/orders")))
         static = [r["match"]["path"] for r in routes if "path" in r["match"]]
-        self.assertEqual(static, ["/orders/available", "/orders/mine", "/orders/assigned", "/orders"])
+        self.assertEqual(static, ["/orders/available", "/orders/mine", "/orders/assigned", "/orders",
+                                  "/admin/orders", "/admin/orders/overview"])
         history = [r for r in routes if r["match"].get("safe_regex", {}).get("regex") == "/orders/[^/]+/history"]
         self.assertEqual([r["match"]["headers"][0]["string_match"]["exact"] for r in history], ["GET"])
         order = next(c for c in resources["clusters"] if c["name"] == "order")
         endpoint = order["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
         self.assertEqual(endpoint["address"]["socket_address"], {"address": "order", "port_value": 3005})
+
+    # AI-generated (Claude Code, 2026-11-06; reviewed by Zi Yi, 2026-11-07; pending review by Jie Yang)
+    def test_admin_dashboard_reads_reach_their_service_with_jwt(self):
+        config = self.renderer.configuration(self.env)
+        hcm = config["static_resources"]["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
+        routes = hcm["route_config"]["virtual_hosts"][0]["routes"]
+
+        def first_match(method, path):
+            # Envoy uses the first route whose method and path match; safe_regex must match the whole path.
+            return next(r for r in routes if r["match"].get("prefix") == "/" or (
+                r["match"]["headers"][0]["string_match"]["exact"] == method and
+                (r["match"].get("path") == path or
+                 re.fullmatch(r["match"].get("safe_regex", {}).get("regex", "(?!)"), path))))
+
+        user = "780419c1-46d6-4046-8f8c-73851d35c07e"
+        for path, cluster in (("/admin/users/login-summary", "user"),
+                              (f"/admin/users/{user}/login-events", "user"),
+                              ("/admin/orders", "order"), ("/admin/orders/overview", "order"),
+                              (f"/admin/orders/{user}/history", "order")):
+            with self.subTest(path=path):
+                route = first_match("GET", path)
+                self.assertEqual(route["route"]["cluster"], cluster)
+                self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"],
+                                 "user_token")
+        for method, path in (("GET", "/admin/credits/dead-letters"), ("POST", "/admin/users/login-summary"),
+                             ("GET", f"/admin/users/{user}/login-events/extra"), ("GET", f"/admin/orders/{user}"),
+                             ("POST", "/admin/orders"), ("GET", f"/admin/orders/{user}/history/extra")):
+            with self.subTest(method=method, path=path):
+                self.assertEqual(first_match(method, path)["direct_response"]["status"], 404)
 
     def test_invalid_definitions_fail_instead_of_disabling_authentication(self):
         valid = {"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",

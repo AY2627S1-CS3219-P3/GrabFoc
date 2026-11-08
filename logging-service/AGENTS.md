@@ -1,10 +1,16 @@
 <!--
 AI Assistance Disclosure:
-Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-11-06
+Tool: Claude Code (model: Claude Opus 5), dates: 2026-10-16 to 2026-11-08
 Scope: Wrote this document from the plan and the four schema answers Cole Lin gave in chat on
   2026-10-16, and kept it in step with each review round on PR #129. The decisions it records are
   his; the wording is Claude's. Where a section records a problem rather than a decision, he raised
   it. The per-section "Origin" notes say which is which.
+Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+Scope: Three field-sanitisation bullets still instructed a maintainer to replace a name by its
+  position and length, and named the function the ordinal change deleted - guidance that would
+  have had the next agent put the old format back into one of the walkers that must agree
+  (PR #200 review).
 Author review: Cole Lin, read and approved.
 -->
 
@@ -182,15 +188,40 @@ _Origin: AI doc, from the plan Cole Lin approved_
     already made of one: this was the one pairing on this page bounded at the *producer* and not at
     the store, where every other was the other way round. `bigint` and `symbol` cannot arrive at
     all, because `JSON.parse` makes neither (PR #129 review).
-  - **A replaced key is a fixed point.** A key is sanitised up to three times on its way into a row
-    — by the shipper, by `redactDeep`/`extraOf` defensively, and by the dead-letter shape if the
-    line is parked — and `[key 0: 16 chars]` does not match `SAFE_KEY`, so each pass replaced the
-    previous one's work and reported *its* length. `alice@nus.edu.sg` left the shipper as
-    `[key 0: 16 chars]` and was stored as `[key 0: 17 chars]`, so the row disagreed with the line on
-    stdout about the one number the marker exists to carry. All four copies recognise the marker
-    now. The brackets stay outside the safe alphabet on purpose, and a caller's own key spelled like
-    a marker passing through costs nothing: the shape carries a position and a length and no
-    content of its own (PR #129 review).
+  - **A replaced key is named from its ordinal, and nothing a caller wrote is kept.** A key is
+    sanitised up to three times on its way into a row — by the shipper, by `redactDeep`/`extraOf`
+    defensively, and by the dead-letter shape if the line is parked — so the three have to agree on
+    what a replaced name is. The replacement is `[key 1]`, `[key 2]`: **this walk's own count of
+    the names it has replaced in that object.**
+
+    That is a fixed point by construction. A later walk over the same keys in the same order
+    reaches the same key at the same ordinal and writes the same name, so there is no marker to
+    recognise and no recognition rule to get wrong. It is also why the three agree without sharing
+    anything: the shipper walks a line's metadata, the store walks a whole line minus its columns,
+    and the parked shape walks what it could parse — but the *replacements* are the same keys in
+    the same order. That is the one thing the design depends on, so a field that will not be
+    written — a function, or a value of `undefined`, both of which `JSON.stringify` drops — is
+    skipped **before** the count. Numbering one spent an ordinal the line never carried, and the
+    store renumbered from what reached it, so the row and stdout disagreed again (PR #200 review). The previous design needed all three to compute the same **position**, which
+    they never did.
+
+    It took six rounds to get here, and the history is the argument for the design, so keep it:
+    the name used to carry the replaced key's length, and `alice@nus.edu.sg` left the shipper as
+    `[key 0: 16 chars]` and was stored as `[key 0: 17 chars]` — each pass reporting its own
+    length. Making the marker recognised fixed that and let a caller key *spelled* like a marker
+    through. Suffixing ` (2)` for the resulting collision matched neither pattern and was replaced
+    on the next pass. Bounding the numbers fell to leading zeroes, because `Number('000000')` is 0.
+    Bounding the index to the object's range still left four digits in a wide enough object:
+    `[key 12: 34 chars]` carries four and `[key 123: 456 chars]` six, which is an OTP or a handover
+    code in trivially recoverable form. **Every bound was defeated by a spelling the previous one
+    allowed**, which is what says the bound was the wrong idea rather than the wrong number
+    (PR #129, PR #145, PR #157 and PR #200 reviews).
+
+    What is given up is the replaced key's length: diagnostic at best, and the field every one of
+    those bypasses travelled in. The brackets stay outside the safe alphabet on purpose, so a
+    generated name can never collide with a kept one. A top-level `__proto__` is renamed to a
+    placeholder before the Zod parse — which drops that key — and `extraOf` then replaces the
+    placeholder by ordinal like any other unusable name.
   - **The array walk is bounded, because rebuilding by index gave up what `map` had.**
     `Array.prototype.map` skips holes; a loop over `length` does not, and `length` is
     caller-controlled and free to inflate — `a.length = 0xffffffff` on an empty array is one
@@ -259,8 +290,10 @@ _Origin: AI doc, from the plan Cole Lin approved_
 - **Field *names* are sanitised as well as values.** Redaction only ever looked at values, so
   data used as a key — `{ recipients: { "alice@nus.edu.sg": true } }` — travelled untouched
   into stdout, Kafka and the `extra` column (PR #129 review). A name outside
-  `[A-Za-z0-9_.:-]{1,64}` is replaced whole by its position and length, not truncated, since
-  half an address is still half an address. The value under it is kept. The same rule is in
+  `[A-Za-z0-9_.:-]{1,64}` is replaced whole by the walk's own count of replacements in that
+  object - `[key 1]`, `[key 2]` - not truncated, since half an address is still half an address.
+  Nothing of the caller's key reaches the name, which is the point: six rounds of bounding what
+  could go *inside* a replaced name each fell to a spelling the previous bound allowed. The value under it is kept. The same rule is in
   the shipper, in `line.schema.ts` and in the dead-letter shape, and **the three must agree**.
   `__proto__` is replaced too, although it matches the pattern: it is the one name for which
   `out[key] = value` does not define a property but runs `Object.prototype`'s setter, so the
@@ -272,8 +305,15 @@ _Origin: AI doc, from the plan Cole Lin approved_
   the store is the kind of disagreement these reviews keep finding. Knowing that was not the same
   as handling it, and for a *top-level* `__proto__` the store did drop the field, because the walk
   that renames it runs on Zod's output and the name was gone by then. The parse is now preceded by
-  a rename of that one key on the raw input, spelled by `safeKey` itself, so the field arrives
-  where the walkers can see it (PR #129 review).
+  a rename of that one key on the raw input to a placeholder the walkers will not keep, so the
+  field arrives where they can see it and is then replaced by its ordinal like any other unusable
+  name (PR #129 review).
+- **A list is only as good as the spellings in it.** This bullet claimed given and family names
+  were covered while the list held only `firstname` and `lastname`, so `givenName` - the spelling
+  an OIDC claim and most APIs use - normalised to `givenname`, matched nothing, and went to stdout
+  and the store in the clear (PR #157 review). `givenname`, `familyname` and `surname` are in the
+  list now. The documentation was the thing that was wrong first, which is worth noticing: it
+  described an intention and was read as a guarantee.
 - **The redaction list covers personal data, not only credentials.** `phone` and display, given
   and family names were outside it, so a profile line put a student's name in the clear into
   stdout, Kafka and the `extra` column (PR #129 review). `name` on its own is *not* in the list:
@@ -282,7 +322,7 @@ _Origin: AI doc, from the plan Cole Lin approved_
   `ts` and `service` always win — a line claiming another service's name would make the store
   unreadable.
 - It writes the line itself rather than through Nest's logger, which would wrap the JSON in Nest's own timestamp, PID and context and leave a collector digging it out.
-- **A safe-looking key is not a safe key, and nothing here can make it one.** `safeKey` replaces a
+- **A safe-looking key is not a safe key, and nothing here can make it one.** The walkers replace a
   field name that *cannot* be a field name — one with an `@`, a space, 200 characters — because such
   a name is data rather than a name. A review round asked for credential-*shaped* keys to be
   replaced as well, and it is right that `{ attempts: { "123456": true } }` writes a six-digit code
