@@ -17,6 +17,17 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-09 — The Notification Service, and a field name that would have emptied the demo (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt (exact): "there is merge conflict. we add the notification service code alongside the rest, so in 223".
+- Merged `main` first: one conflict in `user-service/AGENTS.md`, where it had rewritten the paragraph about resetting the user database (a migration handles it now) and I had appended a Logging section after that same paragraph. Took its prose, kept my section.
+- Then the Notification Service, which needed a **different shape** from the other four and it took reading it to see that. It is not an HTTP API: one `/health` route, no caller on the request, so a `request_completed` line per request would say nothing. What it does is handle events and send email - and it was already writing those outcomes as structured JSON through Nest's `Logger`, which wraps the object in its own timestamp, PID and context for a collector to dig out, and nothing collected it. So the ten outcome sites go through the shipper instead: `notification_sent`, `notification_failed`, `notification_superseded`, the `account_email_*` three, `order_event_handled`, `user_event_handled` and both `event_dead_lettered` paths.
+- **The find of the round, and one compiler error led to it.** `tsc` refused `status: row.status` because the envelope's `status` is an HTTP number and that is an order state string. Looking for the same shape found worse: `role: row.role` **compiled**, and this service's roles are `REQUESTER` and `COURIER` while the envelope's `role` is an `ADMIN`/`USER` enum. The store refuses the *whole line* when a field is outside its schema, so every `notification_sent` would have been dead-lettered rather than stored - silently, and exactly in the demo Cole Lin is building, where the beat is an order flowing through to an email. They are `orderStatus` and `recipientRole` now, which land in `extra`, with the reason written at all three sites and in the service's `AGENTS.md`.
+- Two smaller things from doing it: I checked first whether the specs assert those log calls before converting them - they only silence the logger, so nothing had to be rewritten in someone else's tests - and `dead-letters.service.ts` already contains a U+FFFD in `main`'s own blob, so the hygiene check skips that one character for that file rather than quietly rewriting another author's content.
+- The drift guard now covers five copies rather than four, and its completeness check - the glob for a copy missing from its own list - is what will catch the sixth.
+- Verification: **494** in the Logging Service, **294** Supplier, **101** Notification, and `tsc --noEmit` clean in all six services.
+
 ### 2026-11-08 — The same two bugs one place over, and three instruction files that did not mention logging (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

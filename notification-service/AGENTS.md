@@ -18,6 +18,10 @@ Author review: pending — Jie Yang to record the review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
 Scope: Wrote "Account emails (#183)" from Jie Yang's decisions in chat; updated "Status" and "Purpose".
 Author review: pending — Jie Yang to record the review.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Added the Logging section: this service's outcome lines now go through the shipper into
+  the Logging Service's store, and this file did not mention logging at all (issue #52).
+Author review: Cole Lin, read and approved.
 -->
 
 # AGENTS.md — Notification Service
@@ -121,3 +125,35 @@ _Origin: Team (issue #183; Jie Yang approved Claude Code's plan, 2026-11-04)_
 - **[Decided]** The suspension reason is never included: the events don't carry it.
 - **[Proposed]** `UserReactivated` (`{ type, eventId, userId, occurredAt, previousStatus }`) is the shape #180 proposes; the User Service owners (Deanson, Zi Yi) define it. Confirm before relying on it.
 - An `OrderCancelled` with reason `USER_SUSPENDED` (sent by Order for each unfinished order of a suspended user) says "It was cancelled because an account on this order was suspended." So a suspended user may get several emails at once.
+
+## Logging (issue #52)
+
+_Origin: AI doc, from the wiring in this service and the decisions recorded in
+`logging-service/AGENTS.md`, which is the canonical description of the line shape_
+
+This service's outcome lines go through the log shipper, so they reach the Logging Service's store
+instead of only this container's stdout: `notification_sent`, `notification_failed`,
+`notification_superseded`, the `account_email_*` equivalents, `order_event_handled`,
+`user_event_handled` and `event_dead_lettered`. They were already structured JSON, but written
+through Nest's `Logger`, which wraps the object in its own timestamp, PID and context - so a
+collector had to dig it out, and nothing collected it.
+
+**There is no per-request line here, deliberately.** The other four services write one
+`request_completed` line per request; this service exposes only `/health` and has no caller on the
+request, so a request line would say nothing worth storing. What it does is handle events, and that
+is what it logs.
+
+Lines always go to stdout; when `NOTIFICATION_KAFKA_BROKERS` is set - which Compose sets - they are
+also shipped to `NOTIFICATION_LOG_TOPIC` (default `logging.lines`), which must exist in
+`infra/kafka/topics.txt`. With no brokers set, nothing is built at all: no publisher, no flush
+timer, no client.
+
+`src/common/log-shipper.ts` and `src/common/kafka.publisher.ts` are **copies**; change the shipper
+in `logging-service/src/client/log-shipper.ts`, not here, and
+`logging-service/src/client/copies.spec.ts` fails if a copy drifts.
+
+**Do not put an order state in `status`, or a recipient role in `role`.** Both are envelope fields
+with different meanings - an HTTP status, and an `ADMIN`/`USER` role - and the store refuses the
+**whole line** when a field is outside its schema, so `role: 'COURIER'` would have had every
+`notification_sent` line dead-lettered rather than stored. They are `orderStatus` and
+`recipientRole` here, which land in `extra`.

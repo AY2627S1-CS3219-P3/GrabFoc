@@ -26,6 +26,7 @@ const COPIES = [
   'user-service/src/common/log-shipper.ts',
   'credit-service/src/common/log-shipper.ts',
   'order-service/src/common/log-shipper.ts',
+  'notification-service/src/common/log-shipper.ts',
 ];
 
 /**
@@ -56,7 +57,7 @@ it.each(COPIES)('%s has the same body as the canonical shipper', (copy) => {
  * Supplier is the reference because it is where both files were written.
  */
 const PLUMBING = ['kafka.publisher.ts', 'log.ts'];
-const NAMES = ['supplier', 'user', 'credit', 'order'];
+const NAMES = ['supplier', 'user', 'credit', 'order', 'notification'];
 
 function normalised(service: string, file: string): string {
   return body(`${service}-service/src/common/${file}`)
