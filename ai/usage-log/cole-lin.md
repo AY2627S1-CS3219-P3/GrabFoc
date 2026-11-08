@@ -17,6 +17,15 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-08 — The symmetric halves of the last two fixes (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Two findings, and both are the other half of something I fixed in the round before - which is the honest summary of this whole day.
+- I guarded the consumer's failed `connect()` and missed the **admin** client in the function directly above it: `ensureTopics()` called `admin.connect()` *before* the `try`, so a rejected connect never reached the `finally` and left an unreachable native client behind. With the retry loop I had added, that is one per attempt for as long as a broker outage lasts, inside a container that looks healthy because the query API answers. The connect is inside the guard now, and the disconnect catches, since closing a client that never connected is itself an error and the failure worth reporting is the one from the body.
+- I replaced the shipper-side producer's ready flag with a promise weeks ago for exactly this reason and then wrote a `producerReady` boolean here. A SIGTERM during the first dead letter's `producer.connect()` saw `false`, skipped the producer, and let shutdown finish - and the continuation connected it anyway, leaving a live producer after both destroy hooks had completed with nothing left to close it. It holds the connection promise now, and teardown waits for one in flight before disconnecting.
+- Proved both against the unfixed code rather than assuming. Worth recording precisely: **two** cases fail for the reason claimed, while three others also failed because my crude revert disabled the previous round's producer teardown as well - an artefact of how I reverted, not evidence for these fixes. Easy to have reported "five fail" and been wrong about four of them.
+- Verification: **486** in the Logging Service, `tsc --noEmit` clean.
+
 ### 2026-11-08 — Three on the retry I had just added, including a log line that lied (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

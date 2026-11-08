@@ -15,9 +15,18 @@ let consumerRuns = 0;
 let existingTopics: string[] = [];
 let failAt: 'connect' | 'subscribe' | undefined;
 let failConsumerDisconnect = false;
+let failAdminConnect = false;
+let adminDisconnects = 0;
 const consumers: Array<{ disconnect: jest.Mock }> = [];
+let releaseProducerConnect: (() => void) | undefined;
 const producer = {
-  connect: jest.fn().mockResolvedValue(undefined),
+  connect: jest.fn(async () => {
+    if (releaseProducerConnect) {
+      await new Promise<void>((resolve) => {
+        releaseProducerConnect = resolve;
+      });
+    }
+  }),
   disconnect: jest.fn().mockResolvedValue(undefined),
   send: jest.fn(async (payload: Record<string, unknown>) => {
     sent.push(payload);
@@ -48,8 +57,12 @@ jest.mock('@confluentinc/kafka-javascript', () => ({
         return made;
       };
       admin = () => ({
-        connect: jest.fn(),
-        disconnect: jest.fn(),
+        connect: jest.fn(async () => {
+          if (failAdminConnect) throw new Error('admin connect failed');
+        }),
+        disconnect: jest.fn(async () => {
+          adminDisconnects += 1;
+        }),
         // Empty by default, which is what the missing-topic case needs; a test that wants start()
         // to get past it pushes the names in.
         listTopics: jest.fn(async () => existingTopics),
@@ -75,9 +88,12 @@ beforeEach(() => {
   existingTopics = [];
   failAt = undefined;
   failConsumerDisconnect = false;
+  failAdminConnect = false;
+  adminDisconnects = 0;
   consumers.length = 0;
   producer.send.mockClear();
   producer.connect.mockClear();
+  releaseProducerConnect = undefined;
 });
 
 describe('a consumed message reaching the seam', () => {
@@ -212,6 +228,39 @@ describe('shutting down when a client will not disconnect', () => {
     // must not mean the dead-letter producer stays connected with its resources held.
     await expect(ingest.stop()).rejects.toThrow('disconnect failed');
     expect(producer.disconnect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a broker that is not there', () => {
+  it('disconnects the admin client when its connect fails, so a retry does not stack another', async () => {
+    failAdminConnect = true;
+    const ingest = new KafkaIngest();
+    await expect(ingest.start(async () => undefined)).rejects.toThrow('admin connect failed');
+    // IngestService retries for as long as the outage lasts, so one unreachable native client
+    // per attempt is what this prevents.
+    expect(adminDisconnects).toBe(1);
+  });
+});
+
+describe('a producer connect that races shutdown', () => {
+  it('closes a producer that finishes connecting while shutdown is running', async () => {
+    // Hold the connect open, start a dead letter, then shut down while it is still connecting.
+    releaseProducerConnect = () => undefined;
+    const ingest = new KafkaIngest();
+    const sending = ingest.send(
+      { value: '{}', topic: 'logging.lines', offset: '1', headers: {} },
+      'reason',
+      '{}',
+    );
+    await Promise.resolve();
+    producer.disconnect.mockClear();
+    const stopping = ingest.stop();
+    // The connect lands after shutdown has begun: with a ready flag this was invisible to
+    // teardown, and the producer stayed connected with nothing left to close it.
+    releaseProducerConnect?.();
+    await stopping;
+    expect(producer.disconnect).toHaveBeenCalledTimes(1);
+    await sending.catch(() => undefined);
   });
 });
 

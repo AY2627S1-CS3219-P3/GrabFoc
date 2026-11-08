@@ -25,6 +25,10 @@
  * Scope: Review: disconnect a consumer whose startup failed rather than leaving it for the
  *        retry to replace, and tear both clients down independently (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: disconnect an admin client whose connect failed, and hold the producer's
+ *        connection as a promise so shutdown can wait for one in flight (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
@@ -68,7 +72,15 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
   // idempotent: a send the client retries internally must not write the message twice.
   private readonly producer = this.kafka.producer({ kafkaJS: { idempotent: true } });
   private consumer?: KafkaJS.Consumer;
-  private producerReady = false;
+  /**
+   * The producer's connection, held as the promise rather than a `ready` boolean.
+   *
+   * A boolean is only set *after* the connect resolves, so a SIGTERM arriving during that await
+   * saw `false`, skipped the producer, and let shutdown finish - and the continuation then
+   * connected it anyway, leaving a native producer alive after both destroy hooks had completed,
+   * with nothing left to disconnect it. Holding the promise lets teardown wait for it (review).
+   */
+  private producerConnected?: Promise<void>;
   private stopping?: Promise<void>;
   private stopped = false;
 
@@ -159,11 +171,17 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
   private async disconnectAll(): Promise<void> {
     const consumer = this.consumer;
     this.consumer = undefined;
-    const producer = this.producerReady ? this.producer : undefined;
-    this.producerReady = false;
+    const connecting = this.producerConnected;
+    this.producerConnected = undefined;
     const outcomes = await Promise.allSettled([
       consumer?.disconnect(),
-      producer?.disconnect(),
+      // Waits for an in-flight connect before disconnecting, so a producer that finishes
+      // connecting during shutdown is still closed. A connect that failed leaves nothing to
+      // close, which is what the rejected branch means.
+      connecting?.then(
+        () => this.producer.disconnect(),
+        () => undefined,
+      ),
     ]);
     // Still reported: a teardown that could not finish is worth knowing about. The first failure
     // is enough - they are the same kind of problem, and both have been attempted by now.
@@ -187,10 +205,7 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
    * the source topic for its retention period (`DeadLetters` in consumer.ts).
    */
   async send(message: InboundMessage, reason: string, body: string | null): Promise<void> {
-    if (!this.producerReady) {
-      await this.producer.connect();
-      this.producerReady = true;
-    }
+    await this.connectProducer();
     const requestId = message.headers?.[REQUEST_ID];
     await this.producer.send({
       topic: config.kafkaDeadLetterTopic,
@@ -215,6 +230,15 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
     });
   }
 
+  /** Connects once. A failed attempt is not cached, so the next dead letter tries again. */
+  private connectProducer(): Promise<void> {
+    this.producerConnected ??= this.producer.connect().catch((err: unknown) => {
+      this.producerConnected = undefined;
+      throw err;
+    });
+    return this.producerConnected;
+  }
+
   /**
    * `infra/kafka/topics.txt` is the single list and broker auto-creation is off (rule 4), so a
    * missing topic means that file was not updated. Say which one, at startup, instead of waiting
@@ -232,8 +256,12 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
       );
     }
     const admin = this.kafka.admin();
-    await admin.connect();
+    // The connect is inside the guard, not before it: a rejected connect never entered the
+    // `finally` below, so every retry through a broker outage left another unreachable native
+    // client behind - the same shape as the consumer leak one function down, in the function
+    // above it (review).
     try {
+      await admin.connect();
       const existing = new Set(await admin.listTopics());
       const missing = [config.kafkaTopic, config.kafkaDeadLetterTopic].filter((t) => !existing.has(t));
       if (missing.length) {
@@ -244,7 +272,9 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
         );
       }
     } finally {
-      await admin.disconnect();
+      // Catch: disconnecting a client that never connected is itself an error, and the failure
+      // worth reporting is the one from the body.
+      await admin.disconnect().catch(() => undefined);
     }
   }
 }
