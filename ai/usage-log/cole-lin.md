@@ -17,6 +17,21 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-09 — A finding I disproved by running it, and a worse one underneath (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: no new one - started by the automated reviewer, under the standing instruction to keep fixing findings until a pull request has none left.
+- The finding: Envoy's `json_format` renders `%RESPONSE_CODE%` and `%DURATION%` as strings, so the store - which requires numbers - would refuse every gateway line. Plausible, specific, and **wrong for this version**, which I only know because I ran it rather than reading about it.
+- What I did first was take it at face value and switch to `typed_json_format`. Envoy's own config validator refused the result: **no such field in `envoy.config.core.v3.SubstitutionFormatString`** for v1.38.6. That change would have stopped the gateway booting - strictly worse than the string types it was meant to fix, and the unit tests passed on it, because they assert the rendered JSON and not whether Envoy accepts it.
+- So I rendered the real configuration, validated it against the actual Envoy image, started it, and curled it. The line it wrote:
+
+  `{"durationMs":0,"event":"request_completed","level":"info","method":"GET","path":"/","requestId":"...","service":null,"status":404,"ts":"..."}`
+
+  `status` and `durationMs` are **already numbers**: a value that is exactly one operator keeps the operator's own type. No fix was needed.
+- But `"service":null` is in that line, and it is a real defect the finding had not mentioned. `service` is **required** by the store, so that line would have been refused - and `%UPSTREAM_CLUSTER%` is the wrong field for it twice over, because `service` means *who wrote the line* and every other service puts its own name there. Gateway lines were claiming to come from whichever service they happened to be routed to. It is the literal `gateway` now, with the upstream kept under its own name, and the real line confirms it.
+- Two lessons, both about evidence. A config change is not verified by a unit test that reads the rendered JSON; it is verified by the thing that has to load it. And a finding being specific and plausible is not the same as it being true for the version in the repository - this one would have passed review on reading alone.
+- Verification: the configuration validates against `envoyproxy/envoy:v1.38.6`, boots, and writes the line above; **16** of the gateway's renderer tests pass. The container and image pulled for this were removed afterwards.
+
 ### 2026-11-09 — The Notification Service, and a field name that would have emptied the demo (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

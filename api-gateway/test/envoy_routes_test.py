@@ -220,11 +220,21 @@ class RouteFilesTest(unittest.TestCase):
         # UUID source, and one request can emit two of these entries, so whatever collects this
         # stdout has to mint it.
         self.assertEqual(set(base), {"event", "level", "ts", "requestId", "method", "service",
-                                     "status", "durationMs", "path"})
+                                     "upstream", "status", "durationMs", "path"})
         self.assertEqual(base["event"], "request_completed")
         self.assertEqual(base["level"], "info")
         self.assertEqual(base["ts"], "%START_TIME(%Y-%m-%dT%H:%M:%S.%3fZ)%")
         self.assertNotIn("lineId", base)
+        # `service` is this gateway, as a literal, not %UPSTREAM_CLUSTER%: the store requires a
+        # service and refuses the whole line when one is null, which the operator renders for a
+        # request that reaches no upstream. The upstream keeps its own field.
+        self.assertEqual(base["service"], "gateway")
+        self.assertEqual(base["upstream"], "%UPSTREAM_CLUSTER%")
+        # Left as plain operators on purpose: this Envoy renders a value that is exactly one
+        # operator with the operator's own type, so these arrive as JSON numbers, which is what
+        # the store requires. Checked by running Envoy, not from the documentation.
+        self.assertEqual(base["status"], "%RESPONSE_CODE%")
+        self.assertEqual(base["durationMs"], "%DURATION%")
         # An outcome worth finding on its own gets its own entry, with its own event and level -
         # level cannot be derived from the status inside a json_format.
         outcomes = []
