@@ -19,6 +19,9 @@ Scope: Added a test that /gateway/* reaches the services with the prefix removed
 Scope: Added a stub frontend and edge-listener tests: origin key, /gateway vs frontend routing, and which
 headers each route keeps (#141).
 Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Added the admin dashboard's User and Order read routes to the protected-route cases (#182).
+Author review: Reviewed by Zi Yi, 2026-11-07; pending review by Jie Yang.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
 import assert from 'node:assert/strict';
@@ -171,7 +174,9 @@ test('order routes require a token and reach the Order Service unchanged', async
     ['POST', '/orders'], ['GET', `/orders/${id}`], ['PATCH', `/orders/${id}`],
     ...['accept', 'cancel', 'pick-up', 'start-delivery', 'arrive'].map((step) => ['POST', `/orders/${id}/${step}`]),
     ['GET', `/orders/${id}/confirmations`], ['POST', `/orders/${id}/confirmations`],
-    ['POST', `/orders/${id}/confirmations/${id}/respond`]];
+    ['POST', `/orders/${id}/confirmations/${id}/respond`],
+    ['GET', '/admin/orders?scope=live&userId=7&page=1'], ['GET', '/admin/orders/overview'],
+    ['GET', `/admin/orders/${id}/history`]];
   for (const [method, path] of cases) {
     assert.equal((await fetch(gateway + path, { method })).status, 401, `${method} ${path} without a token`);
     const res = await fetch(gateway + path, { method, headers: { authorization: `Bearer ${token()}` },
@@ -474,6 +479,7 @@ test('all protected User and Supplier routes enforce JWT and reach their service
     ['POST', '/users/me/deactivate', 201], ['PATCH', '/users/me/mobile', 201],
     ['GET', '/admin/users', 201], ['PATCH', '/admin/users/test-id/role', 201],
     ['POST', '/admin/users/test-id/reactivate', 201], ['POST', '/admin/users/test-id/suspend', 201],
+    ['GET', '/admin/users/login-summary', 201], ['GET', '/admin/users/test-id/login-events?page=2', 201],
     ['GET', '/location-types', 200],
     ['GET', '/locations', 200], ['POST', '/locations', 200], ['GET', '/locations/test-id', 200],
     ['PATCH', '/locations/test-id', 200], ['POST', '/locations/test-id/deactivate', 200],

@@ -57,12 +57,84 @@ Author review: Reviewed by Zi Yi, 2026-11-05.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Recorded removing the zod build fix from PR #192, and the Postman folder 6 fix from its review.
 Author review: Reviewed by Zi Yi, 2026-11-06.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
+Scope: Added the gateway admin routes (#182) entry.
+Author review: Reviewed by Zi Yi, 2026-11-07.
 -->
 
 # AI Usage Log — Zi Yi
 
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-06 — API Gateway: admin dashboard routes (#182)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `api-gateway/envoy/routes/{10-user,30-order}.routes.json`, `test/envoy_routes_test.py`,
+`test/envoy.integration.mjs`, `AGENTS.md`, `README.md`
+
+**Scenario:** build §7 of `docs/admin-dashboard-plan.md` (issue #182, part of #179) on branch
+`feat/admin-gateway-routes`: route the new admin reads from #180 (PR #190) and #181 (PR #192)
+through Envoy.
+
+**Prompts:**
+> work on implementation of the admin dashboard, specifically the issue https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/182. refer to the admin dashboard plan and issues https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/180 and https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/181. issues 180 and 181 were implemented in PRs #190, #192
+
+> list the files you added or changed and whats the change or what did you add
+
+> i have reviewed the files changed
+
+> what about routing /admin/credits/**?
+
+> keep it out. also the tests are returning 404, why
+
+> create a throaway local branch that merges this branch with #190 and #192, dont push it, run the stack on it
+
+> tear it down, then commit in a few relevant commits and open the PR
+
+**What it produced:**
+- Five JWT-protected GET routes: `/admin/users/login-summary` and `/admin/users/:userId/login-events`
+  to the User Service; `/admin/orders`, `/admin/orders/overview` and `/admin/orders/:orderId/history`
+  to the Order Service. `/admin/orders` is not behind the configurable `{orders}` prefix, like
+  `/admin/users`.
+- A route-loader test that resolves paths the way Envoy does (first match, whole-path regex) and
+  checks each new route reaches the right service with a JWT, while `/admin/credits/dead-letters`,
+  other methods and longer paths still hit the 404 route; the Order check now counts 17 routes.
+- The new routes added to the integration test cases, the `AGENTS.md` routing rule and the README.
+
+**Flagged:**
+- The gateway owner (Jie Yang) still has to approve the new routes (#179, plan §11).
+- The routes only reach a working endpoint once PRs #190 and #192 are merged; until then the
+  services answer 404.
+- No gateway Postman requests were added: the collection covers User and Supplier, and the admin
+  requests need #190 merged.
+- On `/admin/credits/**`: #182 and plan §7 keep it unrouted, D8 leaves the dead-letters card out,
+  and `api-gateway/AGENTS.md` forbids it. The AI pointed out that `credit-service/AGENTS.md` still
+  lists "Gateway routes for … `/admin/credits/**` (#60)" as open work, which contradicts that.
+- On the 404s: on this branch alone the User and Order Services don't have the endpoints yet
+  (they are in #190 and #192), so the gateway forwards the request and the service answers 404.
+
+**What I changed or rejected:** Reviewed every changed file; no edits. Kept `/admin/credits/**`
+out of this PR.
+
+**Verification:** `python3 api-gateway/test/envoy_routes_test.py`: 7 passed, and the new test fails
+with the old route files. `envoy.integration.mjs` fails 17 of 21 tests on this machine on main as
+well as on the branch (the container cannot reach the host upstreams), so it was not used. Instead,
+the rebuilt `foc-envoy:local` image was started alone: the five routes return 401 without a token
+(query strings included), while `/admin/credits/dead-letters`, `POST /admin/orders`,
+`GET /admin/orders/:id` and longer paths return 404.
+
+End to end, on a throwaway local branch (not pushed, deleted afterwards) that merged this branch
+with #190 and #192, with the whole stack built from empty volumes. The only merge conflicts were
+`user-service/package{,-lock}.json` (#190 and main carry the same NestJS fix; kept main's) and this
+log. A script created an admin (bootstrap claim, code from Mailpit), two users, two wrong-password
+logins and two orders (one cancelled, one accepted), then checked through the gateway: no token
+gives 401 and a USER gets 403 on all five routes; `login-summary` counts the two failures;
+`login-events` lists them newest first; the overview, the `scope`/`state`/`userId` filters
+(requester and courier) and the history (with `REQUESTER_CANCELLED`) return the right orders; an
+unknown order's history is a 404 from Order; `/admin/credits/dead-letters` with an admin token is
+the gateway's 404. 11 of 11 passed. The first run had one wrong expectation in the script: it
+assumed sign-up verification records a `SUCCESS` login event, but only `login()` records events.
 
 ### 2026-11-05 — Order Service: admin dashboard read routes (#181)
 
