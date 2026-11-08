@@ -6,10 +6,14 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: Registered OrderClient (#71).
  * Author review: Reviewed by Zi Yi, 2026-10-20.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-02
+ * Scope: Registered LoginEventsRepository (#180).
+ * Author review: Reviewed by Zi Yi, 2026-11-05.
  */
 // AI-generated (reviewed by Deanson)
 import { Module } from '@nestjs/common';
 import { SecurityModule } from '../security/security.module';
+import { LoginEventsRepository } from './login-events.repository';
 import { OrderClient } from './order.client';
 import { UsersAdminController } from './users-admin.controller';
 import { UsersController } from './users.controller';
@@ -19,8 +23,8 @@ import { UsersService } from './users.service';
 @Module({
   imports: [SecurityModule],
   controllers: [UsersController, UsersAdminController],
-  providers: [UsersService, UsersRepository, OrderClient],
-  // The repository stays private: the users table is reached only through UsersService.
+  providers: [UsersService, UsersRepository, LoginEventsRepository, OrderClient],
+  // The repositories stay private: their tables are reached only through UsersService.
   exports: [UsersService],
 })
 export class UsersModule {}
