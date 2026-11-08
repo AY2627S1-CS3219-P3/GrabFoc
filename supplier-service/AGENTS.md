@@ -22,6 +22,12 @@ Scope: Three sections still described behaviour this service no longer has - a r
   line that always carries a status and a caller. This is a scoped instruction file, so each would
   have told the next change to undo a fix (PR #145 review).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+Scope: The logging section said no broker was configured and that handing the shipper a publisher
+  was still future work. Neither is true now that this service ships to the store, and this is a
+  scoped instruction file, so it would have told the next change the publisher was absent
+  (issue #52).
+Author review: Cole Lin, read and approved.
 -->
 # AGENTS.md — Supplier (Location) Service
 
@@ -224,10 +230,22 @@ its own timestamp, PID, level and context and leave a collector digging it out. 
 three fields every line needs: `lineId` (a UUID, the store's primary key), `ts` (ISO-8601 UTC) and
 `service`.
 
-**No broker is configured**, so lines go to stdout only — nothing here depends on Kafka, and the
-service still runs and is testable on its own (`SUPPLIER_DEV_AUTH`, Postman on `:3002`). When the
-shared broker (#75) is wired up, a publisher is handed to the shipper in `log.ts` and nothing else
-in this service changes.
+**Lines go to the broker as well as to stdout.** `common/log.ts` hands the shipper a
+`KafkaLinePublisher` whenever `SUPPLIER_KAFKA_BROKERS` is set, which Compose sets, so a line
+written here reaches the Logging Service's store and `GET /logs` returns it. The topic is
+`SUPPLIER_LOG_TOPIC`, default `logging.lines`, and it must exist in `infra/kafka/topics.txt` —
+services never create topics.
+
+With no brokers set — every test run, and a standalone run — **nothing is built at all**: no
+publisher, no flush timer, no Kafka client, and lines go to stdout exactly as before. So nothing
+here depends on Kafka and the service is still testable on its own (`SUPPLIER_DEV_AUTH`, Postman on
+`:3002`).
+
+Two things to know about the publisher if you touch it. It reads the two variables from the
+environment rather than from `config`, because `log` is a module-level singleton built before Nest
+has an injector, and a logging component must never be why a service fails to start. And its body
+is kept identical to the other services' copies, which
+`logging-service/src/client/copies.spec.ts` fails on if one drifts.
 
 | Event | Level | When |
 |---|---|---|

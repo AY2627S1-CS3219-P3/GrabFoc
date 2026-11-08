@@ -37,6 +37,10 @@
  * Scope: Review: leave a consumer's teardown to whichever owner has it, and pause the partition
  *        before rethrowing so a failing dependency is not re-read in a hot loop (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: refuse to schedule a pause once shutdown has begun, and disconnect the
+ *        dead-letter producer even when its connect failed (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
@@ -92,6 +96,13 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
    * with nothing left to disconnect it. Holding the promise lets teardown wait for it (review).
    */
   private producerConnected?: Promise<void>;
+  /**
+   * Whether a connect was ever started. Kept when one fails, unlike `producerConnected`, which is
+   * cleared so the next dead letter can retry - and clearing the only record of it meant shutdown
+   * saw nothing to disconnect while the failed attempt may already hold native resources. The four
+   * copied publishers were given this; this producer is the one place it was missing (review).
+   */
+  private producerAttempted = false;
   private stopping?: Promise<void>;
   private stopped = false;
   private readonly pauses = new Set<NodeJS.Timeout>();
@@ -208,6 +219,13 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
    * a pending resume would otherwise hold a reference to a consumer that is being torn down.
    */
   private pauseFor(pause: () => () => void, ms: number): void {
+    // Checked here, at the one place a timer is created, rather than by clearing the set again
+    // after the drain. `consumer.disconnect()` waits for an in-flight handler, and that handler
+    // can reject *during* the drain - its dead-letter send is refused precisely because shutdown
+    // has begun - so its catch would schedule a pause after the set was emptied, and five seconds
+    // later resume a consumer that no longer exists. The lesson from the three rounds before this
+    // one: guard where the thing is created, not where it is tidied up (review).
+    if (this.stopped) return;
     const resume = pause();
     const timer = setTimeout(() => {
       this.pauses.delete(timer);
@@ -239,12 +257,14 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
     // disconnecting, so a producer that finished connecting during shutdown is still closed; a
     // connect that failed leaves nothing to close, which is what the rejected branch means.
     const connecting = this.producerConnected;
+    const attempted = this.producerAttempted;
     this.producerConnected = undefined;
+    this.producerAttempted = false;
     try {
-      await connecting?.then(
-        () => this.producer.disconnect(),
-        () => undefined,
-      );
+      // Waits for a connect still in flight, then disconnects whether or not it succeeded: an
+      // attempt is enough for the client to be holding something.
+      await connecting?.catch(() => undefined);
+      if (attempted) await this.producer.disconnect();
     } catch (err) {
       failure ??= err;
     }
@@ -311,6 +331,7 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
         new Error('This service is shutting down; the dead letter will be redelivered instead.'),
       );
     }
+    this.producerAttempted = true;
     this.producerConnected ??= this.producer.connect().catch((err: unknown) => {
       this.producerConnected = undefined;
       throw err;

@@ -17,6 +17,18 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-08 — The same two bugs one place over, and three instruction files that did not mention logging (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: no new one - started by the automated reviewer, under Cole Lin's standing instruction to keep fixing findings until a pull request has none left.
+- Three findings. **Two of them are bugs I had fixed an hour earlier, in the one place I did not apply the fix.**
+  - The dead-letter producer clears its connection promise when a connect fails, so shutdown saw nothing to disconnect while the failed attempt may already hold native resources. I had just added an `attempted` flag to the four copied publishers for exactly this, and did not add it to the producer sitting in the same file as the teardown I was editing. The reviewer's note says so plainly: the four publishers now retain it, this one still needs it.
+  - And a pause could still be scheduled *during* the drain. `consumer.disconnect()` waits for an in-flight handler; that handler's dead-letter send is refused because shutdown has begun; its catch then scheduled a pause after I had cleared the set, and five seconds later resumed a disconnected consumer. My own note from the round before said the lesson was "guard where the thing is created, not where it is tidied up" - and I had then written the clear-the-set version for timers while writing the flag version for clients, in the same commit. The guard is in `pauseFor` now.
+- The third was a P1 on `supplier-service/AGENTS.md`, which still said **"No broker is configured"** and that handing the shipper a publisher was future work. That has been untrue since this branch's first commit. Rewritten to describe what it does, including the two things worth knowing before touching it: the publisher reads the environment rather than `config`, and its body is held identical to the other copies by a spec.
+- Then the class rather than the instance, which is what I should have done the first three times: **none of `user-service`, `credit-service` or `order-service` mentioned logging in their instruction files at all**, though all three now write a line per request into the store. Each has a Logging section now - the files involved, that the shipper and publisher are copies held in step by a spec, middleware rather than an interceptor and why, the route template rather than the URL, which three fields are conditional, and to carry the request id on calls to other services.
+- Both code fixes were proved against the unfixed code: two cases fail, and only those two.
+- Verification: **491** in the Logging Service, **294** Supplier, `tsc --noEmit` clean. The other three services are documentation-only this round.
+
 ### 2026-11-08 — Two on disclosure integrity, and three on resource handling (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

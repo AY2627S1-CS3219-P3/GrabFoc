@@ -349,6 +349,53 @@ describe('a message the handler could not deal with', () => {
   });
 });
 
+describe('a pause that would outlive the consumer', () => {
+  it('schedules none once shutdown has begun, even from a handler rejecting during the drain', async () => {
+    jest.useFakeTimers();
+    try {
+      existingTopics = [config.kafkaTopic, config.kafkaDeadLetterTopic];
+      const ingest = new KafkaIngest();
+      await ingest.start(async () => {
+        throw new Error('down');
+      });
+      const resume = jest.fn();
+      const made = consumers[consumers.length - 1] as unknown as { disconnect: jest.Mock };
+      // disconnect() waits for an in-flight handler, and that handler's dead-letter send is
+      // refused because shutdown has begun - so its catch used to schedule a pause after the set
+      // had already been cleared, and five seconds later resume a disconnected consumer.
+      made.disconnect = jest.fn(async () => {
+        await eachMessage?.({
+          topic: 'logging.lines',
+          partition: 0,
+          message: { offset: '9' },
+          pause: () => resume,
+        }).catch(() => undefined);
+      });
+      await ingest.stop();
+      await jest.advanceTimersByTimeAsync(30_000);
+      expect(resume).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe('the dead-letter producer after a failed connect', () => {
+  it('is disconnected on shutdown, because the attempt can already hold resources', async () => {
+    producer.connect.mockRejectedValueOnce(new Error('broker is down'));
+    const ingest = new KafkaIngest();
+    await expect(
+      ingest.send({ value: '{}', topic: 'logging.lines', offset: '1', headers: {} }, 'r', '{}'),
+    ).rejects.toThrow('broker is down');
+    producer.disconnect.mockClear();
+    // The failed attempt clears the connection promise so the next dead letter can retry, which
+    // used to mean teardown saw nothing to close. The four copied publishers were given an
+    // `attempted` flag for this; this producer is the one place it was missing.
+    await ingest.stop();
+    expect(producer.disconnect).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('parking a line this service will not store', () => {
   const inbound: InboundMessage = {
     value: '{"this":"is what arrived, unredacted"}',
