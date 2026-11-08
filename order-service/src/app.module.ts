@@ -18,6 +18,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
  * Scope: Registered the user.events consumer (Phase D).
  * Author review: Tested by Zi Yi (unit and compose.test.yaml integration tests), 2026-10-21.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
+ * Scope: Registered the supplier.events consumer (issue #121).
+ * Author review: Reviewed by Zi Yi, 2026-10-30.
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
  * Scope: Registered the admin controller (#181).
  * Author review: Reviewed by Zi Yi, 2026-11-05.
@@ -33,6 +36,7 @@ import { CreditCommands } from './integrations/credit.commands';
 import { KafkaProducer } from './integrations/kafka.producer';
 import { OrderEvents } from './integrations/order.events';
 import { SupplierClient } from './integrations/supplier.client';
+import { SupplierEvents } from './integrations/supplier.events';
 import { UserEvents } from './integrations/user.events';
 import { AdminController } from './orders/admin.controller';
 import { ConfirmationsController } from './orders/confirmations.controller';
@@ -55,6 +59,7 @@ import { OrdersService } from './orders/orders.service';
     CreditCommands,
     OrderEvents,
     UserEvents,
+    SupplierEvents,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })
