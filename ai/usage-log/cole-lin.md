@@ -17,6 +17,15 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-08 — Three on the retry I had just added, including a log line that lied (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Three findings, all on code from the last two rounds, all correct.
+- The one worth leading with: `onApplicationBootstrap` still logged `Consuming "logging.lines" as "logging-service"` **unconditionally**, left over from before the retry existed. `startConsuming()` resolves whether or not it succeeded, because a failure schedules a retry rather than rejecting - so on the exact case I had just fixed, the service announced that it was consuming while nothing was. An operator or a monitor reading that line would call ingest healthy with an empty store, which is worse than the crash I replaced: a crash at least tells you. Removed; the success line lives in the branch that earns it. This is the third time today a message of mine has described something other than what the code does.
+- The other two are resource handling in the same file. `start()` dropped the client it had built when `connect()`, `subscribe()` or `run()` rejected, and the retry then built another - so a transient failure accumulated connected members of the consumer group, one per attempt. It disconnects its own attempt before rethrowing now, and clears `this.consumer` if it had got that far. And `disconnectAll()` awaited the consumer first, so a rejected `consumer.disconnect()` returned before the producer was touched: the dead-letter producer stayed connected, holding native resources, while the hook reported a failure. Both clients are torn down independently with `Promise.allSettled` now, and the first failure is still rethrown, because a teardown that could not finish is worth knowing about.
+- Four new cases: a failure at connect and at subscribe each disconnect exactly one client, a later stop finds nothing left to disconnect, and a consumer that refuses to disconnect still leaves the producer disconnected.
+- Verification: **484** in the Logging Service, `tsc --noEmit` clean. The other four services are untouched by this round.
+
 ### 2026-11-08 — Two more, one of them the gap I had flagged and left (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

@@ -21,6 +21,10 @@
  * Scope: Review: a start racing shutdown no longer leaves a consumer running that nothing can
  *        disconnect (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: disconnect a consumer whose startup failed rather than leaving it for the
+ *        retry to replace, and tear both clients down independently (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
@@ -89,17 +93,33 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
     const consumer = this.kafka.consumer({
       kafkaJS: { groupId: config.kafkaGroupId, fromBeginning: true },
     });
-    await consumer.connect();
+    try {
+      await consumer.connect();
+    } catch (err) {
+      // Connect can fail with native resources already allocated, and this client is not on
+      // `this.consumer` yet, so nothing else could ever reach it.
+      await consumer.disconnect().catch(() => undefined);
+      throw err;
+    }
     if (this.stopped) {
       await consumer.disconnect().catch(() => undefined);
       return;
     }
     this.consumer = consumer;
-    await consumer.subscribe({ topics: [config.kafkaTopic] });
-    await consumer.run({
-      eachMessage: async ({ topic, partition, message }) =>
-        handler(toInbound(topic, partition, message)),
-    });
+    // Disconnected if anything from here fails. Without this, `subscribe()` or `run()` rejecting
+    // left a connected client behind, and the caller's retry built another - so a transient
+    // failure accumulated clients, each one a member of the consumer group (review).
+    try {
+      await consumer.subscribe({ topics: [config.kafkaTopic] });
+      await consumer.run({
+        eachMessage: async ({ topic, partition, message }) =>
+          handler(toInbound(topic, partition, message)),
+      });
+    } catch (err) {
+      if (this.consumer === consumer) this.consumer = undefined;
+      await consumer.disconnect().catch(() => undefined);
+      throw err;
+    }
     // And once more: run() resolves after the consumer is live, so a stop that landed during it
     // has already finished and would otherwise leave this one running.
     if (this.stopped) {
@@ -130,13 +150,25 @@ export class KafkaIngest implements LineConsumer, DeadLetters, OnModuleDestroy {
     return this.stopping;
   }
 
+  /**
+   * Both clients, independently. A rejected `consumer.disconnect()` used to return before the
+   * producer was touched, so the dead-letter producer stayed connected with its native resources
+   * held while the destroy hook reported a failure - one client's bad day skipping the other's
+   * cleanup entirely (review).
+   */
   private async disconnectAll(): Promise<void> {
-    await this.consumer?.disconnect();
+    const consumer = this.consumer;
     this.consumer = undefined;
-    if (this.producerReady) {
-      await this.producer.disconnect();
-      this.producerReady = false;
-    }
+    const producer = this.producerReady ? this.producer : undefined;
+    this.producerReady = false;
+    const outcomes = await Promise.allSettled([
+      consumer?.disconnect(),
+      producer?.disconnect(),
+    ]);
+    // Still reported: a teardown that could not finish is worth knowing about. The first failure
+    // is enough - they are the same kind of problem, and both have been attempted by now.
+    const failed = outcomes.find((o) => o.status === 'rejected');
+    if (failed && failed.status === 'rejected') throw failed.reason;
   }
 
   onModuleDestroy(): Promise<void> {

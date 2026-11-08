@@ -62,6 +62,10 @@
  * Scope: Review: retry a consumer that could not start, rather than leaving ingest off for the
  *        life of a healthy container and an empty store nobody notices (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: do not announce consuming when the attempt failed and a retry is pending
+ *        (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { config } from '../config';
@@ -117,8 +121,11 @@ export class IngestService implements OnApplicationBootstrap, OnModuleDestroy {
       );
       return;
     }
+    // No log line here: startConsuming() resolves whether or not it succeeded, because a failure
+    // schedules a retry rather than rejecting - so announcing success from this point said the
+    // service was consuming while nothing was, and an operator reading it would have called ingest
+    // healthy with an empty store. The success line is inside the branch that earned it (review).
     await this.startConsuming();
-    this.logger.log(`Consuming "${config.kafkaTopic}" as "${config.kafkaGroupId}"`);
   }
 
   /**

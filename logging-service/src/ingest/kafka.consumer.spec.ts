@@ -13,6 +13,9 @@
 const sent: Array<Record<string, unknown>> = [];
 let consumerRuns = 0;
 let existingTopics: string[] = [];
+let failAt: 'connect' | 'subscribe' | undefined;
+let failConsumerDisconnect = false;
+const consumers: Array<{ disconnect: jest.Mock }> = [];
 const producer = {
   connect: jest.fn().mockResolvedValue(undefined),
   disconnect: jest.fn().mockResolvedValue(undefined),
@@ -26,14 +29,24 @@ jest.mock('@confluentinc/kafka-javascript', () => ({
     logLevel: { WARN: 1 },
     Kafka: class {
       producer = () => producer;
-      consumer = () => ({
-        connect: jest.fn(),
-        subscribe: jest.fn(),
-        run: jest.fn(async () => {
-          consumerRuns += 1;
-        }),
-        disconnect: jest.fn(),
-      });
+      consumer = () => {
+        const made = {
+          connect: jest.fn(async () => {
+            if (failAt === 'connect') throw new Error('connect failed');
+          }),
+          subscribe: jest.fn(async () => {
+            if (failAt === 'subscribe') throw new Error('subscribe failed');
+          }),
+          run: jest.fn(async () => {
+            consumerRuns += 1;
+          }),
+          disconnect: jest.fn(async () => {
+            if (failConsumerDisconnect) throw new Error('disconnect failed');
+          }),
+        };
+        consumers.push(made);
+        return made;
+      };
       admin = () => ({
         connect: jest.fn(),
         disconnect: jest.fn(),
@@ -60,6 +73,9 @@ beforeEach(() => {
   sent.length = 0;
   consumerRuns = 0;
   existingTopics = [];
+  failAt = undefined;
+  failConsumerDisconnect = false;
+  consumers.length = 0;
   producer.send.mockClear();
   producer.connect.mockClear();
 });
@@ -152,6 +168,49 @@ describe('a start that races shutdown', () => {
     );
     producer.disconnect.mockClear();
     await Promise.all([ingest.stop(), ingest.stop()]);
+    expect(producer.disconnect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a startup that fails partway', () => {
+  beforeEach(() => {
+    existingTopics = [config.kafkaTopic, config.kafkaDeadLetterTopic];
+  });
+
+  it.each(['connect', 'subscribe'] as const)(
+    'disconnects the client it built when %s rejects, so a retry does not stack another',
+    async (where) => {
+      failAt = where;
+      const ingest = new KafkaIngest();
+      await expect(ingest.start(async () => undefined)).rejects.toThrow(`${where} failed`);
+      // One client built, and it was disconnected: the caller retries by building another, so a
+      // transient failure would otherwise leave a connected member of the group behind each time.
+      expect(consumers).toHaveLength(1);
+      expect(consumers[0].disconnect).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('leaves nothing for a later stop to find after a failed subscribe', async () => {
+    failAt = 'subscribe';
+    const ingest = new KafkaIngest();
+    await expect(ingest.start(async () => undefined)).rejects.toThrow();
+    consumers[0].disconnect.mockClear();
+    await ingest.stop();
+    expect(consumers[0].disconnect).not.toHaveBeenCalled();
+  });
+});
+
+describe('shutting down when a client will not disconnect', () => {
+  it('still disconnects the producer when the consumer rejects', async () => {
+    existingTopics = [config.kafkaTopic, config.kafkaDeadLetterTopic];
+    const ingest = new KafkaIngest();
+    await ingest.start(async () => undefined);
+    await ingest.send({ value: '{}', topic: 'logging.lines', offset: '1', headers: {} }, 'r', '{}');
+    producer.disconnect.mockClear();
+    failConsumerDisconnect = true;
+    // The failure is still reported - a teardown that could not finish is worth knowing - but it
+    // must not mean the dead-letter producer stays connected with its resources held.
+    await expect(ingest.stop()).rejects.toThrow('disconnect failed');
     expect(producer.disconnect).toHaveBeenCalledTimes(1);
   });
 });
