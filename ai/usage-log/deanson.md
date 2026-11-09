@@ -14,6 +14,48 @@ Deanson's entries, newest first. The template and rules (Appendix 2 of the proje
 [`ai/usage-log.md`](../usage-log.md): exact prompts, summarised responses, what was changed or
 rejected, and how it was verified.
 
+### 2026-11-09 — Profile page order totals and `GET /orders/assigned?status=` (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate, debug
+**Files:** `order-service/src/orders/orders.{schemas,controller,service,repository}.ts`, `order-service/src/test/orders.api.test.ts`, `order-service/README.md`, `frontend/lib/orders.ts`, `frontend/app/profile/page.tsx`, `frontend/test/routes.test.mjs`
+
+**Scenario:** the Profile page's Orders Requested and Orders Delivered cards showed "—". I asked how orders are listed and counted today, then had the AI fill the two totals. The AI flagged that a new `status` query is an API interface change under the AI policy; I confirmed it.
+
+**Prompts (exact, in order):**
+> currently, is there an endpoint whereby we can check the number of orders a user requested or delivered either indrirectly or directly?
+
+> currently, how is the frontend displaying assigned orders and my orders in the 'My Orders' page? is it manually filtering on the frontend?
+
+> It's fetching every page? Is it not fetching page by page and filtering by status accordingly?
+
+> GET /orders/mine
+> GET /orders/assigned
+>
+> what do these two endpoints require in terms of queries, and what is the payload returned in JSON
+
+> TASK:
+> - I want the Orders Requested and Orders Delivered data to be filled in the frontend (on the Profile Page)
+>
+> - For the orders assigned endpoint, add a status query for completed orders so that we can return orders delivered. Use pageSize of 1 and page = 1. This endpoint is used to fill the data Orders Delivered
+> - For the orders/mine endpoint, it also uses pageSize of 1 and page = 1. This endpoint is used to fill the data Orders Requested.
+> - In the meantime, also remove the line 'orde rtotals and credits earned will appear when Order service intergration is ready' from the frontend (profile page)
+>
+> Clarify before proceeding
+
+**Clarifying answers (mine):** confirmed the interface change; `status` accepts any single order status; added to `/orders/assigned` only (Orders Requested counts every status, cancelled included); Credits Earned keeps showing "—".
+
+**What it produced:**
+- An optional `status` query on `GET /orders/assigned` (strict Zod enum of all 8 statuses, parameterized SQL, applied to `items` and `total`).
+- `countOrders()` in `frontend/lib/orders.ts`, and the Profile page reading `total` from `mine?page=1&pageSize=1` and `assigned?status=COMPLETED&page=1&pageSize=1`, with a Retry on error and 401 → sign in.
+- The "integration is ready" note removed.
+- An API test, a proxy route case, and a README row update.
+
+**Debugging:** two frontend route tests failed after the change.
+- The test gateway echoed `/orders/*` list calls without `items`/`total`, so Home crashed once its list loaded. Before, the test only passed by clicking Profile before that response arrived. The stub now returns an empty page for the list routes.
+- The no-wallet test counted every forwarded request, and the new order-total calls raced it. It now counts Credit requests only.
+
+**Verification:** order-service `tsc` clean, unit tests 14/14, `compose.test.yaml` integration tests 83/83 (new test included). Frontend `tsc` and ESLint clean; `npm run test:routes` with `FOC_TEST_BROWSER_CHANNEL=chrome` 47/47 (twice; baseline without the change was also 47/47). Not yet checked by me in the running app.
+
 ### 2026-11-09 — Order timing window in the Create/Edit Order modal (branch `feat/frontend-fixes`)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate

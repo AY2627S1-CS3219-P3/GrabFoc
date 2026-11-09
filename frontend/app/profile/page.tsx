@@ -11,9 +11,13 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Dropped the arrow from the transaction-history link (redesign copy rules).
 Author review: Pending review by Jie Yang.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Filled Orders Requested (/orders/mine total) and Orders Delivered (/orders/assigned?status=COMPLETED total), with a retryable error; removed the "Order totals… integration is ready" note.
+Author review: Pending review by Deanson.
 */
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -22,6 +26,7 @@ import { sessionFetch, withSessionMutation } from "@/lib/session-client";
 import { parseServiceError } from "@/lib/service-errors";
 import { userErrorMessage } from "@/lib/user-error-copy";
 import { type CreditBalance, creditsPath } from "@/lib/credits";
+import { countOrders, isUnauthorized, orderKeys } from "@/lib/orders";
 import { ErrorToast, useErrorFeedback } from "../components/error-feedback";
 
 type Profile = { userId: string; displayName: string; email: string; countryCode: string | null; mobileNumber: string | null };
@@ -79,6 +84,14 @@ export default function ProfilePage() {
     return () => { active = false; };
   }, [router, userId, balanceReload]);
 
+  // AI-generated (pending review by Deanson): each total is one 1-item page; only `total` is read.
+  const requested = useQuery({ queryKey: orderKeys.count("mine"), queryFn: () => countOrders("mine"), enabled: Boolean(userId) });
+  const delivered = useQuery({
+    queryKey: orderKeys.count("assigned", "COMPLETED"), queryFn: () => countOrders("assigned", "COMPLETED"), enabled: Boolean(userId),
+  });
+  const totalsError = requested.error ?? delivered.error;
+  useEffect(() => { if (isUnauthorized(totalsError)) router.replace("/signin"); }, [totalsError, router]);
+
   const ready = balance.kind === "ready" ? balance.balance : null;
 
   async function logout() {
@@ -125,12 +138,16 @@ export default function ProfilePage() {
               ? <span className="credit-history" aria-disabled="true">View transaction history</span>
               : <Link className="credit-history" href="/credits/history">View transaction history</Link>}
           </section>
-          <div className="profile-stats" aria-label="Order and credit totals">
-            <div className="stat-card"><strong>—</strong><span>Orders Requested</span></div>
-            <div className="stat-card"><strong>—</strong><span>Orders Delivered</span></div>
+          <div className="profile-stats" aria-label="Order and credit totals" aria-busy={requested.isPending || delivered.isPending}>
+            <div className="stat-card"><strong>{requested.data ?? "—"}</strong><span>Orders Requested</span></div>
+            <div className="stat-card"><strong>{delivered.data ?? "—"}</strong><span>Orders Delivered</span></div>
             <div className="stat-card"><strong>—</strong><span>Credits Earned</span></div>
           </div>
-          <p className="data-note">Order totals and credits earned will appear when Order Service integration is ready.</p>
+          {totalsError && !isUnauthorized(totalsError) && <div className="load-error" role="alert"><p>{totalsError.message}</p>
+            <button type="button" aria-label="Retry order totals" onClick={() => {
+              if (requested.error) void requested.refetch();
+              if (delivered.error) void delivered.refetch();
+            }}>Retry</button></div>}
         </div>
       </div>
       <ErrorToast message={feedback.toast} onDismiss={() => feedback.setToast('')} />
