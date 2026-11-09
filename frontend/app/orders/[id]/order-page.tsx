@@ -12,6 +12,9 @@ Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Moved from page.tsx (now a server page passing the socket address) and replaced the chat placeholder with the live chat for the requester and courier while the order is in delivery (the chat plan).
 Author review: Reviewed by Deanson, 2026-11-09.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Redesign (re-applied after the chat moved the page here): page themed by the viewer's role, sentence-case proposal headings, bike icon on the courier step, chat heading names the other party, empty-state art.
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
@@ -19,6 +22,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../../components/app-shell";
+import { BikeIcon, EmptyArt } from "../../components/icons";
 import { ErrorToast } from "../../components/error-feedback";
 import { ConfirmModal } from "../../components/modal";
 import { StatusBadge } from "../../components/order-card";
@@ -147,7 +151,7 @@ function OrderDetail({ id, userId, socket }: { id: string; userId?: string; sock
   const chatNote = role === null ? "Chat is only for this order's requester and courier."
     : isActive(order) ? "Chat opens once a courier accepts the order." : "Chat closed.";
 
-  return <AppShell section="orders">
+  return <AppShell section="orders" mode={role ?? undefined}>
     <ErrorToast message={toast} onDismiss={() => setToast("")} />
     <div className="home-heading">
       <div><h1>Order details</h1><p>Created {formatTime(order.createdAt)}</p></div>
@@ -179,10 +183,10 @@ function OrderDetail({ id, userId, socket }: { id: string; userId?: string; sock
 
         {role && pending && <div className={`proposal-box${pending.proposedBy === userId ? "" : " proposal-box--action"}`} role="status">
           {pending.proposedBy === userId ? <>
-            <strong>WAITING</strong>
+            <strong>Waiting for a reply</strong>
             <p>You proposed to {VERB[pending.kind]} the order. The {other} needs to accept before anything changes.</p>
           </> : <>
-            <strong>NEEDS YOUR RESPONSE</strong>
+            <strong>Needs your response</strong>
             <p>The {other} has proposed to {VERB[pending.kind]} the order.</p>
             <div className="order-actions">
               <button type="button" className="primary-button" disabled={busy}
@@ -195,7 +199,7 @@ function OrderDetail({ id, userId, socket }: { id: string; userId?: string; sock
 
         {role && (canCancel || (role === "courier" && inDelivery)) && <div className="order-actions">
           {role === "courier" && nextStep && <button type="button" className="primary-button" disabled={busy}
-            onClick={() => step.mutate({ step: nextStep.step, version: order.version })}>{nextStep.label}</button>}
+            onClick={() => step.mutate({ step: nextStep.step, version: order.version })}><BikeIcon size={16} />{nextStep.label}</button>}
           {role === "courier" && order.status === "ARRIVED" && <button type="button" className="primary-button"
             disabled={busy || proposalsUnknown || Boolean(pending) || completionBlocked}
             onClick={() => proposal.mutate("COMPLETION")}>Request Completion</button>}
@@ -206,10 +210,10 @@ function OrderDetail({ id, userId, socket }: { id: string; userId?: string; sock
         </div>}
       </section>
       <section className="order-panel order-chat" aria-label="Chat">
-        <h2>Chat</h2>
+        <h2>{role ? `Chat with the ${other}` : "Chat"}</h2>
         {chatOpen && userId
           ? <OrderChat key={order.id} orderId={order.id} userId={userId} socketUrl={socket.socketUrl} socketPath={socket.socketPath} />
-          : <div className="home-empty">{chatNote}</div>}
+          : <div className="home-empty"><EmptyArt kind="chat" />{chatNote}</div>}
       </section>
     </div>
     {confirming && (order.status === "PENDING"

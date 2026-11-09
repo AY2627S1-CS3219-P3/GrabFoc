@@ -6,6 +6,11 @@ Author review: Jie Yang reviewed the earlier implementation; thumbnails await re
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Replaced "Manage Locations" with one admin-only "Admin Panel" link; locations are its Locations tab (#184).
 Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Redesign of the location cards: icons for building and hours, an "Order from here" action revealed on hover or focus that opens Create Order with this pickup, and empty-state art.
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
@@ -15,6 +20,7 @@ import { useEffect, useState } from "react";
 import { withSessionMutation } from "@/lib/session-client";
 import { type LocationPage, supplierError } from "@/lib/locations";
 import { LocationImage, locationImageSource } from "@/app/components/location-image";
+import { BuildingIcon, ClockIcon, EmptyArt, PlusIcon } from "@/app/components/icons";
 
 type Filters = { name: string; type: string; building: string; time: string; order: "asc" | "desc" };
 const initialFilters: Filters = { name: "", type: "", building: "", time: "", order: "asc" };
@@ -22,7 +28,7 @@ const initialFilters: Filters = { name: "", type: "", building: "", time: "", or
 function hours(value: string | null) { return value ? `${value.slice(0, 2)}:${value.slice(2, 4)}` : ""; }
 
 // AI-generated (earlier version reviewed by Jie Yang; latest edits pending review)
-export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
+export function LocationBrowser({ role, onOrderFrom }: { role?: "ADMIN" | "USER"; onOrderFrom?: (locationId: number) => void }) {
   const router = useRouter();
   const [types, setTypes] = useState<string[]>([]);
   const [typesLoading, setTypesLoading] = useState(true);
@@ -96,15 +102,17 @@ export function LocationBrowser({ role }: { role?: "ADMIN" | "USER" }) {
     {typesError && <div className="load-error" role="alert"><p>{typesError}</p><button type="button" onClick={() => { setTypesLoading(true); setTypesError(""); setTypesReload((value) => value + 1); }}>Retry location types</button></div>}
     {error && <div className="home-empty" role="alert">{error} <button type="button" onClick={() => { setLoading(true); setReload((value) => value + 1); }}>Retry</button></div>}
     {!error && loading && <div className="home-empty" role="status">Loading locations…</div>}
-    {!error && !loading && data?.items.length === 0 && <div className="home-empty">No locations match these filters.</div>}
+    {!error && !loading && data?.items.length === 0 && <div className="home-empty"><EmptyArt kind="locations" /><strong>No locations match these filters</strong><p>Try a different name, type or opening time.</p></div>}
     {!error && !loading && data && data.items.length > 0 && <>
       <div className="location-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {data.items.map((location) => <article className="location-card" key={location.id}>
           <LocationImage source={location.image_url} name={location.name} />
+          {onOrderFrom && <button type="button" className="location-order" onClick={() => onOrderFrom(location.id)}
+            aria-label={`Order from ${location.name}`}><PlusIcon size={14} />Order from here</button>}
           <div className="location-card-heading"><h3>{location.name}</h3><span>{location.type}</span></div>
-          <p>{location.building}, floor {location.floor}</p>
-          <p>{location.location_desc}</p>
-          {location.open_time && location.close_time && <p>Open {hours(location.open_time)}–{hours(location.close_time)}</p>}
+          <p className="location-meta"><BuildingIcon size={15} />{location.building}, floor {location.floor}</p>
+          {location.open_time && location.close_time && <p className="location-meta"><ClockIcon size={15} />Open {hours(location.open_time)}–{hours(location.close_time)}</p>}
+          <p className="location-desc">{location.location_desc}</p>
           {locationImageSource(location.image_url) && <a href={locationImageSource(location.image_url)!} target="_blank" rel="noopener noreferrer">View full image</a>}
         </article>)}
       </div>

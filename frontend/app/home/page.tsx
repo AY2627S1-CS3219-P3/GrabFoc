@@ -8,6 +8,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Replaced the order placeholders: Create Order button and modal (requester mode), polled Available Orders with Accept (courier mode), and the notice shown after leaving an unavailable order (docs/orders/frontend-integration-plan.md §2).
 Author review: Pending review by Deanson.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Redesign: the mode switch re-themes the page (data-mode), headline copy per mode, "Order from here" on location cards prefills the pickup, courier job board with a live indicator and empty-state art.
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
@@ -15,7 +20,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AppShell } from "../components/app-shell";
+import { AppShell, type Mode } from "../components/app-shell";
+import { BagIcon, BikeIcon, EmptyArt, PlusIcon } from "../components/icons";
 import { ErrorToast } from "../components/error-feedback";
 import { OrderCard, Pager } from "../components/order-card";
 import { OrderFormModal } from "../components/order-form-modal";
@@ -28,11 +34,12 @@ const NOTICES: Record<string, string> = { "order-unavailable": "That order doesn
 // AI-generated (reviewed by Jie Yang; order sections pending review by Deanson)
 export default function HomePage() {
   const router = useRouter();
-  const [mode, setMode] = useState<"requester" | "courier">("requester");
+  const [mode, setMode] = useState<Mode>("requester");
   const [ready, setReady] = useState(false);
   const [sessionError, setSessionError] = useState(false);
   const [role, setRole] = useState<"ADMIN" | "USER" | undefined>();
-  const [creating, setCreating] = useState(false);
+  // false = closed; otherwise the modal is open, optionally with a prefilled pickup.
+  const [creating, setCreating] = useState<false | { pickupId?: number }>(false);
   const [createdId, setCreatedId] = useState("");
   const [toast, setToast] = useState(() =>
     typeof window === "undefined" ? "" : NOTICES[new URLSearchParams(window.location.search).get("notice") ?? ""] ?? "");
@@ -53,23 +60,26 @@ export default function HomePage() {
   if (!ready) return <main className="auth-page"><div className="auth-card">{sessionError ? <p>Could not check your session. <button onClick={() => window.location.reload()}>Retry</button></p> : <p>Checking your session…</p>}</div></main>;
 
   return (
-    <AppShell section="locations">
+    <AppShell section="locations" mode={mode}>
       <ErrorToast message={toast} onDismiss={() => setToast("")} />
       <div className="home-heading">
-        <div><h1>Welcome to GrabFoc</h1><p>{mode === "requester" ? "Find a campus pickup point for your next order." : "Browse available orders and earn credits as a courier."}</p></div>
+        <div>
+          <h1>{mode === "requester" ? "What do you need picked up?" : "Deliver on your way"}</h1>
+          <p>{mode === "requester" ? "Choose a campus pickup point and a fellow student brings it to you." : "Pick up an order heading your way and earn credits when it's delivered."}</p>
+        </div>
         <div className="home-heading-actions">
-          {mode === "requester" && <button type="button" className="primary-button" onClick={() => setCreating(true)}>Create Order</button>}
+          {mode === "requester" && <button type="button" className="primary-button" onClick={() => setCreating({})}><PlusIcon size={16} />Create Order</button>}
           <div className="mode-switch" role="group" aria-label="Choose mode">
-            <button type="button" aria-pressed={mode === "requester"} onClick={() => setMode("requester")}>Requester</button>
-            <button type="button" aria-pressed={mode === "courier"} onClick={() => setMode("courier")}>Courier</button>
+            <button type="button" aria-pressed={mode === "requester"} onClick={() => setMode("requester")}><BagIcon size={16} />Requester</button>
+            <button type="button" aria-pressed={mode === "courier"} onClick={() => setMode("courier")}><BikeIcon size={16} />Courier</button>
           </div>
         </div>
       </div>
       {mode === "requester" && createdId && <p className="order-success" role="status">Order created.{" "}
         <Link href={`/orders/${createdId}`}>View order</Link>
         <button type="button" onClick={() => setCreatedId("")} aria-label="Dismiss">×</button></p>}
-      {mode === "requester" ? <LocationBrowser role={role} /> : <AvailableOrders onError={setToast} />}
-      {creating && <OrderFormModal mode={{ kind: "create" }} onClose={() => setCreating(false)}
+      {mode === "requester" ? <LocationBrowser role={role} onOrderFrom={(pickupId) => setCreating({ pickupId })} /> : <AvailableOrders onError={setToast} />}
+      {creating && <OrderFormModal mode={{ kind: "create", pickupId: creating.pickupId }} onClose={() => setCreating(false)}
         onSaved={(order) => { setCreating(false); setCreatedId(order.id); }} />}
     </AppShell>
   );
@@ -99,11 +109,14 @@ function AvailableOrders({ onError }: { onError: (message: string) => void }) {
   useEffect(() => { if (isUnauthorized(orders.error)) router.replace("/signin"); }, [orders.error, router]);
 
   return <section className="home-section" aria-labelledby="available-orders-title">
-    <h2 id="available-orders-title">Available Orders</h2>
+    <div className="board-heading">
+      <h2 id="available-orders-title">Available Orders</h2>
+      <span className="live-dot">Updates every {POLL_MS / 1000} seconds</span>
+    </div>
     {orders.isPending && <div className="home-empty" role="status">Loading orders…</div>}
     {orders.isError && !orders.data && <div className="home-empty" role="alert">{orders.error.message}
       <button type="button" className="text-button" onClick={() => void orders.refetch()}>Retry</button></div>}
-    {orders.data && orders.data.items.length === 0 && <div className="home-empty"><strong>No orders available right now</strong>
+    {orders.data && orders.data.items.length === 0 && <div className="home-empty"><EmptyArt kind="orders" /><strong>No orders available right now</strong>
       <p>New orders show up here automatically.</p></div>}
     {orders.data && orders.data.items.length > 0 && <>
       <div className="order-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">

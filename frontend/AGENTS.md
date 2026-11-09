@@ -20,3 +20,16 @@ Author review: Jie Yang confirmed Tailwind CSS with shadcn/ui; wording awaits te
 _Origin: Team, confirmed by Jie Yang on 2026-09-29._
 
 Use Tailwind CSS with shadcn/ui. Implement responsive Supplier page layouts with Tailwind utilities. Keep the existing form behavior and live Supplier data contract.
+
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Added the pointer to the design skill.
+Author review: Pending review by Jie Yang.
+-->
+
+## Design system
+
+_Origin: AI doc._
+
+Before building or restyling UI, read `.claude/skills/foc-design/SKILL.md` (tokens, the requester/courier accent switch, type, motion and copy rules).

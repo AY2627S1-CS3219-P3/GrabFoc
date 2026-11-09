@@ -3,12 +3,16 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Real-time chat on the order page: ticket-authenticated Socket.IO connection, history, older pages on scroll, catch-up after reconnect, sending with retry on the same clientMsgId (the chat plan).
 Author review: Reviewed by Deanson, 2026-11-09.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Redesign: status data attribute for the styles, empty-state art and copy, send icon.
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
+import { EmptyArt, SendIcon } from "@/app/components/icons";
 import { formatTime } from "@/lib/orders";
 import { ACK_TIMEOUT_MS, type Ack, fetchTicket, MAX_CONTENT, type Message, mergeMessages, NOT_ALLOWED, PAGE_SIZE,
   TRY_AGAIN, UNAUTHORIZED } from "@/lib/chat";
@@ -203,7 +207,7 @@ export function OrderChat({ orderId, userId, socketUrl, socketPath }:
   const connected = status === "connected";
   const trimmed = draft.trim().length;
 
-  return <div className="chat">
+  return <div className="chat" data-status={status}>
     <p className={`chat-status${connected ? " chat-status--live" : ""}`} role="status">{STATUS_TEXT[status]}</p>
     <div className="chat-log" ref={listRef} onScroll={onScroll} role="log" aria-live="polite" aria-label="Messages">
       {hasOlder && <p className="chat-note">Scroll up for older messages</p>}
@@ -212,7 +216,8 @@ export function OrderChat({ orderId, userId, socketUrl, socketPath }:
         <button type="button" className="text-button" disabled={!connected}
           onClick={() => { const s = socketRef.current; if (s) void (syncedId.current === null ? loadHistory(s) : catchUp(s)); }}>
           Retry</button></p>}
-      {history === "ready" && messages.length === 0 && pending.length === 0 && <p className="chat-note">No messages yet.</p>}
+      {history === "ready" && messages.length === 0 && pending.length === 0 && <div className="chat-empty"><EmptyArt kind="chat" />
+        <p className="chat-note">No messages yet. Say hello to sort out the handover.</p></div>}
       {messages.map((m) => <div key={m.id} className={`chat-bubble${m.senderId === userId ? " chat-bubble--own" : ""}`}>
         <p>{m.content}</p>
         <time dateTime={m.createdAt} title={formatTime(m.createdAt)}>{timeOf(m.createdAt)}</time>
@@ -231,7 +236,7 @@ export function OrderChat({ orderId, userId, socketUrl, socketPath }:
       <label className="sr-only" htmlFor="chat-input">Message</label>
       <input id="chat-input" value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={MAX_CONTENT}
         placeholder={connected ? "Type a message" : "Waiting for connection…"} autoComplete="off" />
-      <button type="submit" className="primary-button" disabled={!connected || trimmed === 0 || trimmed > MAX_CONTENT}>Send</button>
+      <button type="submit" className="primary-button" disabled={!connected || trimmed === 0 || trimmed > MAX_CONTENT}><SendIcon size={16} />Send</button>
     </form>
   </div>;
 }
