@@ -10,6 +10,11 @@ Scope: Drafted the entries dated 2026-10-16, 2026-10-21, 2026-10-23, 2026-10-25,
   in those sessions. Each entry's own text says which decisions were Cole Lin's and what he
   verified; the wording is Claude's, written to the template in ai/usage-log.md.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Drafted the entries dated 2026-11-09 from the prompts and work in those sessions, the same
+  way as the earlier ones. Recorded here because this file is AI-influenced like any other and the
+  per-entry Tool lines are not a substitute for the header (review).
+Author review: Cole Lin, read and approved.
 -->
 
 # AI Usage Log — Cole Lin
