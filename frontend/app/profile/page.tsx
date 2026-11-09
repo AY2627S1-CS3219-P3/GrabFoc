@@ -17,13 +17,19 @@ Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Removed the Credits Earned stat card (it had no data source).
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Added inline display-name editing (pencil button, non-empty and changed checks, PATCH /api/session/profile; on error closes the editor and shows a toast).
+Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Grouped the email and mobile number in one .profile-contact div with shared styling.
+Author review: Pending review by Deanson.
 */
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { AppShell } from "../components/app-shell";
 import { sessionFetch, withSessionMutation } from "@/lib/session-client";
 import { parseServiceError } from "@/lib/service-errors";
@@ -31,11 +37,13 @@ import { userErrorMessage } from "@/lib/user-error-copy";
 import { type CreditBalance, creditsPath } from "@/lib/credits";
 import { countOrders, isUnauthorized, orderKeys } from "@/lib/orders";
 import { ErrorToast, useErrorFeedback } from "../components/error-feedback";
+import { EditIcon } from "../components/icons";
 
 type Profile = { userId: string; displayName: string; email: string; countryCode: string | null; mobileNumber: string | null };
 type BalanceState = { kind: "loading" } | { kind: "ready"; balance: CreditBalance } | { kind: "no-wallet" } | { kind: "error"; message: string };
 const profileFallback = "Could not load your profile. Please try again.";
 const balanceFallback = "Could not load your credit balance. Please try again.";
+const nameFallback = "Could not update your display name. Please try again.";
 
 // AI-generated (reviewed by Jie Yang)
 export default function ProfilePage() {
@@ -47,6 +55,10 @@ export default function ProfilePage() {
   const [reload, setReload] = useState(0);
   const [balance, setBalance] = useState<BalanceState>({ kind: "loading" });
   const [balanceReload, setBalanceReload] = useState(0);
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [savingName, setSavingName] = useState(false);
   const feedback = useErrorFeedback();
   const userId = profile?.userId;
 
@@ -97,6 +109,44 @@ export default function ProfilePage() {
 
   const ready = balance.kind === "ready" ? balance.balance : null;
 
+  // AI-generated (pending review by Deanson)
+  function startEditingName() {
+    if (!profile) return;
+    setDraftName(profile.displayName);
+    setNameError("");
+    setEditingName(true);
+  }
+
+  function stopEditingName() {
+    setEditingName(false);
+    setNameError("");
+  }
+
+  async function saveName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!profile) return;
+    const displayName = draftName.trim();
+    if (!displayName) { setNameError("Enter a display name."); return; }
+    if (displayName === profile.displayName) { setNameError("That's already your display name."); return; }
+    setSavingName(true);
+    try {
+      const response = await withSessionMutation(() => fetch("/api/session/profile", {
+        method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ displayName }),
+      }));
+      if (response.status === 401) { router.replace("/signin"); return; }
+      if (!response.ok) {
+        stopEditingName();
+        feedback.setToast(userErrorMessage(await parseServiceError(response, nameFallback), nameFallback));
+        return;
+      }
+      setProfile(await response.json());
+      stopEditingName();
+    } catch {
+      stopEditingName();
+      feedback.setToast(nameFallback);
+    } finally { setSavingName(false); }
+  }
+
   async function logout() {
     setLoggingOut(true);
     setError("");
@@ -121,9 +171,29 @@ export default function ProfilePage() {
       <div className="profile-grid">
         <section className="profile-card" aria-labelledby="profile-name">
           <div className="profile-avatar" aria-hidden="true">{profile?.displayName.slice(0, 1).toUpperCase() ?? "?"}</div>
-          <h2 id="profile-name">{profile?.displayName ?? (loading ? "Loading profile…" : "Your profile")}</h2>
-          <p className="profile-email">{profile?.email ?? ""}</p>
-          {profile?.mobileNumber && <p>{[profile.countryCode, profile.mobileNumber].filter(Boolean).join(" ")}</p>}
+          {editingName ? (
+            <form className="profile-name-form" onSubmit={saveName} noValidate>
+              <label className="sr-only" htmlFor="profile-name-input">Display name</label>
+              <input id="profile-name-input" value={draftName} maxLength={100} autoFocus disabled={savingName}
+                aria-invalid={!!nameError} aria-describedby={nameError ? "profile-name-error" : undefined}
+                onChange={(event) => { setDraftName(event.target.value); setNameError(""); }}
+                onKeyDown={(event) => { if (event.key === "Escape") stopEditingName(); }} />
+              {nameError && <p className="field-error" id="profile-name-error" role="alert">{nameError}</p>}
+              <div className="profile-name-actions">
+                <button type="button" className="secondary-button" disabled={savingName} onClick={stopEditingName}>Cancel</button>
+                <button type="submit" className="primary-button" disabled={savingName}>{savingName ? "Saving…" : "Save"}</button>
+              </div>
+            </form>
+          ) : (
+            <div className="profile-name-row">
+              <h2 id="profile-name">{profile?.displayName ?? (loading ? "Loading profile…" : "Your profile")}</h2>
+              {profile && <button type="button" className="icon-button profile-name-edit" aria-label="Edit display name" onClick={startEditingName}><EditIcon size={16} /></button>}
+            </div>
+          )}
+          {profile && <div className="profile-contact">
+            <p>{profile.email}</p>
+            {profile.mobileNumber && <p>{[profile.countryCode, profile.mobileNumber].filter(Boolean).join(" ")}</p>}
+          </div>}
           {error && <div className="load-error" role="alert"><p>{error}</p><button type="button" onClick={() => { setError(""); setLoading(true); setReload((value) => value + 1); }}>Retry</button></div>}
           <div className="profile-divider" />
           <button className="outline-link" type="button" disabled={loggingOut} onClick={logout}>{loggingOut ? "Logging out…" : "Log Out"}</button>

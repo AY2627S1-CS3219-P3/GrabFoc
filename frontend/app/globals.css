@@ -18,6 +18,12 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Removed the unused .header-avatar rule after the header avatar was removed. Made .profile-stats two columns after the Credits Earned card was removed.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Styles for the profile display-name edit (pencil button row, inline form); added its input to the shared field selectors.
+Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Replaced .profile-email with .profile-contact, which groups and styles the email and mobile number together.
+Author review: Pending review by Deanson.
 */
 /* AI-generated (pending review by Jie Yang); design rules in .claude/skills/foc-design/SKILL.md */
 @layer theme, base, components, utilities;
@@ -91,14 +97,14 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 /* Shared field look */
 .auth-field input, .phone-fields select, .location-filters input, .location-filters select,
 .manage-form input, .manage-form select, .manage-form textarea, .manage-search input,
-.order-form input, .order-form select, .order-form textarea, .browse-search input {
+.order-form input, .order-form select, .order-form textarea, .browse-search input, .profile-name-form input {
   width: 100%; min-height: 44px; padding: 9px 12px;
   border: 1.5px solid var(--line); border-radius: var(--radius-s);
   background: var(--surface); color: var(--ink); font-size: 14.5px; font-weight: 400;
   transition: border-color .15s, box-shadow .15s;
 }
-:is(.auth-field input, .phone-fields select, .location-filters input, .location-filters select, .manage-form input, .manage-form select, .manage-form textarea, .manage-search input, .order-form input, .order-form select, .order-form textarea):hover { border-color: var(--line-strong); }
-:is(.auth-field input, .phone-fields select, .location-filters input, .location-filters select, .manage-form input, .manage-form select, .manage-form textarea, .manage-search input, .order-form input, .order-form select, .order-form textarea):focus {
+:is(.auth-field input, .phone-fields select, .location-filters input, .location-filters select, .manage-form input, .manage-form select, .manage-form textarea, .manage-search input, .order-form input, .order-form select, .order-form textarea, .profile-name-form input):hover { border-color: var(--line-strong); }
+:is(.auth-field input, .phone-fields select, .location-filters input, .location-filters select, .manage-form input, .manage-form select, .manage-form textarea, .manage-search input, .order-form input, .order-form select, .order-form textarea, .profile-name-form input):focus {
   border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-wash); outline: none;
 }
 input::placeholder, textarea::placeholder { color: var(--faint); opacity: 1; }
@@ -387,7 +393,14 @@ input::placeholder, textarea::placeholder { color: var(--faint); opacity: 1; }
   box-shadow: 0 0 0 6px var(--surface), 0 0 0 7.5px var(--line);
 }
 .profile-card h2 { margin: 18px 0 0; font-size: 22px; }
-.profile-email { margin: 4px 0 22px; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.profile-name-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; }
+.profile-name-row h2 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.profile-name-edit { flex: none; width: 32px; height: 32px; color: var(--muted); }
+.profile-name-edit:hover:not(:disabled) { color: var(--ink); }
+.profile-name-form { display: grid; gap: 8px; margin-top: 18px; text-align: left; }
+.profile-name-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.profile-contact { display: grid; gap: 4px; margin-top: 16px; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.profile-contact p { margin: 0; }
 .profile-card .outline-link { width: 100%; }
 .outline-link--muted { border-color: #efb3a8; color: var(--red); cursor: not-allowed; }
 .profile-divider { height: 1px; margin: 22px 0; background: var(--line); }

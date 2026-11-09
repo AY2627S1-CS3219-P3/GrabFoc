@@ -14,6 +14,42 @@ Deanson's entries, newest first. The template and rules (Appendix 2 of the proje
 [`ai/usage-log.md`](../usage-log.md): exact prompts, summarised responses, what was changed or
 rejected, and how it was verified.
 
+### 2026-11-10 — Grouping the email and mobile number on the profile page (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `frontend/app/profile/page.tsx`, `frontend/app/globals.css`
+
+**Scenario:** the email sat right under the display name while the mobile number was far below it in a different style. I had the AI group them.
+
+**Prompts (exact):**
+> can you group mobileNumber and email together in the sense that they are in a div together, and are relatively close to each other. But are far away from the displayName. also, ensure that the font / styling of both mobileNumber and email are the same / consistent. Clarify before proceeding
+
+**Clarifying answers (mine):** about 16px below the display name; both use the email's existing style (muted, 14px).
+
+**What it produced:** a `.profile-contact` div holding both lines 4px apart, replacing the `.profile-email` class.
+
+**Verification:** frontend `tsc` and ESLint on `page.tsx` pass. Not yet checked by me in the running app.
+
+### 2026-11-10 — Editing the display name from the profile page (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `frontend/app/profile/page.tsx`, `frontend/app/api/session/profile/route.ts`, `frontend/lib/session-input.ts`, `frontend/app/globals.css`
+
+**Scenario:** I asked which non-admin endpoints the frontend doesn't use yet, then what `PATCH /users/me` expects and returns, then had the AI wire it into the profile page.
+
+**Prompts (exact, in order):**
+> Tell me what endpoints are currently not being used by the frontend, excluding admin endpoints
+
+> show me the expected payload and response from PATCH /users/me
+
+> On the frontend, add a pencil icon beside the user's displayName. When they click the pencil, they are able to submit a new Displayname to PATCH /users/me. On the frontend, do a simple non-empty and different from current displayName check. Clarify before proceeding
+
+**Clarifying answers (mine):** inline edit, not a modal; yes, add a `PATCH` method to the `/api/session/profile` proxy (the AI flagged this as an interface change under the AI policy); on error, return to normal mode (name + pencil) and show a toast.
+
+**What it produced:** the list of unused endpoints (the seven `/users/me/*` self-service routes and `GET /locations/:locationId`); the `PATCH /users/me` contract from the DTO, service and error filter; a `PATCH` handler in the profile proxy (same-origin check, strict `{ displayName }` schema, forwards to `/users/me`); the pencil button and inline form with the non-empty and unchanged checks, Enter to save and Esc to cancel; styles for both.
+
+**Verification:** frontend `tsc` and ESLint on the changed files pass. Not yet checked by me in the running app.
+
 ### 2026-11-09 — Removing the Credits Earned card from the profile page (branch `feat/frontend-fixes`)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
