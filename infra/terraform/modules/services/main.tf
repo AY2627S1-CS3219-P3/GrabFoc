@@ -20,6 +20,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: ORDER_CHAT_TICKET_SECRET for Order and CHAT_SERVICE_URL for the gateway, which chat (#230) requires.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: LOGGING_SERVICE_URL for the gateway, which the log store's route file (#52) requires. The
+#        service itself is deployed separately; until then GET /logs is a 503, as chat's is.
+# Author review: pending - Jian Bing owns the deployment.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
@@ -204,6 +208,10 @@ locals {
         # AI-generated (Claude Code): chat's route file (#230) needs it or the gateway
         # won't start. The chat service isn't on AWS yet, so chat requests get 503 until it is.
         CHAT_SERVICE_URL = "http://chat-service:3007"
+        # AI-generated (Claude Code): the log store's route file (#52) needs it for the same
+        # reason, or the gateway won't start. The Logging Service isn't on AWS yet either, so
+        # GET /logs gets 503 until it is.
+        LOGGING_SERVICE_URL = "http://logging-service:3006"
         }, var.edge_container_port == 3003 ? {} : {
         GATEWAY_EDGE_PORT = tostring(var.edge_container_port)
       })

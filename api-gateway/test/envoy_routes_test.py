@@ -34,8 +34,14 @@ Scope: CHAT_SERVICE_URL in the test environment; the chat-ticket Order route (19
 Author review: Reviewed by Deanson, 2026-11-09; Jie Yang (gateway owner) to approve.
 Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 Scope: LOGGING_SERVICE_URL in the test environment, and a test that the log store's query API is
-       routed as one protected GET to the logging cluster, honours its prefix variable, and that
-       nothing else of that service is reachable (#52).
+       routed as one protected GET to the logging cluster and that nothing else of that service is
+       reachable (#52).
+Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: the log route takes a fixed path, so the prefix-override case is gone; a test that
+       api-gateway/.env.example works as written, which it did not; and a test that every route
+       file's urlEnv is in the deployed task definition, which only the Terraform tests checked and
+       only when infra changed.
 Author review: pending - Jie Yang owns the gateway's route files.
 """
 # AI-generated; review pending.
@@ -340,11 +346,33 @@ class RouteFilesTest(unittest.TestCase):
         cluster = next(c for c in config["static_resources"]["clusters"] if c["name"] == "logging")
         endpoint = cluster["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
         self.assertEqual(endpoint["address"]["socket_address"], {"address": "logging", "port_value": 3006})
-        # The prefix is configurable like every other one.
-        moved = self.renderer.configuration({**self.env, "GATEWAY_LOGS_PREFIX": "/admin/logs"})
-        paths = [r["match"].get("path") for r in self.unprefixed(self.routes(moved))
-                 if r.get("route", {}).get("cluster") == "logging"]
-        self.assertEqual(paths, ["/admin/logs"])
+        # Deliberately no prefix variable. A declared prefix renames only what Envoy matches - it
+        # is not rewritten on the way out - so moving one sends a path the upstream does not serve
+        # and every request 404s. That is a knob that looks adjustable and is not, which is worse
+        # than a fixed path for a single admin endpoint (review).
+        self.assertNotIn("logs", self.renderer.load_routes(self.env)[1])
+
+    # AI-generated (Claude Code, 2026-11-09; review)
+    def test_env_example_starts_the_gateway_as_written(self):
+        """Copy api-gateway/.env.example to .env and the gateway must come up.
+
+        load_local_env keeps a variable that is present and empty, while the renderer falls back to
+        a default only when it is absent - so an example line left blank is not a documented
+        default, it is a value the renderer has to accept. GATEWAY_LOGS_PREFIX was blank here and
+        failed the prefix check, and LOGGING_SERVICE_URL was blank and failed the origin check:
+        both broke a host run that followed the file exactly, while every test passed, because
+        every other test builds its own environment (review).
+        """
+        example = {}
+        for line in (Path(__file__).resolve().parents[1] / ".env.example").read_text(
+                encoding="utf-8-sig").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                name, _, value = line.partition("=")
+                example[name.strip()] = value.strip().strip('"').strip("'")
+        self.assertIn("LOGGING_SERVICE_URL", example)
+        config = self.renderer.configuration(example)
+        self.assertTrue(self.routes(config))
 
     def test_invalid_definitions_fail_instead_of_disabling_authentication(self):
         valid = {"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",
@@ -404,6 +432,26 @@ class RouteFilesTest(unittest.TestCase):
 class EnvExampleTest(unittest.TestCase):
     # AI-generated (Claude Code, 2026-11-06): AGENTS.md §8 asks for every variable a
     # service reads to be in its .env.example, with a safe placeholder.
+    # AI-generated (Claude Code, 2026-11-09; review)
+    def test_route_files_urls_are_in_the_deployed_gateway(self):
+        """Every route file's urlEnv must be set on api-gateway in the ECS task definition.
+
+        The renderer reads it unconditionally, so a gateway deployed without it exits before Envoy
+        starts and takes the whole site with it. The Terraform tests assert this from their side,
+        but that workflow runs only when infra/ changes - and adding a route file does not. So the
+        check belongs here too, where adding one always runs it (review).
+        """
+        module = (Path(__file__).resolve().parents[2]
+                  / "infra/terraform/modules/services/main.tf").read_text(encoding="utf-8")
+        gateway = module[module.index('"api-gateway" = {'):]
+        gateway = gateway[:gateway.index(chr(10) + "    }")]
+        for file in sorted((Path(__file__).resolve().parents[1] / "envoy/routes").glob("*.routes.json")):
+            variable = json.loads(file.read_text(encoding="utf-8"))["urlEnv"]
+            with self.subTest(route_file=file.name):
+                self.assertRegex(gateway, chr(10) + r"\s*%s\s*=" % re.escape(variable),
+                                 f"{variable} is not set on api-gateway in the deployed task "
+                                 f"definition; the gateway would exit on startup")
+
     def test_env_example_lists_every_variable_the_gateway_reads(self):
         gateway = Path(__file__).resolve().parents[1]
         read = set(re.findall(r'env\.get\("([A-Z0-9_]+)"', (gateway / "envoy" / "render.py").read_text()))

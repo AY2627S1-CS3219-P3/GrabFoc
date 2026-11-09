@@ -10,6 +10,11 @@ Scope: Query the log store through the gateway, which now routes GET /logs, and 
   the gaps. Checked against the running stack: 401 with no token, 403 for a USER, 200 for an admin
   (#52).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: the chat secrets, which joined the stack after this was walked and stop Order and
+  Chat from starting without them; the smoke check polls instead of racing ingestion; and the
+  "nothing is lost" line, which dead letters make untrue.
+Author review: Cole Lin, read and approved.
 -->
 
 # Demo runbook
@@ -24,7 +29,7 @@ are what it actually did.
 
 Four things, none of which you want to discover live.
 
-1. **Two secrets in the root `.env`**, each at least 32 characters
+1. **Three secrets in the root `.env`**, each at least 32 characters
    (`openssl rand -hex 32`). The stack will not start without them, and Compose copies each one
    into the service that pairs with it:
 
@@ -32,8 +37,15 @@ Four things, none of which you want to discover live.
    |---|---|
    | `CREDIT_SERVICE_KEY` | `ORDER_CREDIT_SERVICE_KEY` |
    | `USER_INTERNAL_SERVICE_KEY` | `NOTIFICATION_USER_SERVICE_KEY` |
+   | `CHAT_TICKET_SECRET` | `ORDER_CHAT_TICKET_SECRET`, and the chat service's own copy |
 
    `USER_ORDER_SERVICE_KEY` is filled from `ORDER_SERVICE_KEY` the same way.
+
+   `CHAT_TICKET_SECRET` joined the stack after this was walked, and both Order and Chat refuse to
+   start without it or with fewer than 32 characters - so leaving it out gets you two containers
+   restarting rather than the healthy stack section 1 expects. `CHAT_POSTGRES_PASSWORD` wants a
+   value too: its Compose default works, but only on a `chat-db` volume first created with that
+   same default, which is the trap in point 3 below.
 
 2. **`USER_BOOTSTRAP_ADMIN_EMAIL`** set to an address you can "receive" in mailpit. The first
    admin is created at startup **with no password**; it is claimed in step 3.
@@ -92,13 +104,22 @@ What is listening, on the host:
 
 ## 2. Verify the loop before you present
 
-One command, and it proves the whole feature:
+One command, and it proves the whole feature (the loop is not optional - see below):
 
 ```bash
 curl -s -o /dev/null -H "x-request-id: smoke-1" http://localhost:3002/locations
+for i in $(seq 20); do
+  docker exec foc-logging-db-1 psql -U foc -d logging -tAc \
+    "select count(*) from log_lines where request_id = 'smoke-1';" | grep -qx 0 || break
+  sleep 1
+done
 docker exec foc-logging-db-1 psql -U foc -d logging \
-  -c "select service, event, request_id, status from log_lines order by ts desc limit 3;"
+  -c "select service, event, request_id, status from log_lines where request_id = 'smoke-1';"
 ```
+
+**The loop is the point.** Nothing here is synchronous: the service buffers the line and flushes
+on a one-second timer, then Kafka has to deliver it and the store has to insert it. Query once,
+straight after the request, and an entirely healthy pipeline shows you nothing.
 
 A request with no token gets a 401 and writes **two** lines — `request_completed` and
 `access_denied` — both carrying `smoke-1`. If they are there, ingest is consuming and the store is
@@ -206,8 +227,12 @@ Be straight about these rather than hoping nobody asks.
   every service's. Collecting them needs a sidecar or an access-log service, which is the N2H.
   Envoy also cannot supply `lineId`, so whatever collects them has to mint it.
 - **A just-registered user cannot order for a second or two** (the wallet, step 0.4).
-- **Completion emails and the credit transfer are both asynchronous.** Nothing is lost, but the
-  numbers lag the click.
+- **Completion emails and the credit transfer are both asynchronous**, so the numbers lag the
+  click by a beat. Usually that is all it is - but "it will arrive" is not a guarantee: a send that
+  keeps failing runs out of retries and ends in Notification's dead-letter topic, and a Credit
+  command can need recovering from dead letters the same way. If a balance or an email has not
+  appeared after a few seconds it is not still coming; look at the dead letters in Kafka UI on
+  `:8085` instead of waiting.
 
 ---
 
