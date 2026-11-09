@@ -11,6 +11,10 @@ Scope: Compare against the merge base rather than HEAD, so it sees uncommitted w
   change it was written for, it reported two files I had already fixed but not yet committed -
   which is exactly when you want to run it.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: stop on a git failure instead of reporting a clean result from an empty diff, and
+  recognise Lua's `--` comments, which made a Lua file's whole body count as its header.
+Author review: Cole Lin, read and approved.
 """
 # Lists files your branch changes that carry an AI disclosure header but gained no entry in it.
 #
@@ -18,41 +22,57 @@ Author review: Cole Lin, read and approved.
 #   python ai/check-disclosures.py main         # against another base
 #
 # It is a prompt, not a gate: it cannot tell whether an entry *describes* the change, only whether
-# the header grew, and a change a human wrote unaided needs no entry. Read the list and judge. It
-# always exits 0, so it blocks nothing.
+# the header grew, and a change a human wrote unaided needs no entry. Read the list and judge.
+# Findings exit 0, so it blocks nothing; only a git failure exits non-zero, because a check that
+# silently examined nothing must not read as a pass.
 # AI-generated (reviewed by Cole Lin).
 import subprocess
 import sys
 
 MARKER = "AI Assistance Disclosure"
-# What ends a header, by the comment styles this repository uses.
-ENDERS = ('-->', '"""', "*/")
+# A header written as line comments ends at the first line that is not one. Lua uses `--`, which an
+# earlier version did not know, so a Lua file's whole body counted as its header and any added line
+# of code looked like an added disclosure entry - a false pass (review).
+LINE_COMMENT = ("#", "//", "--")
+# A header inside a block comment ends at the block's own terminator.
+BLOCK_ENDERS = ("-->", '"""', "*/")
 
 
 def git(*args):
-    return subprocess.run(["git", *args], capture_output=True).stdout.decode("utf-8", "replace")
+    """Run git, or stop. A failure used to come back as empty output, which read as success.
+
+    `check-disclosures.py nonexistent-ref` printed "every changed file ... gained an entry": the
+    merge-base lookup failed silently, the diff was empty, and nothing was examined (review). A
+    check that cannot tell "nothing to report" from "nothing ran" is worse than no check.
+    """
+    done = subprocess.run(["git", *args], capture_output=True)
+    if done.returncode != 0:
+        detail = done.stderr.decode("utf-8", "replace").strip() or f"git {args[0]} failed"
+        sys.exit(f"check-disclosures: {detail}")
+    return done.stdout.decode("utf-8", "replace")
 
 
 def header_lines(text):
-    """The disclosure header's own lines, stopping where the comment block ends.
+    """The disclosure header's own lines, stopping where its comment block ends.
 
     Needed because the usage-log files repeat `Tool:` inside every entry: counting those as
     disclosure lines would pass a file whose header had not been touched at all.
     """
-    lines = text.split("\n")
+    lines = text.splitlines()
     try:
         start = next(i for i, line in enumerate(lines) if MARKER in line)
     except StopIteration:
         return []
+    # How the header is written decides how it ends. A marker line that itself begins with a line
+    # comment is a line-comment header; anything else sits inside a block (<!-- -->, """ """, /* */)
+    # or, for JSON, inside a single "_disclosure" string.
+    line_style = lines[start].lstrip().startswith(LINE_COMMENT)
     out = []
     for line in lines[start:]:
         stripped = line.strip()
-        if out and any(stripped.startswith(end) or stripped.endswith(end) for end in ENDERS):
+        if out and any(stripped.startswith(end) or stripped.endswith(end) for end in BLOCK_ENDERS):
             break
-        # A `#`-comment header ends at the first line that is not a comment.
-        if out and not stripped.startswith(("#", "*", "//")) and not lines[start].startswith(("#", "//")):
-            pass
-        elif out and lines[start].startswith("#") and not stripped.startswith("#"):
+        if out and line_style and not stripped.startswith(LINE_COMMENT):
             break
         out.append(line)
         if '"_disclosure"' in line:  # JSON keeps the whole header on one line

@@ -29,6 +29,11 @@ Scope: Review: this list assumed a working .env, so say what a fresh one still n
   request id is reused from POST /orders, which is what the ten-line trace below came from - the
   instruction said every call, which would have made it twelve.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: the bootstrap address must be on an NUS domain; the flow needs the requester's and
+  the courier's tokens, not the one from section 3; and the order's timing window is optional
+  rather than forbidden.
+Author review: Cole Lin, read and approved.
 -->
 
 # Demo runbook
@@ -70,7 +75,10 @@ four items here are the ones that catch you out on a `.env` you believed was fin
    value too: its Compose default works, but only on a `chat-db` volume first created with that
    same default, which is the trap in point 3 below.
 
-2. **`USER_BOOTSTRAP_ADMIN_EMAIL`** set to an address you can "receive" in mailpit. The first
+2. **`USER_BOOTSTRAP_ADMIN_EMAIL`** set to an address you can "receive" in mailpit, **on an NUS
+   domain** - the User Service accepts `@u.nus.edu` and `@nus.edu.sg` and nothing else, and it
+   validates this one at startup, so `admin@example.com` throws and leaves the container
+   restarting. Mailpit catches whatever you send it, so `foc.admin@u.nus.edu` is fine. The first
    admin is created at startup **with no password**; it is claimed in step 3.
 
    **Only on an empty `users` table.** The User Service inserts that admin *if there are no users
@@ -184,6 +192,15 @@ reaches it and comes back **403** (`This action requires the ADMIN role.`).
 Keep that token in a shell variable. It expires in 15 minutes, so re-login before you present
 rather than mid-demo.
 
+**That token is the admin's, and it is only for section 5.** The flow in section 4 needs the two
+accounts from step 0.4, each with its own token, because Order refuses to let a requester accept
+their own order: log both in (`POST :3003/auth/login`) and keep them separately, say `$REQ` and
+`$COU`. Steps 1-3 and 9 are the requester's; steps 4-8 are the courier's. Use the requester's for the
+whole table and step 4 answers **403 "You cannot accept your own order."** Use the courier's
+throughout and nothing errors - step 3 quietly creates the order under the *courier's* name, which
+then accepts it, and the trace in section 5 shows one person doing both. That is the version that
+will embarrass you on stage, because it looks like it worked.
+
 ---
 
 ## 4. The flow
@@ -195,25 +212,31 @@ left out of it deliberately: the ten lines in step 5 are a real run that started
 `GET /locations` and Credit's `GET /credits/:userId` at the top; that is correct too, just not the
 table below.
 
-| # | Who | Call | Result |
+| # | Who (token) | Call | Result |
 |---|---|---|---|
-| 1 | requester | `GET /locations?pageSize=2` | 200, 21 seeded locations |
-| 2 | requester | `GET /credits/<their id>` | 200, `available: 10` |
-| 3 | requester | `POST /orders` | **201**, state `PENDING`, credits now `7` available / `3` reserved |
-| 4 | courier | `POST /orders/<id>/accept` | 200, `ACCEPTED` |
-| 5 | courier | `POST /orders/<id>/pick-up` | 200, `PICKED_UP` |
-| 6 | courier | `POST /orders/<id>/start-delivery` | 200, `IN_PROGRESS` |
-| 7 | courier | `POST /orders/<id>/arrive` | 200, `ARRIVED` |
-| 8 | courier | `POST /orders/<id>/confirmations` `{"kind":"COMPLETION"}` | 201 |
-| 9 | requester | `POST /orders/<id>/confirmations/<cid>/respond` `{"response":"ACCEPTED"}` | 200, **`COMPLETED`** |
+| 1 | requester `$REQ` | `GET /locations?pageSize=2` | 200, 21 seeded locations |
+| 2 | requester `$REQ` | `GET /credits/<their id>` | 200, `available: 10` |
+| 3 | requester `$REQ` | `POST /orders` | **201**, state `PENDING`, credits now `7` available / `3` reserved |
+| 4 | courier `$COU` | `POST /orders/<id>/accept` | 200, `ACCEPTED` |
+| 5 | courier `$COU` | `POST /orders/<id>/pick-up` | 200, `PICKED_UP` |
+| 6 | courier `$COU` | `POST /orders/<id>/start-delivery` | 200, `IN_PROGRESS` |
+| 7 | courier `$COU` | `POST /orders/<id>/arrive` | 200, `ARRIVED` |
+| 8 | courier `$COU` | `POST /orders/<id>/confirmations` `{"kind":"COMPLETION"}` | 201 |
+| 9 | requester `$REQ` | `POST /orders/<id>/confirmations/<cid>/respond` `{"response":"ACCEPTED"}` | 200, **`COMPLETED`** |
 
 **Two things that will trip you up.**
 
 - **Steps 4–7 need `{"version": n}` in the body.** That is optimistic concurrency: the version
   comes back in each response and a stale one is a 409 rather than a lost update. Without it you
   get a 400 on `version`.
-- **`POST /orders` body**: `orderDescription`, `pickupLocationId`, `deliveryLocationId`,
-  `creditOffer` — and nothing else, the schema is strict. `creditOffer` cannot be edited later.
+- **`POST /orders` body**: four required fields — `orderDescription`, `pickupLocationId`,
+  `deliveryLocationId`, `creditOffer` — plus two optional ones, `windowStart` and `windowEnd` (ISO
+  timestamps). The schema is `.strict()`, so a *seventh* field is what gets rejected, with a 400
+  naming the unrecognised key. `creditOffer` cannot be edited later.
+- **Leave the window out on the day.** Omitted, the service picks one that works. Supplied, it is
+  checked against the pickup location's opening hours, and a window outside them is a 400:
+  `PICKUP_CLOSED — The timing window does not overlap A Hot Hideout's opening hours
+  (1100hrs–2130hrs)`. That is a correct refusal and a bad thing to meet live.
 
 Then:
 
