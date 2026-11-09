@@ -14,6 +14,30 @@ Deanson's entries, newest first. The template and rules (Appendix 2 of the proje
 [`ai/usage-log.md`](../usage-log.md): exact prompts, summarised responses, what was changed or
 rejected, and how it was verified.
 
+### 2026-11-09 — Frontend endpoint audit and removing the header avatar (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, refactor
+**Files:** `frontend/app/components/app-shell.tsx`, `frontend/app/globals.css`
+
+**Scenario:** I asked which backend endpoints the frontend doesn't use yet, how the profile picture is shown and whether user data is kept in browser storage. Then I had the AI remove the placeholder "?" circle at the top right of the header.
+
+**Prompts (exact, in order):**
+> for the frontend profile, how is the profile picture displayed?
+
+> is user information stored in localStorage?
+
+> remove the top right circle from frontend completely, clarify before proceeding
+
+**Clarifying answers (mine):** remove both the span and its `.header-avatar` CSS rule; keep the mode chip; add file headers and this log entry.
+
+**What it produced:**
+- An audit comparing the gateway route files with the frontend's calls. The unused non-admin endpoints are the seven `/users/me` self-service routes (PATCH profile, OTP, email change and verify, password, mobile, deactivate) and `GET /locations/:id`.
+- An explanation that the profile "picture" is the first letter of the display name (the header circle was a hardcoded "?"), and that the backend has no image field.
+- An explanation that tokens are in httpOnly cookies, that `sessionStorage` holds only short-lived values (pending registration or reset email, the logout notice), that the profile is kept only in the in-memory React Query cache, and that nothing uses `localStorage`.
+- Removed the header avatar span and its CSS rule.
+
+**Verification:** no `header-avatar` references are left outside the disclosure comment. Frontend `tsc` passes, and ESLint passes on `app-shell.tsx`. Route tests not run. Not yet checked by me in the running app.
+
 ### 2026-11-09 — Profile page order totals and `GET /orders/assigned?status=` (branch `feat/frontend-fixes`)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate, debug
