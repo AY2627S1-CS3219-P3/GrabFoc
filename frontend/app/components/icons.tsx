@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Inline SVG icons and illustrations for the redesign: route logo, pins, coin, courier bike, route preview, dispatched-order and empty-state art.
 Author review: Pending review by Jie Yang.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Added SendIcon and the chat empty-state art.
+Author review: Pending review by Jie Yang.
 */
 // AI-generated (pending review by Jie Yang)
 import type { SVGProps } from "react";
@@ -33,6 +36,7 @@ export const EditIcon = (props: IconProps) => <Svg {...props}><path d="M4 20h4L1
 export const CloseIcon = (props: IconProps) => <Svg {...props}><path d="M6 6l12 12M18 6 6 18" /></Svg>;
 export const SearchIcon = (props: IconProps) => <Svg {...props}><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></Svg>;
 export const BagIcon = (props: IconProps) => <Svg {...props}><path d="M5 8h14l-1.2 12H6.2L5 8Z" /><path d="M9 10V7a3 3 0 0 1 6 0v3" /></Svg>;
+export const SendIcon = (props: IconProps) => <Svg {...props}><path d="M21 3 10 14" /><path d="m21 3-7 18-4-7-7-4 18-7Z" /></Svg>;
 export const BikeIcon = (props: IconProps) => <Svg {...props}><circle cx="6" cy="16.5" r="3.5" /><circle cx="18" cy="16.5" r="3.5" /><path d="M6 16.5 9.5 9h5l3.5 7.5M9.5 9 12 16.5h-6M14 6h2.5" /></Svg>;
 
 export function CoinIcon({ size = 16 }: { size?: number }) {
@@ -69,11 +73,16 @@ export function DispatchedArt() {
   </svg>;
 }
 
-/** Empty states: an open tote for orders, a dropped pin for locations. */
-export function EmptyArt({ kind }: { kind: "orders" | "locations" }) {
+/** Empty states: an open tote for orders, a dropped pin for locations, two speech bubbles for chat. */
+export function EmptyArt({ kind }: { kind: "orders" | "locations" | "chat" }) {
   return <svg className="empty-art" viewBox="0 0 96 72" aria-hidden="true" focusable="false">
     <ellipse cx="48" cy="64" rx="30" ry="4" fill="var(--line)" />
-    {kind === "orders" ? <>
+    {kind === "chat" ? <>
+      <path d="M18 14h40a8 8 0 0 1 8 8v14a8 8 0 0 1-8 8H34l-10 8v-8h-6a8 8 0 0 1-8-8V22a8 8 0 0 1 8-8Z" fill="var(--surface)" stroke="var(--ink)" strokeWidth="2.2" strokeLinejoin="round" />
+      <path d="M50 30h28a8 8 0 0 1 8 8v10a8 8 0 0 1-8 8h-2v7l-9-7H50a8 8 0 0 1-8-8V38a8 8 0 0 1 8-8Z" fill="var(--accent)" />
+      <path d="M22 28h24M22 34h14" stroke="var(--line-strong)" strokeWidth="2.6" strokeLinecap="round" />
+      <path d="M54 43h20" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeDasharray="0.1 6" />
+    </> : kind === "orders" ? <>
       <path d="M26 26h44l-4 34H30l-4-34Z" fill="var(--surface)" stroke="var(--ink)" strokeWidth="2.2" strokeLinejoin="round" />
       <path d="M38 30v-8a10 10 0 0 1 20 0v8" fill="none" stroke="var(--ink)" strokeWidth="2.2" strokeLinecap="round" />
       <path d="M34 44h28" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeDasharray="0.1 6" />

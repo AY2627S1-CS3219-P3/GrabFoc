@@ -18,6 +18,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added a mock Order upstream and tests for the order proxy allowlist, its same-origin check, and userId in the session status.
 Author review: Pending review by Deanson.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Added chat-ticket to the order proxy allowlist test (allowed as POST, denied as GET).
+Author review: Reviewed by Deanson, 2026-11-09.
 Scope: Gave the test profile a UUID, stubbed Credit's balance and history routes, and tested the profile balance, history paging, the no-wallet state and the Credit route allowlist (#61).
 Author review: pending — Jie Yang to record the review.
 
@@ -1310,7 +1315,7 @@ test("order proxy forwards only the allowlisted Order endpoints", async () => {
     ["GET", "available?page=2&pageSize=5", "/orders/available?page=2&pageSize=5"],
     ["GET", "mine", "/orders/mine"], ["GET", "assigned?page=3", "/orders/assigned?page=3"],
     ["POST", "", "/orders"], ["GET", `${orderId}?ignored=1`, `/orders/${orderId}`], ["PATCH", orderId, `/orders/${orderId}`],
-    ...["accept", "cancel", "pick-up", "start-delivery", "arrive"].map((step) => ["POST", `${orderId}/${step}`, `/orders/${orderId}/${step}`]),
+    ...["accept", "cancel", "pick-up", "start-delivery", "arrive", "chat-ticket"].map((step) => ["POST", `${orderId}/${step}`, `/orders/${orderId}/${step}`]),
     ["GET", `${orderId}/history`, `/orders/${orderId}/history`],
     ["GET", `${orderId}/confirmations`, `/orders/${orderId}/confirmations`],
     ["POST", `${orderId}/confirmations`, `/orders/${orderId}/confirmations`],
@@ -1327,7 +1332,7 @@ test("order proxy forwards only the allowlisted Order endpoints", async () => {
   }
   const denied = [["GET", ""], ["GET", "internal/orders/users/abc/active"], ["GET", "not-a-uuid"], ["PATCH", "mine"],
     ["POST", "available"], ["GET", `${orderId}/accept`], ["POST", `${orderId}/complete`], ["PATCH", `${orderId}/confirmations`],
-    ["POST", `${orderId}/confirmations/not-a-uuid/respond`], ["POST", `${orderId}/history`]];
+    ["POST", `${orderId}/confirmations/not-a-uuid/respond`], ["POST", `${orderId}/history`], ["GET", `${orderId}/chat-ticket`]];
   const before = requests.length;
   for (const [method, path] of denied) {
     const response = await fetch(`${baseUrl}/api/session/orders${path ? `/${path}` : ""}`, {

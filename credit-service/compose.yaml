@@ -18,6 +18,12 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 # Scope: restart: unless-stopped on every long-running container (one-shot init containers excluded).
 # Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Forward CREDIT_LOG_TOPIC to the container. This environment list is an allowlist
+#        and the root .env only supplies values for interpolation, so without this line a
+#        configured topic changed what the log store consumed and not what this service
+#        published (issue #52).
+# Author review: Cole Lin, read and approved.
 
 name: foc
 
@@ -71,6 +77,11 @@ services:
       CREDIT_JWT_ISSUER: ${CREDIT_JWT_ISSUER:-}
       CREDIT_JWT_AUDIENCE: ${CREDIT_JWT_AUDIENCE:-}
       CREDIT_KAFKA_BROKERS: kafka:9092
+      # Forwarded explicitly: this environment list is an allowlist, and the root .env only
+      # supplies values for interpolation - it does not reach the container. Without this
+      # line a configured topic changes what the store consumes and not what this service
+      # publishes, and the store goes quiet.
+      CREDIT_LOG_TOPIC: ${CREDIT_LOG_TOPIC:-logging.lines}
       # One retry topic per entry must be listed in infra/kafka/topics.txt; Credit checks at startup.
       CREDIT_RETRY_DELAYS: ${CREDIT_RETRY_DELAYS:-1s,5s,30s,2m,10m}
     # Published for local testing with Postman. The gateway never routes here: these are

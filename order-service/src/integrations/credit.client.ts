@@ -7,7 +7,12 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-17
  * Scope: Removed release; it is now a credit.commands message (Phase D, credit.commands.ts).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: forward x-request-id, so this call is stored under the same id as the
+ *        request that made it (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
+import { requestIdHeader } from '../common/request-id';
 import { Injectable } from '@nestjs/common';
 import { AppError, ErrorCode } from '../common/errors';
 import { appConfig } from '../config';
@@ -33,7 +38,12 @@ export class CreditClient {
     try {
       return await fetch(`${this.config.creditUrl}/internal/credits/${action}`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-service-key': this.config.creditServiceKey },
+        // As above: the same flow, so the same id.
+        headers: {
+          'content-type': 'application/json',
+          'x-service-key': this.config.creditServiceKey,
+          ...requestIdHeader(),
+        },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(5000),
       });

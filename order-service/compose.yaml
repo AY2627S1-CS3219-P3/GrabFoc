@@ -17,7 +17,16 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 # Scope: restart: unless-stopped on every long-running container (one-shot init containers excluded).
 # Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+# Scope: ORDER_CHAT_TICKET_SECRET for chat tickets (the chat plan).
+# Author review: Reviewed by Deanson, 2026-11-09.
 # AI-generated; human review pending.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Forward ORDER_LOG_TOPIC to the container. This environment list is an allowlist
+#        and the root .env only supplies values for interpolation, so without this line a
+#        configured topic changed what the log store consumed and not what this service
+#        published (issue #52).
+# Author review: Cole Lin, read and approved.
 name: foc
 services:
   order-db:
@@ -72,8 +81,15 @@ services:
       # Must equal the Credit Service's CREDIT_SERVICE_KEY; set it in the root .env.
       ORDER_CREDIT_SERVICE_KEY: ${CREDIT_SERVICE_KEY:-}
       ORDER_KAFKA_BROKERS: kafka:9092
+      # Forwarded explicitly: this environment list is an allowlist, and the root .env only
+      # supplies values for interpolation - it does not reach the container. Without this
+      # line a configured topic changes what the store consumes and not what this service
+      # publishes, and the store goes quiet.
+      ORDER_LOG_TOPIC: ${ORDER_LOG_TOPIC:-logging.lines}
       # Other services send this to Order's /internal routes; set it in the root .env.
       ORDER_SERVICE_KEY: ${ORDER_SERVICE_KEY:-}
+      # Signs chat tickets; must equal the chat service's CHAT_TICKET_SECRET. Set it in the root .env.
+      ORDER_CHAT_TICKET_SECRET: ${CHAT_TICKET_SECRET:-}
     ports:
       - "3005:3005"
 volumes:

@@ -11,7 +11,7 @@ Author review: Pending review by Deanson.
 
 AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
-Scope: Campus-map backdrop styles for the auth screens (route crawl, courier halo). Rewrote the whole stylesheet for the "campus route slip" redesign: design tokens, requester/courier accent switch, fonts, header, auth, location cards with hover motion, order slips, route preview, dispatch animation, lifecycle tracker, modal and toast motion, reduced-motion handling. Kept every existing class name.
+Scope: Order chat restyle (2026-11-09). Campus-map backdrop styles for the auth screens (route crawl, courier halo). Rewrote the whole stylesheet for the "campus route slip" redesign: design tokens, requester/courier accent switch, fonts, header, auth, location cards with hover motion, order slips, route preview, dispatch animation, lifecycle tracker, modal and toast motion, reduced-motion handling. Kept every existing class name.
 Author review: Pending review by Jie Yang.
 */
 /* AI-generated (pending review by Jie Yang); design rules in .claude/skills/foc-design/SKILL.md */
@@ -667,6 +667,61 @@ a.admin-card:hover { transform: translateY(-3px); border-color: var(--ink); box-
 .order-finished-banner { margin: 0 0 18px; padding: 14px 16px; border-radius: var(--radius-m); background: var(--paper); box-shadow: inset 4px 0 0 var(--line-strong); font-size: 14px; line-height: 1.45; animation: toast-in .4s var(--ease-spring); }
 .order-finished-banner--cancelled { background: var(--red-wash); color: var(--red); box-shadow: inset 4px 0 0 var(--red); }
 .order-finished-banner--completed { background: var(--green-wash); color: #17714a; box-shadow: inset 4px 0 0 var(--green); }
+
+/* ---------- Order chat ----------
+   Class names from the order chat (Claude Code, 2026-11-08; reviewed by Deanson, 2026-11-09);
+   restyled to the redesign tokens by Claude Code on 2026-11-09 (AI-generated, pending review by Jie Yang). */
+.order-chat { display: flex; flex-direction: column; }
+.order-chat .home-empty { min-height: 220px; flex: 1; }
+.chat { display: flex; flex: 1; flex-direction: column; gap: 12px; min-height: 0; }
+.chat-status { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; margin: -6px 0 0; padding: 4px 11px; border-radius: 999px; background: var(--paper); color: var(--muted); font-size: 12.5px; font-weight: 700; }
+.chat-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.chat-status--live { background: var(--green-wash); color: #17714a; }
+.chat-status--live::before { background: var(--green); animation: live 1.6s ease-out infinite; }
+.chat[data-status="reconnecting"] .chat-status, .chat[data-status="connecting"] .chat-status { background: var(--gold-wash); color: var(--gold); }
+.chat[data-status="reconnecting"] .chat-status::before, .chat[data-status="connecting"] .chat-status::before { background: var(--gold-bright); animation: live 1.2s ease-out infinite; }
+.chat[data-status="unavailable"] .chat-status, .chat[data-status="not-allowed"] .chat-status, .chat[data-status="refused"] .chat-status { background: var(--red-wash); color: var(--red); }
+.chat[data-status="unavailable"] .chat-status::before, .chat[data-status="not-allowed"] .chat-status::before, .chat[data-status="refused"] .chat-status::before { background: var(--red); }
+
+.chat-log {
+  display: flex; flex-direction: column; gap: 6px; height: 380px; padding: 14px; overflow-y: auto; overscroll-behavior: contain;
+  border-radius: var(--radius-m);
+  background: radial-gradient(circle at 1px 1px, rgb(23 33 58 / 7%) 1px, transparent 0) 0 0 / 18px 18px, var(--paper);
+}
+.chat-note { margin: 4px 0; color: var(--muted); font-size: 13px; text-align: center; }
+.chat-note .text-button { min-height: 30px; margin-left: 6px; padding: 0 12px; font-size: 13px; }
+.chat-empty { display: grid; justify-items: center; gap: 4px; margin: auto; text-align: center; }
+.chat-empty .chat-note { max-width: 28ch; }
+
+.chat-bubble {
+  position: relative; max-width: 78%; align-self: flex-start; padding: 9px 13px 7px;
+  border-radius: 16px 16px 16px 5px; background: var(--surface); box-shadow: 0 1px 0 rgb(23 33 58 / 8%), inset 0 0 0 1px var(--line);
+  font-size: 14.5px; transform-origin: left bottom; animation: bubble-in .28s var(--ease-spring);
+}
+.chat-bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.chat-bubble time, .chat-bubble span { display: block; margin-top: 2px; color: var(--faint); font-size: 11.5px; }
+.chat-bubble time { text-align: right; }
+.chat-bubble--own {
+  align-self: flex-end; border-radius: 16px 16px 5px 16px; background: var(--accent); color: #fff; box-shadow: none; transform-origin: right bottom;
+}
+.chat-bubble--own time, .chat-bubble--own span { color: rgb(255 255 255 / 78%); }
+.chat-bubble--sending { opacity: .65; }
+.chat-bubble--failed, .chat-bubble--rejected { background: var(--red-wash); color: var(--ink); box-shadow: inset 0 0 0 1.5px #efb3a8; }
+.chat-bubble--failed span, .chat-bubble--rejected span { color: var(--red); font-weight: 700; }
+.chat-inline { padding: 0; border: 0; background: none; color: inherit; font-size: 11.5px; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.chat-inline:disabled { opacity: .5; cursor: not-allowed; }
+@keyframes bubble-in { from { opacity: 0; transform: translateY(6px) scale(.92); } }
+
+.chat-form { display: flex; align-items: center; gap: 6px; padding: 5px 5px 5px 16px; border: 1.5px solid var(--line); border-radius: 999px; background: var(--surface); transition: border-color .15s, box-shadow .15s; }
+.chat-form:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-wash); }
+.chat-form input { flex: 1; min-width: 0; min-height: 38px; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: 14.5px; outline: none; }
+.chat-form .primary-button { min-height: 38px; padding: 0 16px; }
+.chat-form .primary-button svg { transition: transform .25s var(--ease-spring); }
+.chat-form .primary-button:hover:not(:disabled) svg { transform: translate(2px, -2px) rotate(8deg); }
+@media (max-width: 639px) {
+  .chat-log { height: 320px; }
+  .chat-bubble { max-width: 88%; }
+}
 
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {

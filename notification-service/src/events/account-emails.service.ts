@@ -5,7 +5,13 @@
  *        Jie Yang on 2026-11-04: deduplicated on eventId, events over an hour old recorded but not
  *        emailed, superseded by a later account event, retried like order emails.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+ * Scope: These outcome lines go through the log shipper instead of Nest's Logger, so they reach
+ *        the Logging Service's store in the shape it stores rather than wrapped in Nest's own
+ *        timestamp, PID and context envelope for a collector to dig out (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
+import { log } from '../common/log';
 // AI-generated (pending review)
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
@@ -102,7 +108,7 @@ export class AccountEmailsService {
       if (row.superseded) {
         // e.g. a retried "suspended" email after the account was already reinstated.
         await this.fail(row, SUPERSEDED, false);
-        this.logger.log(JSON.stringify({ event: 'account_email_superseded', eventId, type: row.event_type }));
+        log.emit({ level: 'info', event: 'account_email_superseded', eventId, type: row.event_type });
         result.superseded++;
         continue;
       }
@@ -127,15 +133,14 @@ export class AccountEmailsService {
       if (!(err instanceof UserLookupError || err instanceof MailError)) throw err;
       await this.fail(row, err.category, true);
       // Never the address: only ids and the error category.
-      this.logger.warn(
-        JSON.stringify({
-          event: 'account_email_failed',
-          eventId: row.event_id,
-          type: row.event_type,
-          error: err.category,
-          retryable: isRetryable(err.category),
-        }),
-      );
+      log.emit({
+        level: 'warn',
+        event: 'account_email_failed',
+        eventId: row.event_id,
+        type: row.event_type,
+        error: err.category,
+        retryable: isRetryable(err.category),
+      });
       return err.category;
     }
     await this.pool.query(
@@ -144,7 +149,7 @@ export class AccountEmailsService {
         WHERE event_id = $1 AND delivery_status IN ('PENDING', 'FAILED')`,
       [row.event_id, messageId],
     );
-    this.logger.log(JSON.stringify({ event: 'account_email_sent', eventId: row.event_id, type: row.event_type }));
+    log.emit({ level: 'info', event: 'account_email_sent', eventId: row.event_id, type: row.event_type });
     return null;
   }
 

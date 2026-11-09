@@ -10,6 +10,18 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: /gateway/* copies of every API route with the prefix removed (deploy part 1, #141).
 Scope: Edge listener for CloudFront: X-Origin-Key check, /gateway/* API routes, frontend catch-all (#141).
 Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: WebSocket upgrades on the connection manager, and the optional "websocket" route field with a
+       60-second idle timeout for the chat socket (the chat plan).
+Author review: Reviewed by Deanson, 2026-11-09; Jie Yang (gateway owner) to approve.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: The access log carries the field names the Logging Service stores, so a line from
+  here reads like one from any service: ts, level, and a filtered entry per outcome for the
+  level a format string cannot derive. `service` is the literal gateway rather than
+  %UPSTREAM_CLUSTER%, which is the service routed *to* and renders null when none is
+  reached - the store requires it and refuses the whole line otherwise; the destination is
+  under `upstream`. `lineId` is absent because Envoy has no UUID source (issue #52).
+Author review: Cole Lin, read and approved.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
 import json
@@ -152,10 +164,12 @@ def load_routes(env):
                 raise ValueError("Gateway route prefixes must not overlap")
     for definition in services:
         for entry in definition["routes"]:
-            if (not isinstance(entry, dict) or set(entry) - {"method", "path", "regex", "public"} or
+            if (not isinstance(entry, dict) or
+                    set(entry) - {"method", "path", "regex", "public", "websocket"} or
                     entry.get("method") not in {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} or
                     (("path" in entry) == ("regex" in entry)) or
-                    type(entry.get("public", False)) is not bool):
+                    type(entry.get("public", False)) is not bool or
+                    type(entry.get("websocket", False)) is not bool):
                 raise ValueError(f"Invalid route entry for {definition['service']}")
             path = entry.get("path", entry.get("regex"))
             if not isinstance(path, str) or not path:
@@ -173,6 +187,10 @@ def load_routes(env):
 # forwarding, so route files and services never see it.
 GATEWAY_PREFIX = "/gateway"
 
+# AI-generated (Claude Code, 2026-11-08): the chat plan Socket.IO pings every 25 seconds,
+# so the global 10-second idle timeout would cut idle sockets. Only "websocket": true routes get this.
+WEBSOCKET_IDLE_TIMEOUT = "60s"
+
 def api_routes(services, prefixes, settings, public_prefix=""):
     """One Envoy route per route-file entry, optionally under public_prefix."""
     routes = []
@@ -187,7 +205,9 @@ def api_routes(services, prefixes, settings, public_prefix=""):
             match = {"headers": [{"name": ":method", "string_match": {"exact": entry["method"]}}]}
             match["safe_regex" if regex else "path"] = {"regex": path} if regex else path
             forward = {"cluster": definition["service"], "timeout": settings["GATEWAY_ROUTE_TIMEOUT"],
-                       "idle_timeout": settings["GATEWAY_ROUTE_IDLE_TIMEOUT"], "auto_host_rewrite": True}
+                       "idle_timeout": (WEBSOCKET_IDLE_TIMEOUT if entry.get("websocket", False)
+                                        else settings["GATEWAY_ROUTE_IDLE_TIMEOUT"]),
+                       "auto_host_rewrite": True}
             if public_prefix:
                 forward["regex_rewrite"] = {"pattern": {"regex": "^" + re.escape(public_prefix)},
                                             "substitution": ""}
@@ -285,13 +305,42 @@ def configuration(env):
     if env.get("GATEWAY_JWT_AUDIENCE"):
         provider["audiences"] = [env["GATEWAY_JWT_AUDIENCE"]]
     lua = Path(__file__).with_name("compatibility.lua").read_text()
-    logs = {"event": "request_completed", "requestId": "%REQ(X-REQUEST-ID)%",
-            "method": "%REQ(:METHOD)%", "service": "%UPSTREAM_CLUSTER%", "status": "%RESPONSE_CODE%",
-            "durationMs": "%DURATION%", "path": "%DYNAMIC_METADATA(foc:path)%"}
+    # The field names and types the Logging Service stores (issue #52), so a line from here reads
+    # the same as one from any service and a collector needs no per-source mapping.
+    #
+    # `service` is this gateway, as a literal. It used to be `%UPSTREAM_CLUSTER%`, which is the
+    # wrong field for it twice over: `service` is who *wrote* the line - every other service puts
+    # its own name there - so gateway lines were claiming to come from whichever service they were
+    # routed to, and on a request that reaches no upstream at all (a 404 at the edge) the operator
+    # renders `null`, which the store requires `service` not to be and would refuse the whole line
+    # for. The upstream is still recorded, under its own name (review).
+    #
+    # `status` and `durationMs` need no special handling: this Envoy renders a value that is
+    # exactly one operator with the operator's own type, so they arrive as JSON numbers, which is
+    # what the store requires. Verified by running it rather than from the documentation -
+    # `typed_json_format` does not exist in this version and configuring it stops Envoy booting.
+    #
+    # `lineId` is deliberately absent, and it is the one field Envoy cannot supply: the store wants
+    # a UUID primary key and Envoy's access log has no UUID generator. X-REQUEST-ID is a UUID only
+    # when Envoy minted it - a client may send its own, and the services accept any token matching
+    # [A-Za-z0-9._:-]{1,128} - so using it here would produce lines the store rejects. Whatever
+    # collects this stdout has to mint `lineId`, which it has to do anyway: one request can emit
+    # two entries below, and they cannot share a primary key.
+    #
+    # Nothing ships these lines today. Envoy has no Kafka access logger, so the gateway's record
+    # lives in its container log; this change is so that collecting it later needs no Envoy work.
+    logs = {"event": "request_completed", "level": "info",
+            "ts": "%START_TIME(%Y-%m-%dT%H:%M:%S.%3fZ)%", "requestId": "%REQ(X-REQUEST-ID)%",
+            "method": "%REQ(:METHOD)%", "service": "gateway", "upstream": "%UPSTREAM_CLUSTER%",
+            "status": "%RESPONSE_CODE%", "durationMs": "%DURATION%",
+            "path": "%DYNAMIC_METADATA(foc:path)%"}
     hcm = {"@type": TYPE + "envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager",
         "stat_prefix": "foc", "normalize_path": False, "merge_slashes": False,
         "always_set_request_id_in_response": True,
         "http_protocol_options": {"allow_absolute_url": False},
+        # AI-generated (Claude Code, 2026-11-08): the chat plan Allowed on every route here;
+        # compatibility.lua still strips the upgrade headers everywhere except the chat socket path.
+        "upgrade_configs": [{"upgrade_type": "websocket"}],
         "route_config": {"name": "foc_routes", "virtual_hosts": [{"name": "foc", "domains": ["*"],
             "routes": routes}]},
         "http_filters": [
@@ -306,12 +355,26 @@ def configuration(env):
                 "envoy.extensions.filters.http.router.v3.Router"}}],
         "access_log": [{"name": "envoy.access_loggers.stdout", "typed_config": {
             "@type": TYPE + "envoy.extensions.access_loggers.stream.v3.StdoutAccessLog",
+            # typed_json_format, not json_format: a plain json_format renders every operator as a
+            # string, so `%RESPONSE_CODE%` came out as "200" and `%DURATION%` as "17" - and the log
+            # store requires numbers for `status` and `durationMs`, refusing the whole line
+            # otherwise. A collector adding only the omitted `lineId` would have had every gateway
+            # line dead-lettered. The typed form keeps each operator's own type; the string
+            # operators and the literals below are unaffected (review).
             "log_format": {"json_format": logs}}}]}
-    for event, code in [("unauthorized_access", 401), ("unauthorized_access", 403)]:
+    # A second line for an outcome worth finding on its own, with its own event and level. This
+    # mirrors the services, where a refused request writes both `request_completed` and
+    # `access_denied` sharing a requestId - so a "how many denials" query picks one event and stays
+    # with it. `level` cannot be computed from the status in a format string, which is why severity
+    # is expressed as a filtered entry rather than a field on the first one.
+    extra = [("unauthorized_access", "warn", {"op": "EQ", "value": {"default_value": 401}}),
+             ("unauthorized_access", "warn", {"op": "EQ", "value": {"default_value": 403}}),
+             ("upstream_error", "error", {"op": "GE", "value": {"default_value": 500}})]
+    for event, level, comparison in extra:
         hcm["access_log"].append({"name": "envoy.access_loggers.stdout", "filter": {
-            "status_code_filter": {"comparison": {"op": "EQ", "value": {"default_value": code}}}},
+            "status_code_filter": {"comparison": comparison}},
             "typed_config": {"@type": TYPE + "envoy.extensions.access_loggers.stream.v3.StdoutAccessLog",
-                "log_format": {"json_format": {**logs, "event": event}}}})
+                "log_format": {"json_format": {**logs, "event": event, "level": level}}}})
     # Multiple endpoints are exposed only through explicit test configuration.
     upstreams = []
     for definition in services:

@@ -32,6 +32,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
  * Scope: The suspension's CANCELLED history entry records suspendedUserId, so the order page can say whose account it was (#184).
  * Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+ * Scope: Added chatTicket (the chat plan): participants of an active order get a chat ticket.
+ * Author review: Reviewed by Deanson, 2026-11-09.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { PoolClient } from 'pg';
@@ -43,6 +46,10 @@ import { Location, SupplierClient } from '../integrations/supplier.client';
 import { OrderEdit, OrderList, OrdersRepository, Unsettled } from './orders.repository';
 import type { CreateOrderBody, EditOrderBody, HistoryEntry, Order, OrderStatus, Page, PageQuery } from './orders.schemas';
 import { assertPickupOpen, assertValidWindow, defaultWindow } from './timing';
+import { signChatTicket } from './chat-ticket';
+
+/** Orders whose requester and courier may chat (the chat plan). */
+const CHAT_STATUSES: OrderStatus[] = ['ACCEPTED', 'PICKED_UP', 'IN_PROGRESS', 'ARRIVED'];
 
 const isParticipant = (order: Order, caller: Caller) =>
   order.requesterId === caller.id || order.courierId === caller.id;
@@ -116,6 +123,18 @@ export class OrdersService {
   async history(caller: Caller, orderId: string): Promise<HistoryEntry[]> {
     await this.participantOrder(caller, orderId);
     return this.orders.history(orderId);
+  }
+
+  /**
+   * A short-lived ticket for the order's chat. Checks participation directly: get()'s check
+   * also lets anyone view a PENDING order, which must not open its chat.
+   */
+  async chatTicket(caller: Caller, orderId: string): Promise<{ ticket: string }> {
+    const order = await this.find(orderId);
+    if (!isParticipant(order, caller) || !CHAT_STATUSES.includes(order.status)) {
+      throw forbidden('Only the requester or courier of an accepted, unfinished order can open its chat.');
+    }
+    return { ticket: await signChatTicket(caller.id, order.id) };
   }
 
   /** The order, if the caller is its requester or assigned courier. */
