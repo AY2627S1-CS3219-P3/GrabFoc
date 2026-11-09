@@ -15,8 +15,13 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
  * Scope: Registered AccountEmailsService (#183).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+ * Scope: Registered LogShipping, so the buffered log lines are flushed and the producer closed
+ *        on shutdown rather than dropped (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { Module } from '@nestjs/common';
+import { LogShipping } from './common/log';
 import { config } from './config';
 import { DatabaseModule } from './db/database';
 import { DeadLettersService } from './dead-letters/dead-letters.service';
@@ -34,6 +39,8 @@ import { UserClient } from './users/user.client';
   imports: [DatabaseModule],
   controllers: [HealthController],
   providers: [
+    // Flushes the buffered log lines and closes the producer on shutdown.
+    LogShipping,
     { provide: TOPICS, useValue: buildTopics(config.retryDelaysMs) },
     KafkaConnection,
     OrderEventsService,

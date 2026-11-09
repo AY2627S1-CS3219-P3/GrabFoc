@@ -70,6 +70,11 @@ Author review: Jian Bing supplied what it states; the wording is Claude's.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Recorded Zi Yi's approval of the dead-letter migration and the mentor's validation of the route removal (PR #97 review).
 Author review: Jian Bing supplied the approval it records; the wording is Claude's.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+Scope: Added the Logging section. This service now writes a line per request into the Logging
+  Service's store and this file did not mention logging at all, which for a scoped instruction file
+  means the next change here would not know it exists (issue #52).
+Author review: Cole Lin, read and approved.
 -->
 
 # AGENTS.md — Credit Service
@@ -307,3 +312,45 @@ _Origin: AI doc_
   record a release for an unknown order (a `RELEASED` marker, which needs `requester_id`/`amount`
   nullable or sent with the release) and have a later reserve for it insert nothing. Order skips the
   release when Credit answered `INSUFFICIENT_CREDITS`, so this only follows timeouts and failures.
+
+## Logging (issue #52)
+
+_Origin: AI doc, from the wiring in this service and the decisions recorded in
+`logging-service/AGENTS.md`, which is the canonical description of the line shape_
+
+Every request this service handles writes **one `request_completed` line** through
+`common/log.ts`, in the shape the Logging Service stores. Lines always go to stdout; when
+`CREDIT_KAFKA_BROKERS` is set - which Compose sets - they are also shipped to
+`CREDIT_LOG_TOPIC` (default `logging.lines`), where that service's ingest reads them. The topic
+must exist in `infra/kafka/topics.txt`: services never create topics, so a name that is not in that
+list silently goes nowhere.
+
+With no brokers set - every test run, and any standalone run - **nothing is built at all**: no
+publisher, no flush timer, no Kafka client, and lines go to stdout as before.
+
+The pieces, all in `src/common/`:
+
+| File | What it is |
+|---|---|
+| `log-shipper.ts` | A **copy** of `logging-service/src/client/log-shipper.ts`. Change it there, not here: `logging-service/src/client/copies.spec.ts` fails if a copy's body drifts from the canonical. |
+| `kafka.publisher.ts` | The producer that puts lines on the topic. Also a copy, held in step by the same spec. |
+| `log.ts` | This service's shipper instance (`service: 'credit'`) and the shutdown hook, registered in `app.module.ts`. |
+| `request-id.ts` | The correlation id, and `requestIdHeader()` for calls to other services. |
+| `request-log.ts` | The middleware that writes the line. |
+
+Four things worth knowing before changing any of it:
+
+- **Middleware, not a Nest interceptor.** Guards run *before* interceptors, so an interceptor never
+  sees a request the auth guard refused - it would miss every 401 and 403, and 404s for unrouted
+  paths. A `finish`/`close` listener catches all of them.
+- **`path` is the route template, never the caller's URL.** A caller chooses every byte of a URL and
+  redaction matches field *names*, so a token in a path segment would reach the store verbatim under
+  a harmless `path` key. An unmatched path is `/<unrouted>`.
+- **Three fields are conditional.** `status` is absent when the client gave up before any header was
+  sent (Express reports 200 until something sets it, so an abandoned request would otherwise count
+  as a success); such a line carries `aborted: true`. `userId` and `role` are absent when no caller
+  was established, which is every 401. A field whose value is `undefined` is not written, so absent
+  means absent rather than null. The caller comes from `req.caller`.
+- **Carry the request id on calls to other services**, with `...requestIdHeader()` in the headers.
+  Without it the far side mints its own and the two halves of one flow are stored under ids that
+  cannot be joined, which defeats the question this logging exists to answer.

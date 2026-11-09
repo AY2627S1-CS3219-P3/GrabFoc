@@ -1,6 +1,6 @@
 <!-- BEGIN:nextjs-agent-rules -->
 
-# This is NOT the Next.js you know
+## This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 
@@ -20,3 +20,16 @@ Author review: Jie Yang confirmed Tailwind CSS with shadcn/ui; wording awaits te
 _Origin: Team, confirmed by Jie Yang on 2026-09-29._
 
 Use Tailwind CSS with shadcn/ui. Implement responsive Supplier page layouts with Tailwind utilities. Keep the existing form behavior and live Supplier data contract.
+
+<!--
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Added the pointer to the design skill.
+Author review: Pending review by Jie Yang.
+-->
+
+## Design system
+
+_Origin: AI doc._
+
+Before building or restyling UI, read `.claude/skills/foc-design/SKILL.md` (tokens, the requester/courier accent switch, type, motion and copy rules).

@@ -39,6 +39,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
  * Scope: The suspension test expects suspendedUserId in the history entry (#184).
  * Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+ * Scope: Added chat ticket tests and ORDER_CHAT_TICKET_SECRET (the chat plan).
+ * Author review: Reviewed by Deanson, 2026-11-09.
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -48,6 +51,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, test } from 'node:test';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { jwtVerify } from 'jose';
 import { Pool } from 'pg';
 import { AppModule, configureApp } from '../app.module';
 import { PG_POOL } from '../db/database.module';
@@ -121,6 +125,7 @@ class FakeKafkaProducer extends KafkaProducer {
   }
 }
 const SERVICE_KEY = 'test-order-service-key-at-least-32-chars';
+const CHAT_TICKET_SECRET = 'test-chat-ticket-secret-at-least-32-chars';
 
 before(async () => {
   await admin.query(`CREATE SCHEMA ${schema}`);
@@ -134,6 +139,7 @@ before(async () => {
   process.env.ORDER_CREDIT_SERVICE_KEY = 'test-service-key';
   process.env.ORDER_KAFKA_BROKERS = 'unused:9092'; // the producer is faked
   process.env.ORDER_SERVICE_KEY = SERVICE_KEY;
+  process.env.ORDER_CHAT_TICKET_SECRET = CHAT_TICKET_SECRET;
   for (const id of [alice, bob, carol]) tokens[id] = await jwks.sign({ sub: id });
   tokens[dana] = await jwks.sign({ sub: dana, role: 'ADMIN' });
 
@@ -258,6 +264,34 @@ test('order detail is visible to participants, and to anyone while it is availab
   assert.equal((await get(`/orders/${accepted}`, carol)).body.error.code, 'FORBIDDEN');
   assert.equal((await get(`/orders/${randomUUID()}`, alice)).status, 404);
   assert.equal((await get('/orders/not-a-uuid', alice)).status, 400);
+});
+
+// AI-generated (Claude Code, 2026-11-08): chat ticket tests (the chat plan).
+test('chat ticket: participants of an active order get a 10-second ticket for that order', async () => {
+  const accepted = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  for (const userId of [bob, alice]) {
+    const { status, body } = await send('POST', `/orders/${accepted}/chat-ticket`, userId);
+    assert.equal(status, 200);
+    const { payload, protectedHeader } = await jwtVerify(body.ticket, new TextEncoder().encode(CHAT_TICKET_SECRET), {
+      audience: 'chat',
+    });
+    assert.equal(protectedHeader.alg, 'HS256');
+    assert.equal(payload.sub, userId);
+    assert.equal(payload.orderId, accepted);
+    assert.equal(payload.exp! - Math.floor(Date.now() / 1000) <= 10, true);
+  }
+});
+
+test('chat ticket: refused for non-participants, inactive orders, missing orders and bad IDs', async () => {
+  const ticket = (id: string, userId?: string) => send('POST', `/orders/${id}/chat-ticket`, userId);
+  const accepted = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  expectError(await ticket(accepted, carol), 403, 'FORBIDDEN');
+  expectError(await ticket(await insertOrder(), alice), 403, 'FORBIDDEN'); // PENDING
+  expectError(await ticket(await insertOrder({ status: 'COMPLETED', courier_id: bob }), bob), 403, 'FORBIDDEN');
+  expectError(await ticket(await insertOrder({ status: 'CANCELLED', courier_id: bob }), alice), 403, 'FORBIDDEN');
+  expectError(await ticket(randomUUID(), alice), 404, 'NOT_FOUND');
+  expectError(await ticket('not-a-uuid', alice), 400, 'VALIDATION_ERROR');
+  expectError(await ticket(accepted), 401, 'TOKEN_INVALID');
 });
 
 test('history is chronological and limited to participants', async () => {

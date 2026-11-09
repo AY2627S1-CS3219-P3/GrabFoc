@@ -11,6 +11,12 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
 # Scope: NOTIFICATION_RETRY_DELAYS (#154).
 # Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Forward NOTIFICATION_LOG_TOPIC to the container. This environment list is an allowlist
+#        and the root .env only supplies values for interpolation, so without this line a
+#        configured topic changed what the log store consumed and not what this service
+#        published (issue #52).
+# Author review: Cole Lin, read and approved.
 
 name: foc
 
@@ -53,6 +59,9 @@ services:
     environment:
       NOTIFICATION_PORT: 3006
       NOTIFICATION_KAFKA_BROKERS: kafka:9092
+      # Forwarded explicitly: this environment list is an allowlist, and the root .env only
+      # supplies values for interpolation - it does not reach the container.
+      NOTIFICATION_LOG_TOPIC: ${NOTIFICATION_LOG_TOPIC:-logging.lines}
       # One retry topic per delay in infra/kafka/topics.txt; change both together.
       NOTIFICATION_RETRY_DELAYS: ${NOTIFICATION_RETRY_DELAYS:-1s,5s,30s,2m,10m}
       NOTIFICATION_SMTP_HOST: mailpit

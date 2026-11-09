@@ -1,0 +1,30 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+# Scope: Copied from order-service/compose.test.yaml: unit and database tests against a throwaway PostgreSQL.
+# Author review: Reviewed by Deanson, 2026-11-09.
+#
+#   docker compose -f chat-service/compose.test.yaml up --build --abort-on-container-exit --exit-code-from chat-tests
+name: foc-chat-tests
+services:
+  chat-test-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: chat_test
+      POSTGRES_USER: chat_test
+      POSTGRES_PASSWORD: isolated-test-only
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "chat_test", "-d", "chat_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+  chat-tests:
+    build:
+      context: .
+      target: test
+    depends_on:
+      chat-test-db:
+        condition: service_healthy
+    environment:
+      CHAT_TEST_DATABASE_URL: postgresql://chat_test:isolated-test-only@chat-test-db:5432/chat_test

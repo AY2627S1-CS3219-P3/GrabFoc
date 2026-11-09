@@ -12,6 +12,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
  * Scope: Added ORDER_SERVICE_KEY for Order's own /internal routes (Phase D).
  * Author review: Reviewed
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+ * Scope: Added ORDER_CHAT_TICKET_SECRET for chat tickets (the chat plan).
+ * Author review: Reviewed by Deanson, 2026-11-09.
  */
 
 export interface AppConfig {
@@ -26,6 +29,8 @@ export interface AppConfig {
   kafkaBrokers: string[];
   /** Shared secret other services send to Order's /internal routes. */
   serviceKey: string;
+  /** HS256 secret for chat tickets, shared only with the chat service. Never the JWT signing key. */
+  chatTicketSecret: string;
 }
 
 /** As for Credit's key: long enough that guessing it is hopeless. */
@@ -52,6 +57,10 @@ export function appConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (serviceKey.length < MIN_SERVICE_KEY_LENGTH) {
     throw new Error(`ORDER_SERVICE_KEY must be at least ${MIN_SERVICE_KEY_LENGTH} characters`);
   }
+  const chatTicketSecret = env.ORDER_CHAT_TICKET_SECRET?.trim() ?? '';
+  if (chatTicketSecret.length < MIN_SERVICE_KEY_LENGTH) {
+    throw new Error(`ORDER_CHAT_TICKET_SECRET must be at least ${MIN_SERVICE_KEY_LENGTH} characters`);
+  }
   // Base URLs without a trailing slash, so clients can append paths.
   const base = (name: string) => httpUrl(env, name).href.replace(/\/$/, '');
   return {
@@ -62,5 +71,6 @@ export function appConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     creditServiceKey,
     kafkaBrokers,
     serviceKey,
+    chatTicketSecret,
   };
 }

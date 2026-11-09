@@ -1,0 +1,13 @@
+{
+  "_disclosure": "AI Assistance Disclosure:\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08\nScope: The chat socket route (the chat plan). Public (no JWT check): a browser can't send Authorization on a WebSocket, and the chat service refuses any connection without a valid Order-signed ticket. websocket: true keeps the upgrade headers working and gives the route a 60-second idle timeout.\nAuthor review: Reviewed by Deanson, 2026-11-09; agreed with Jie Yang (gateway owner) in the chat plan.",
+  "service": "chat",
+  "urlEnv": "CHAT_SERVICE_URL",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/socket.io/",
+      "public": true,
+      "websocket": true
+    }
+  ]
+}

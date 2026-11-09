@@ -6,10 +6,14 @@ Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added StatusBadge, coloured from STATUS_COLORS.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Redesigned the card as a ticket slip: route line from pickup to drop-off, perforated footer with the credit offer and actions.
+Author review: Pending review by Jie Yang.
 */
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { type Order, type OrderStatus, STATUS_COLORS, STATUS_LABEL } from "@/lib/orders";
+import { CoinIcon } from "./icons";
 
 // AI-generated (pending review by Deanson)
 export function StatusBadge({ status }: { status: OrderStatus }) {
@@ -17,7 +21,7 @@ export function StatusBadge({ status }: { status: OrderStatus }) {
   return <span className="status-pill" style={{ background, color: text }}>{STATUS_LABEL[status]}</span>;
 }
 
-// AI-generated (pending review by Deanson)
+// AI-generated (pending review by Deanson; slip redesign pending review by Jie Yang)
 export function OrderCard({ order, href, showStatus = false, actions }: {
   order: Order; href?: string; showStatus?: boolean; actions?: ReactNode;
 }) {
@@ -26,13 +30,18 @@ export function OrderCard({ order, href, showStatus = false, actions }: {
       <h3>{order.orderDescription}</h3>
       {showStatus && <StatusBadge status={order.status} />}
     </div>
-    <p><span>Pickup</span>{order.pickupName}</p>
-    <p><span>Drop-off</span>{order.deliveryName}</p>
-    <p className="order-card-credits">{order.creditOffer} {order.creditOffer === 1 ? "credit" : "credits"}</p>
+    <ol className="order-route" aria-label="Route">
+      <li><span><small>Pickup</small>{order.pickupName}</span></li>
+      <li><span><small>Drop-off</small>{order.deliveryName}</span></li>
+    </ol>
   </>;
   return <article className="order-card">
     {href ? <Link className="order-card-link" href={href}>{body}</Link> : <div>{body}</div>}
-    {actions && <div className="order-card-actions">{actions}</div>}
+    <div className="order-card-footer">
+      <span className="order-card-credits"><CoinIcon size={20} />{order.creditOffer}
+        <small>{order.creditOffer === 1 ? "credit" : "credits"}</small></span>
+      {actions && <div className="order-card-actions">{actions}</div>}
+    </div>
   </article>;
 }
 

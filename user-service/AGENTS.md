@@ -18,6 +18,11 @@ Author review: Reviewed by Zi Yi, 2026-11-05.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: The Login audit note: 003_admin_dashboard.sql replaces the reset for older databases.
 Author review: Pending review by Deanson / Zi Yi (User Service owners).
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+Scope: Added the Logging section. This service now writes a line per request into the Logging
+  Service's store and this file did not mention logging at all, which for a scoped instruction file
+  means the next change here would not know it exists (issue #52).
+Author review: Cole Lin, read and approved.
 -->
 
 # AGENTS.md — User Service
@@ -184,3 +189,45 @@ _Origin: Team (docs/admin-dashboard-plan.md §4.1–§4.2, D5, D6, D9, P7, P8; #
   reactivate. Both, and the table, are in `001_init.sql` (edited in place), and
   `003_admin_dashboard.sql` adds them to a database created before #180 (staging's, or an older
   local one), so no reset is needed.
+
+## Logging (issue #52)
+
+_Origin: AI doc, from the wiring in this service and the decisions recorded in
+`logging-service/AGENTS.md`, which is the canonical description of the line shape_
+
+Every request this service handles writes **one `request_completed` line** through
+`common/log.ts`, in the shape the Logging Service stores. Lines always go to stdout; when
+`USER_KAFKA_BROKERS` is set - which Compose sets - they are also shipped to
+`USER_LOG_TOPIC` (default `logging.lines`), where that service's ingest reads them. The topic
+must exist in `infra/kafka/topics.txt`: services never create topics, so a name that is not in that
+list silently goes nowhere.
+
+With no brokers set - every test run, and any standalone run - **nothing is built at all**: no
+publisher, no flush timer, no Kafka client, and lines go to stdout as before.
+
+The pieces, all in `src/common/`:
+
+| File | What it is |
+|---|---|
+| `log-shipper.ts` | A **copy** of `logging-service/src/client/log-shipper.ts`. Change it there, not here: `logging-service/src/client/copies.spec.ts` fails if a copy's body drifts from the canonical. |
+| `kafka.publisher.ts` | The producer that puts lines on the topic. Also a copy, held in step by the same spec. |
+| `log.ts` | This service's shipper instance (`service: 'user'`) and the shutdown hook, registered in `app.module.ts`. |
+| `request-id.ts` | The correlation id, and `requestIdHeader()` for calls to other services. |
+| `request-log.ts` | The middleware that writes the line. |
+
+Four things worth knowing before changing any of it:
+
+- **Middleware, not a Nest interceptor.** Guards run *before* interceptors, so an interceptor never
+  sees a request the auth guard refused - it would miss every 401 and 403, and 404s for unrouted
+  paths. A `finish`/`close` listener catches all of them.
+- **`path` is the route template, never the caller's URL.** A caller chooses every byte of a URL and
+  redaction matches field *names*, so a token in a path segment would reach the store verbatim under
+  a harmless `path` key. An unmatched path is `/<unrouted>`.
+- **Three fields are conditional.** `status` is absent when the client gave up before any header was
+  sent (Express reports 200 until something sets it, so an abandoned request would otherwise count
+  as a success); such a line carries `aborted: true`. `userId` and `role` are absent when no caller
+  was established, which is every 401. A field whose value is `undefined` is not written, so absent
+  means absent rather than null. The caller comes from `req.user`.
+- **Carry the request id on calls to other services**, with `...requestIdHeader()` in the headers.
+  Without it the far side mints its own and the two halves of one flow are stored under ids that
+  cannot be joined, which defeats the question this logging exists to answer.

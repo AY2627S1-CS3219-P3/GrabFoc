@@ -3,6 +3,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added the Create Order / Edit Order modal (docs/orders/frontend-integration-plan.md §2 and §3).
 Author review: Pending review by Deanson.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Redesign: route preview of the chosen pickup and drop-off, coin icon on the credit field, optional pickup prefilled from a location card, and a "dispatched" success view with an animation after an order is created.
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
@@ -10,13 +15,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { FieldError } from "@/app/components/error-feedback";
+import { CoinIcon, DispatchedArt, RoutePreview } from "@/app/components/icons";
 import { Modal } from "@/app/components/modal";
 import { activeLocations } from "@/lib/locations";
 import { createOrder, editOrder, formatTime, isConflict, isUnauthorized, type Order, OrderError,
   type OrderEdit, orderKeys } from "@/lib/orders";
 import { mapFieldErrors } from "@/lib/service-errors";
 
-type Mode = { kind: "create" } | { kind: "edit"; order: Order };
+type Mode = { kind: "create"; pickupId?: number } | { kind: "edit"; order: Order };
 type Fields = Record<string, string[]>;
 
 const MAX_INT = 2147483647;
@@ -27,11 +33,13 @@ export function OrderFormModal({ mode, onClose, onSaved }: { mode: Mode; onClose
   const queryClient = useQueryClient();
   const order = mode.kind === "edit" ? mode.order : undefined;
   const [description, setDescription] = useState(order?.orderDescription ?? "");
-  const [pickup, setPickup] = useState(order ? String(order.pickupLocationId) : "");
+  const [pickup, setPickup] = useState(order ? String(order.pickupLocationId) : mode.kind === "create" && mode.pickupId ? String(mode.pickupId) : "");
   const [delivery, setDelivery] = useState(order ? String(order.deliveryLocationId) : "");
   const [credits, setCredits] = useState(order ? String(order.creditOffer) : "");
   const [fields, setFields] = useState<Fields>({});
   const [formError, setFormError] = useState("");
+  // Set after a create succeeds, to show the dispatched view before closing.
+  const [created, setCreated] = useState<Order | null>(null);
 
   const locations = useQuery({ queryKey: ["locations", "active"], queryFn: activeLocations, staleTime: 60_000 });
   const options = [...(locations.data ?? [])].sort((a, b) => a.name.localeCompare(b.name))
@@ -49,7 +57,7 @@ export function OrderFormModal({ mode, onClose, onSaved }: { mode: Mode; onClose
     onSuccess: (saved) => {
       queryClient.setQueryData(orderKeys.order(saved.id), saved);
       void queryClient.invalidateQueries({ queryKey: orderKeys.all });
-      onSaved(saved);
+      if (order) onSaved(saved); else setCreated(saved);
     },
     onError: (error) => {
       if (isUnauthorized(error)) { router.replace("/signin"); return; }
@@ -86,8 +94,25 @@ export function OrderFormModal({ mode, onClose, onSaved }: { mode: Mode; onClose
   }
 
   const busy = save.isPending;
+  const labelOf = (id: string, list: typeof options) => list.find((option) => option.value === id)?.label.split(",")[0];
+
+  // AI-generated (pending review by Jie Yang)
+  if (created) return <Modal title="Order placed" onClose={() => onSaved(created)}>
+    <div className="dispatched" role="status">
+      <DispatchedArt />
+      <h3>Your order is on the board</h3>
+      <p>Couriers can see it now. {created.creditOffer} {created.creditOffer === 1 ? "credit is" : "credits are"} held until it&apos;s delivered.</p>
+      <span className="dispatched-route">{created.pickupName} to {created.deliveryName}</span>
+      <div className="order-modal-actions">
+        <button type="button" className="secondary-button" onClick={() => onSaved(created)}>Done</button>
+        <button type="button" className="primary-button" onClick={() => router.push(`/orders/${created.id}`)}>View order</button>
+      </div>
+    </div>
+  </Modal>;
+
   return <Modal title={order ? "Edit Order" : "Create Order"} onClose={onClose}>
     <form className="order-form" onSubmit={submit} noValidate>
+      <RoutePreview from={labelOf(pickup, pickupOptions)} to={labelOf(delivery, deliveryOptions)} />
       <label>Order description
         <textarea value={description} placeholder="Describe your order" aria-invalid={Boolean(fields.orderDescription)}
           aria-describedby="order-description-error" onChange={(event) => setDescription(event.target.value)} />
@@ -112,9 +137,9 @@ export function OrderFormModal({ mode, onClose, onSaved }: { mode: Mode; onClose
         <FieldError id="order-delivery-error" messages={fields.deliveryLocationId} />
       </label>
       <label>Credit offer
-        <input type="number" min={1} step={1} inputMode="numeric" value={credits} readOnly={Boolean(order)}
+        <span className="order-credit-field"><CoinIcon size={20} /><input type="number" min={1} step={1} inputMode="numeric" value={credits} readOnly={Boolean(order)}
           aria-invalid={Boolean(fields.creditOffer)} aria-describedby="order-credits-error"
-          onChange={(event) => setCredits(event.target.value)} />
+          onChange={(event) => setCredits(event.target.value)} /></span>
         <FieldError id="order-credits-error" messages={fields.creditOffer} />
         {order && <span className="order-form-note">The credit offer can&apos;t be changed.</span>}
       </label>
