@@ -149,12 +149,52 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 entry on bringing #191 and #229 up to date and chat's settings on AWS from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Wrote the 2026-11-09 SoCLaaS token cap entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-09 — The SoCLaaS token cap cut a review short
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`
+
+**Scenario:** With #229 on main, the automatic SoCLaaS review of #191 no longer got a 502: the streamed answer
+arrived in 37 s. It failed instead with "The model did not finish normally". The script didn't say why; the likely
+cause is #229's 4,000-token cap (the old request had none), which a model that spends tokens before writing can use
+up. Removing the cap entirely was flagged by an automated security review (untrusted PR content could make the
+model write endlessly and burn the API budget), so I chose bounds: reading stops, closing the connection, once a
+review passes 30,000 characters (the most a comment can hold), and a 16,000-token cap stays only as a budget
+backstop. The error now names the finish reason (only a short word-like value, never arbitrary upstream text).
+Separately, a CI job on #191 failed again on a
+GitHub incident ("Increased timeouts due to surge in anonymous users", 504 on release downloads); re-running it
+passed.
+
+**Prompts (exact, in order):**
+> [Image #31] user service ci fiaeld for 191
+
+(Image #31: #191's failed "Test (user-service)" job, at `npm ci`.)
+
+> also i merged 229 already
+
+My answers to Claude's questions: "Implement this step" (removing the cap) and, after the security review, "Stop at
+30k + 16k cap (Recommended)".
+
+**What it produced:** A 16,000-token backstop instead of the 4,000 cap; reading stops past 30,000 characters; the
+finish reason in the "did not finish normally" error; four new tests and one changed.
+
+**What I changed or rejected:** No cap at all (flagged by the security review); a 30,000-character stop without a
+token backstop.
+
+**Verification:** Claude watched each new test fail first (the backstop sent, reading stopped before a stalled
+stream times out, `finish_reason: length` named, `none` when the stream ends without one; another pins that an odd
+reason isn't echoed), then ran the suite: 14/14 pass. The live check is the next automatic review after this merges.
+My own check: pending.
 
 ### 2026-11-09 — Bringing #191 and #229 up to date with main, and chat's settings on AWS
 
