@@ -20,6 +20,10 @@
 #   secret; the broker address Supplier was missing; and a memory budget for the one server, which
 #   is what adding two containers to it spends (issue #52).
 # Author review: pending - Jian Bing owns the deployment.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Review: budget the rollout peak rather than the steady state, in both environments, and
+#   expect the app services to stop before being replaced.
+# Author review: pending - Jian Bing owns the deployment.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -129,17 +133,18 @@ run "staging" {
   }
   assert {
     condition = alltrue([
-      for name, folder in { "user-db" = "/data/user-db", "supplier-db" = "/data/supplier-db", "credit-db" = "/data/credit-db", "order-db" = "/data/order-db", "notification-db" = "/data/notification-db", "user-redis" = "/data/redis", "kafka" = "/data/kafka" } :
+      for name, folder in { "user-db" = "/data/user-db", "supplier-db" = "/data/supplier-db", "credit-db" = "/data/credit-db", "order-db" = "/data/order-db", "notification-db" = "/data/notification-db", "logging-db" = "/data/logging-db", "user-redis" = "/data/redis", "kafka" = "/data/kafka" } :
       one(aws_ecs_task_definition.service[name].volume).host_path == folder
     ])
     error_message = "Each data store mounts its own folder on the /data volume."
   }
   assert {
     condition = alltrue([
-      for name in ["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "api-gateway", "mailpit"] :
+      for name in ["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "logging-db", "user-redis", "kafka", "api-gateway", "mailpit",
+      "user-service", "supplier-service", "credit-service", "order-service", "notification-service", "logging-service"] :
       local.ecs_services[name].deployment_minimum_healthy_percent == 0 && local.ecs_services[name].deployment_maximum_percent == 100
     ])
-    error_message = "Data stores, the gateway and Mailpit are stopped before being replaced: two copies must never share a folder or a host port."
+    error_message = "Everything but the frontend stops before being replaced: two copies must never share a folder or a host port, and six app tasks doubling at once does not fit the server."
   }
   # First live apply (2026-10-26): a Service Connect client only learns names that existed when its
   # deployment was created, so services are created in layers: data → apps → edge → web.
@@ -333,16 +338,20 @@ run "staging" {
     ])
     error_message = "Every service that ships log lines has the broker address; one without it is invisible in the store."
   }
-  # AI-generated (Claude Code): the environment is one t3.large (8192 MiB) and these reservations
-  # are what ECS places against it, so a service added without room for it fails to place rather
-  # than failing a test. 7000 leaves the ECS agent, the Service Connect proxies and the host itself
-  # what they need. Counting each task's own init containers, which are reserved while they run.
+  # AI-generated (Claude Code): the environment is one t3.large, and ECS registers rather less than
+  # its 8192 MiB once the kernel and the agent have taken their share. local.memory_at_peak is what
+  # is placed against it while a layer is being replaced, proxies included - the steady state is
+  # not the number that matters, because that is not when a deploy runs out of room. 7000 is the
+  # budget. A service added without space for it fails to place on the server; this fails a test.
   assert {
-    condition = sum([
-      for name, definitions in aws_ecs_task_definition.service :
-      sum([for c in jsondecode(definitions.container_definitions) : c.memoryReservation])
-    ]) <= 7000
-    error_message = "The reserved memory of all services together must fit one t3.large; add capacity before adding another service."
+    condition     = local.memory_at_peak <= 7000
+    error_message = "The rollout peak must fit one t3.large; add capacity before adding another service."
+  }
+  # The sum itself, so a change to the containers shows up here as a number rather than only as a
+  # pass. Steady state and peak are both pinned: the gap between them is the layer being replaced.
+  assert {
+    condition     = local.memory_steady == 4816 && local.memory_at_peak == 6352
+    error_message = "Staging reserves 4816 MiB running and 6352 MiB at the rollout peak; this changed."
   }
 
   # Final review, Important 5: a container that hangs on start-up is restarted, not left "running".
@@ -386,6 +395,15 @@ run "production" {
   assert {
     condition     = local.notification_env["NOTIFICATION_SMTP_HOST"] == "smtp.gmail.com" && local.notification_env["NOTIFICATION_SMTP_PORT"] == "587"
     error_message = "Production Notification sends straight to Gmail."
+  }
+  # AI-generated (Claude Code): production is the same one t3.large, with no Mailpit (review).
+  assert {
+    condition     = local.memory_at_peak <= 7000
+    error_message = "The rollout peak must fit one t3.large; add capacity before adding another service."
+  }
+  assert {
+    condition     = local.memory_steady == 4768 && local.memory_at_peak == 6240
+    error_message = "Production reserves 4768 MiB running and 6240 MiB at the rollout peak; this changed."
   }
 }
 

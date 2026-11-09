@@ -163,6 +163,13 @@ goes to the API, everything else to the website, and only with CloudFront's `X-O
   ECS task (`foc-staging-checks`). They create throw-away users, and never use the admin account or
   reset a password. Their output is in the workflow log and in `/foc/staging/checks`. A pass writes
   `/foc-deploy/staging/passed-tag`.
+- **A deploy is not seamless, by design.** Every service except the frontend stops before its
+  replacement starts, so each is unreachable for a few seconds during its own step and the gateway
+  answers 503. Rolling them instead would put a second copy of all six app services on the server
+  at once - 8,480 MiB of reservations against a `t3.large`, which does not fit - and it would buy
+  nothing, because `api-gateway` stops too, so every deploy already has a gap at the one public
+  entry point. If that gap ever matters, roll the app layer one service at a time in
+  `deploy-images.sh`: the peak stays low and no service doubles.
 - **Rollback past a service's first deploy:** the preflight refuses a tag whose images are not all
   in ECR, and a service added after that tag has none. Run `infra/scripts/push-images.sh <tag>`
   once first: it skips every image already there and pushes only the missing one, built from the

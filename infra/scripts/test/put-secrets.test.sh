@@ -10,6 +10,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: CHAT_TICKET_SECRET is written (chat, #230).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: LOGGING_POSTGRES_PASSWORD, and LOGGING_DATABASE_URL built from it - 23 parameters
+#        (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 #
 # Run: infra/scripts/test/put-secrets.test.sh   (no AWS access needed)
 # AI-generated (Claude Code).

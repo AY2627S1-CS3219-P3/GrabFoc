@@ -7,6 +7,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Deploy part 3 (#143): the tag comes from Parameter Store unless given; checks and Notification images.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: The foc/logging-service repository among the images this environment reads (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 # The production environment: one VPC, one ECS-on-EC2 server, every container as an ECS service, and
 # CloudFront in front (spec §3). Module calls are added by later tasks.
 # AI-generated (Claude Code).

@@ -7,6 +7,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: the Notification and checks images (deploy part 3).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Eight images, and that the Logging Service builds from the repository root (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 #
 # Run: infra/scripts/test/push-images.test.sh   (no AWS or Docker access needed)
 # AI-generated (Claude Code).

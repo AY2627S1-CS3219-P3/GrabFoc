@@ -24,6 +24,10 @@
 # Scope: The Logging Service and its database, LOGGING_SERVICE_URL for the gateway, and the broker
 #        address Supplier was missing, so its lines reach the store too (issue #52).
 # Author review: pending - Jian Bing owns the deployment.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Review: the app services stop before being replaced, and a memory model for the rollout
+#        peak rather than the steady state - six app tasks doubling at once did not fit the server.
+# Author review: pending - Jian Bing owns the deployment.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
@@ -347,7 +351,25 @@ locals {
     "logging-service" = ["kafka-init"]
   }
 
-  stops_before_replacing = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "logging-db", "user-redis", "kafka", "api-gateway", "mailpit"])
+  # Everything except the frontend. The data stores and the gateway are here because two copies
+  # must never share a folder or a host port; the app services are here for memory (review).
+  #
+  # deploy-images.sh updates all of the app layer and then waits, so rolling them would put six
+  # second copies on the server at once - 2,304 MiB of reservations on top of everything already
+  # running, which does not fit beside the injected Service Connect proxies (local.memory_at_peak
+  # below). And it buys nothing: api-gateway stops before being replaced, so every deploy already
+  # has a gap at the one public entry point, and a service rolled smoothly behind a gateway that is
+  # about to stop is still unreachable. The cost is that each app service is down for a few seconds
+  # during its own replacement, which the gateway answers as a 503.
+  #
+  # The alternative, if that gap ever matters, is to roll the app layer one service at a time in
+  # deploy-images.sh: then only one duplicate exists at a time and the peak stays low too.
+  stops_before_replacing = toset([
+    "user-db", "supplier-db", "credit-db", "order-db", "notification-db", "logging-db",
+    "user-redis", "kafka", "mailpit", "api-gateway",
+    "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
+    "logging-service",
+  ])
 }
 
 # --- Shared plumbing -------------------------------------------------------------------------------
@@ -485,6 +507,37 @@ locals {
     web  = toset(["frontend"])
   }
   ecs_services = merge(aws_ecs_service.data, aws_ecs_service.app, aws_ecs_service.edge, aws_ecs_service.web)
+
+  # AI-generated (Claude Code).
+  # What ECS places against this environment's one server, in MiB (review). Reservations are what
+  # placement counts, and a task's one-shot init containers are reserved while they run, so they
+  # count as part of that task.
+  #
+  # The steady state is not the number to check. deploy-images.sh rolls one layer and waits for it
+  # before the next, so at most one layer is ever replacing - but inside a layer every service is
+  # updated at once, and one that does not stop before being replaced has a second copy running
+  # beside the first. So the peak is everything running, plus the duplicates of whichever layer
+  # doubles the most, plus a Service Connect proxy for every task including the duplicates. AWS
+  # asks for at least 64 MiB per proxy, and the task definitions do not reserve it, so it is added
+  # here rather than left out of the sum.
+  task_memory = {
+    for name, c in local.containers : name =>
+    c.memory + sum(concat([0], [for i in lookup(local.init_containers, name, []) : local.oneoffs[i].memory]))
+  }
+  proxy_memory  = 64
+  memory_steady = sum([for name in keys(local.containers) : local.task_memory[name]])
+  rolling = {
+    for name, names in local.layer : name => [
+      for service in names : service
+      if contains(keys(local.containers), service) && !contains(local.stops_before_replacing, service)
+    ]
+  }
+  memory_at_peak = max([
+    for name, services in local.rolling :
+    local.memory_steady
+    + sum(concat([0], [for service in services : local.task_memory[service]]))
+    + local.proxy_memory * (length(local.containers) + length(services))
+  ]...)
 }
 
 resource "aws_ecs_service" "data" {

@@ -8,6 +8,9 @@
 # Scope: Deploy part 3 (#143): the checks and notification-service repos, the plan role's parameter
 #        exceptions, and the deploy roles' tag parameters and log reads.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Ten ECR repositories, foc/logging-service among them (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {

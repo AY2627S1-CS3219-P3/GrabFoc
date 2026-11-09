@@ -7,6 +7,11 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 # Scope: Tests that every foc/ image is checked on the tag first, and a missing one stops the deploy.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: The Logging Service in the app layer and the image list; the fake aws takes a glob, and
+#        two checks that every repository missing the tag is named with the way out (issue #52,
+#        review). Verified against the committed script: both fail, nothing else changes.
+# Author review: pending - Jian Bing owns the deployment.
 #
 # Run: infra/scripts/test/deploy-images.test.sh   (no AWS access needed; needs jq)
 # AI-generated (Claude Code).

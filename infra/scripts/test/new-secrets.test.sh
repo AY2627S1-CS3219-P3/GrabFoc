@@ -10,6 +10,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: CHAT_TICKET_SECRET is generated, at least 32 characters, and added by --add-missing (chat, #230).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: LOGGING_POSTGRES_PASSWORD is generated and added by --add-missing (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 #
 # Run: infra/scripts/test/new-secrets.test.sh
 # AI-generated (Claude Code).
