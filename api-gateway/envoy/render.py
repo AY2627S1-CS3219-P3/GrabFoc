@@ -162,6 +162,7 @@ def load_routes(env):
         for other in values[index + 1:]:
             if value == other or value.startswith(other + "/") or other.startswith(value + "/"):
                 raise ValueError("Gateway route prefixes must not overlap")
+    literal = set()
     for definition in services:
         for entry in definition["routes"]:
             if (not isinstance(entry, dict) or
@@ -174,9 +175,25 @@ def load_routes(env):
             path = entry.get("path", entry.get("regex"))
             if not isinstance(path, str) or not path:
                 raise ValueError("Route path must be a nonempty string")
-            for key in re.findall(r"\{([a-z][a-z0-9_]*)\}", path):
+            keys = re.findall(r"\{([a-z][a-z0-9_]*)\}", path)
+            for key in keys:
                 if key not in prefixes:
                     raise ValueError(f"Unknown route prefix: {key}")
+            # A path with no placeholder is fixed, whatever the environment says. Two routes that
+            # come out identical would both be rendered, and Envoy answers with whichever matched
+            # first - which is filename order, so the earlier file silently wins.
+            if not keys:
+                if (entry["method"], path) in literal:
+                    raise ValueError("Two gateway routes render the same method and path")
+                literal.add((entry["method"], path))
+    # A configured prefix must not reach a fixed path either. The loop above compares prefixes with
+    # one another, so GATEWAY_LOCATIONS_PREFIX=/logs was accepted: Supplier then rendered GET /logs,
+    # 20-supplier sorts before 50-logging, and authenticated log queries reached Supplier instead -
+    # a 200 from the wrong service, which is worse than an error (review).
+    for value in prefixes.values():
+        for _, path in literal:
+            if value == path or path.startswith(value + "/") or value.startswith(path + "/"):
+                raise ValueError(f"A gateway route prefix must not shadow the fixed route {path}")
     if "user" not in names:
         raise ValueError("User service routes are required for JWT key discovery")
     return services, prefixes

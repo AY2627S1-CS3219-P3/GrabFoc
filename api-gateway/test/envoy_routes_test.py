@@ -43,6 +43,11 @@ Scope: Review: the log route takes a fixed path, so the prefix-override case is 
        file's urlEnv is in the deployed task definition, which only the Terraform tests checked and
        only when infra changed.
 Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: a configured prefix must not shadow a fixed route, and no two routes may render the
+       same method and path. GATEWAY_LOCATIONS_PREFIX=/logs was accepted and sent log queries to
+       the Supplier Service, which answers 200.
+Author review: pending - Jie Yang owns the gateway's route files.
 """
 # AI-generated; review pending.
 import importlib.util
@@ -373,6 +378,36 @@ class RouteFilesTest(unittest.TestCase):
         self.assertIn("LOGGING_SERVICE_URL", example)
         config = self.renderer.configuration(example)
         self.assertTrue(self.routes(config))
+
+    # AI-generated (Claude Code, 2026-11-09; review)
+    def test_a_prefix_cannot_shadow_a_fixed_route(self):
+        """A configured prefix must not be able to take over a path another file fixes.
+
+        The prefix overlap check compared prefixes with one another only, so
+        GATEWAY_LOCATIONS_PREFIX=/logs was accepted: Supplier then rendered `GET /logs`,
+        20-supplier.routes.json sorts before 50-logging.routes.json, and an authenticated log query
+        reached the Supplier Service, which answers 200. A wrong service answering successfully is
+        worse than a startup error (review).
+        """
+        # Only prefixes the shape check already allows: a dot, for instance, is refused earlier.
+        for prefix, shadowed in (("/logs", "/logs"), ("/users/me", "/users/me"),
+                                 ("/location-types", "/location-types"), ("/admin", "/admin/users")):
+            with self.subTest(prefix=prefix):
+                with self.assertRaises(ValueError) as caught:
+                    self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": prefix})
+                self.assertIn("shadow", str(caught.exception))
+                self.assertIn(shadowed, str(caught.exception))
+        # And a prefix that merely looks similar is still fine: /locations against /location-types.
+        self.assertTrue(self.routes(self.renderer.configuration(self.env)))
+
+    # AI-generated (Claude Code, 2026-11-09; review)
+    def test_two_route_files_cannot_render_the_same_path(self):
+        """Envoy answers with whichever route matched first, which is filename order."""
+        self.write_service({"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",
+                            "routes": [{"method": "GET", "path": "/logs"}]})
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "EXTRA_SERVICE_URL": "http://extra:9000"})
+        self.assertIn("same method and path", str(caught.exception))
 
     def test_invalid_definitions_fail_instead_of_disabling_authentication(self):
         valid = {"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",

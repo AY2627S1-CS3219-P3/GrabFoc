@@ -24,6 +24,11 @@ Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 Scope: Review: the first admin is only created on an empty users table, so a reused volume with no
   admin has no way back and blocks GET /logs.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: this list assumed a working .env, so say what a fresh one still needs; and the
+  request id is reused from POST /orders, which is what the ten-line trace below came from - the
+  instruction said every call, which would have made it twelve.
+Author review: Cole Lin, read and approved.
 -->
 
 # Demo runbook
@@ -37,6 +42,13 @@ are what it actually did.
 ## 0. Before the day
 
 Four things, none of which you want to discover live.
+
+**This list assumes a root `.env` that already works.** A *fresh* copy of `.env.example` ships
+every value blank, and `user-service` refuses to start without its own keys:
+`USER_AES_KEY`, `USER_EMAIL_HMAC_KEY` and `USER_OTP_HMAC_KEY` (32 bytes base64 each),
+`USER_JWT_PRIVATE_KEY` (a PKCS#8 PEM, base64 on one line) and `USER_JWT_KID` (any stable string).
+`.env.example` carries the `openssl` line for each. Set those first, or nothing below happens — the
+four items here are the ones that catch you out on a `.env` you believed was finished.
 
 1. **Four secrets in the root `.env`**, each at least 32 characters
    (`openssl rand -hex 32`). The stack will not start without them, and Compose copies each one
@@ -177,7 +189,11 @@ rather than mid-demo.
 ## 4. The flow
 
 Everything below goes through the gateway on `:3003` with `Authorization: Bearer <token>`. Send
-the **same `x-request-id`** on every call — that is what makes step 5 work.
+the **same `x-request-id`** from step 3 onward — that is what makes step 5 work. Steps 1 and 2 are
+left out of it deliberately: the ten lines in step 5 are a real run that started the id at
+`POST /orders`. Send it on the two reads as well and you get **twelve**, with Supplier's
+`GET /locations` and Credit's `GET /credits/:userId` at the top; that is correct too, just not the
+table below.
 
 | # | Who | Call | Result |
 |---|---|---|---|
