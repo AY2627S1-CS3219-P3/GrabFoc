@@ -13,6 +13,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 # Scope: Passed CHAT_SERVICE_URL through for the chat socket route (the chat plan).
 # Author review: Reviewed by Deanson, 2026-11-09.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Passed LOGGING_SERVICE_URL through for the log store's GET /logs route (issue #52).
+# Author review: pending - Jie Yang owns the gateway's route files.
 
 name: foc
 

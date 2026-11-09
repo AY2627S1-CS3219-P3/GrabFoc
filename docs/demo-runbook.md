@@ -20,6 +20,10 @@ Scope: Review: ORDER_SERVICE_KEY is a secret you have to set, not a note; the sm
   fresh request id, because the store keeps rows and a fixed id passes forever; and the retry
   window is about 13 minutes, so a missing email is not a dead letter yet.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: the first admin is only created on an empty users table, so a reused volume with no
+  admin has no way back and blocks GET /logs.
+Author review: Cole Lin, read and approved.
 -->
 
 # Demo runbook
@@ -56,6 +60,19 @@ Four things, none of which you want to discover live.
 
 2. **`USER_BOOTSTRAP_ADMIN_EMAIL`** set to an address you can "receive" in mailpit. The first
    admin is created at startup **with no password**; it is claimed in step 3.
+
+   **Only on an empty `users` table.** The User Service inserts that admin *if there are no users
+   at all*, so on a `user-db` volume from an earlier run it logs "Users already exist; skipping the
+   admin bootstrap" and changing the variable does nothing. Two consequences worth knowing before
+   the day:
+
+   - On a reused volume, claim the admin that is already there - not whatever address you have just
+     put in `.env`.
+   - If there are rows but no ACTIVE admin, the service says so loudly at startup ("No ACTIVE admin
+     exists") and there is no reset flow out of it: recovery is a manual database change, described
+     under "First admin" in `user-service/AGENTS.md`. `GET /logs` is ADMIN-only, so that blocks
+     section 5 entirely. The safe move on the day is a fresh volume (`docker compose down -v`,
+     which also wipes the orders and the log lines).
 
 3. **A `logging-db` volume whose password matches `.env`.** PostgreSQL fixes the password when the
    data directory is first created, so a volume older than your current `.env` refuses every
