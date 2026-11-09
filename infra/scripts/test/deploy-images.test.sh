@@ -57,8 +57,10 @@ JSON
     family=$(jq -r .family "$file"); cp "$file" "$AWS_CALLS.$family.json"
     echo "arn:aws:ecs:ap-southeast-1:1:task-definition/$family:4" ;;
   ecr\ describe-images*)
-    [ "$(arg --repository-name "$@")" = "foc/${FAKE_NO_IMAGE:-none}" ] &&
-      { echo "An error occurred (ImageNotFoundException) when calling the DescribeImages operation" >&2; exit 254; }
+    # A glob, so FAKE_NO_IMAGE='*' makes every repository miss the tag (review).
+    case "$(arg --repository-name "$@")" in
+      foc/${FAKE_NO_IMAGE:-none}) echo "An error occurred (ImageNotFoundException) when calling the DescribeImages operation" >&2; exit 254 ;;
+    esac
     echo '{"imageDetails":[{}]}' ;;
   ecs\ update-service*) touch "$AWS_CALLS.updated.$(arg --service "$@")"; echo '{}' ;;
   ecs\ wait*) case " $* " in *" ${FAKE_WAIT_FAIL:-none} "*) exit 255 ;; esac ;;
@@ -112,6 +114,15 @@ reset
 out=$(FAKE_NO_IMAGE=frontend "$SCRIPT" production new1234 2>&1); code=$?
 check "a tag missing from one repository stops the deploy before any change" '[ $code -ne 0 ] && ! grep -q -E "register-task-definition|update-service|put-parameter" "$AWS_CALLS"'
 check "the repository without the image is named" 'grep -q "foc/frontend" <<<"$out"'
+# AI-generated (Claude Code): every missing repository at once, and the way out of a rollback to a
+# tag older than a service, which is the same failure (review).
+reset
+out=$(FAKE_NO_IMAGE='*' "$SCRIPT" production old0000 2>&1); code=$?
+check "every repository missing the tag is named at once" '[ $code -ne 0 ] &&
+  grep -q "foc/logging-service" <<<"$out" && grep -q "foc/user-service" <<<"$out" &&
+  grep -q "foc/frontend" <<<"$out"'
+check "the fix is a command, and the rollback case is called out" 'grep -q "push-images.sh old0000" <<<"$out" &&
+  grep -qi "older than a service" <<<"$out"'
 
 reset
 out=$(FAKE_WAIT_FAIL=api-gateway "$SCRIPT" staging new1234 2>&1); code=$?

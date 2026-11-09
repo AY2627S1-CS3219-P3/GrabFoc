@@ -163,6 +163,10 @@ goes to the API, everything else to the website, and only with CloudFront's `X-O
   ECS task (`foc-staging-checks`). They create throw-away users, and never use the admin account or
   reset a password. Their output is in the workflow log and in `/foc/staging/checks`. A pass writes
   `/foc-deploy/staging/passed-tag`.
+- **Rollback past a service's first deploy:** the preflight refuses a tag whose images are not all
+  in ECR, and a service added after that tag has none. Run `infra/scripts/push-images.sh <tag>`
+  once first: it skips every image already there and pushes only the missing one, built from the
+  current checkout - which for a service that did not exist at that tag is the only build there is.
 - **Rollback:** start `deploy-production.yml` with an older `tag`. To roll back staging, run
   `infra/scripts/deploy-images.sh staging <tag>` with your own login.
 - **Staging email:** Mailpit keeps every message and forwards only the addresses in
