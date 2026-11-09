@@ -33,7 +33,7 @@ health_interval="${HEALTH_INTERVAL:-15}"
 . "$(dirname "$0")/lib/task-definition.sh"
 
 layers=(
-  "user-service supplier-service credit-service order-service notification-service"
+  "user-service supplier-service credit-service order-service notification-service logging-service"
   "api-gateway"
   "frontend"
 )

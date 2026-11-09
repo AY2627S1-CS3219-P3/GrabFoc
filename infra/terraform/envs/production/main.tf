@@ -30,7 +30,7 @@ data "aws_ecr_repository" "image" {
   # AI-generated (Claude Code).
   for_each = toset([
     "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
-    "api-gateway", "frontend", "kafka-init", "checks",
+    "logging-service", "api-gateway", "frontend", "kafka-init", "checks",
   ])
   name = "foc/${each.key}"
 }

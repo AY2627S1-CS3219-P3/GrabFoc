@@ -40,7 +40,9 @@ check "rerun succeeds" '[ $code -eq 0 ]'
 check "existing tags are skipped" '! grep -qE "(build|push).*foc/(user|order)-service:" "$DOCKER_CALLS"'
 check "skips are reported" 'grep -q "foc/user-service:abc1234 already in ECR, skipped" <<<"$out"'
 # AI-generated (Claude Code).
-check "missing tags are built and pushed" '[ "$(grep -c "^push " "$DOCKER_CALLS")" = 7 ]'
+check "missing tags are built and pushed" '[ "$(grep -c "^push " "$DOCKER_CALLS")" = 8 ]'
+# AI-generated (Claude Code): its Dockerfile copies logging-service/... paths (#52).
+check "the log store builds from the repository root" 'grep -qE "^build .*foc/logging-service:abc1234 .*logging-service/Dockerfile [^ ]+$" "$DOCKER_CALLS"'
 check "Notification builds from its own folder" 'grep -qE "^build .*foc/notification-service:abc1234 .*notification-service/Dockerfile .*/notification-service$" "$DOCKER_CALLS"'
 check "checks build from the repository root" 'grep -qE "^build .*foc/checks:abc1234 .*infra/checks/Dockerfile " "$DOCKER_CALLS"'
 

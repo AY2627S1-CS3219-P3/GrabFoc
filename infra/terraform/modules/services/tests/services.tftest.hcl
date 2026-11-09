@@ -15,6 +15,11 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: Checks that Order gets its chat ticket secret and that every gateway route file's URL is set (chat, #230).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: The Logging Service and its database in the layers and the image list; its settings and
+#   secret; the broker address Supplier was missing; and a memory budget for the one server, which
+#   is what adding two containers to it spends (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -51,6 +56,7 @@ variables {
     "credit-service"       = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/credit-service"
     "order-service"        = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/order-service"
     "notification-service" = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/notification-service"
+    "logging-service"      = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/logging-service"
     "api-gateway"          = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/api-gateway"
     "frontend"             = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/frontend"
     "kafka-init"           = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/kafka-init"
@@ -139,8 +145,8 @@ run "staging" {
   # deployment was created, so services are created in layers: data → apps → edge → web.
   assert {
     condition = (
-      toset(keys(aws_ecs_service.data)) == toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "mailpit"]) &&
-      toset(keys(aws_ecs_service.app)) == toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service"]) &&
+      toset(keys(aws_ecs_service.data)) == toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "logging-db", "user-redis", "kafka", "mailpit"]) &&
+      toset(keys(aws_ecs_service.app)) == toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service", "logging-service"]) &&
       toset(keys(aws_ecs_service.edge)) == toset(["api-gateway"]) &&
       toset(keys(aws_ecs_service.web)) == toset(["frontend"])
     )
@@ -282,6 +288,61 @@ run "staging" {
       for c in jsondecode(aws_ecs_task_definition.service["notification-service"].container_definitions) : c.name if !c.essential
     ]) == toset(["kafka-init"])
     error_message = "Notification's topics are created before it starts."
+  }
+
+  # AI-generated (Claude Code): the Logging Service (issue #52).
+  # Its topics are not auto-created either (KAFKA_AUTO_CREATE_TOPICS_ENABLE is false), so it waits
+  # for kafka-init like the other two consumers.
+  assert {
+    condition = toset([
+      for c in jsondecode(aws_ecs_task_definition.service["logging-service"].container_definitions) : c.name if !c.essential
+    ]) == toset(["kafka-init"])
+    error_message = "The log store's topics are created before it starts."
+  }
+  assert {
+    condition = (
+      local.logging_env["LOGGING_KAFKA_BROKERS"] == "kafka:9092" &&
+      local.logging_env["LOGGING_KAFKA_TOPIC"] == "logging.lines" &&
+      local.logging_env["LOGGING_KAFKA_DLT_TOPIC"] == "logging.lines.dlt" &&
+      local.logging_env["LOGGING_JWKS_URL"] == "http://user-service:3001/.well-known/jwks.json" &&
+      strcontains(jsondecode(aws_ecs_task_definition.service["logging-service"].container_definitions)[0].image, "foc/logging-service:abc1234")
+    )
+    error_message = "The log store consumes the shared broker's topic and verifies tokens against the User Service."
+  }
+  # Its whole connection string is a secret, unlike Credit's and Notification's: this service reads
+  # one URL and has nowhere to put a separate password.
+  assert {
+    condition = {
+      for x in jsondecode(aws_ecs_task_definition.service["logging-service"].container_definitions)[0].secrets : x.name => element(split("/", x.valueFrom), 3)
+      } == {
+      LOGGING_DATABASE_URL = "LOGGING_DATABASE_URL"
+    }
+    error_message = "The log store gets its whole connection string from SSM, password included."
+  }
+  # Every service whose log lines should reach the store needs a broker address; without one it
+  # writes to its own stdout only and leaves a gap in a deployed request's trace.
+  assert {
+    condition = alltrue([
+      for name, variable in {
+        "user-service"         = "USER_KAFKA_BROKERS"
+        "supplier-service"     = "SUPPLIER_KAFKA_BROKERS"
+        "credit-service"       = "CREDIT_KAFKA_BROKERS"
+        "order-service"        = "ORDER_KAFKA_BROKERS"
+        "notification-service" = "NOTIFICATION_KAFKA_BROKERS"
+      } : local.containers[name].env[variable] == "kafka:9092"
+    ])
+    error_message = "Every service that ships log lines has the broker address; one without it is invisible in the store."
+  }
+  # AI-generated (Claude Code): the environment is one t3.large (8192 MiB) and these reservations
+  # are what ECS places against it, so a service added without room for it fails to place rather
+  # than failing a test. 7000 leaves the ECS agent, the Service Connect proxies and the host itself
+  # what they need. Counting each task's own init containers, which are reserved while they run.
+  assert {
+    condition = sum([
+      for name, definitions in aws_ecs_task_definition.service :
+      sum([for c in jsondecode(definitions.container_definitions) : c.memoryReservation])
+    ]) <= 7000
+    error_message = "The reserved memory of all services together must fit one t3.large; add capacity before adding another service."
   }
 
   # Final review, Important 5: a container that hangs on start-up is restarted, not left "running".

@@ -45,6 +45,7 @@ it. It refuses to run if any name below is missing, and prints names only, never
 | `CREDIT_POSTGRES_PASSWORD` | Credit Service database password |
 | `ORDER_DB_PASSWORD` | Order Service database password |
 | `NOTIFICATION_POSTGRES_PASSWORD` | Notification Service database password |
+| `LOGGING_POSTGRES_PASSWORD` | Centralized Logging database password |
 | `USER_AES_KEY`, `USER_EMAIL_HMAC_KEY`, `USER_OTP_HMAC_KEY` | User Service encryption and HMAC keys |
 | `USER_JWT_PRIVATE_KEY`, `USER_JWT_KID` | User Service token signing key and its key id |
 | `USER_SMTP_USER`, `USER_SMTP_PASS` | Gmail address and its app password (User and Notification send with these) |
@@ -53,7 +54,8 @@ it. It refuses to run if any name below is missing, and prints names only, never
 | `CREDIT_SERVICE_KEY`, `ORDER_SERVICE_KEY`, `USER_INTERNAL_SERVICE_KEY` | Service-to-service keys |
 | `CHAT_TICKET_SECRET` | Signs chat tickets; Order (as `ORDER_CHAT_TICKET_SECRET`) and the chat service share it (at least 32 characters) |
 
-Built by the script, not written by you: `USER_DATABASE_URL`, `SUPPLIER_DATABASE_URL` (from the
-passwords, as the compose files build them) and `MAILPIT_SMTP_AUTH` (staging Mailpit's login).
+Built by the script, not written by you: `USER_DATABASE_URL`, `SUPPLIER_DATABASE_URL`,
+`LOGGING_DATABASE_URL` (from the passwords, as the compose files build them) and
+`MAILPIT_SMTP_AUTH` (staging Mailpit's login).
 
 Use different values for staging and production. Generate keys the same way as for your local `.env`.

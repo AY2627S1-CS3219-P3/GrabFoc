@@ -17,7 +17,18 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
-### 2026-11-09 — Fourteen files changed without saying so (issue #52)
+### 2026-11-09 — Deploying the log store, and the number I had been guessing at (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** generate
+
+- Prompt: "ok work on the PR to deploy it. Don't bother updating, just the overview. Don't stop until its done."
+- The store runs only on a laptop, so the deployed system has the services publishing log lines and nothing reading them. This puts it on AWS: an ECR repository, its own database, the service itself, `kafka-init` before it (topics are not auto-created), the connection string as an SSM secret, and the two scripts that push images and load secrets.
+- **What I found while doing it, and had not known:** the Supplier Service has no `SUPPLIER_KAFKA_BROKERS` in its deployed environment. Every other service has one. So on AWS, Supplier has been writing to its own stdout only - a deployed order's trace would have had a hole exactly where the pickup location was checked, while the same trace on a laptop shows the row. Added, and there is now an assertion over all five publishers so the next service added cannot be quietly invisible.
+- **The number I had been guessing at.** This adds two containers to a single `t3.large`, and nothing in the stack said how much of it was spoken for. I wrote a memory-budget assertion, then measured it properly: ≤ 4816 MiB passes and ≤ 4815 fails, so the reservations are **exactly 4816 of 8192 MiB**, init containers included. The limit is set at 7000, which leaves the agent and the host their share, and a seventh service now fails a test instead of failing to place on the server.
+- My decisions: the whole connection string is the secret, not a password beside a plain URL - this service reads one URL and has nowhere to put a separate password (Credit and Notification take `PGPASSWORD`); retention stays at the service's own 30 days, written out rather than implied; and the database joins the stop-before-replace set, because two PostgreSQL containers must never share one `/data` folder.
+- Verified: `terraform fmt -check` clean, every stack valid and **13 tests pass** across five stacks; the four deployment-script suites pass with **0 failures** each, including the new checks. Both are run in containers, because terraform and `jq` are not on this machine - the local runs were failing on that and not on the code, which I checked against `main` before believing either.
+- Untested, and said plainly: nothing here has been applied to AWS. It is reviewed Terraform and passing tests, not a deploy I have watched.
+
+### 2026-11-09 — A route for the log store, and what adding one costs the test harness (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
 - Prompt: no new one - started by the automated reviewer, under the standing instruction to keep fixing findings until a pull request has none left.

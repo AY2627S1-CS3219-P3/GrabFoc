@@ -20,6 +20,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: ORDER_CHAT_TICKET_SECRET for Order and CHAT_SERVICE_URL for the gateway, which chat (#230) requires.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: The Logging Service and its database, LOGGING_SERVICE_URL for the gateway, and the broker
+#        address Supplier was missing, so its lines reach the store too (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
@@ -44,6 +48,8 @@ locals {
       "credit-db"       = { db = "credit", password = "CREDIT_POSTGRES_PASSWORD" }
       "order-db"        = { db = "orders", password = "ORDER_DB_PASSWORD" }
       "notification-db" = { db = "notification", password = "NOTIFICATION_POSTGRES_PASSWORD" }
+      # AI-generated (Claude Code): the log store (issue #52).
+      "logging-db" = { db = "logging", password = "LOGGING_POSTGRES_PASSWORD" }
       } : name => {
       image    = "postgres:17-alpine"
       port     = 5432
@@ -134,6 +140,10 @@ locals {
       env = {
         SUPPLIER_PORT     = "3002"
         SUPPLIER_JWKS_URL = "http://user-service:3001/.well-known/jwks.json"
+        # AI-generated (Claude Code): without it this service's log lines only ever reach its own
+        # stdout, so a deployed request that touched Supplier shows a gap in the store where the
+        # other four services have a row (issue #52).
+        SUPPLIER_KAFKA_BROKERS = "kafka:9092"
       }
       secrets = { SUPPLIER_DATABASE_URL = "SUPPLIER_DATABASE_URL" }
     }
@@ -187,6 +197,20 @@ locals {
         NOTIFICATION_USER_SERVICE_KEY = "USER_INTERNAL_SERVICE_KEY"
       }
     }
+    # AI-generated (Claude Code): the log store (issue #52). Port 3006 inside its own container, the
+    # same as Notification's: in bridge mode nothing binds it on the server, and Service Connect
+    # addresses a service by name, so the two never collide. (The repo's compose files publish 3006
+    # and 3007 on a laptop only because a host port can be bound once.)
+    "logging-service" = {
+      image  = local.image["logging-service"]
+      port   = 3006
+      health = local.listening[3006]
+      memory = 192
+      env    = local.logging_env
+      # The whole URL, as for User and Supplier: this service reads one connection string and the
+      # password cannot be passed beside it.
+      secrets = { LOGGING_DATABASE_URL = "LOGGING_DATABASE_URL" }
+    }
     "api-gateway" = {
       image     = local.image["api-gateway"]
       port      = 3003
@@ -204,6 +228,9 @@ locals {
         # AI-generated (Claude Code): chat's route file (#230) needs it or the gateway
         # won't start. The chat service isn't on AWS yet, so chat requests get 503 until it is.
         CHAT_SERVICE_URL = "http://chat-service:3007"
+        # AI-generated (Claude Code): the log store's route file (issue #52) needs it or the
+        # gateway won't start, the same rule as chat's above.
+        LOGGING_SERVICE_URL = "http://logging-service:3006"
         }, var.edge_container_port == 3003 ? {} : {
         GATEWAY_EDGE_PORT = tostring(var.edge_container_port)
       })
@@ -262,6 +289,21 @@ locals {
     NOTIFICATION_FRONTEND_URL  = var.public_url
   }
 
+  # AI-generated (Claude Code).
+  # Values match logging-service/compose.yaml, except the database URL, which is a secret: it
+  # carries the password. Retention and the purge interval are the service's own defaults, written
+  # out here so the deployed value is visible rather than implied.
+  logging_env = {
+    LOGGING_PORT                   = "3006"
+    LOGGING_JWKS_URL               = "http://user-service:3001/.well-known/jwks.json"
+    LOGGING_KAFKA_BROKERS          = "kafka:9092"
+    LOGGING_KAFKA_TOPIC            = "logging.lines"
+    LOGGING_KAFKA_GROUP_ID         = "logging-service"
+    LOGGING_KAFKA_DLT_TOPIC        = "logging.lines.dlt"
+    LOGGING_RETENTION_DAYS         = "30"
+    LOGGING_PURGE_INTERVAL_MINUTES = "60"
+  }
+
   # Node services: healthy once something listens on the port (catches a start-up that hangs).
   listening = {
     for port in [3000, 3001, 3002, 3004, 3005, 3006] : port => [
@@ -300,9 +342,12 @@ locals {
     "order-service"        = ["kafka-init", "order-migrate"]
     "credit-service"       = ["kafka-init"]
     "notification-service" = ["kafka-init"]
+    # AI-generated (Claude Code): its topic and dead-letter topic are created there, and
+    # KAFKA_AUTO_CREATE_TOPICS_ENABLE is false (issue #52).
+    "logging-service" = ["kafka-init"]
   }
 
-  stops_before_replacing = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "api-gateway", "mailpit"])
+  stops_before_replacing = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "logging-db", "user-redis", "kafka", "api-gateway", "mailpit"])
 }
 
 # --- Shared plumbing -------------------------------------------------------------------------------
@@ -434,8 +479,8 @@ resource "aws_ecs_task_definition" "checks" {
 # stop before their replacement starts; the rest roll with a brief overlap.
 locals {
   layer = {
-    data = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "mailpit"])
-    app  = toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service"])
+    data = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "logging-db", "user-redis", "kafka", "mailpit"])
+    app  = toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service", "logging-service"])
     edge = toset(["api-gateway"])
     web  = toset(["frontend"])
   }

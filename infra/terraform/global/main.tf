@@ -20,7 +20,7 @@ locals {
   # AI-generated (Claude Code).
   images = [
     "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
-    "api-gateway", "frontend", "kafka-init", "checks",
+    "logging-service", "api-gateway", "frontend", "kafka-init", "checks",
   ]
 
   # terraform plan refreshes this SecureString; its value is already in the state file plan reads.

@@ -46,6 +46,7 @@ SUPPLIER_POSTGRES_PASSWORD=pg-supplier-pw
 CREDIT_POSTGRES_PASSWORD=pg-credit-pw
 ORDER_DB_PASSWORD=pg-order-pw
 NOTIFICATION_POSTGRES_PASSWORD=pg-notification-pw
+LOGGING_POSTGRES_PASSWORD=pg-logging-pw
 USER_AES_KEY=aes-secret
 USER_EMAIL_HMAC_KEY=email-hmac-secret
 USER_OTP_HMAC_KEY=otp-hmac-secret
@@ -70,18 +71,20 @@ check "missing name exits non-zero" '[ $code -ne 0 ]'
 check "missing name is named" 'grep -q USER_AES_KEY <<<"$out"'
 check "missing name makes no AWS call" '[ ! -s "$AWS_CALLS" ]'
 
-# 2. A full file writes every parameter, plus the three built from them.
+# 2. A full file writes every parameter, plus the four built from them.
 full > "$work/repo/infra/secrets/staging.env"
 : > "$AWS_CALLS"
 out=$(FOC_REPO_ROOT="$work/repo" "$SCRIPT" staging 2>&1); code=$?
 check "full file exits zero" '[ $code -eq 0 ]'
-check "21 parameters written" '[ "$(wc -l < "$AWS_CALLS" | tr -d " ")" = 21 ]'
+check "23 parameters written" '[ "$(wc -l < "$AWS_CALLS" | tr -d " ")" = 23 ]'
 # AI-generated (Claude Code): Order needs it since chat (#230).
 check "chat's ticket secret written" 'grep -qx "/foc/staging/CHAT_TICKET_SECRET=chat-ticket-secret" "$AWS_CALLS"'
 check "Notification's secrets written" 'grep -qx "/foc/staging/NOTIFICATION_POSTGRES_PASSWORD=pg-notification-pw" "$AWS_CALLS" && grep -qx "/foc/staging/USER_INTERNAL_SERVICE_KEY=user-internal-key" "$AWS_CALLS"'
 check "names are under /foc/staging/" '! grep -qv "^/foc/staging/" "$AWS_CALLS"'
 check "user database URL built as in compose" 'grep -qx "/foc/staging/USER_DATABASE_URL=postgres://foc:pg-user-pw@user-db:5432/users" "$AWS_CALLS"'
 check "supplier database URL built as in compose" 'grep -qx "/foc/staging/SUPPLIER_DATABASE_URL=postgres://foc:pg-supplier-pw@supplier-db:5432/supplier" "$AWS_CALLS"'
+# AI-generated (Claude Code): the log store reads one connection string, password included (#52).
+check "logging database URL built as in compose" 'grep -qx "/foc/staging/LOGGING_DATABASE_URL=postgres://foc:pg-logging-pw@logging-db:5432/logging" "$AWS_CALLS"'
 check "Mailpit login is user:password" 'grep -qx "/foc/staging/MAILPIT_SMTP_AUTH=foc.app@gmail.com:gmail-app-password" "$AWS_CALLS"'
 check "quotes around a value are removed" 'grep -q "^/foc/staging/USER_JWT_PRIVATE_KEY=-----BEGIN" "$AWS_CALLS"'
 check "no secret value is printed" '! grep -qE "pg-user-pw|gmail-app-password|aes-secret|order-key" <<<"$out"'
