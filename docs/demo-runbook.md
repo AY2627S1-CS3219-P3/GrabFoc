@@ -15,6 +15,11 @@ Scope: Review: the chat secrets, which joined the stack after this was walked an
   Chat from starting without them; the smoke check polls instead of racing ingestion; and the
   "nothing is lost" line, which dead letters make untrue.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: ORDER_SERVICE_KEY is a secret you have to set, not a note; the smoke check takes a
+  fresh request id, because the store keeps rows and a fixed id passes forever; and the retry
+  window is about 13 minutes, so a missing email is not a dead letter yet.
+Author review: Cole Lin, read and approved.
 -->
 
 # Demo runbook
@@ -29,7 +34,7 @@ are what it actually did.
 
 Four things, none of which you want to discover live.
 
-1. **Three secrets in the root `.env`**, each at least 32 characters
+1. **Four secrets in the root `.env`**, each at least 32 characters
    (`openssl rand -hex 32`). The stack will not start without them, and Compose copies each one
    into the service that pairs with it:
 
@@ -38,8 +43,10 @@ Four things, none of which you want to discover live.
    | `CREDIT_SERVICE_KEY` | `ORDER_CREDIT_SERVICE_KEY` |
    | `USER_INTERNAL_SERVICE_KEY` | `NOTIFICATION_USER_SERVICE_KEY` |
    | `CHAT_TICKET_SECRET` | `ORDER_CHAT_TICKET_SECRET`, and the chat service's own copy |
+   | `ORDER_SERVICE_KEY` | `USER_ORDER_SERVICE_KEY` |
 
-   `USER_ORDER_SERVICE_KEY` is filled from `ORDER_SERVICE_KEY` the same way.
+   All four are rejected below 32 characters by the service that reads them, so a blank one means a
+   restarting container rather than a clear error at the top.
 
    `CHAT_TICKET_SECRET` joined the stack after this was walked, and both Order and Chat refuse to
    start without it or with fewer than 32 characters - so leaving it out gets you two containers
@@ -107,14 +114,15 @@ What is listening, on the host:
 One command, and it proves the whole feature (the loop is not optional - see below):
 
 ```bash
-curl -s -o /dev/null -H "x-request-id: smoke-1" http://localhost:3002/locations
-for i in $(seq 20); do
+id="smoke-$(date +%s)"
+curl -s -o /dev/null -H "x-request-id: $id" http://localhost:3002/locations
+for attempt in $(seq 20); do
   docker exec foc-logging-db-1 psql -U foc -d logging -tAc \
-    "select count(*) from log_lines where request_id = 'smoke-1';" | grep -qx 0 || break
+    "select count(*) from log_lines where request_id = '$id';" | grep -qx 0 || break
   sleep 1
 done
 docker exec foc-logging-db-1 psql -U foc -d logging \
-  -c "select service, event, request_id, status from log_lines where request_id = 'smoke-1';"
+  -c "select service, event, request_id, status from log_lines where request_id = '$id';"
 ```
 
 **The loop is the point.** Nothing here is synchronous: the service buffers the line and flushes
@@ -122,8 +130,13 @@ on a one-second timer, then Kafka has to deliver it and the store has to insert 
 straight after the request, and an entirely healthy pipeline shows you nothing.
 
 A request with no token gets a 401 and writes **two** lines — `request_completed` and
-`access_denied` — both carrying `smoke-1`. If they are there, ingest is consuming and the store is
+`access_denied` — both carrying that id. If they are there, ingest is consuming and the store is
 writing.
+
+**A fresh id every time, not a fixed one.** The store's volume survives a `down`/`up`, so a
+hard-coded id finds the rows from the last rehearsal and reports success whatever the shipper, the
+consumer or the database are doing now. The whole value of this check is that the rows cannot
+already exist.
 
 ---
 
@@ -228,11 +241,17 @@ Be straight about these rather than hoping nobody asks.
   Envoy also cannot supply `lineId`, so whatever collects them has to mint it.
 - **A just-registered user cannot order for a second or two** (the wallet, step 0.4).
 - **Completion emails and the credit transfer are both asynchronous**, so the numbers lag the
-  click by a beat. Usually that is all it is - but "it will arrive" is not a guarantee: a send that
-  keeps failing runs out of retries and ends in Notification's dead-letter topic, and a Credit
-  command can need recovering from dead letters the same way. If a balance or an email has not
-  appeared after a few seconds it is not still coming; look at the dead letters in Kafka UI on
-  `:8085` instead of waiting.
+  click by a beat. On a healthy stack that beat is a second or two, which is all you will see.
+
+  If something does not arrive, **do not jump to the dead letters.** Both consumers retry on
+  `NOTIFICATION_RETRY_DELAYS` / `CREDIT_RETRY_DELAYS`, which default to `1s,5s,30s,2m,10m` - so a
+  transient failure is re-attempted over roughly **13 minutes**, waiting in a retry topic
+  (`credit.commands.retry.0` … `.4`, and Notification's equivalents) and not lost. Only after that
+  window does it move to a dead-letter topic (`credit.commands.dlt`,
+  `notification.order-events.dlt`), and only then is it genuinely stuck and waiting for an admin.
+  Kafka UI on `:8085` shows both, and which topic the message is sitting in is the answer. Nothing
+  in the demo flow is worth waiting 13 minutes for on stage: say that it retries, show the topic,
+  and move on.
 
 ---
 
