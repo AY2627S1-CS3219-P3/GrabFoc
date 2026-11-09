@@ -23,9 +23,12 @@ Scope: The access log carries the field names the Logging Service stores, so a l
   under `upstream`. `lineId` is absent because Envoy has no UUID source (issue #52).
 Author review: Cole Lin, read and approved.
 Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
-Scope: Route validation: a configured prefix may not shadow a path another route file fixes, and no
-  two route files may render the same method and path. The message names the lowest shadowed path
-  in sort order, because a set's iteration order is not stable between processes. The prefix check compared prefixes with one
+Scope: Route validation: no two routes may render the same matcher for the same method, compared
+  after the prefixes are substituted. The prefix check compared prefixes with one another only, so
+  GATEWAY_LOCATIONS_PREFIX=/logs was accepted and sent authenticated log queries to the Supplier
+  Service, which answers 200. Comparing what is rendered rather than whole prefix namespaces keeps
+  a prefix nested under a fixed path, or landing on one under another method, working - these
+  prefixes are documented as configurable (issue #52, two rounds of review). The prefix check compared prefixes with one
   another only, so GATEWAY_LOCATIONS_PREFIX=/logs was accepted and sent authenticated log queries
   to the Supplier Service, which answers 200 (issue #52, review).
 Author review: pending - Jie Yang owns the gateway's route files.
@@ -179,6 +182,7 @@ def load_routes(env):
                     type(entry.get("public", False)) is not bool or
                     type(entry.get("websocket", False)) is not bool):
                 raise ValueError(f"Invalid route entry for {definition['service']}")
+            regex = "regex" in entry
             path = entry.get("path", entry.get("regex"))
             if not isinstance(path, str) or not path:
                 raise ValueError("Route path must be a nonempty string")
@@ -186,24 +190,28 @@ def load_routes(env):
             for key in keys:
                 if key not in prefixes:
                     raise ValueError(f"Unknown route prefix: {key}")
-            # A path with no placeholder is fixed, whatever the environment says. Two routes that
-            # come out identical would both be rendered, and Envoy answers with whichever matched
-            # first - which is filename order, so the earlier file silently wins.
-            if not keys:
-                if (entry["method"], path) in literal:
-                    raise ValueError("Two gateway routes render the same method and path")
-                literal.add((entry["method"], path))
-    # A configured prefix must not reach a fixed path either. The loop above compares prefixes with
-    # one another, so GATEWAY_LOCATIONS_PREFIX=/logs was accepted: Supplier then rendered GET /logs,
-    # 20-supplier sorts before 50-logging, and authenticated log queries reached Supplier instead -
-    # a 200 from the wrong service, which is worse than an error (review).
-    for value in prefixes.values():
-        # sorted, so the message names the same path on every run: a set's iteration order is not
-        # stable between processes, and "/admin" shadows several of these. An error that moves
-        # between runs is one nobody can write a test for - mine was flaky until I sorted this.
-        for _, path in sorted(literal):
-            if value == path or path.startswith(value + "/") or value.startswith(path + "/"):
-                raise ValueError(f"A gateway route prefix must not shadow the fixed route {path}")
+            # Two routes that come out identical are both rendered, and Envoy answers with
+            # whichever matched first - which is filename order, so the earlier file silently wins.
+            # The prefix loop above compares prefixes with one another and never looks at the paths
+            # another file fixes, so GATEWAY_LOCATIONS_PREFIX=/logs was accepted: Supplier rendered
+            # GET /logs, 20-supplier sorts before 50-logging, and an authenticated log query
+            # reached Supplier, which answers 200 (review).
+            #
+            # Compared after substitution and per method, which is the collision itself rather than
+            # a proxy for it: a prefix merely nested under a fixed path (GATEWAY_AUTH_PREFIX=
+            # /users/me/auth) cannot match the exact /users/me, and a prefix that lands on a fixed
+            # path under a different method (GATEWAY_ORDERS_PREFIX=/location-types, where Order's
+            # root route is POST and Supplier's fixed one is GET) does not collide either. An
+            # earlier version rejected both, and these prefixes are documented as configurable
+            # (second review).
+            rendered = (entry["method"], "regex" if regex else "path", re.sub(
+                r"\{([a-z][a-z0-9_]*)\}",
+                lambda match: (re.escape(prefixes[match[1]]) if regex else prefixes[match[1]]),
+                path))
+            if rendered in literal:
+                raise ValueError(
+                    f"Two gateway routes render the same {rendered[1]} for {rendered[0]}: {rendered[2]}")
+            literal.add(rendered)
     if "user" not in names:
         raise ValueError("User service routes are required for JWT key discovery")
     return services, prefixes
