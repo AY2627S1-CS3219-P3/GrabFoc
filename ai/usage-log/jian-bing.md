@@ -155,8 +155,11 @@ Jian Bing's entries for the FoC AI usage log. The template and rules are in
 **Scenario:** With #229 on main, the automatic SoCLaaS review of #191 no longer got a 502: the streamed answer
 arrived in 37 s. It failed instead with "The model did not finish normally". The script didn't say why; the likely
 cause is #229's 4,000-token cap (the old request had none), which a model that spends tokens before writing can use
-up. The cap is removed, since streaming alone keeps the gateway from timing out, and the error now names the finish
-reason (only a short word-like value, never arbitrary upstream text). Separately, a CI job on #191 failed again on a
+up. Removing the cap entirely was flagged by an automated security review (untrusted PR content could make the
+model write endlessly and burn the API budget), so I chose bounds: reading stops, closing the connection, once a
+review passes 30,000 characters (the most a comment can hold), and a 16,000-token cap stays only as a budget
+backstop. The error now names the finish reason (only a short word-like value, never arbitrary upstream text).
+Separately, a CI job on #191 failed again on a
 GitHub incident ("Increased timeouts due to surge in anonymous users", 504 on release downloads); re-running it
 passed.
 
@@ -167,16 +170,19 @@ passed.
 
 > also i merged 229 already
 
-My answer to Claude's plan for removing the cap: "Implement this step".
+My answers to Claude's questions: "Implement this step" (removing the cap) and, after the security review, "Stop at
+30k + 16k cap (Recommended)".
 
-**What it produced:** No `max_tokens` on the review request; the finish reason in the "did not finish normally"
-error; three new tests and one changed.
+**What it produced:** A 16,000-token backstop instead of the 4,000 cap; reading stops past 30,000 characters; the
+finish reason in the "did not finish normally" error; four new tests and one changed.
 
-**What I changed or rejected:** Nothing.
+**What I changed or rejected:** No cap at all (flagged by the security review); a 30,000-character stop without a
+token backstop.
 
-**Verification:** Claude watched three tests fail first (no cap sent, `finish_reason: length` named, `none` when the
-stream ends without one; a fourth, that an odd reason isn't echoed, pins the safety of the new message), then ran
-the suite: 13/13 pass. The live check is the next automatic review after this merges. My own check: pending.
+**Verification:** Claude watched each new test fail first (the backstop sent, reading stopped before a stalled
+stream times out, `finish_reason: length` named, `none` when the stream ends without one; another pins that an odd
+reason isn't echoed), then ran the suite: 14/14 pass. The live check is the next automatic review after this merges.
+My own check: pending.
 
 ### 2026-11-08 — Why SoCLaaS answers 502, and why CI failed on every PR
 
