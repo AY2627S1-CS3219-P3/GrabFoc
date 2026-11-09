@@ -143,6 +143,9 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Wrote the 2026-11-08 staging dry run entry (PR #191) from Jian Bing's prompts, taken verbatim from the session transcript except four teammates' email addresses, which are redacted because this repository is public.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Wrote the 2026-11-08 SoCLaaS 502 and CI diagnosis entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 entry on bringing #191 and #229 up to date and chat's settings on AWS from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
@@ -186,6 +189,39 @@ before chat merges.)
 **Verification:** The new checks failed first (`services.tftest.hcl` twice, `new-secrets.test.sh` 3, `put-secrets.test.sh`
 2), then passed; all six deploy-script tests, `infra/terraform/check.sh` (every stack valid) and the SoCLaaS tests
 on #229 (11/11) pass. My own check: looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+
+### 2026-11-08 — Why SoCLaaS answers 502, and why CI failed on every PR
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`
+
+**Scenario:** The SoCLaaS review failed with HTTP 502 on most PRs, and CI failed on #191. Claude timed the runs:
+every 502 came about 127 s after the review request started, while the reviews that succeeded took 71 and 106 s,
+so SoCLaaS's gateway gives up after about two minutes, and our larger PRs take longer to review; the script's 240 s
+wait and retry can't help. The fix streams the review (the answer arrives piece by piece, so the connection is never
+idle that long), asks for shorter reviews (6 findings, 800 words, a 4,000-token cap) and retries once on 502 and 504
+as well as 503. CI was a separate, outside cause: since about 09:00 UTC, GitHub's release downloads returned 504
+(GitHub's incident "Increase in timeouts for some unauthenticated users"), so every job that installs the Kafka
+client fell back to compiling it from source, which fails. Claude re-ran #191's failed job; no code change for it.
+
+**Prompts (exact, in order):**
+> coudl you help me fix soclaas and diagnose whats wrong with it and also the ci test failed so i cant emrge 191
+> anymore [Image #28]
+
+(Image #28: #191's failed "Integration and Kafka tests (notification-service)" job, at `npm ci`.)
+
+My answer to Claude's plan for the SoCLaaS fix: "Implement this step".
+
+**What it produced:** The diagnosis of both failures; in the script, a streamed review request (read as server-sent
+events, or as plain JSON if the server ignores `stream`), the shorter-review prompt and token cap, and the 502/504
+retry; seven new tests. When main was merged in (2026-11-09), Cole Lin's #223 had added the same 502/504 retry, as
+`RETRYABLE_STATUS`; this PR now uses his and keeps the streaming and the shorter reviews.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude watched six of the seven new tests fail first (the seventh pins that a 400 is still not
+retried), then ran the suite: 11/11 pass, also after merging main. The live check needs the script on `main` (the
+workflow always runs main's copy): a manual review run on #191 after this merges. My own check: pending.
 
 ### 2026-11-08 — Staging dry run for deploy part 3 (PR #191), and what it found
 
