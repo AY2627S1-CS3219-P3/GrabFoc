@@ -1,5 +1,5 @@
 {
-  "_disclosure": "AI Assistance Disclosure:\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07\nScope: zod ^4.6.6 (in place of Dependabot #196); @nestjs/platform-express ^11.2.8 with an override keeping multer at 2.5.0 (GHSA-q7qp-rjg7-q26m), in place of Dependabot #198, as PR #193 did for User and Supplier. package-lock.json is npm's output for that change.\nAuthor review: Pending Jian Bing's review.",
+  "_disclosure": "AI Assistance Disclosure:\nTool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07\nScope: zod ^4.6.6 (in place of Dependabot #196); @nestjs/platform-express ^11.2.8 with an override keeping multer at 2.5.0 (GHSA-q7qp-rjg7-q26m), in place of Dependabot #198, as PR #193 did for User and Supplier. package-lock.json is npm's output for that change.\nAuthor review: Pending Jian Bing's review.\nTool: Claude Code (model: Claude Opus 5), date: 2026-11-09\nScope: Added @confluentinc/kafka-javascript 1.11.0, the client the other services pinned, for the Kafka consumer and dead-letter producer; and the allowScripts entry for it, which the other four services already have - without it an npm enforcing the install-script allowlist builds no native binding and the service fails at runtime (issue #52).\nAuthor review: Cole Lin, read and approved.",
   "name": "logging-service",
   "version": "0.1.0",
   "private": true,
@@ -14,7 +14,11 @@
     "start:dev": "nest start --watch",
     "test:int": "jest --config jest.int.config.js"
   },
+  "allowScripts": {
+    "@confluentinc/kafka-javascript@1.11.0": true
+  },
   "dependencies": {
+    "@confluentinc/kafka-javascript": "1.11.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/core": "^11.0.0",
     "@nestjs/platform-express": "^11.2.8",

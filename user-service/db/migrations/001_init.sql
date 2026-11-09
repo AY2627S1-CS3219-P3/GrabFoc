@@ -9,8 +9,13 @@
 -- Scope: Suspension reason and time columns, the login_outcome enum and login_events (#180,
 --   docs/admin-dashboard-plan.md §4.1). Edited in place: reset user-db once to apply it.
 -- Author review: Reviewed and approved by Zi Yi (User Service owner), 2026-11-05.
+-- Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+-- Scope: Noted that 003_admin_dashboard.sql repeats #180's objects for older databases.
+-- Author review: Pending review by Deanson / Zi Yi (User Service owners).
 --
--- Keep in sync with the "Schema" section of user-service/AGENTS.md.
+-- Keep in sync with the "Schema" section of user-service/AGENTS.md. #180's objects (the two
+-- suspension columns, login_outcome and login_events) are repeated in 003_admin_dashboard.sql,
+-- which adds them to a database created before #180: change both together.
 
 CREATE TYPE user_role   AS ENUM ('USER', 'ADMIN');
 CREATE TYPE user_status AS ENUM ('ACTIVE', 'DEACTIVATED', 'SUSPENDED');

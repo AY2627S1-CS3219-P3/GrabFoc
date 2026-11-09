@@ -17,7 +17,13 @@
  * Scope: Also consumes user.events (#183): UserSuspended and UserReactivated email the user, other
  *        types are skipped; each stream has its own retry and dead-letter topics.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+ * Scope: These outcome lines go through the log shipper instead of Nest's Logger, so they reach
+ *        the Logging Service's store in the shape it stores rather than wrapped in Nest's own
+ *        timestamp, PID and context envelope for a collector to dig out (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
+import { log } from '../common/log';
 import { KafkaJS } from '@confluentinc/kafka-javascript';
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { config } from '../config';
@@ -142,8 +148,8 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
     // emails still FAILED, so the extra copy changes nothing.
     const next = result.retryable.length ? nextHop(message, stream, result.retryable, Date.now()) : null;
     if (next) await this.connection.send(next);
-    this.logger.log(
-      JSON.stringify({
+    log.emit({
+        level: 'info',
         event: stream === this.topics.orders ? 'order_event_handled' : 'user_event_handled',
         ...ids,
         outcome,
@@ -152,16 +158,18 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
         superseded: result.superseded,
         retryable: result.retryable.length,
         ...(next ? { next: next.topic } : {}),
-      }),
-    );
+      });
     if (next?.topic === stream.deadLetter) {
-      this.logger.error(JSON.stringify({ event: 'event_dead_lettered', ...ids, reason: 'retries used up' }));
+      log.emit({ level: 'error', event: 'event_dead_lettered', ...ids, reason: 'retries used up' });
     }
   }
 
   private async onOrderEvent(message: InboundMessage, retry: boolean): Promise<Handled> {
     const event = parseOrderEvent(message.value);
-    const ids = { eventId: event.eventId, orderId: event.orderId, status: event.status };
+    // `orderStatus`, not `status`: the log envelope's `status` is an HTTP status and the store
+    // refuses a line whose field is outside its schema, so an order state there would have every
+    // one of these lines dead-lettered rather than stored.
+    const ids = { eventId: event.eventId, orderId: event.orderId, orderStatus: event.status };
     if (retry) {
       // Already recorded when it first arrived; only its failed emails are sent again.
       return { ids, outcome: 'RETRY', result: await this.sender.retryFailed(event.eventId) };
@@ -199,7 +207,7 @@ export class KafkaRunner implements OnApplicationBootstrap, OnModuleDestroy {
         [HEADER.deadLetteredAt]: new Date().toISOString(),
       },
     });
-    this.logger.error(JSON.stringify({ event: 'event_dead_lettered', topic: message.topic, reason: err.message }));
+    log.emit({ level: 'error', event: 'event_dead_lettered', topic: message.topic, reason: err.message });
   }
 
   private pauseFor(pause: () => () => void, ms: number): void {

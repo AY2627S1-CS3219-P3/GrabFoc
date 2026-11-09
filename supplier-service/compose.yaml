@@ -27,6 +27,12 @@
 
 # The same project name as the root file, so a standalone run reuses the same containers and
 # named volumes — and so the same database.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Forward SUPPLIER_LOG_TOPIC to the container. This environment list is an allowlist
+#        and the root .env only supplies values for interpolation, so without this line a
+#        configured topic changed what the log store consumed and not what this service
+#        published (issue #52).
+# Author review: Cole Lin, read and approved.
 name: foc
 
 services:
@@ -76,6 +82,11 @@ services:
       # The shared broker (infra/kafka). No depends_on: Supplier only publishes, and events wait in
       # supplier_outbox while Kafka is down, so this file still runs on its own.
       SUPPLIER_KAFKA_BROKERS: kafka:9092
+      # Forwarded explicitly: this environment list is an allowlist, and the root .env only
+      # supplies values for interpolation - it does not reach the container. Without this
+      # line a configured topic changes what the store consumes and not what this service
+      # publishes, and the store goes quiet.
+      SUPPLIER_LOG_TOPIC: ${SUPPLIER_LOG_TOPIC:-logging.lines}
       SUPPLIER_OUTBOX_POLL_MS: ${SUPPLIER_OUTBOX_POLL_MS:-}
     ports:
       - "3002:3002"

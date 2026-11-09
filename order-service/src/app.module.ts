@@ -24,12 +24,18 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
  * Scope: Registered the admin controller (#181).
  * Author review: Reviewed by Zi Yi, 2026-11-05.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Registered the correlation-id and per-request log middleware, and the shipper's
+ *        shutdown hook, so this service's lines reach the Logging Service (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
 import { INestApplication, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ErrorFilter } from './common/errors';
 import { JwtAuthGuard } from './common/jwt-auth.guard';
-import { requestLogger } from './common/request-logger';
+import { LogShipping } from './common/log';
+import { requestIdMiddleware } from './common/request-id';
+import { requestLogMiddleware } from './common/request-log';
 import { DatabaseModule } from './db/database.module';
 import { CreditClient } from './integrations/credit.client';
 import { CreditCommands } from './integrations/credit.commands';
@@ -50,6 +56,8 @@ import { OrdersService } from './orders/orders.service';
   imports: [DatabaseModule],
   controllers: [OrdersController, ConfirmationsController, InternalController, AdminController],
   providers: [
+    // Flushes the buffered log lines and closes the producer on shutdown.
+    LogShipping,
     OrdersService,
     ConfirmationsService,
     OrdersRepository,
@@ -67,7 +75,14 @@ export class AppModule {}
 
 /** Setup shared by main.ts and the HTTP tests. */
 export function configureApp(app: INestApplication): INestApplication {
-  app.use(requestLogger);
+  // Replaces the Phase A request logger. That one wrote `event: REQUEST` through Nest's
+  // Logger with no lineId, ts or service, so it was not the shape the log store accepts and
+  // nothing could collect it. This line is a superset of what it carried, adding the request
+  // id, the role, and whether the client gave up (issue #52).
+  // AI-generated (reviewed by Cole Lin).
+  app.use(requestIdMiddleware);
+  // After the id middleware, so every line it writes carries the request's id.
+  app.use(requestLogMiddleware);
   app.useGlobalFilters(new ErrorFilter());
   app.enableShutdownHooks();
   return app;

@@ -131,12 +131,46 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Wrote the 2026-11-07 Notification conflicts and Dependabot entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Wrote the 2026-11-08 User Service migration entry from Jian Bing's answer, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-08 — A migration for #180's User Service schema (found in the staging dry run)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `user-service/db/migrations/003_admin_dashboard.sql`,
+`user-service/src/infra/database/migrator.int.spec.ts`, a comment in `user-service/db/migrations/001_init.sql`, and
+the Login audit note in `user-service/AGENTS.md`
+
+**Scenario:** In the staging dry run of deploy part 3 (#191), the new User Service crashed on staging with
+`column "suspension_reason" does not exist`: #180 added its columns, enum and table by editing `001_init.sql` in
+place, which a database created before it never re-runs. Claude laid out three ways to fix staging (a migration,
+one-off SQL on staging, or resetting staging's user database, which loses every account); I chose a migration. It
+adds each object only if it is missing, so newer databases are unchanged. The User Service owners (Deanson, Zi Yi)
+review the PR.
+
+**Prompts (exact, in order):**
+
+My answer to Claude's question on how staging's user database should get #180's schema: "Add a migration
+(Recommended)".
+
+**What it produced:** `003_admin_dashboard.sql` (the two columns, the `login_outcome` enum, `login_events` and its
+indexes, each only if missing), a PostgreSQL test that strips #180's objects from a migrated database, re-runs the
+migrations and checks they are back, and one that checks a new database is unchanged; the notes in `001_init.sql`
+and `AGENTS.md`.
+
+**What I changed or rejected:** Not a one-off SQL fix on staging, and not a reset.
+
+**Verification:** Claude watched the new test fail first (the older database stayed without the columns), then pass
+with the migration; the User Service's three PostgreSQL test files passed (12/12) against a throw-away PostgreSQL
+17, and the type check passed. `outbox.relay.spec.ts` couldn't load locally (the Kafka client's native binding
+isn't built in this checkout); CI runs it. My own check: pending.
 
 ### 2026-11-07 — Updating Jie Yang's Notification PRs, and the Dependabot PRs
 

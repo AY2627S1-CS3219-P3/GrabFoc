@@ -12,6 +12,11 @@ Scope: Three field-sanitisation bullets still instructed a maintainer to replace
   have had the next agent put the old format back into one of the walkers that must agree
   (PR #200 review).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Recorded the Notification Service as an adopter, with the two envelope field names it
+  cannot use and why it has no per-request line. This list was updated two rounds before that
+  service was wired, and then not revisited (issue #52).
+Author review: Cole Lin, read and approved.
 -->
 
 # AGENTS.md — Centralized Logging Service (N2H)
@@ -51,7 +56,7 @@ _Origin: Team (Cole Lin's answers on 2026-10-16); the gateway's field names are 
 
 ### Known problems with it
 
-- **[Open] `service` collides with the gateway's.** Envoy sets `service` to `%UPSTREAM_CLUSTER%`, the service it routed *to*, while every other service sets it to *itself*. Pooled, a filter on `service` returns both meanings. The fix is for the gateway to emit `service: "gateway"` and rename the destination to `upstream` — cheapest while #69 is open. **Jie Yang's call.**
+- ~~**[Open]** `service` collides with the gateway's.~~ **Fixed.** Envoy used to set `service` to `%UPSTREAM_CLUSTER%`, the service it routed *to*, while every other service sets it to *itself* — so pooled, a filter on `service` returned both meanings. It emits the literal `gateway` now, with the destination under `upstream`, which is what this entry proposed. There was a second reason to do it that this entry had not spotted: on a request that reaches no upstream at all, a 404 at the edge, the operator renders `null`, and `service` is a required field — the store would have refused the whole line.
 - **[Open] A denied request produces three lines.** Envoy's config registers a second access logger filtered on 401/403, so one 403 yields `request_completed` and `unauthorized_access` from the gateway plus `access_denied` from the service. Counting denials has to pick one source, and `unauthorized_access` and `access_denied` are two names for one concept.
 - **[Open] `%START_TIME%` needs its format pinned** and verified to render in UTC. A literal Z on a local-time render is a timestamp that lies.
 - The gateway's lines have **no `userId` or `role`** — they would need `payload_in_metadata` on the JWT filter. Not needed if `requestId` is the join key, but it should be a decision rather than an accident.
@@ -357,14 +362,20 @@ _Origin: AI doc, from the plan Cole Lin approved_
   **The validated service name is held, not reread** (PR #129 review). It was checked once in the constructor and then read from the caller's own object per line, so mutating `options.service` afterwards misattributed every later line, or made every later line unstorable, without passing that check again.
   **The fallback line carries the `requestId` too** (PR #129 review). It is the only record that a log call failed, and it had none — so in the one service whose purpose is following a request across services, the gap it left in a trace read as a line nobody wrote rather than a line that was lost. `input.requestId` is read in its own `try` exactly as `input.event` already was, and bounded by `boundedId`, which returns `undefined` rather than throwing and so cannot be the reason this line fails as well. It is the Kafka key as well, so the failure lands in the partition already holding that request's lines.
 
-**Adopted by:** the Supplier Service (`supplier-service/src/common/log.ts`), whose `access_denied`, `jwks_unavailable` and `unhandled_error` lines now go through it.
+**Adopted by:** the Supplier, User, Credit, Order and Notification services, each in `src/common/log.ts`. The first four write a `request_completed` line per request through it, and Supplier's `access_denied`, `jwks_unavailable` and `unhandled_error` lines go through it too.
+
+Notification is the exception, deliberately: it has one `/health` route and no caller on the request, so a per-request line would say nothing. Its *outcome* lines go through the shipper instead - `notification_sent`, `notification_failed`, `notification_superseded`, the `account_email_*` three, `order_event_handled`, `user_event_handled` and `event_dead_lettered`. It also cannot use two of the envelope's names: its roles are `REQUESTER` and `COURIER` where `role` is an `ADMIN`/`USER` enum, and its `status` is an order state where this one is an HTTP status, so those are `recipientRole` and `orderStatus` and land in `extra`. A field outside the schema would have the store refuse the whole line.
+
+The copies are kept identical by `logging-service/src/client/copies.spec.ts`, which fails if one drifts, and globs for a service that has grown a copy without being added to its list.
+
+The API Gateway is Envoy and has no Node application, so it emits the same field names as a JSON stdout access log (`api-gateway/envoy/render.py`) rather than using this. It cannot supply `lineId`, having no UUID source, and nothing ships its lines: Envoy has no Kafka access logger, so collecting them is still open.
 
 ## Pending
 
-- The real Kafka consumer. `src/ingest/consumer.ts` is the seam; nothing provides it until #75. With `LOGGING_KAFKA_BROKERS` set and no consumer, startup says so and the query API still runs — and a consumer provided **without** a `DEAD_LETTERS` sink is refused the same way, rather than consuming and committing the offset of messages it cannot park.
+- ~~The real Kafka consumer.~~ **Done:** `src/ingest/kafka.consumer.ts` provides both seams, wired in `app.module.ts` whenever brokers are configured. With `LOGGING_KAFKA_BROKERS` set and no consumer provided, startup still says so and the query API runs — and a consumer provided **without** a `DEAD_LETTERS` sink is still refused, rather than consuming and committing the offset of messages it cannot park.
 
   **Whoever writes it owes one thing: await the handler, and on a rejection leave the offset uncommitted** (root AGENTS.md §3, rule 2). The contract is now on `MessageHandler` itself rather than only in `IngestService`'s comments, because `handle()`'s own docstring used to say it "never throws" — which it does, deliberately, when the failure is ours rather than the message's: the store briefly unreachable, or the park itself failing. Everything the service can judge is counted and parked instead. A consumer that catches the rejection and commits anyway drops every line written during a database restart, with nothing but `counts.failed` to say so, and "never throws" is the one sentence that would have made writing such a consumer reasonable (PR #129 review).
-- Services adopting the shipper: Supplier **done**. Then User (the rewrite landed in #125, so this is now a retrofit), Order (#119 landed too), Credit (#85, which already has the client). Each is its owner's to copy in; the file is ~130 lines and needs no dependency.
+- ~~Services adopting the shipper.~~ **Done** for all five: Supplier, User, Credit, Order and Notification. Still open: collection for the API Gateway's stdout lines (see above), which is the only service whose lines do not reach the store.
 - **[Open]** Nest's logger prefixes its own timestamp, PID and context, so the JSON object is the *message*, not the whole line, and a collector has to dig it out. `ConsoleLogger({ json: true })` makes it worse, nesting our JSON inside Nest's own envelope. The shipper sidesteps this by writing the line itself, which is the proposed answer for every service.
 - **[Open]** Where logs surface in the UI: a page in Zi Yi's admin dashboard, or a screen here.
 - No `location_changes` import. That table stays in the Supplier Service (root AGENTS.md open item).
