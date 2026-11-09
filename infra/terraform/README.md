@@ -20,6 +20,11 @@ Author review (Jian Bing, 2026-11-09): Looked through the code and think it's ok
 Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 Scope: The first-apply restart also covers logging-service, the sixth app service (issue #52).
 Author review: pending - Jian Bing owns the deployment.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: A new image means re-applying global before any env plan can succeed - the CI plan on the
+  pull request that added one fails on the missing repository, which is the correct answer and not
+  a broken change.
+Author review: pending - Jian Bing owns the deployment.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Replacing the server: the downtime, the refresh preferences, and why ECS managed draining is off.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
@@ -48,7 +53,7 @@ on pull requests, then `terraform plan` against staging.
   `aws sts get-caller-identity`). Region `ap-southeast-1`.
 - Terraform ≥ 1.10 (CI uses 1.15) and Docker (running).
 
-## 1. Account-wide stack (once)
+## 1. Account-wide stack (once, and again whenever a service is added)
 
 ```bash
 cd infra/terraform/global
@@ -56,6 +61,20 @@ terraform init
 terraform apply -var monthly_budget_usd=50 -var 'budget_emails=["you@u.nus.edu"]'
 terraform output state_bucket          # needed below
 ```
+
+**Re-apply it whenever a service is added.** `global` owns the ECR repositories, and each
+environment reads them with `data "aws_ecr_repository" "image"` - a data source, so a repository
+that does not exist yet is an error, not something a plan creates. Until someone applies `global`,
+the pull request that added the service fails CI's staging plan with:
+
+```
+Error: reading ECR Repository (foc/<name>): couldn't find resource
+  with data.aws_ecr_repository.image["<name>"]
+```
+
+That is the right answer rather than a fault in the change: the repository has to exist before an
+environment can point a task definition at it. The order for a new service is **apply `global`**,
+then `push-images.sh <tag>`, then `put-secrets.sh <env>`, then the environment's apply.
 
 `global` keeps its state locally (`terraform.tfstate`, git-ignored): it creates the bucket the other
 stacks use. Keep that file safe, or import the resources again if it's lost.
