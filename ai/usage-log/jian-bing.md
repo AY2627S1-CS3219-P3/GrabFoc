@@ -150,7 +150,7 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 entry on bringing #191 and #229 up to date and chat's settings on AWS from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
-Scope: Wrote the 2026-11-09 chat-on-AWS handoff entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Scope: Wrote the 2026-11-09 chat-on-AWS entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -159,11 +159,13 @@ Author review: pending — Jian Bing to record what he checked.
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
-### 2026-11-09 — Chat on AWS: started, and handed off
+### 2026-11-09 — Putting chat on AWS
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** plan, generate
-**Files:** `docs/handoff/2026-11-09-aws-chat-handoff.md`, `infra/terraform/global/tests/global.tftest.hcl`,
-`infra/terraform/modules/services/tests/services.tftest.hcl`
+**Files:** `infra/terraform/global/main.tf`, `infra/terraform/envs/{staging,production}/main.tf`,
+`infra/terraform/modules/services/main.tf`, `infra/terraform/modules/server/user_data.sh.tftpl`,
+`infra/scripts/{push-images,deploy-images,new-secrets,put-secrets}.sh`, their tests, the Terraform tests,
+`infra/terraform/README.md`, `infra/secrets/README.md`
 
 **Scenario:** Chat (#230) was never deployed to AWS, so the site's chat WebSocket got `503 no healthy upstream`
 from the gateway. Jie Yang shared a plan to deploy it. Claude compared it with `main`: #191 had already set the
@@ -171,8 +173,9 @@ gateway's `CHAT_SERVICE_URL` and Order's ticket secret. Claude also found orderi
 the environments look repositories up by name, `deploy-images.sh` stops if a service is missing, and the gateway
 must be restarted to learn the new name. I approved the plan with its two design calls (192 MiB for chat-service;
 one SSM secret for Order and Chat), and chose to plan the supplier images after chat. Claude began test-first on
-`feat/chat-aws` (failing tests for the new repository, database and service), then, at my request, wrote a
-handoff document so a teammate can finish it.
+`feat/chat-aws` (failing tests for the new repository, database and service). At my request it wrote a handoff
+document for a teammate, then I decided to continue myself, so Claude finished the change and removed the
+handoff document from the branch (it stays in the branch's history, commit `0454d9c`).
 
 **Prompts (exact, in order):**
 > ok new pr, lets do 1 and 3, then also we didnt properly deploy real time chat [Image #34]
@@ -189,13 +192,21 @@ My answers to Claude's questions: "Approve, you build it (Recommended)" and "Pla
 
 > before usage runs out, explort all thsi to a md to give my teammate to continue
 
-**What it produced:** The handoff document (state of #231, #232 and #235; Kafka's restarts; the chat plan with its
-corrections, remaining edits and staging rollout; the supplier-image findings) and the first failing tests.
+> nvm lets continue ourself
 
-**What I changed or rejected:** Nothing yet.
+**What it produced:** `chat-db`, `chat-migrate` (an init container in the chat-service task) and `chat-service` in
+the services module, copying `chat-service/compose.yaml`; the chat-service image repository and its lookups;
+`/data/chat-db` for new servers; chat-service in `push-images.sh` and in `deploy-images.sh`'s app layer;
+`CHAT_POSTGRES_PASSWORD` in both secrets scripts; and a runbook section on adding a service to a running
+environment, which includes restarting the gateway so Service Connect gives it the new name.
 
-**Verification:** The tests are expected to fail until the remaining edits in the handoff are made. The facts in
-the handoff were checked against `main` (`114ad72`) and the live staging account. My own check: pending.
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude watched each new test fail first, then pass. That covers chat's environment, secrets,
+image and migration order; the repository count; the folder, stop-first and layer lists; the server folder; the
+image build; the deploy order; and both secrets scripts. Then `infra/terraform/check.sh` (every stack), all six
+script tests, the checks-selection tests and `actionlint` passed. The live check is the staging rollout before
+merging. My own check: pending.
 
 ### 2026-11-09 — Bringing #191 and #229 up to date with main, and chat's settings on AWS
 

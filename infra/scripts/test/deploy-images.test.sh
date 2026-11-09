@@ -7,6 +7,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 # Scope: Tests that every foc/ image is checked on the tag first, and a missing one stops the deploy.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Expects chat-service in the app layer (chat on AWS).
+# Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/deploy-images.test.sh   (no AWS access needed; needs jq)
 # AI-generated (Claude Code).
@@ -90,7 +93,8 @@ update supplier-service
 update credit-service
 update order-service
 update notification-service
-wait user-service supplier-service credit-service order-service notification-service
+update chat-service
+wait user-service supplier-service credit-service order-service notification-service chat-service
 update api-gateway
 wait api-gateway
 update frontend
@@ -103,7 +107,7 @@ check "every call pins the region" '[ "$(grep -vc -- "--region ap-southeast-1" "
 check "uses the environment's cluster" 'grep -q "update-service --region ap-southeast-1 --cluster foc-staging" "$AWS_CALLS"'
 
 repos=$(grep "^ecr describe-images" "$AWS_CALLS" | sed -E 's/.*--repository-name ([^ ]+).*/\1/' | sort | tr "\n" " ")
-check "every foc image is checked on the tag" '[ "$repos" = "foc/api-gateway foc/credit-service foc/frontend foc/kafka-init foc/notification-service foc/order-service foc/supplier-service foc/user-service " ]'
+check "every foc image is checked on the tag" '[ "$repos" = "foc/api-gateway foc/chat-service foc/credit-service foc/frontend foc/kafka-init foc/notification-service foc/order-service foc/supplier-service foc/user-service " ]'
 check "images are checked with the tag under deploy" '[ "$(grep "^ecr describe-images" "$AWS_CALLS" | grep -vc -- "--image-ids imageTag=new1234")" = 0 ]'
 check "images are checked before any change" '[ "$(grep -n "^ecr describe-images" "$AWS_CALLS" | tail -1 | cut -d: -f1)" -lt "$(grep -n "^ecs register-task-definition" "$AWS_CALLS" | head -1 | cut -d: -f1)" ]'
 

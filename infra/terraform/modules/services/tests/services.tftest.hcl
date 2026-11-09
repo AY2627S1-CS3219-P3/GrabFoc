@@ -16,8 +16,8 @@
 # Scope: Checks that Order gets its chat ticket secret and that every gateway route file's URL is set (chat, #230).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
-# Scope: Chat on AWS (WIP, see docs/handoff/2026-11-09-aws-chat-handoff.md): expect its repository, database and service.
-# Author review: Pending.
+# Scope: Chat on AWS: expect its repository, database, migrations and service.
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -204,7 +204,7 @@ run "staging" {
   assert {
     condition = alltrue([
       for name, g in aws_cloudwatch_log_group.service : g.name == "/foc/staging/${name}" && g.retention_in_days == 14
-    ]) && length(aws_cloudwatch_log_group.service) == length(aws_ecs_task_definition.service) + 3
+    ]) && length(aws_cloudwatch_log_group.service) == length(aws_ecs_task_definition.service) + 4 # kafka-init, order-migrate, chat-migrate, checks
     error_message = "One log group per container, /foc/<env>/<name>, kept 14 days."
   }
   # Final review, Critical 1: a standalone run-task gets no Service Connect names, so the one-shot
@@ -286,6 +286,35 @@ run "staging" {
       for c in jsondecode(aws_ecs_task_definition.service["notification-service"].container_definitions) : c.name if !c.essential
     ]) == toset(["kafka-init"])
     error_message = "Notification's topics are created before it starts."
+  }
+  # AI-generated (Claude Code, 2026-11-09): chat on AWS, as in chat-service/compose.yaml (Jie Yang's
+  # plan, approved by Jian Bing). Order and Chat read the one SSM secret CHAT_TICKET_SECRET.
+  assert {
+    condition = (
+      local.chat_env == { CHAT_PORT = "3007", CHAT_DATABASE_URL = "postgres://foc@chat-db:5432/chat" } &&
+      strcontains(jsondecode(aws_ecs_task_definition.service["chat-service"].container_definitions)[0].image, "foc/chat-service:abc1234") &&
+      [for e in jsondecode(aws_ecs_task_definition.service["chat-db"].container_definitions)[0].environment : e.value if e.name == "POSTGRES_DB"][0] == "chat"
+    )
+    error_message = "Chat listens on 3007 and uses its own database, chat on chat-db."
+  }
+  assert {
+    condition = {
+      for x in jsondecode(aws_ecs_task_definition.service["chat-service"].container_definitions)[0].secrets : x.name => element(split("/", x.valueFrom), 3)
+      } == {
+      PGPASSWORD         = "CHAT_POSTGRES_PASSWORD"
+      CHAT_TICKET_SECRET = "CHAT_TICKET_SECRET"
+    }
+    error_message = "Chat gets its database password and the ticket secret Order signs with."
+  }
+  assert {
+    condition = (
+      toset([for c in jsondecode(aws_ecs_task_definition.service["chat-service"].container_definitions) : c.name if !c.essential]) == toset(["chat-migrate"]) &&
+      toset([
+        for d in [for c in jsondecode(aws_ecs_task_definition.service["chat-service"].container_definitions) : c if c.name == "chat-service"][0].dependsOn : "${d.containerName}:${d.condition}"
+      ]) == toset(["chat-migrate:SUCCESS"]) &&
+      [for c in jsondecode(aws_ecs_task_definition.service["chat-service"].container_definitions) : c.command if c.name == "chat-migrate"][0] == ["node", "dist/db/migrate-cli.js"]
+    )
+    error_message = "Chat starts only after its migrations succeed."
   }
 
   # Final review, Important 5: a container that hangs on start-up is restarted, not left "running".

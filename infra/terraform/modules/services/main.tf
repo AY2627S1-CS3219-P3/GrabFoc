@@ -20,6 +20,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: ORDER_CHAT_TICKET_SECRET for Order and CHAT_SERVICE_URL for the gateway, which chat (#230) requires.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: chat-db, chat-migrate and chat-service, as in chat-service/compose.yaml (chat on AWS; Jie Yang's plan, approved by Jian Bing).
+# Author review: Pending Jian Bing's review.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
@@ -44,6 +47,7 @@ locals {
       "credit-db"       = { db = "credit", password = "CREDIT_POSTGRES_PASSWORD" }
       "order-db"        = { db = "orders", password = "ORDER_DB_PASSWORD" }
       "notification-db" = { db = "notification", password = "NOTIFICATION_POSTGRES_PASSWORD" }
+      "chat-db"         = { db = "chat", password = "CHAT_POSTGRES_PASSWORD" } # AI-generated (Claude Code, 2026-11-09)
       } : name => {
       image    = "postgres:17-alpine"
       port     = 5432
@@ -187,6 +191,18 @@ locals {
         NOTIFICATION_USER_SERVICE_KEY = "USER_INTERNAL_SERVICE_KEY"
       }
     }
+    # AI-generated (Claude Code, 2026-11-09): chat (#230), as in chat-service/compose.yaml.
+    "chat-service" = {
+      image  = local.image["chat-service"]
+      port   = 3007
+      health = local.listening[3007]
+      memory = 192
+      env    = local.chat_env
+      secrets = {
+        PGPASSWORD         = "CHAT_POSTGRES_PASSWORD" # as in compose: not in the URL
+        CHAT_TICKET_SECRET = "CHAT_TICKET_SECRET"     # the one Order signs tickets with
+      }
+    }
     "api-gateway" = {
       image     = local.image["api-gateway"]
       port      = 3003
@@ -201,8 +217,7 @@ locals {
         ORDER_SERVICE_URL    = "http://order-service:3005"
         CREDIT_SERVICE_URL   = "http://credit-service:3004"
         FRONTEND_URL         = "http://frontend:3000" # the edge listener's catch-all (deploy part 1)
-        # AI-generated (Claude Code): chat's route file (#230) needs it or the gateway
-        # won't start. The chat service isn't on AWS yet, so chat requests get 503 until it is.
+        # AI-generated (Claude Code): chat's route file (#230) needs it or the gateway won't start.
         CHAT_SERVICE_URL = "http://chat-service:3007"
         }, var.edge_container_port == 3003 ? {} : {
         GATEWAY_EDGE_PORT = tostring(var.edge_container_port)
@@ -262,9 +277,15 @@ locals {
     NOTIFICATION_FRONTEND_URL  = var.public_url
   }
 
+  # AI-generated (Claude Code, 2026-11-09). Values match chat-service/compose.yaml.
+  chat_env = {
+    CHAT_PORT         = "3007"
+    CHAT_DATABASE_URL = "postgres://foc@chat-db:5432/chat" # password from PGPASSWORD
+  }
+
   # Node services: healthy once something listens on the port (catches a start-up that hangs).
   listening = {
-    for port in [3000, 3001, 3002, 3004, 3005, 3006] : port => [
+    for port in [3000, 3001, 3002, 3004, 3005, 3006, 3007] : port => [
       "CMD", "node", "-e",
       "require('net').connect(${port},'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
     ]
@@ -278,6 +299,8 @@ locals {
   oneoffs = {
     "kafka-init"    = { image = local.image["kafka-init"], memory = 256, command = null, env = {}, secrets = {} }
     "order-migrate" = { image = local.image["order-service"], memory = 128, command = ["node", "dist/db/migrate-cli.js"], env = local.order_db_env, secrets = { ORDER_DB_PASSWORD = "ORDER_DB_PASSWORD" } }
+    # AI-generated (Claude Code, 2026-11-09): chat's migrations, as compose's chat-migrate.
+    "chat-migrate" = { image = local.image["chat-service"], memory = 128, command = ["node", "dist/db/migrate-cli.js"], env = { CHAT_DATABASE_URL = local.chat_env.CHAT_DATABASE_URL }, secrets = { PGPASSWORD = "CHAT_POSTGRES_PASSWORD" } }
   }
 
   # AI-generated (Claude Code).
@@ -300,9 +323,10 @@ locals {
     "order-service"        = ["kafka-init", "order-migrate"]
     "credit-service"       = ["kafka-init"]
     "notification-service" = ["kafka-init"]
+    "chat-service"         = ["chat-migrate"]
   }
 
-  stops_before_replacing = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "api-gateway", "mailpit"])
+  stops_before_replacing = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "user-redis", "kafka", "api-gateway", "mailpit"])
 }
 
 # --- Shared plumbing -------------------------------------------------------------------------------
@@ -434,8 +458,8 @@ resource "aws_ecs_task_definition" "checks" {
 # stop before their replacement starts; the rest roll with a brief overlap.
 locals {
   layer = {
-    data = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "mailpit"])
-    app  = toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service"])
+    data = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "user-redis", "kafka", "mailpit"])
+    app  = toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service", "chat-service"])
     edge = toset(["api-gateway"])
     web  = toset(["frontend"])
   }

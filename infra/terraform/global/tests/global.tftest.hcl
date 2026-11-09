@@ -9,8 +9,8 @@
 #        exceptions, and the deploy roles' tag parameters and log reads.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
-# Scope: Chat on AWS (WIP, see docs/handoff/2026-11-09-aws-chat-handoff.md): expect its repository, database and service.
-# Author review: Pending.
+# Scope: Chat on AWS: expect its repository, database, migrations and service.
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
