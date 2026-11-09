@@ -14,6 +14,28 @@ Deanson's entries, newest first. The template and rules (Appendix 2 of the proje
 [`ai/usage-log.md`](../usage-log.md): exact prompts, summarised responses, what was changed or
 rejected, and how it was verified.
 
+### 2026-11-09 — Order timing window in the Create/Edit Order modal (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `frontend/app/components/order-form-modal.tsx`, `frontend/lib/orders.ts`
+
+**Scenario:** the modal showed the timing window as read-only text, so requesters couldn't set one. I checked the create-order contract first, then had the AI add the inputs. 
+
+**Prompts (exact, in order):**
+> What is the create orders endpoint? and its expected payload?
+
+> windowStart and windowEnd expected formatting? it is UTC + 8 (ISO 8601?)
+
+> On the frontend, for the create order modal, do new Date(localInput).toISOString() for windowStart and windowEnd. Also, do a simple check on the frontend that the windowStart and windowEnd is valid in the sense that windowStart < windowEnd
+>
+> Clarify that u understand before proceeding
+
+*(The AI pointed out the modal had no time inputs yet and asked three questions. I chose: the fields are optional, so a blank one uses the server default; check only when both are filled; apply to edit too. Plan mode: I approved the plan.)*
+
+**What it produced:** the explanation that `POST /orders` takes any ISO 8601 offset (`Z` or `+08:00`), and that UTC+8 is only used on the server for the opening-hours check. In the modal, `datetime-local` inputs replace the read-only boxes, and filled values are sent with `new Date(value).toISOString()`. A start-before-end check runs before submitting. On edit the inputs are prefilled with the order's window, only changed times go in the PATCH, and a cleared field keeps the current time. `OrderInput` gained optional `windowStart` / `windowEnd`.
+**What I changed or rejected:** I extended the change to edit mode, beyond my first ask. The check doesn't look at past times or opening hours; the server enforces those.
+**Verification:** `tsc --noEmit` and eslint on both files are clean. The modal has no automated tests. Manual browser check pending.
+
 ### 2026-11-08 — Real-time chat frontend, phase 2 (branch `feature/chat`)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate

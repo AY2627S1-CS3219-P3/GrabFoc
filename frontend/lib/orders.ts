@@ -18,6 +18,9 @@ Author review: Pending review by Zi Yi.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Retuned the status badge colours to the redesign palette (PENDING now gold, waiting for a courier).
 Author review: Pending review by Jie Yang.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Added optional windowStart / windowEnd to OrderInput (and so OrderEdit), matching the existing POST/PATCH bodies.
+Author review: Pending review by Deanson.
 */
 import { withSessionMutation } from '@/lib/session-client';
 import { type FieldIssue, parseServiceError } from '@/lib/service-errors';
@@ -75,7 +78,8 @@ export type HistoryEntry = {
 
 export type OrderList = 'available' | 'mine' | 'assigned';
 export type Step = 'pick-up' | 'start-delivery' | 'arrive';
-export type OrderInput = { orderDescription: string; pickupLocationId: number; deliveryLocationId: number; creditOffer: number };
+export type OrderInput = { orderDescription: string; pickupLocationId: number; deliveryLocationId: number; creditOffer: number;
+  windowStart?: string; windowEnd?: string };
 export type OrderEdit = Partial<Omit<OrderInput, 'creditOffer'>>;
 
 export const POLL_MS = 10_000;
