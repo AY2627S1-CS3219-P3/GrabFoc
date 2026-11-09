@@ -22,6 +22,13 @@ Scope: The access log carries the field names the Logging Service stores, so a l
   reached - the store requires it and refuses the whole line otherwise; the destination is
   under `upstream`. `lineId` is absent because Envoy has no UUID source (issue #52).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Route validation: a configured prefix may not shadow a path another route file fixes, and no
+  two route files may render the same method and path. The message names the lowest shadowed path
+  in sort order, because a set's iteration order is not stable between processes. The prefix check compared prefixes with one
+  another only, so GATEWAY_LOCATIONS_PREFIX=/logs was accepted and sent authenticated log queries
+  to the Supplier Service, which answers 200 (issue #52, review).
+Author review: pending - Jie Yang owns the gateway's route files.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
 import json
@@ -191,7 +198,10 @@ def load_routes(env):
     # 20-supplier sorts before 50-logging, and authenticated log queries reached Supplier instead -
     # a 200 from the wrong service, which is worse than an error (review).
     for value in prefixes.values():
-        for _, path in literal:
+        # sorted, so the message names the same path on every run: a set's iteration order is not
+        # stable between processes, and "/admin" shadows several of these. An error that moves
+        # between runs is one nobody can write a test for - mine was flaky until I sorted this.
+        for _, path in sorted(literal):
             if value == path or path.startswith(value + "/") or value.startswith(path + "/"):
                 raise ValueError(f"A gateway route prefix must not shadow the fixed route {path}")
     if "user" not in names:

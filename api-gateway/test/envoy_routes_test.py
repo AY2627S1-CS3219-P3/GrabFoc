@@ -390,13 +390,24 @@ class RouteFilesTest(unittest.TestCase):
         worse than a startup error (review).
         """
         # Only prefixes the shape check already allows: a dot, for instance, is refused earlier.
+        # "/admin" shadows several fixed paths at once, so the message is only required to name
+        # one of them. The repeat below checks the message is stable, but only within this process:
+        # the fixed paths live in a set, whose iteration order varies with the hash seed, so the
+        # case that actually bit was a *different process* - the suite failed about one run in six
+        # with a different path in the message. What fixes that is sorting in the renderer, and
+        # what demonstrates it is running this file repeatedly (15 runs, no failures).
         for prefix, shadowed in (("/logs", "/logs"), ("/users/me", "/users/me"),
-                                 ("/location-types", "/location-types"), ("/admin", "/admin/users")):
+                                 ("/location-types", "/location-types"), ("/admin", "/admin/")):
             with self.subTest(prefix=prefix):
-                with self.assertRaises(ValueError) as caught:
-                    self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": prefix})
-                self.assertIn("shadow", str(caught.exception))
-                self.assertIn(shadowed, str(caught.exception))
+                messages = set()
+                for _ in range(3):
+                    with self.assertRaises(ValueError) as caught:
+                        self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": prefix})
+                    messages.add(str(caught.exception))
+                self.assertEqual(len(messages), 1, "the message must not change between runs")
+                message = messages.pop()
+                self.assertIn("shadow", message)
+                self.assertIn(shadowed, message)
         # And a prefix that merely looks similar is still fine: /locations against /location-types.
         self.assertTrue(self.routes(self.renderer.configuration(self.env)))
 

@@ -42,6 +42,10 @@ Author review: Pending Jie Yang's review of the security fix.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-12
 Scope: Split the per-member sections into ai/usage-log/<member>.md and turned this file into the index (issue #65); entry text moved unchanged.
 Author review: Jian Bing checked the logs locally against the AI usage-log guidelines in the project document (Appendix 2), confirmed they render with clean formatting in his IDE, and confirmed every entry, comment and other component is present.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: One bullet pointing at ai/check-disclosures.py, which lists files a branch changes that
+  carry a disclosure header and gained no entry in it.
+Author review: Cole Lin, read and approved.
 -->
 
 # AI Usage Log — FoC (CS3219 AY26/27 S1, Group 3)
@@ -59,6 +63,11 @@ entry in this log (your member file below) **as well as** the header comment in 
   policy — but summarise the responses.
 - Say what you **rejected or changed**. That is the evidence you reviewed the output rather
   than pasting it.
+- Before you open the pull request, run **`python ai/check-disclosures.py`**. It lists files your
+  branch changes that carry a disclosure header and gained no entry in it - which is a different
+  question from "is there an entry dated today", and the one that catches a file you edited twice.
+  It is a prompt, not a gate: it cannot tell whether an entry describes the change, it always exits
+  0, and a change you wrote unaided needs no entry.
 
 Template:
 
