@@ -6,7 +6,7 @@
 # Author review (Jian Bing, 2026-11-06): Not read line by line; these tests pass in CI (terraform.yml).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: the Notification and checks images (deploy part 3).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Run: infra/scripts/test/push-images.test.sh   (no AWS or Docker access needed)
 # AI-generated (Claude Code).
@@ -39,7 +39,7 @@ out=$("$HERE/../push-images.sh" abc1234 2>&1); code=$?
 check "rerun succeeds" '[ $code -eq 0 ]'
 check "existing tags are skipped" '! grep -qE "(build|push).*foc/(user|order)-service:" "$DOCKER_CALLS"'
 check "skips are reported" 'grep -q "foc/user-service:abc1234 already in ECR, skipped" <<<"$out"'
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 check "missing tags are built and pushed" '[ "$(grep -c "^push " "$DOCKER_CALLS")" = 7 ]'
 check "Notification builds from its own folder" 'grep -qE "^build .*foc/notification-service:abc1234 .*notification-service/Dockerfile .*/notification-service$" "$DOCKER_CALLS"'
 check "checks build from the repository root" 'grep -qE "^build .*foc/checks:abc1234 .*infra/checks/Dockerfile " "$DOCKER_CALLS"'

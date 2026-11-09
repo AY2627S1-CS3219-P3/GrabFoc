@@ -8,13 +8,13 @@
 # Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Deploy part 3 (#143): Mailpit's allowlist and API port, the checks task, the Notification Service.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 # Scope: The AZ-rebalancing check (the staging dry run failed on it).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: Checks that Order gets its chat ticket secret and that every gateway route file's URL is set (chat, #230).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -45,7 +45,7 @@ variables {
   mailpit_relay_to       = ["a@x.edu", "b@y.com"]
   public_url             = "https://d111.cloudfront.net"
   ecr_repository_urls = {
-    # AI-generated (Claude Code); review pending.
+    # AI-generated (Claude Code).
     "user-service"         = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/user-service"
     "supplier-service"     = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/supplier-service"
     "credit-service"       = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/credit-service"
@@ -152,12 +152,12 @@ run "staging" {
     ])
     error_message = "One copy of each service; ECS keeps restarting a service until its dependencies are up."
   }
-  # AI-generated (Claude Code), review pending: the 2026-11-08 staging apply failed on exactly this.
+  # AI-generated (Claude Code): the 2026-11-08 staging apply failed on exactly this.
   assert {
     condition     = alltrue([for s in local.ecs_services : s.availability_zone_rebalancing == "DISABLED"])
     error_message = "AZ rebalancing is off on every service: one server in one zone has nothing to rebalance, and ECS refuses a stop-before-replace rollout (maximum 100%) while it is on."
   }
-  # AI-generated (Claude Code), review pending: chat (#230) made both of these required.
+  # AI-generated (Claude Code): chat (#230) made both of these required.
   assert {
     condition     = local.containers["order-service"].secrets["ORDER_CHAT_TICKET_SECRET"] == "CHAT_TICKET_SECRET"
     error_message = "Order refuses to start without ORDER_CHAT_TICKET_SECRET (chat, #230); it comes from the CHAT_TICKET_SECRET parameter, which the chat service will share."
@@ -218,7 +218,7 @@ run "staging" {
     ]) == toset(["kafka-init:SUCCESS", "order-migrate:SUCCESS"])
     error_message = "The Order Service starts only after topics and migrations succeed."
   }
-  # AI-generated (Claude Code); review pending.
+  # AI-generated (Claude Code).
   # Deploy part 3: newman reads OTP codes from Mailpit's API on the server's own host port.
   assert {
     condition = anytrue([
@@ -290,7 +290,7 @@ run "staging" {
     condition = alltrue([
       for name, t in aws_ecs_task_definition.service : can(jsondecode(t.container_definitions)[0].healthCheck.command[0])
     ])
-    # AI-generated (Claude Code); review pending.
+    # AI-generated (Claude Code).
     error_message = "Every service has a container health check."
   }
   assert {
@@ -302,7 +302,7 @@ run "staging" {
 run "production" {
   command = apply
   variables {
-    # AI-generated (Claude Code); review pending.
+    # AI-generated (Claude Code).
     env              = "production"
     cluster_arn      = "arn:aws:ecs:ap-southeast-1:111122223333:cluster/foc-production"
     mailpit_relay    = false
@@ -317,7 +317,7 @@ run "production" {
     )
     error_message = "Production sends straight to Gmail on 587, with no Mailpit."
   }
-  # AI-generated (Claude Code); review pending.
+  # AI-generated (Claude Code).
   assert {
     condition     = length(aws_ecs_task_definition.checks) == 0
     error_message = "The checks run on staging only: they need Mailpit."
@@ -352,7 +352,7 @@ run "edge_listener" {
   }
 }
 
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 # With nobody on the list, nothing is relayed: an empty regex would mean no filter at all.
 run "no_relay_recipients" {
   command = apply

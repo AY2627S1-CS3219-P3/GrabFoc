@@ -13,13 +13,13 @@ Scope: The first-apply restart also covers the four app services, which call eac
 Author review: Pending Jian Bing's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 Scope: The Delivery section; images, tags and the Mailpit allowlist (deploy part 3, #143).
-Author review: Pending Jian Bing's review.
+Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Merging main into #191: the first-apply restart also covers notification-service, the fifth app service.
-Author review: Pending Jian Bing's review.
+Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Replacing the server: the downtime, the refresh preferences, and why ECS managed draining is off.
-Author review: Pending Jian Bing's review.
+Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 -->
 
 # AWS deployment runbook

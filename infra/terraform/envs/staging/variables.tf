@@ -8,7 +8,7 @@
 # Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: image_tag is optional; the staging allowlist (deploy part 3, #143).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # AI-generated (Claude Code).
 
 variable "env" {
@@ -39,7 +39,7 @@ variable "alert_emails" {
   type        = list(string)
 }
 
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 variable "mailpit_relay_to" {
   description = "The only recipients Mailpit forwards to Gmail; all other mail stays in Mailpit. Set TF_VAR_mailpit_relay_to: the repository is public."
   type        = list(string)

@@ -2,12 +2,12 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Generated from the deployment plan (deploy part 3, #143, Task 4).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Runs the Postman checks as a one-off task on staging, prints their output, and exits with their
 # status. Only a pass records the tag as ready for production.
 #   infra/scripts/run-checks.sh staging "$(git rev-parse --short=7 HEAD)"
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 set -euo pipefail
 
 env="${1:-}"

@@ -3,10 +3,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Generated from the deployment plan (deploy part 3, #143, Tasks 3 and 4). Final review fix:
 #        a failed describe or register returns non-zero instead of an empty ARN.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Shared by deploy-images.sh and run-checks.sh. Both set $region first.
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 
 # Registers a copy of a task definition with every image from our foc/ ECR repositories on <tag>,
 # and prints the new revision's ARN. Other images (databases, Mailpit) stay as they are. Returns

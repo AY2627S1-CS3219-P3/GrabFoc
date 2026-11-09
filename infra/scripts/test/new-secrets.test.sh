@@ -6,10 +6,10 @@
 # Author review (Jian Bing, 2026-11-06): Not read line by line; these tests pass in CI (terraform.yml).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Notification's secrets and --add-missing (deploy part 3).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: CHAT_TICKET_SECRET is generated, at least 32 characters, and added by --add-missing (chat, #230).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Run: infra/scripts/test/new-secrets.test.sh
 # AI-generated (Claude Code).
@@ -29,7 +29,7 @@ check "file is private (600)" '[ "$(ls -l "$file" | cut -c1-10)" = "-rw-------" 
 for n in POSTGRES_PASSWORD SUPPLIER_POSTGRES_PASSWORD CREDIT_POSTGRES_PASSWORD ORDER_DB_PASSWORD NOTIFICATION_POSTGRES_PASSWORD CREDIT_SERVICE_KEY ORDER_SERVICE_KEY USER_INTERNAL_SERVICE_KEY CHAT_TICKET_SECRET USER_JWT_KID; do
   check "$n generated" '[ -n "$(val '"$n"')" ]'
 done
-# AI-generated (Claude Code), review pending: Order refuses a chat ticket secret under 32 characters.
+# AI-generated (Claude Code): Order refuses a chat ticket secret under 32 characters.
 check "chat ticket secret is at least 32 characters" '[ "$(val CHAT_TICKET_SECRET | tr -d "\n" | wc -c)" -ge 32 ]'
 for n in USER_AES_KEY USER_EMAIL_HMAC_KEY USER_OTP_HMAC_KEY; do
   check "$n is 32 bytes base64" '[ "$(val '"$n"' | base64 -d 2>/dev/null | wc -c | tr -d " ")" = 32 ]'
@@ -45,7 +45,7 @@ before=$(cat "$file")
 FOC_REPO_ROOT="$work" "$HERE/../new-secrets.sh" staging >/dev/null 2>&1; code=$?
 check "refuses to overwrite an existing file" '[ $code -ne 0 ] && [ "$(cat "$file")" = "$before" ]'
 
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 # --add-missing: an environment created before a secret existed gets it, and nothing else changes.
 grep -v '^NOTIFICATION_POSTGRES_PASSWORD=\|^USER_INTERNAL_SERVICE_KEY=\|^CHAT_TICKET_SECRET=' "$file" > "$file.new"
 printf '%s' "$(cat "$file.new")" > "$file" # no newline at the end of the file

@@ -106,7 +106,7 @@ Scope: Wrote the 2026-10-26 staging apply and 2026-10-27 edge routing (deploy pa
 Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 deploy part 3 review-fix entry (PR #191) from Jian Bing's prompts, taken verbatim from the session transcript.
-Author review: pending — Jian Bing to record what he checked.
+Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Wrote the 2026-11-06 gateway .env.example entry (PR #156) from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
@@ -136,16 +136,16 @@ Scope: Wrote the 2026-11-07 Notification conflicts and Dependabot entry from Jia
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Wrote the 2026-11-08 issues, AWS check and #191 merge entry from Jian Bing's prompts, taken verbatim from the session transcript.
-Author review: pending — Jian Bing to record what he checked.
+Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Wrote the 2026-11-08 User Service migration entry from Jian Bing's answer, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Wrote the 2026-11-08 staging dry run entry (PR #191) from Jian Bing's prompts, taken verbatim from the session transcript except four teammates' email addresses, which are redacted because this repository is public.
-Author review: pending — Jian Bing to record what he checked.
+Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 entry on bringing #191 and #229 up to date and chat's settings on AWS from Jian Bing's prompts, taken verbatim from the session transcript.
-Author review: pending — Jian Bing to record what he checked.
+Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 -->
 
 # AI Usage Log — Jian Bing
@@ -185,7 +185,7 @@ before chat merges.)
 
 **Verification:** The new checks failed first (`services.tftest.hcl` twice, `new-secrets.test.sh` 3, `put-secrets.test.sh`
 2), then passed; all six deploy-script tests, `infra/terraform/check.sh` (every stack valid) and the SoCLaaS tests
-on #229 (11/11) pass. My own check: pending.
+on #229 (11/11) pass. My own check: looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 
 ### 2026-11-08 — Staging dry run for deploy part 3 (PR #191), and what it found
 
@@ -230,7 +230,7 @@ one-off SQL or a reset (the one-off SQL was only to bring staging back before #2
 **Verification:** Each Terraform fix has a test that failed first (`services.tftest.hcl` AZ rebalancing,
 `server.tftest.hcl` managed draining); `infra/terraform/check.sh` and `repo-checks.test.sh` pass. On staging: the
 site, gateway health, JWKS and a 401 without a token after the recovery; all 15 services running; the dry run's
-deploy and checks passed. My own check: pending.
+deploy and checks passed. My own check: looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 
 ### 2026-11-08 — A migration for #180's User Service schema (found in the staging dry run)
 
@@ -330,7 +330,7 @@ the merge of main into #191 with the runbook change.
 the six deploy-script tests (0 failed each), `infra/terraform/check.sh` (every stack valid; global 4, edge 1,
 network 1, server 1, services 4 and staging 2 test runs passed), `node --test infra/checks/test/select.test.mjs`
 (6/6) and `actionlint`. It checked the new issues' labels and close reason on GitHub afterwards. My own check:
-pending.
+looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 
 ### 2026-11-07 — Updating Jie Yang's Notification PRs, and the Dependabot PRs
 
@@ -492,7 +492,8 @@ My answer to Claude's question about the new Codex threads: "Fix 4, explain 1 (R
 **Verification:** Claude watched the new tests fail first (4 in `deploy-images.test.sh`, 2 in
 `repo-checks.test.sh`), then ran all six script tests (0 failed each), `infra/terraform/check.sh` (19 test runs
 passed, every stack valid), `node --test infra/checks/test/select.test.mjs` (6 passed) and `actionlint`. My own
-check: pending — Jian Bing to record what he checked.
+check: looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes
+it needed).
 
 ### 2026-11-06 — Recording my review of the AWS infrastructure (PR #146)
 
@@ -685,7 +686,7 @@ passing a broken gateway, and the rollout order) were fixed test-first, and nine
 **Key response:** "Notification's PR chain (#161 to #189) and #178 must reach `main` before this branch does, because
 `push-images.sh` builds `notification-service/`."
 
-**Verification:** Pending — Jian Bing to record what he checked.
+**Verification:** Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 
 ### 2026-11-05 — Second Codex review round on the AWS infrastructure (PR #146)
 

@@ -8,10 +8,10 @@
 #   the admin locations page load).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Notification's secrets (deploy part 3).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: CHAT_TICKET_SECRET is required (chat, #230).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Loads one environment's secrets into SSM Parameter Store as SecureStrings under /foc/<env>/.
 #   infra/scripts/put-secrets.sh staging      # reads infra/secrets/staging.env (git-ignored)

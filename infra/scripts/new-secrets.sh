@@ -7,10 +7,10 @@
 #   the admin locations page load).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Notification's secrets and --add-missing (deploy part 3).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: CHAT_TICKET_SECRET, generated and added by --add-missing (chat, #230).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Creates infra/secrets/<env>.env (git-ignored, mode 600) with fresh random values for every
 # generated secret, the same formats as .env.example asks for. It never prints a value and never
@@ -31,7 +31,7 @@ esac
 root="${FOC_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 file="$root/infra/secrets/$env.env"
 
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 hex() { openssl rand -hex 32; }
 key32() { openssl rand -base64 32; }
 
@@ -62,7 +62,7 @@ umask 077
   echo "CREDIT_SERVICE_KEY=$(hex)"
   echo "ORDER_SERVICE_KEY=$(hex)"
   echo "USER_INTERNAL_SERVICE_KEY=$(hex)"
-  echo "CHAT_TICKET_SECRET=$(hex)" # AI-generated (Claude Code), review pending: Order and chat share it (#230)
+  echo "CHAT_TICKET_SECRET=$(hex)" # AI-generated (Claude Code): Order and chat share it (#230)
   echo "USER_AES_KEY=$(key32)"
   echo "USER_EMAIL_HMAC_KEY=$(key32)"
   echo "USER_OTP_HMAC_KEY=$(key32)"

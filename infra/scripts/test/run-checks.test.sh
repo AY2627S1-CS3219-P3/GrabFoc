@@ -3,10 +3,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Generated from the deployment plan (deploy part 3, #143, Task 4): tests run-checks.sh.
 #        Final review fix: a failed register.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Run: infra/scripts/test/run-checks.test.sh   (no AWS access needed; needs jq)
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/../run-checks.sh"

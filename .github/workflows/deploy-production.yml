@@ -1,14 +1,14 @@
 # AI Assistance Disclosure:
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Generated from the deployment plan (deploy part 3, #143, Task 5).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 # Scope: Job timeout above deploy-images.sh's slowest run; the image check moved into deploy-images.sh,
 #        which checks every repository (PR #191 review).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Started by hand, and waits for approval in the production environment. Deploys the tag staging
 # last passed; nothing is rebuilt. Give an older tag to roll back.
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 
 name: Deploy production
 
@@ -32,7 +32,7 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # AI-generated (Claude Code, 2026-11-06), review pending: above deploy-images.sh at its slowest, about
+    # AI-generated (Claude Code, 2026-11-06): above deploy-images.sh at its slowest, about
     # 132 min (per layer up to 3 x 10 min stable waits, per service up to 20 x 15 s health checks).
     timeout-minutes: 150
     environment: production

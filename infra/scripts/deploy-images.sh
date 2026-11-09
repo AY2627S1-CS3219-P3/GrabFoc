@@ -3,17 +3,17 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Generated from the deployment plan (deploy part 3, #143, Task 3). Final review fixes: stop
 #        before any change if a service is missing; a layer is done only when it's healthy.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 # Scope: Stop before any change if a foc/ image the services run is missing on the tag (PR #191 review).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Rolls an image tag onto an environment's services, in the order Service Connect needs: the apps,
 # then the gateway, then the frontend. The images must already be in ECR (push-images.sh).
 #   infra/scripts/deploy-images.sh staging "$(git rev-parse --short=7 HEAD)"
 # The tag is recorded only once every layer is healthy, so a manual terraform apply keeps it, and a
 # deploy that fails halfway leaves the record on the last good tag.
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 set -euo pipefail
 
 env="${1:-}"
@@ -48,7 +48,7 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
-# AI-generated (Claude Code, 2026-11-06), review pending: every foc/ image the services run must exist
+# AI-generated (Claude Code, 2026-11-06): every foc/ image the services run must exist
 # on the tag before anything changes. A half-pushed tag (or a mistyped rollback) would otherwise leave
 # services on task definitions whose images can't be pulled.
 repos=()

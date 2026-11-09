@@ -7,7 +7,7 @@
 #   the admin locations page load).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 # Scope: managed_draining DISABLED on the capacity provider (a staging server replacement hung on it).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # The environment's one ECS server (spec §3.1) and its persistent data volume (spec §4). The server
 # can be replaced at any time; the volume and the Elastic IP outlive it.
 # AI-generated (Claude Code).
@@ -161,7 +161,7 @@ resource "aws_ecs_capacity_provider" "server" {
   auto_scaling_group_provider {
     auto_scaling_group_arn         = aws_autoscaling_group.server.arn
     managed_termination_protection = "DISABLED"
-    # AI-generated (Claude Code), review pending. Off: draining waits for the old server's tasks
+    # AI-generated (Claude Code). Off: draining waits for the old server's tasks
     # to run elsewhere, but the only other server can't join until it has the data volume, which
     # the old one still holds, so a replacement hung for an hour (staging, 2026-11-08).
     managed_draining = "DISABLED"

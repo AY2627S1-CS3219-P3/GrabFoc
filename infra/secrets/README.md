@@ -5,10 +5,10 @@ Scope: Generated from the deployment plan (docs/superpowers/plans/2026-10-23-aws
 Author review: Pending Jian Bing's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 Scope: Notification's secrets and --add-missing (deploy part 3, #143).
-Author review: Pending Jian Bing's review.
+Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: CHAT_TICKET_SECRET (chat, #230).
-Author review: Pending Jian Bing's review.
+Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 -->
 
 # Deployment secrets (never committed)

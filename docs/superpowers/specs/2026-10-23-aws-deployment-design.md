@@ -11,7 +11,7 @@ Author review: Pending Jian Bing's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 Scope: The Notification Service (Jian Bing's decision, 2026-11-05), the Mailpit allowlist and how the checks and
        tags work, from the deploy part 3 plan.
-Author review: Pending Jian Bing's review.
+Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Status line: [Proposed] to [Decided], recording Cole Lin's confirmation as Jian Bing reported it.
 Author review: Pending Jian Bing's review.

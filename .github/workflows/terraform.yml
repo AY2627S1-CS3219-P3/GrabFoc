@@ -6,7 +6,7 @@
 #   the admin locations page load).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: The plan job, and the deploy scripts' and checks image's tests (deploy part 3, #143).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Terraform and deployment-script checks on pull requests that touch the infrastructure (issue #100),
 # then "terraform plan" against staging.
 # AI-generated (Claude Code).
@@ -45,7 +45,7 @@ jobs:
           infra/scripts/test/put-secrets.test.sh
           infra/scripts/test/new-secrets.test.sh
           infra/scripts/test/push-images.test.sh
-          # AI-generated (Claude Code); review pending.
+          # AI-generated (Claude Code).
           infra/scripts/test/deploy-images.test.sh
           infra/scripts/test/run-checks.test.sh
           infra/scripts/test/repo-checks.test.sh

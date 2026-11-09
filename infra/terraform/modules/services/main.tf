@@ -13,13 +13,13 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Deploy part 3 (#143): Mailpit's allowlist and API port, the checks task, the Notification Service,
 #        and a health check for the gateway (deploy-images.sh waits for HEALTHY).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 # Scope: AZ rebalancing off on every service (the staging dry run failed on Mailpit's 100% maximum).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: ORDER_CHAT_TICKET_SECRET for Order and CHAT_SERVICE_URL for the gateway, which chat (#230) requires.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
@@ -38,7 +38,7 @@ locals {
 
   postgres = {
     for name, cfg in {
-      # AI-generated (Claude Code); review pending.
+      # AI-generated (Claude Code).
       "user-db"         = { db = "users", password = "POSTGRES_PASSWORD" }
       "supplier-db"     = { db = "supplier", password = "SUPPLIER_POSTGRES_PASSWORD" }
       "credit-db"       = { db = "credit", password = "CREDIT_POSTGRES_PASSWORD" }
@@ -167,12 +167,12 @@ locals {
         ORDER_DB_PASSWORD        = "ORDER_DB_PASSWORD"
         ORDER_CREDIT_SERVICE_KEY = "CREDIT_SERVICE_KEY"
         ORDER_SERVICE_KEY        = "ORDER_SERVICE_KEY"
-        # AI-generated (Claude Code), review pending: Order won't start without it since chat (#230);
+        # AI-generated (Claude Code): Order won't start without it since chat (#230);
         # the chat service will read the same parameter.
         ORDER_CHAT_TICKET_SECRET = "CHAT_TICKET_SECRET"
       }
     }
-    # AI-generated (Claude Code); review pending.
+    # AI-generated (Claude Code).
     "notification-service" = {
       image  = local.image["notification-service"]
       port   = 3006
@@ -201,7 +201,7 @@ locals {
         ORDER_SERVICE_URL    = "http://order-service:3005"
         CREDIT_SERVICE_URL   = "http://credit-service:3004"
         FRONTEND_URL         = "http://frontend:3000" # the edge listener's catch-all (deploy part 1)
-        # AI-generated (Claude Code), review pending: chat's route file (#230) needs it or the gateway
+        # AI-generated (Claude Code): chat's route file (#230) needs it or the gateway
         # won't start. The chat service isn't on AWS yet, so chat requests get 503 until it is.
         CHAT_SERVICE_URL = "http://chat-service:3007"
         }, var.edge_container_port == 3003 ? {} : {
@@ -223,7 +223,7 @@ locals {
       image  = "axllent/mailpit:v1.31.2"
       health = ["CMD", "/mailpit", "readyz"]
       port   = 1025
-      # AI-generated (Claude Code); review pending.
+      # AI-generated (Claude Code).
       # The API, for the checks task; the security group keeps it off the internet.
       extra_ports = [8025]
       memory      = 48
@@ -238,7 +238,7 @@ locals {
     }
   } : {})
 
-  # AI-generated (Claude Code); review pending.
+  # AI-generated (Claude Code).
   # Without a list, Mailpit relays nothing: the checks sign up random addresses at a real domain.
   mailpit_env = merge({
     MP_SMTP_AUTH_ALLOW_INSECURE = "true" # plain login over the server's internal network
@@ -280,7 +280,7 @@ locals {
     "order-migrate" = { image = local.image["order-service"], memory = 128, command = ["node", "dist/db/migrate-cli.js"], env = local.order_db_env, secrets = { ORDER_DB_PASSWORD = "ORDER_DB_PASSWORD" } }
   }
 
-  # AI-generated (Claude Code); review pending.
+  # AI-generated (Claude Code).
   # Staging's on-demand checks (infra/scripts/run-checks.sh). A standalone task gets no Service
   # Connect names, so it uses the public URL, and Mailpit through the server's Docker bridge address.
   checks = var.mailpit_relay ? {
@@ -296,7 +296,7 @@ locals {
   secret_names = distinct(flatten([for c in merge(local.containers, local.oneoffs) : concat(keys(c.secrets), values(c.secrets))]))
 
   init_containers = {
-    # AI-generated (Claude Code); review pending.
+    # AI-generated (Claude Code).
     "order-service"        = ["kafka-init", "order-migrate"]
     "credit-service"       = ["kafka-init"]
     "notification-service" = ["kafka-init"]
@@ -408,7 +408,7 @@ resource "aws_ecs_task_definition" "service" {
   }
 }
 
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 # No ECS service: run-checks.sh starts it after each staging deploy.
 resource "aws_ecs_task_definition" "checks" {
   count                    = length(local.checks)
@@ -462,7 +462,7 @@ resource "aws_ecs_service" "data" {
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
   # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
-  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code), review pending
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code)
 
   service_connect_configuration {
     enabled   = true
@@ -500,7 +500,7 @@ resource "aws_ecs_service" "app" {
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
   # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
-  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code), review pending
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code)
 
   service_connect_configuration {
     enabled   = true
@@ -538,7 +538,7 @@ resource "aws_ecs_service" "edge" {
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
   # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
-  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code), review pending
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code)
 
   service_connect_configuration {
     enabled   = true
@@ -576,7 +576,7 @@ resource "aws_ecs_service" "web" {
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
   # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
-  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code), review pending
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code)
 
   service_connect_configuration {
     enabled   = true

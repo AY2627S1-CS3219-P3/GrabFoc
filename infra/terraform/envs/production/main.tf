@@ -6,7 +6,7 @@
 #   the admin locations page load).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Deploy part 3 (#143): the tag comes from Parameter Store unless given; checks and Notification images.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # The production environment: one VPC, one ECS-on-EC2 server, every container as an ECS service, and
 # CloudFront in front (spec §3). Module calls are added by later tasks.
 # AI-generated (Claude Code).
@@ -27,7 +27,7 @@ module "server" {
 }
 
 data "aws_ecr_repository" "image" {
-  # AI-generated (Claude Code); review pending.
+  # AI-generated (Claude Code).
   for_each = toset([
     "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
     "api-gateway", "frontend", "kafka-init", "checks",

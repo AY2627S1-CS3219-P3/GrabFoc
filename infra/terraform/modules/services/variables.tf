@@ -5,7 +5,7 @@
 #   this stack (every stack valid).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: mailpit_relay_to and public_url (deploy part 3, #143).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # AI-generated (Claude Code).
 
 variable "env" {
@@ -44,7 +44,7 @@ variable "mailpit_relay" {
   type        = bool
 }
 
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 variable "mailpit_relay_to" {
   description = "The only recipients Mailpit forwards to Gmail. Empty means nothing is forwarded."
   type        = list(string)

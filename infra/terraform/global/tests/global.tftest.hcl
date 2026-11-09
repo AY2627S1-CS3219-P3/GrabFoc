@@ -7,7 +7,7 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Deploy part 3 (#143): the checks and notification-service repos, the plan role's parameter
 #        exceptions, and the deploy roles' tag parameters and log reads.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -143,7 +143,7 @@ run "plan_parameter_exceptions" {
   assert {
     condition = alltrue([
       for st in jsondecode(aws_iam_role_policy.plan_state_lock.policy).Statement :
-      # AI-generated (Claude Code); review pending.
+      # AI-generated (Claude Code).
       toset(st.NotResource) == toset([
         "arn:aws:ssm:*::parameter/aws/service/*",
         "arn:aws:ssm:*:111122223333:parameter/foc-deploy/*",

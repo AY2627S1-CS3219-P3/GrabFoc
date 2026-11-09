@@ -7,7 +7,7 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Deploy part 3 (#143): the checks and notification-service repos, the plan role's parameter
 #        exceptions, and the deploy roles' tag parameters and log reads.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # AI-generated (Claude Code).
 
 # One stack per account (staging and production share the NUS-managed account, spec §6). It keeps
@@ -17,7 +17,7 @@ data "aws_caller_identity" "current" {}
 
 locals {
   account_id = data.aws_caller_identity.current.account_id
-  # AI-generated (Claude Code); review pending.
+  # AI-generated (Claude Code).
   images = [
     "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
     "api-gateway", "frontend", "kafka-init", "checks",
@@ -121,7 +121,7 @@ resource "aws_iam_role_policy" "plan_state_lock" {
         Resource = [for env in ["staging", "production"] : "${aws_s3_bucket.state.arn}/${env}/terraform.tfstate.tflock"]
       },
       {
-        # AI-generated (Claude Code); review pending.
+        # AI-generated (Claude Code).
         # ReadOnlyAccess would otherwise let a pull request read our SecureStrings. Plan still reads
         # AWS's public parameters (the ECS-optimised AMI ID), the deployed tag and the origin key.
         Effect = "Deny"
@@ -187,7 +187,7 @@ resource "aws_iam_role_policy" "deploy" {
         Resource  = "arn:aws:iam::${local.account_id}:role/foc-${each.value}-*"
         Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
       },
-      # AI-generated (Claude Code); review pending.
+      # AI-generated (Claude Code).
       # The tag this environment runs, and for staging the tag its checks passed.
       {
         Effect   = "Allow"

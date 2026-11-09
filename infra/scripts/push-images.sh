@@ -8,7 +8,7 @@
 #   the admin locations page load).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: the Notification and checks images (deploy part 3).
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Builds and pushes every image to ECR; the deploy workflow runs this on each merge to main.
 #   infra/scripts/push-images.sh "$(git rev-parse --short=7 HEAD)"

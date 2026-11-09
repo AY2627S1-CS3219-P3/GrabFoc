@@ -3,13 +3,13 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Generated from the deployment plan (deploy part 3, #143, Task 3): tests deploy-images.sh.
 #        Final review fixes: failed registers, missing services, health after the rollout.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 # Scope: Tests that every foc/ image is checked on the tag first, and a missing one stops the deploy.
-# Author review: Pending Jian Bing's review.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Run: infra/scripts/test/deploy-images.test.sh   (no AWS access needed; needs jq)
-# AI-generated (Claude Code); review pending.
+# AI-generated (Claude Code).
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/../deploy-images.sh"
