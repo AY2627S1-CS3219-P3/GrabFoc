@@ -21,8 +21,9 @@
 # Scope: ORDER_CHAT_TICKET_SECRET for Order and CHAT_SERVICE_URL for the gateway, which chat (#230) requires.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
-# Scope: The Logging Service and its database, LOGGING_SERVICE_URL for the gateway, and the broker
-#        address Supplier was missing, so its lines reach the store too (issue #52).
+# Scope: The Logging Service and its database, and the broker address Supplier was missing, so its
+#        lines reach the store too (issue #52). The gateway's LOGGING_SERVICE_URL is set alongside
+#        the route file that reads it, not here, so neither change depends on the other.
 # Author review: pending - Jian Bing owns the deployment.
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 # Scope: Review: the app services stop before being replaced, and a memory model for the rollout
@@ -232,9 +233,6 @@ locals {
         # AI-generated (Claude Code): chat's route file (#230) needs it or the gateway
         # won't start. The chat service isn't on AWS yet, so chat requests get 503 until it is.
         CHAT_SERVICE_URL = "http://chat-service:3007"
-        # AI-generated (Claude Code): the log store's route file (issue #52) needs it or the
-        # gateway won't start, the same rule as chat's above.
-        LOGGING_SERVICE_URL = "http://logging-service:3006"
         }, var.edge_container_port == 3003 ? {} : {
         GATEWAY_EDGE_PORT = tostring(var.edge_container_port)
       })
