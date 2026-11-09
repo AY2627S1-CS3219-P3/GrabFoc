@@ -17,6 +17,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 # Scope: AZ rebalancing off on every service (the staging dry run failed on Mailpit's 100% maximum).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: ORDER_CHAT_TICKET_SECRET for Order and CHAT_SERVICE_URL for the gateway, which chat (#230) requires.
+# Author review: Pending Jian Bing's review.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
@@ -164,6 +167,9 @@ locals {
         ORDER_DB_PASSWORD        = "ORDER_DB_PASSWORD"
         ORDER_CREDIT_SERVICE_KEY = "CREDIT_SERVICE_KEY"
         ORDER_SERVICE_KEY        = "ORDER_SERVICE_KEY"
+        # AI-generated (Claude Code), review pending: Order won't start without it since chat (#230);
+        # the chat service will read the same parameter.
+        ORDER_CHAT_TICKET_SECRET = "CHAT_TICKET_SECRET"
       }
     }
     # AI-generated (Claude Code); review pending.
@@ -195,6 +201,9 @@ locals {
         ORDER_SERVICE_URL    = "http://order-service:3005"
         CREDIT_SERVICE_URL   = "http://credit-service:3004"
         FRONTEND_URL         = "http://frontend:3000" # the edge listener's catch-all (deploy part 1)
+        # AI-generated (Claude Code), review pending: chat's route file (#230) needs it or the gateway
+        # won't start. The chat service isn't on AWS yet, so chat requests get 503 until it is.
+        CHAT_SERVICE_URL = "http://chat-service:3007"
         }, var.edge_container_port == 3003 ? {} : {
         GATEWAY_EDGE_PORT = tostring(var.edge_container_port)
       })

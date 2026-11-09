@@ -6,6 +6,9 @@ Author review: Pending Jian Bing's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 Scope: Notification's secrets and --add-missing (deploy part 3, #143).
 Author review: Pending Jian Bing's review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: CHAT_TICKET_SECRET (chat, #230).
+Author review: Pending Jian Bing's review.
 -->
 
 # Deployment secrets (never committed)
@@ -48,6 +51,7 @@ it. It refuses to run if any name below is missing, and prints names only, never
 | `USER_SMTP_FROM` | Sender shown on emails |
 | `USER_BOOTSTRAP_ADMIN_EMAIL` | First admin account |
 | `CREDIT_SERVICE_KEY`, `ORDER_SERVICE_KEY`, `USER_INTERNAL_SERVICE_KEY` | Service-to-service keys |
+| `CHAT_TICKET_SECRET` | Signs chat tickets; Order (as `ORDER_CHAT_TICKET_SECRET`) and the chat service share it (at least 32 characters) |
 
 Built by the script, not written by you: `USER_DATABASE_URL`, `SUPPLIER_DATABASE_URL` (from the
 passwords, as the compose files build them) and `MAILPIT_SMTP_AUTH` (staging Mailpit's login).

@@ -8,6 +8,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Notification's secrets and --add-missing (deploy part 3).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: CHAT_TICKET_SECRET, generated and added by --add-missing (chat, #230).
+# Author review: Pending Jian Bing's review.
 #
 # Creates infra/secrets/<env>.env (git-ignored, mode 600) with fresh random values for every
 # generated secret, the same formats as .env.example asks for. It never prints a value and never
@@ -34,7 +37,7 @@ key32() { openssl rand -base64 32; }
 
 if [ "$mode" = "--add-missing" ]; then
   [ -f "$file" ] || { echo "$file doesn't exist; run without --add-missing first" >&2; exit 1; }
-  for name in NOTIFICATION_POSTGRES_PASSWORD USER_INTERNAL_SERVICE_KEY; do
+  for name in NOTIFICATION_POSTGRES_PASSWORD USER_INTERNAL_SERVICE_KEY CHAT_TICKET_SECRET; do
     grep -q "^$name=" "$file" && continue
     [ -z "$(tail -c 1 "$file")" ] || echo >> "$file" # the file may not end in a newline
     echo "$name=$(hex)" >> "$file"
@@ -59,6 +62,7 @@ umask 077
   echo "CREDIT_SERVICE_KEY=$(hex)"
   echo "ORDER_SERVICE_KEY=$(hex)"
   echo "USER_INTERNAL_SERVICE_KEY=$(hex)"
+  echo "CHAT_TICKET_SECRET=$(hex)" # AI-generated (Claude Code), review pending: Order and chat share it (#230)
   echo "USER_AES_KEY=$(key32)"
   echo "USER_EMAIL_HMAC_KEY=$(key32)"
   echo "USER_OTP_HMAC_KEY=$(key32)"

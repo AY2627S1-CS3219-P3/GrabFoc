@@ -12,6 +12,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 # Scope: The AZ-rebalancing check (the staging dry run failed on it).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Checks that Order gets its chat ticket secret and that every gateway route file's URL is set (chat, #230).
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -153,6 +156,18 @@ run "staging" {
   assert {
     condition     = alltrue([for s in local.ecs_services : s.availability_zone_rebalancing == "DISABLED"])
     error_message = "AZ rebalancing is off on every service: one server in one zone has nothing to rebalance, and ECS refuses a stop-before-replace rollout (maximum 100%) while it is on."
+  }
+  # AI-generated (Claude Code), review pending: chat (#230) made both of these required.
+  assert {
+    condition     = local.containers["order-service"].secrets["ORDER_CHAT_TICKET_SECRET"] == "CHAT_TICKET_SECRET"
+    error_message = "Order refuses to start without ORDER_CHAT_TICKET_SECRET (chat, #230); it comes from the CHAT_TICKET_SECRET parameter, which the chat service will share."
+  }
+  assert {
+    condition = alltrue([
+      for f in fileset("${path.module}/../../../../api-gateway/envoy/routes", "*.routes.json") :
+      contains(keys(local.containers["api-gateway"].env), jsondecode(file("${path.module}/../../../../api-gateway/envoy/routes/${f}")).urlEnv)
+    ])
+    error_message = "Every gateway route file's urlEnv is set on api-gateway: the gateway refuses to start when one is missing."
   }
   assert {
     condition = [

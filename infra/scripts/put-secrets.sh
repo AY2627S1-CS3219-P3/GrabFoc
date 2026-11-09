@@ -9,6 +9,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: Notification's secrets (deploy part 3).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: CHAT_TICKET_SECRET is required (chat, #230).
+# Author review: Pending Jian Bing's review.
 #
 # Loads one environment's secrets into SSM Parameter Store as SecureStrings under /foc/<env>/.
 #   infra/scripts/put-secrets.sh staging      # reads infra/secrets/staging.env (git-ignored)
@@ -35,7 +38,7 @@ required=(
   NOTIFICATION_POSTGRES_PASSWORD
   USER_AES_KEY USER_EMAIL_HMAC_KEY USER_OTP_HMAC_KEY USER_JWT_PRIVATE_KEY USER_JWT_KID
   USER_SMTP_USER USER_SMTP_PASS USER_SMTP_FROM USER_BOOTSTRAP_ADMIN_EMAIL
-  CREDIT_SERVICE_KEY ORDER_SERVICE_KEY USER_INTERNAL_SERVICE_KEY
+  CREDIT_SERVICE_KEY ORDER_SERVICE_KEY USER_INTERNAL_SERVICE_KEY CHAT_TICKET_SECRET
 )
 
 # Works on macOS's bash 3.2 too (no associative arrays): look a name up in the file each time.
