@@ -149,12 +149,52 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 entry on bringing #191 and #229 up to date and chat's settings on AWS from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Wrote the 2026-11-09 entry on Kafka's restarts during the first staging deploy from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-09 — Kafka restarted during the first automatic staging deploy
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `infra/terraform/modules/services/main.tf`, `infra/terraform/modules/services/tests/services.tftest.hcl`
+
+**Scenario:** The first automatic staging deploy after #191 merged (run 42574854978, `114ad72`) reported that the
+five app services weren't stable after its first 10-minute wait. Claude read the ECS events, stopped tasks, logs and
+CloudWatch metrics. Starting five services at once pushed the server's CPU to about 95%. Kafka's health check (a
+new JVM every 15 s, 5 s limit) timed out, so ECS restarted Kafka twice. Credit's and Order's first tasks then
+failed because their `kafka-init` timed out creating topics, and ECS retried them about 5 minutes later. The second
+round passed and the deploy succeeded (checks passed, `114ad72` recorded as passed). The same happened at 06:14 UTC
+during an earlier apply. CPU credits weren't the cause: the server is in unlimited mode with about 850 left. Of the
+three fixes Claude offered (more time, a lighter check, a CPU reservation), I chose more time and a reservation.
+Kafka's check now allows 15 s, runs every 30 s, and has a 3-minute grace period, and Kafka reserves 1024 CPU units.
+Nothing else in the cluster reserves CPU, so this also gives Kafka priority when the server is busy.
+
+**Prompts (exact, in order):**
+> [Image #32] is thsi concerning
+
+(Image #32: the deploy log, "Waiter ServicesStable failed: Max attempts exceeded" and "not stable yet after round
+1" for the five app services.)
+
+> alright i logged in
+
+> ok new pr, lets do 1 and 3, then also we didnt properly deploy real time chat [Image #34]
+
+(Image #34 and a pasted chat from Jie Yang: the deployed site's chat WebSocket failing. That is a separate PR.)
+
+**What it produced:** Per-container health-check timing and CPU in the services module, the Kafka values, and three
+test assertions (Kafka's timing, its CPU, and no change to other containers).
+
+**What I changed or rejected:** A lighter, port-only health check (it can't tell whether the broker works).
+
+**Verification:** Claude watched the two Kafka assertions fail first, then pass (services module 4/4 runs), and ran
+`infra/terraform/check.sh` (every stack valid, all tests pass). The live check is the next staging apply and
+deploy. My own check: pending.
 
 ### 2026-11-09 — Bringing #191 and #229 up to date with main, and chat's settings on AWS
 

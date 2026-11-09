@@ -15,6 +15,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: Checks that Order gets its chat ticket secret and that every gateway route file's URL is set (chat, #230).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Checks Kafka's health check timing and CPU reservation, and that no other container changes.
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -296,6 +299,29 @@ run "staging" {
   assert {
     condition     = strcontains(join(" ", jsondecode(aws_ecs_task_definition.service["api-gateway"].container_definitions)[0].healthCheck.command), "http://127.0.0.1:3003/health")
     error_message = "The gateway's health check asks its own internal listener for /health."
+  }
+  # AI-generated (Claude Code, 2026-11-09): when several services start at once the server's CPU
+  # nears 100%, Kafka's health check (a new JVM each time) missed its 5 s limit, and ECS restarted
+  # Kafka mid-deploy (first automatic staging deploy, 114ad72). Jian Bing chose more time and a CPU
+  # reservation.
+  assert {
+    condition = (
+      jsondecode(aws_ecs_task_definition.service["kafka"].container_definitions)[0].healthCheck.timeout >= 15 &&
+      jsondecode(aws_ecs_task_definition.service["kafka"].container_definitions)[0].healthCheck.interval >= jsondecode(aws_ecs_task_definition.service["kafka"].container_definitions)[0].healthCheck.timeout * 2 &&
+      jsondecode(aws_ecs_task_definition.service["kafka"].container_definitions)[0].healthCheck.startPeriod >= 180
+    )
+    error_message = "Kafka's health check allows 15 s, runs at most every 30 s, and has a 3-minute grace period."
+  }
+  assert {
+    condition     = try(jsondecode(aws_ecs_task_definition.service["kafka"].container_definitions)[0].cpu, 0) == 1024
+    error_message = "Kafka reserves one vCPU (1024 units), so it keeps CPU when other services start."
+  }
+  assert {
+    condition = (
+      jsondecode(aws_ecs_task_definition.service["user-service"].container_definitions)[0].healthCheck.timeout == 5 &&
+      try(jsondecode(aws_ecs_task_definition.service["user-service"].container_definitions)[0].cpu, 0) == 0
+    )
+    error_message = "Only Kafka changes: other containers keep the 5 s health check and reserve no CPU."
   }
 }
 

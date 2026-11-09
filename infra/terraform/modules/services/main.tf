@@ -20,6 +20,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: ORDER_CHAT_TICKET_SECRET for Order and CHAT_SERVICE_URL for the gateway, which chat (#230) requires.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Kafka's health check gets 15 s (checks 30 s apart, 3-minute grace) and Kafka reserves one vCPU,
+#   after ECS restarted it mid-deploy (Jian Bing chose both); per-container health timing and cpu.
+# Author review: Pending Jian Bing's review.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
@@ -77,6 +81,12 @@ locals {
       folder   = "/data/kafka"
       mount_to = "/var/lib/kafka/data"
       health   = ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      # AI-generated (Claude Code, 2026-11-09): each check starts a JVM, which took over 5 s while
+      # several services started at once, so ECS restarted Kafka mid-deploy. Jian Bing chose a
+      # 15 s limit (checks 30 s apart, 3-minute grace) and one reserved vCPU, which also gives
+      # Kafka priority over the containers that reserve none.
+      health_timing = { interval = 30, timeout = 15, startPeriod = 180 }
+      cpu           = 1024
       env = {
         KAFKA_NODE_ID                                  = "1"
         KAFKA_PROCESS_ROLES                            = "broker,controller"
@@ -378,8 +388,9 @@ locals {
       try(c.folder, null) == null ? {} : { mountPoints = [{ sourceVolume = "data", containerPath = c.mount_to }] },
       try(c.command, null) == null ? {} : { command = c.command },
       try(c.health, null) == null ? {} : {
-        healthCheck = { command = c.health, interval = 15, timeout = 5, retries = 5, startPeriod = name == "kafka" ? 120 : 60 }
+        healthCheck = merge({ command = c.health, interval = 15, timeout = 5, retries = 5, startPeriod = 60 }, try(c.health_timing, {}))
       },
+      try(c.cpu, null) == null ? {} : { cpu = c.cpu },
       contains(keys(local.oneoffs), name) ? { essential = false } : {},
       length(lookup(local.init_containers, name, [])) == 0 ? {} : {
         dependsOn = [for i in local.init_containers[name] : { containerName = i, condition = "SUCCESS" }]
