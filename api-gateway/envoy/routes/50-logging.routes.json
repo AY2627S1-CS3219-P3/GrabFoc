@@ -1,0 +1,17 @@
+{
+  "_disclosure": "AI Assistance Disclosure:\nTool: Claude Code (model: Claude Opus 5), date: 2026-11-09\nScope: A route for the Logging Service's ADMIN-only query API (GET /logs, #52), so the log store is reachable through the gateway instead of only on its own port. Authentication is the gateway's usual JWT filter; authorisation stays in the service, which answers 403 to a USER. No API or service change. /internal/** is deliberately not routed.\nAuthor review: pending - Jie Yang owns the gateway's route files.",
+  "service": "logging",
+  "urlEnv": "LOGGING_SERVICE_URL",
+  "prefixes": {
+    "logs": {
+      "env": "GATEWAY_LOGS_PREFIX",
+      "default": "/logs"
+    }
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "{logs}"
+    }
+  ]
+}

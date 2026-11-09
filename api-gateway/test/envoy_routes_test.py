@@ -32,6 +32,11 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: CHAT_SERVICE_URL in the test environment; the chat-ticket Order route (19 routes); the
        "websocket" route field, WebSocket upgrades and the chat socket route (the chat plan).
 Author review: Reviewed by Deanson, 2026-11-09; Jie Yang (gateway owner) to approve.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: LOGGING_SERVICE_URL in the test environment, and a test that the log store's query API is
+       routed as one protected GET to the logging cluster, honours its prefix variable, and that
+       nothing else of that service is reachable (#52).
+Author review: pending - Jie Yang owns the gateway's route files.
 """
 # AI-generated; review pending.
 import importlib.util
@@ -58,7 +63,8 @@ class RouteFilesTest(unittest.TestCase):
         spec.loader.exec_module(self.renderer)
         self.env = {"USER_SERVICE_URL": "http://user:3001", "SUPPLIER_SERVICE_URL": "http://supplier:3002",
                     "ORDER_SERVICE_URL": "http://order:3005", "CREDIT_SERVICE_URL": "http://credit:3004",
-                    "CHAT_SERVICE_URL": "http://chat:3007"}
+                    "CHAT_SERVICE_URL": "http://chat:3007",
+                    "LOGGING_SERVICE_URL": "http://logging:3006"}
 
     def write_service(self, definition):
         (self.root / "routes" / "30-extra.routes.json").write_text(json.dumps(definition))
@@ -307,6 +313,38 @@ class RouteFilesTest(unittest.TestCase):
         chat = next(c for c in config["static_resources"]["clusters"] if c["name"] == "chat")
         endpoint = chat["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
         self.assertEqual(endpoint["address"]["socket_address"], {"address": "chat", "port_value": 3007})
+
+    # AI-generated (Claude Code, 2026-11-09)
+    def test_log_query_is_one_protected_route_to_the_logging_cluster(self):
+        """The log store is an admin tool, so the gateway exposes exactly one read of it (#52).
+
+        It must require a token - the service's own ADMIN check is what separates a USER from an
+        admin, and that check never runs on a request the gateway has already let through
+        unauthenticated. And it must be the query API only: the store's ingest is Kafka, so there
+        is nothing else of this service a browser has any reason to reach.
+        """
+        config = self.renderer.configuration(self.env)
+        routes = [r for r in self.unprefixed(self.routes(config))
+                  if r.get("route", {}).get("cluster") == "logging"]
+        self.assertEqual(len(routes), 1)
+        self.assertEqual(routes[0]["match"]["path"], "/logs")
+        self.assertEqual(routes[0]["match"]["headers"][0]["string_match"]["exact"], "GET")
+        # Not "disabled": an unauthenticated GET /logs would reach a handler whose only defence is
+        # the role on a token that is not there.
+        self.assertEqual(routes[0]["typed_per_filter_config"][self.renderer.JWT]["requirement_name"],
+                         "user_token")
+        # The /gateway copy strips the prefix, so the service still sees /logs.
+        public = next(r for r in self.routes(config) if r["match"].get("path") == "/gateway/logs")
+        self.assertEqual(public["route"]["cluster"], "logging")
+        self.assertEqual(public["route"]["regex_rewrite"]["substitution"], "")
+        cluster = next(c for c in config["static_resources"]["clusters"] if c["name"] == "logging")
+        endpoint = cluster["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
+        self.assertEqual(endpoint["address"]["socket_address"], {"address": "logging", "port_value": 3006})
+        # The prefix is configurable like every other one.
+        moved = self.renderer.configuration({**self.env, "GATEWAY_LOGS_PREFIX": "/admin/logs"})
+        paths = [r["match"].get("path") for r in self.unprefixed(self.routes(moved))
+                 if r.get("route", {}).get("cluster") == "logging"]
+        self.assertEqual(paths, ["/admin/logs"])
 
     def test_invalid_definitions_fail_instead_of_disabling_authentication(self):
         valid = {"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",

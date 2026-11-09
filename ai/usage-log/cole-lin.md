@@ -17,6 +17,16 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-09 — A route for the log store, and what adding one costs the test harness (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** generate
+
+- Prompt: "ok work on the PR to deploy it. Don't bother updating, just the overview. Don't stop until its done."
+- The store was only reachable on its own port, so demonstrating it meant a second address and, on the deployed system, no address at all - the gateway is the only public path there. One route file, `GET /logs`, JWT-protected like every other: **the gateway authenticates and the service authorises**, which is the project's split, so a USER's token passes the gateway and the Logging Service answers 403. Its ingest is a Kafka topic rather than an HTTP API, so there is nothing else of it to route.
+- My decision against a wider route set: no `/internal/**`, no second read, and the prefix stays configurable like the others.
+- **The thing I did not expect.** A new route file's `urlEnv` is mandatory - the renderer refuses to start without it - so the variable has to be added in three places, and the third is the environment the integration test starts Envoy with. Removing just that one line makes **all 29 integration tests fail at once** while the unit suite, which builds its own environment, still passes clean. I proved that by deleting it and running them, then put it back; the renderer README now says so, because the next person adding a route file will hit it.
+- Verified: the new renderer test fails (`0 != 1`) with the route file removed and the suite is **18/18** with it; the integration suite is **29/29** against the real pinned Envoy image, including the new case; and against the running stack, `GET /logs` is **401** with no token, **403** for a plain USER I registered for it, **200** with 127 lines for the admin, **404** for `/logs/123` and `/internal/logs`, and **200** on the `/gateway/logs` copy.
+- The demo runbook said there was no gateway route. It is in this change, so its §5 and its gaps list are corrected here rather than left to go stale - the class of mistake this branch has made repeatedly.
+
 ### 2026-11-09 — Fourteen files changed without saying so (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
