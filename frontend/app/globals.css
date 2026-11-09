@@ -16,7 +16,7 @@ Author review: Pending review by Jie Yang.
 
 AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
-Scope: Removed the unused .header-avatar rule after the header avatar was removed.
+Scope: Removed the unused .header-avatar rule after the header avatar was removed. Made .profile-stats two columns after the Credits Earned card was removed.
 Author review: Pending review by Deanson.
 */
 /* AI-generated (pending review by Jie Yang); design rules in .claude/skills/foc-design/SKILL.md */
@@ -405,7 +405,7 @@ input::placeholder, textarea::placeholder { color: var(--faint); opacity: 1; }
 .credit-history { display: inline-block; margin-top: 18px; color: var(--gold-bright); font-size: 14px; font-weight: 700; text-decoration: none; }
 a.credit-history:hover { text-decoration: underline; }
 .credit-card:has(.credit-values) .data-note, .credit-card:has(.credit-values) .load-error { color: rgb(255 255 255 / 75%); }
-.profile-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.profile-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
 .stat-card { min-height: 112px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 4px; padding: 18px; }
 .stat-card strong { font-family: var(--font-display); font-size: 28px; line-height: 1; }
 .stat-card span { color: var(--muted); font-size: 13px; }

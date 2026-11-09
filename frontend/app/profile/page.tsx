@@ -14,6 +14,9 @@ Author review: Pending review by Jie Yang.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Filled Orders Requested (/orders/mine total) and Orders Delivered (/orders/assigned?status=COMPLETED total), with a retryable error; removed the "Order totals… integration is ready" note.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Removed the Credits Earned stat card (it had no data source).
+Author review: Pending review by Deanson.
 */
 "use client";
 
@@ -138,10 +141,9 @@ export default function ProfilePage() {
               ? <span className="credit-history" aria-disabled="true">View transaction history</span>
               : <Link className="credit-history" href="/credits/history">View transaction history</Link>}
           </section>
-          <div className="profile-stats" aria-label="Order and credit totals" aria-busy={requested.isPending || delivered.isPending}>
+          <div className="profile-stats" aria-label="Order totals" aria-busy={requested.isPending || delivered.isPending}>
             <div className="stat-card"><strong>{requested.data ?? "—"}</strong><span>Orders Requested</span></div>
             <div className="stat-card"><strong>{delivered.data ?? "—"}</strong><span>Orders Delivered</span></div>
-            <div className="stat-card"><strong>—</strong><span>Credits Earned</span></div>
           </div>
           {totalsError && !isUnauthorized(totalsError) && <div className="load-error" role="alert"><p>{totalsError.message}</p>
             <button type="button" aria-label="Retry order totals" onClick={() => {

@@ -14,6 +14,22 @@ Deanson's entries, newest first. The template and rules (Appendix 2 of the proje
 [`ai/usage-log.md`](../usage-log.md): exact prompts, summarised responses, what was changed or
 rejected, and how it was verified.
 
+### 2026-11-09 — Removing the Credits Earned card from the profile page (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `frontend/app/profile/page.tsx`, `frontend/app/globals.css`
+
+**Scenario:** the profile page's "Credits Earned" stat card always showed "—" because nothing fed it data. I had the AI remove it.
+
+**Prompts (exact):**
+> On the frontend profile page, can you remove the block that holds 'credits earned'. Clarify before proceeding
+
+**Clarifying answers (mine):** make the stats row two columns so the remaining two cards fill it.
+
+**What it produced:** removed the card, renamed the row's `aria-label` from "Order and credit totals" to "Order totals", and changed `.profile-stats` from three columns to two.
+
+**Verification:** no "Credits Earned" references are left. Frontend `tsc` passes, and ESLint passes on `page.tsx`. Not yet checked by me in the running app.
+
 ### 2026-11-09 — Frontend endpoint audit and removing the header avatar (branch `feat/frontend-fixes`)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, refactor
