@@ -15,6 +15,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: Checks that Order gets its chat ticket secret and that every gateway route file's URL is set (chat, #230).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Chat on AWS (WIP, see docs/handoff/2026-11-09-aws-chat-handoff.md): expect its repository, database and service.
+# Author review: Pending.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -51,6 +54,7 @@ variables {
     "credit-service"       = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/credit-service"
     "order-service"        = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/order-service"
     "notification-service" = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/notification-service"
+    "chat-service"         = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/chat-service"
     "api-gateway"          = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/api-gateway"
     "frontend"             = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/frontend"
     "kafka-init"           = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/kafka-init"
@@ -123,14 +127,14 @@ run "staging" {
   }
   assert {
     condition = alltrue([
-      for name, folder in { "user-db" = "/data/user-db", "supplier-db" = "/data/supplier-db", "credit-db" = "/data/credit-db", "order-db" = "/data/order-db", "notification-db" = "/data/notification-db", "user-redis" = "/data/redis", "kafka" = "/data/kafka" } :
+      for name, folder in { "user-db" = "/data/user-db", "supplier-db" = "/data/supplier-db", "credit-db" = "/data/credit-db", "order-db" = "/data/order-db", "notification-db" = "/data/notification-db", "chat-db" = "/data/chat-db", "user-redis" = "/data/redis", "kafka" = "/data/kafka" } :
       one(aws_ecs_task_definition.service[name].volume).host_path == folder
     ])
     error_message = "Each data store mounts its own folder on the /data volume."
   }
   assert {
     condition = alltrue([
-      for name in ["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "api-gateway", "mailpit"] :
+      for name in ["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "user-redis", "kafka", "api-gateway", "mailpit"] :
       local.ecs_services[name].deployment_minimum_healthy_percent == 0 && local.ecs_services[name].deployment_maximum_percent == 100
     ])
     error_message = "Data stores, the gateway and Mailpit are stopped before being replaced: two copies must never share a folder or a host port."
@@ -139,8 +143,8 @@ run "staging" {
   # deployment was created, so services are created in layers: data → apps → edge → web.
   assert {
     condition = (
-      toset(keys(aws_ecs_service.data)) == toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "mailpit"]) &&
-      toset(keys(aws_ecs_service.app)) == toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service"]) &&
+      toset(keys(aws_ecs_service.data)) == toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "user-redis", "kafka", "mailpit"]) &&
+      toset(keys(aws_ecs_service.app)) == toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service", "chat-service"]) &&
       toset(keys(aws_ecs_service.edge)) == toset(["api-gateway"]) &&
       toset(keys(aws_ecs_service.web)) == toset(["frontend"])
     )

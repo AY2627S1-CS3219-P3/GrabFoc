@@ -149,12 +149,53 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 entry on bringing #191 and #229 up to date and chat's settings on AWS from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Wrote the 2026-11-09 chat-on-AWS handoff entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-09 — Chat on AWS: started, and handed off
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** plan, generate
+**Files:** `docs/handoff/2026-11-09-aws-chat-handoff.md`, `infra/terraform/global/tests/global.tftest.hcl`,
+`infra/terraform/modules/services/tests/services.tftest.hcl`
+
+**Scenario:** Chat (#230) was never deployed to AWS, so the site's chat WebSocket got `503 no healthy upstream`
+from the gateway. Jie Yang shared a plan to deploy it. Claude compared it with `main`: #191 had already set the
+gateway's `CHAT_SERVICE_URL` and Order's ticket secret. Claude also found ordering traps: ECR tags are immutable,
+the environments look repositories up by name, `deploy-images.sh` stops if a service is missing, and the gateway
+must be restarted to learn the new name. I approved the plan with its two design calls (192 MiB for chat-service;
+one SSM secret for Order and Chat), and chose to plan the supplier images after chat. Claude began test-first on
+`feat/chat-aws` (failing tests for the new repository, database and service), then, at my request, wrote a
+handoff document so a teammate can finish it.
+
+**Prompts (exact, in order):**
+> ok new pr, lets do 1 and 3, then also we didnt properly deploy real time chat [Image #34]
+
+(Pasted with it: Jie Yang's chat about the WebSocket failure. Image #34: the site's chat stuck on "Reconnecting".)
+
+> @yimyamyum also the supplier image is there a way to host them in AWS instead of github.. lowk loading it is q slow haha
+
+(A teammate's message, pasted.)
+
+(Then Jie Yang's pasted plan, "Deploy the Chat Service to AWS: Plan".)
+
+My answers to Claude's questions: "Approve, you build it (Recommended)" and "Plan it after chat (Recommended)".
+
+> before usage runs out, explort all thsi to a md to give my teammate to continue
+
+**What it produced:** The handoff document (state of #231, #232 and #235; Kafka's restarts; the chat plan with its
+corrections, remaining edits and staging rollout; the supplier-image findings) and the first failing tests.
+
+**What I changed or rejected:** Nothing yet.
+
+**Verification:** The tests are expected to fail until the remaining edits in the handoff are made. The facts in
+the handoff were checked against `main` (`114ad72`) and the live staging account. My own check: pending.
 
 ### 2026-11-09 — Bringing #191 and #229 up to date with main, and chat's settings on AWS
 
