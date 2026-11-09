@@ -6,6 +6,9 @@
 # Author review (Jian Bing, 2026-11-06): Went through it with Claude Code's walkthrough and understood it; ran
 #   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
 #   the admin locations page load).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: the /data/notification-db folder (deploy part 3, #143).
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Runs once when the ECS server boots: joins the cluster, takes the Elastic IP, attaches and mounts
 # the persistent data volume, and prepares a folder per data store.
@@ -45,7 +48,7 @@ mountpoint -q /data
 
 # 5. One folder per data store. PostgreSQL and Redis fix their own folder owners; Kafka runs as
 #    appuser (uid 1000) and can't write to a root-owned folder.
-mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/redis /data/kafka
+mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/notification-db /data/redis /data/kafka
 chown 1000:1000 /data/kafka
 
 # 6. Only now join the environment's ECS cluster: the data stores can start.

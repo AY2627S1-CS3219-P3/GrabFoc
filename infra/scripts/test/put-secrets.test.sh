@@ -4,6 +4,12 @@
 # Scope: Generated from the deployment plan (Task 7): tests put-secrets.sh against a fake `aws`.
 #        2026-10-27 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
 # Author review (Jian Bing, 2026-11-06): Not read line by line; these tests pass in CI (terraform.yml).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: Notification's secrets (deploy part 3).
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: CHAT_TICKET_SECRET is written (chat, #230).
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 #
 # Run: infra/scripts/test/put-secrets.test.sh   (no AWS access needed)
 # AI-generated (Claude Code).
@@ -39,6 +45,7 @@ POSTGRES_PASSWORD=pg-user-pw
 SUPPLIER_POSTGRES_PASSWORD=pg-supplier-pw
 CREDIT_POSTGRES_PASSWORD=pg-credit-pw
 ORDER_DB_PASSWORD=pg-order-pw
+NOTIFICATION_POSTGRES_PASSWORD=pg-notification-pw
 USER_AES_KEY=aes-secret
 USER_EMAIL_HMAC_KEY=email-hmac-secret
 USER_OTP_HMAC_KEY=otp-hmac-secret
@@ -50,6 +57,8 @@ USER_SMTP_FROM=FoC <foc.app@gmail.com>
 USER_BOOTSTRAP_ADMIN_EMAIL=admin@u.nus.edu
 CREDIT_SERVICE_KEY=credit-key
 ORDER_SERVICE_KEY=order-key
+USER_INTERNAL_SERVICE_KEY=user-internal-key
+CHAT_TICKET_SECRET=chat-ticket-secret
 ENV
 }
 
@@ -66,7 +75,10 @@ full > "$work/repo/infra/secrets/staging.env"
 : > "$AWS_CALLS"
 out=$(FOC_REPO_ROOT="$work/repo" "$SCRIPT" staging 2>&1); code=$?
 check "full file exits zero" '[ $code -eq 0 ]'
-check "18 parameters written" '[ "$(wc -l < "$AWS_CALLS" | tr -d " ")" = 18 ]'
+check "21 parameters written" '[ "$(wc -l < "$AWS_CALLS" | tr -d " ")" = 21 ]'
+# AI-generated (Claude Code): Order needs it since chat (#230).
+check "chat's ticket secret written" 'grep -qx "/foc/staging/CHAT_TICKET_SECRET=chat-ticket-secret" "$AWS_CALLS"'
+check "Notification's secrets written" 'grep -qx "/foc/staging/NOTIFICATION_POSTGRES_PASSWORD=pg-notification-pw" "$AWS_CALLS" && grep -qx "/foc/staging/USER_INTERNAL_SERVICE_KEY=user-internal-key" "$AWS_CALLS"'
 check "names are under /foc/staging/" '! grep -qv "^/foc/staging/" "$AWS_CALLS"'
 check "user database URL built as in compose" 'grep -qx "/foc/staging/USER_DATABASE_URL=postgres://foc:pg-user-pw@user-db:5432/users" "$AWS_CALLS"'
 check "supplier database URL built as in compose" 'grep -qx "/foc/staging/SUPPLIER_DATABASE_URL=postgres://foc:pg-supplier-pw@supplier-db:5432/supplier" "$AWS_CALLS"'
