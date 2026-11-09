@@ -137,12 +137,46 @@ Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Wrote the 2026-11-08 SoCLaaS 502 and CI diagnosis entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Wrote the 2026-11-09 SoCLaaS token cap entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-09 — The SoCLaaS token cap cut a review short
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`
+
+**Scenario:** With #229 on main, the automatic SoCLaaS review of #191 no longer got a 502: the streamed answer
+arrived in 37 s. It failed instead with "The model did not finish normally". The script didn't say why; the likely
+cause is #229's 4,000-token cap (the old request had none), which a model that spends tokens before writing can use
+up. The cap is removed, since streaming alone keeps the gateway from timing out, and the error now names the finish
+reason (only a short word-like value, never arbitrary upstream text). Separately, a CI job on #191 failed again on a
+GitHub incident ("Increased timeouts due to surge in anonymous users", 504 on release downloads); re-running it
+passed.
+
+**Prompts (exact, in order):**
+> [Image #31] user service ci fiaeld for 191
+
+(Image #31: #191's failed "Test (user-service)" job, at `npm ci`.)
+
+> also i merged 229 already
+
+My answer to Claude's plan for removing the cap: "Implement this step".
+
+**What it produced:** No `max_tokens` on the review request; the finish reason in the "did not finish normally"
+error; three new tests and one changed.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude watched three tests fail first (no cap sent, `finish_reason: length` named, `none` when the
+stream ends without one; a fourth, that an odd reason isn't echoed, pins the safety of the new message), then ran
+the suite: 13/13 pass. The live check is the next automatic review after this merges. My own check: pending.
 
 ### 2026-11-08 — Why SoCLaaS answers 502, and why CI failed on every PR
 
