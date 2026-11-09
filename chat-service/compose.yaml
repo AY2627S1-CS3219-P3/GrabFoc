@@ -1,0 +1,64 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+# Scope: Generated the chat service, its database and one-shot migration, following
+#        notification-service/compose.yaml and order-service/compose.yaml (the chat plan).
+# Author review: Reviewed by Deanson, 2026-11-09.
+
+name: foc
+
+services:
+  chat-db:
+    # Restarted after a crash or a Docker restart; `docker compose stop` still stops it.
+    restart: unless-stopped
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: foc
+      # Its own password, separate from the other databases'. Override it in .env.
+      POSTGRES_PASSWORD: ${CHAT_POSTGRES_PASSWORD:-change-me-in-dotenv}
+      POSTGRES_DB: chat
+    # No host port: nothing outside Compose needs the database (Logging already took 5437).
+    volumes:
+      # Named volume, so the data survives `docker compose down` (root AGENTS.md §8).
+      - chat-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foc -d chat"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  chat-migrate:
+    build:
+      context: .
+      target: runtime
+    command: ["node", "dist/db/migrate-cli.js"]
+    depends_on:
+      chat-db:
+        condition: service_healthy
+    environment:
+      CHAT_DATABASE_URL: postgres://foc@chat-db:5432/chat
+      PGPASSWORD: ${CHAT_POSTGRES_PASSWORD:-change-me-in-dotenv}
+    restart: "no"
+
+  chat-service:
+    restart: unless-stopped
+    build:
+      context: .
+      target: runtime
+    depends_on:
+      chat-migrate:
+        condition: service_completed_successfully
+    # No env_file: only the variables below reach this container.
+    environment:
+      CHAT_PORT: 3007
+      # The password goes in PGPASSWORD, not the URL, so special characters can't break the URL.
+      CHAT_DATABASE_URL: postgres://foc@chat-db:5432/chat
+      PGPASSWORD: ${CHAT_POSTGRES_PASSWORD:-change-me-in-dotenv}
+      # Verifies the tickets Order signs; must equal Order's ORDER_CHAT_TICKET_SECRET. Set it in the root .env.
+      CHAT_TICKET_SECRET: ${CHAT_TICKET_SECRET:-}
+    # Published for local debugging without Envoy: ws://localhost:3008, path /socket.io/.
+    # 3008 on the host because Logging already takes 3007.
+    ports:
+      - "3008:3007"
+
+volumes:
+  chat-db-data:

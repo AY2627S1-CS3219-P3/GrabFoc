@@ -17,6 +17,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 # Scope: restart: unless-stopped on every long-running container (one-shot init containers excluded).
 # Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+# Scope: ORDER_CHAT_TICKET_SECRET for chat tickets (the chat plan).
+# Author review: Reviewed by Deanson, 2026-11-09.
 # AI-generated; human review pending.
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 # Scope: Forward ORDER_LOG_TOPIC to the container. This environment list is an allowlist
@@ -85,6 +88,8 @@ services:
       ORDER_LOG_TOPIC: ${ORDER_LOG_TOPIC:-logging.lines}
       # Other services send this to Order's /internal routes; set it in the root .env.
       ORDER_SERVICE_KEY: ${ORDER_SERVICE_KEY:-}
+      # Signs chat tickets; must equal the chat service's CHAT_TICKET_SECRET. Set it in the root .env.
+      ORDER_CHAT_TICKET_SECRET: ${CHAT_TICKET_SECRET:-}
     ports:
       - "3005:3005"
 volumes:

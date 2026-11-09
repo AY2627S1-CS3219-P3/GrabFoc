@@ -121,7 +121,7 @@ _Origin: AI doc, restating unresolved chat and AGENTS.md items_
 - Timing duration limits/expiry boundaries remain open; the omitted-window default is 24 hours from creation and PENDING timing edits are requester-only without mutual confirmation.
 - Confirmation initiators and initiation counting as approval are approved. Timing-change proposals expire at the existing window end; cancellation/completion proposals have no independent timer and become invalid on terminal orders; one pending proposal per order and SUPERSEDED terminal invalidation are approved. PENDING timing edits apply directly.
 - Creation rejects inactive pickup/delivery locations. Validation transport, later deactivation effects, location edits and account status effects remain open; requester active-order limit if any.
-- Chat service/database ownership remains open; no chat schema is selected.
+- Chat is a separate service with its own database (`../chat-service/`). Order only issues chat tickets (`POST /orders/:orderId/chat-ticket`, signed with `ORDER_CHAT_TICKET_SECRET`).
 - Main schema review is complete: core fields/defaults, history, confirmation rules/row constraints and all listed indexes are approved. The database-only implementation plan was approved on 2026-10-13. Integration contracts and application-level edge cases above remain outside that initial scope.
 - Credit communication: root §3 records synchronous HTTP for reserve only, with transfer and release as `credit.commands` messages (Zi Yi, 2026-10-17); the meeting's asynchronous-reservation proposal is not yet approved.
 - Broker/event payload and reliable publication mechanism. No outbox pattern is selected here.
@@ -214,6 +214,7 @@ Errors use the User Service envelope `{ "error": { "code", "message", "details" 
 | `POST /orders/:orderId/arrive` | assigned courier | `IN_PROGRESS` → `ARRIVED` (200) |
 | `POST /orders/:orderId/cancel` | requester, `PENDING` only | cancel straight away (200) |
 | `GET /orders/:orderId/history` | requester or assigned courier | `{ items }`, oldest first |
+| `POST /orders/:orderId/chat-ticket` | requester or assigned courier, while `ACCEPTED`, `PICKED_UP`, `IN_PROGRESS` or `ARRIVED` | `{ ticket }`: a 10-second HS256 ticket for the order's chat socket (200); see `../chat-service/` |
 | `GET /orders/:orderId/confirmations` | requester or assigned courier | `{ items }`, oldest first |
 | `POST /orders/:orderId/confirmations` | requester or assigned courier | propose a timing change, cancellation or completion (201) |
 | `POST /orders/:orderId/confirmations/:confirmationId/respond` | the other participant | approve or reject (200) |

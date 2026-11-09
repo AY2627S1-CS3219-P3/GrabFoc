@@ -32,6 +32,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 # Scope: Merged main into #161, keeping both the Logging and the Notification includes.
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+# Scope: Included chat-service/compose.yaml (the chat plan).
+# Author review: Reviewed by Deanson, 2026-11-09.
 #
 # One command for the whole project (M7). Each service keeps its own compose.yaml in its own
 # folder, with its OWN database container — services must not share a database (root
@@ -65,4 +68,6 @@ include:
   - path: logging-service/compose.yaml
     env_file: .env
   - path: notification-service/compose.yaml
+    env_file: .env
+  - path: chat-service/compose.yaml
     env_file: .env
