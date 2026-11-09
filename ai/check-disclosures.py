@@ -15,6 +15,12 @@ Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 Scope: Review: stop on a git failure instead of reporting a clean result from an empty diff, and
   recognise Lua's `--` comments, which made a Lua file's whole body count as its header.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: follow renames, so a moved file is not mistaken for a newly written one; and in JSON
+  the header is the single line holding it, because the key is `_disclosure` in the route files and
+  `description` in the Postman collection - keying on one name let the rest of the document count
+  as header.
+Author review: Cole Lin, read and approved.
 """
 # Lists files your branch changes that carry an AI disclosure header but gained no entry in it.
 #
@@ -52,7 +58,7 @@ def git(*args):
     return done.stdout.decode("utf-8", "replace")
 
 
-def header_lines(text):
+def header_lines(text, json_file=False):
     """The disclosure header's own lines, stopping where its comment block ends.
 
     Needed because the usage-log files repeat `Tool:` inside every entry: counting those as
@@ -66,6 +72,12 @@ def header_lines(text):
     # How the header is written decides how it ends. A marker line that itself begins with a line
     # comment is a line-comment header; anything else sits inside a block (<!-- -->, """ """, /* */)
     # or, for JSON, inside a single "_disclosure" string.
+    # JSON has no comments, so a disclosure there lives inside one string value - `_disclosure` in
+    # the route files, `description` in the Postman collection - and that value's line is the whole
+    # header. Keying on `_disclosure` alone left every later line of a Postman collection counting
+    # as header, which passed any edit to it (review).
+    if json_file:
+        return [lines[start]]
     line_style = lines[start].lstrip().startswith(LINE_COMMENT)
     out = []
     for line in lines[start:]:
@@ -75,8 +87,6 @@ def header_lines(text):
         if out and line_style and not stripped.startswith(LINE_COMMENT):
             break
         out.append(line)
-        if '"_disclosure"' in line:  # JSON keeps the whole header on one line
-            break
     return out
 
 
@@ -85,11 +95,21 @@ def main():
     # The merge base, and a two-dot diff from it, so the working tree counts: this is meant to be
     # run before committing, and `base...HEAD` would have reported a file already fixed on disk.
     merge_base = git("merge-base", base, "HEAD").strip() or base
-    files = [f for f in git("diff", "--name-only", merge_base).split("\n") if f]
+    # --find-renames, because a moved file does not exist at the merge base and would otherwise
+    # look newly written and be skipped - a rename with no disclosure entry passed clean (review).
+    # Maps each current path to the path its old content is under.
+    base_of = {}
+    for row in git("diff", "--name-status", "--find-renames", merge_base).split("\n"):
+        parts = row.split("	")
+        if len(parts) == 2:
+            base_of[parts[1]] = parts[1]
+        elif len(parts) == 3 and parts[0].startswith("R"):
+            base_of[parts[2]] = parts[1]
+    files = list(base_of)
     missing = []
     for path in sorted(set(files)):
         # A file this branch adds is disclosed by its whole content, which its author just wrote.
-        if subprocess.run(["git", "cat-file", "-e", f"{merge_base}:{path}"],
+        if subprocess.run(["git", "cat-file", "-e", f"{merge_base}:{base_of[path]}"],
                           capture_output=True).returncode != 0:
             continue
         try:
@@ -97,10 +117,14 @@ def main():
                 text = handle.read()
         except (OSError, UnicodeDecodeError):
             continue
-        head = header_lines(text)
+        head = header_lines(text, json_file=path.endswith(".json"))
         if not head:
             continue
-        added = {line[1:] for line in git("diff", merge_base, "--", path).split("\n")
+        # Both paths when the file moved, and --find-renames, so a rename renders as a
+        # similarity entry rather than as a brand-new file: scoped to the destination alone, every
+        # line including the header reads as added and a rename with no entry passed clean (review).
+        paths = [base_of[path]] + ([path] if path != base_of[path] else [])
+        added = {line[1:] for line in git("diff", "--find-renames", merge_base, "--", *paths).splitlines()
                  if line.startswith("+") and not line.startswith("+++")}
         if not any(line in added for line in head):
             missing.append(path)

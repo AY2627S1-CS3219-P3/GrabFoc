@@ -34,6 +34,10 @@ Scope: Review: the bootstrap address must be on an NUS domain; the flow needs th
   the courier's tokens, not the one from section 3; and the order's timing window is optional
   rather than forbidden.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: name the admin token TOKEN, which is what section 5's command expands - the only
+  named variables were the two from the flow.
+Author review: Cole Lin, read and approved.
 -->
 
 # Demo runbook
@@ -189,8 +193,8 @@ reaches it and comes back **403** (`This action requires the ADMIN role.`).
    (password rule: 8+ characters, one upper, one lower, one digit)
 4. `POST :3003/auth/login` → `{ "email", "password" }` → **200** with `accessToken`
 
-Keep that token in a shell variable. It expires in 15 minutes, so re-login before you present
-rather than mid-demo.
+Keep it as **`TOKEN`** — `TOKEN=<the accessToken>` — because that is the name section 5's command
+expands. It expires in 15 minutes, so re-login before you present rather than mid-demo.
 
 **That token is the admin's, and it is only for section 5.** The flow in section 4 needs the two
 accounts from step 0.4, each with its own token, because Order refuses to let a requester accept
