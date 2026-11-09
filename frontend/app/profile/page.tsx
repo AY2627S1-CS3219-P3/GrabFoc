@@ -23,6 +23,9 @@ Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
 Scope: Grouped the email and mobile number in one .profile-contact div with shared styling.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Wired the OTP-protected email, mobile and password changes (ContactDetails) and account deactivation.
+Author review: Pending review by Deanson.
 */
 "use client";
 
@@ -38,8 +41,11 @@ import { type CreditBalance, creditsPath } from "@/lib/credits";
 import { countOrders, isUnauthorized, orderKeys } from "@/lib/orders";
 import { ErrorToast, useErrorFeedback } from "../components/error-feedback";
 import { EditIcon } from "../components/icons";
+import { ConfirmModal } from "../components/modal";
+import { OtpModal } from "../components/otp-modal";
+import { ContactDetails, type Profile } from "./contact-details";
+import { accountRequest, useOtpFlow } from "./use-otp-flow";
 
-type Profile = { userId: string; displayName: string; email: string; countryCode: string | null; mobileNumber: string | null };
 type BalanceState = { kind: "loading" } | { kind: "ready"; balance: CreditBalance } | { kind: "no-wallet" } | { kind: "error"; message: string };
 const profileFallback = "Could not load your profile. Please try again.";
 const balanceFallback = "Could not load your credit balance. Please try again.";
@@ -59,7 +65,9 @@ export default function ProfilePage() {
   const [draftName, setDraftName] = useState("");
   const [nameError, setNameError] = useState("");
   const [savingName, setSavingName] = useState(false);
+  const [confirmingDeactivation, setConfirmingDeactivation] = useState(false);
   const feedback = useErrorFeedback();
+  const flow = useOtpFlow();
   const userId = profile?.userId;
 
   useEffect(() => {
@@ -147,6 +155,18 @@ export default function ProfilePage() {
     } finally { setSavingName(false); }
   }
 
+  // AI-generated (pending review by Deanson)
+  async function startDeactivation() {
+    const showError = (error: Parameters<typeof userErrorMessage>[0]) => feedback.setToast(userErrorMessage(error));
+    await flow.start({
+      kind: "DEACTIVATION",
+      submit: (otp) => accountRequest("POST", "deactivate", { otp }),
+      onDone: () => flow.endSession(),
+      onError: showError,
+    }, showError);
+    setConfirmingDeactivation(false);
+  }
+
   async function logout() {
     setLoggingOut(true);
     setError("");
@@ -190,13 +210,11 @@ export default function ProfilePage() {
               {profile && <button type="button" className="icon-button profile-name-edit" aria-label="Edit display name" onClick={startEditingName}><EditIcon size={16} /></button>}
             </div>
           )}
-          {profile && <div className="profile-contact">
-            <p>{profile.email}</p>
-            {profile.mobileNumber && <p>{[profile.countryCode, profile.mobileNumber].filter(Boolean).join(" ")}</p>}
-          </div>}
+          {profile && <ContactDetails profile={profile} flow={flow} onProfile={setProfile} onToast={feedback.setToast} />}
           {error && <div className="load-error" role="alert"><p>{error}</p><button type="button" onClick={() => { setError(""); setLoading(true); setReload((value) => value + 1); }}>Retry</button></div>}
           <div className="profile-divider" />
           <button className="outline-link" type="button" disabled={loggingOut} onClick={logout}>{loggingOut ? "Logging out…" : "Log Out"}</button>
+          {profile && <button type="button" className="profile-deactivate" onClick={() => setConfirmingDeactivation(true)}>Deactivate account</button>}
         </section>
         <div className="profile-content">
           <section className="credit-card" aria-labelledby="credit-heading">
@@ -222,6 +240,12 @@ export default function ProfilePage() {
             }}>Retry</button></div>}
         </div>
       </div>
+      {confirmingDeactivation && <ConfirmModal title="Deactivate your account?" confirmLabel="Continue" busy={flow.requesting}
+        message="Are you sure? You will be signed out and will not be able to log in again."
+        onConfirm={startDeactivation} onClose={() => setConfirmingDeactivation(false)} />}
+      {flow.step && <OtpModal key={flow.step.kind} kind={flow.step.kind} sentTo={flow.step.sentTo} busy={flow.busy}
+        error={flow.error} notice={flow.notice} onSubmit={flow.submit} onClose={flow.close}
+        onResend={flow.step.kind === "NEW_EMAIL_VERIFY" ? undefined : flow.resend} />}
       <ErrorToast message={feedback.toast} onDismiss={() => feedback.setToast('')} />
     </AppShell>
   );

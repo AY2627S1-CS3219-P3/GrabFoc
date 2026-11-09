@@ -14,6 +14,22 @@ Deanson's entries, newest first. The template and rules (Appendix 2 of the proje
 [`ai/usage-log.md`](../usage-log.md): exact prompts, summarised responses, what was changed or
 rejected, and how it was verified.
 
+### 2026-11-10 — OTP-protected email, mobile, password and deactivation on the profile page (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `frontend/app/api/session/account/[...path]/route.ts`, `frontend/app/components/otp-modal.tsx`, `frontend/app/components/auth-screen.tsx`, `frontend/app/profile/page.tsx`, `frontend/app/profile/contact-details.tsx`, `frontend/app/profile/use-otp-flow.ts`, `frontend/app/globals.css`, `frontend/lib/user-error-copy.ts`
+
+**Scenario:** the User Service already had the six OTP-protected `/users/me` routes, but students could not reach them from Profile. I gave the AI a written plan for the frontend work and had it check the plan against the code before implementing it.
+
+**Prompts (exact):**
+> Based on the plan that I have written for you, clarify what you understood and implement the plan accordingly
+
+**What it produced:** the allowlisted proxy, the OTP modal, the shared flow hook (`use-otp-flow.ts`), the contact and password forms (`contact-details.tsx`) and the Profile wiring and styles.
+
+**What the AI added to my plan after checking the code (I approved these):** no Resend at the new-address step (that code can only be re-issued by `POST /email`, and the first code is already spent); a failed OTP request shows inside the password form, because the native dialog covers toasts; no fallback text is passed to `userErrorMessage`, so the backend's messages show; the "changed" email check ignores case; `OtpInputs` is reused from sign-up. It also pointed out that the backend's limit of 3 OTP requests per 10 minutes can block a corrected email resubmit, which I accepted.
+
+**Verification:** `tsc --noEmit` and ESLint pass. A script against the compose stack with throwaway accounts passed all 28 checks on the proxy (allowlist, cross-origin, each flow with real codes from Mailpit). 
+
 ### 2026-11-10 — Grouping the email and mobile number on the profile page (branch `feat/frontend-fixes`)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
