@@ -4,7 +4,13 @@
  * Scope: Copied record() from credit-service/src/dead-letters/dead-letters.service.ts (#152). Listing
  *        and replay (the admin endpoints) come with #154.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+ * Scope: These outcome lines go through the log shipper instead of Nest's Logger, so they reach
+ *        the Logging Service's store in the shape it stores rather than wrapped in Nest's own
+ *        timestamp, PID and context envelope for a collector to dig out (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
+import { log } from '../common/log';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
 import { PG_POOL } from '../db/database';
@@ -68,13 +74,12 @@ export class DeadLettersService {
       // means this dead letter is already recorded. Skipping it keeps one odd message from blocking
       // every dead letter behind it, which retrying forever would do.
       if ((err as { code?: string }).code !== UNIQUE_VIOLATION) throw err;
-      this.logger.warn(
-        JSON.stringify({
-          event: 'dead_letter_already_recorded',
-          eventId: ids.eventId,
-          sourceTopic: message.headers[HEADER.sourceTopic] ?? message.topic,
-        }),
-      );
+      log.emit({
+        level: 'warn',
+        event: 'dead_letter_already_recorded',
+        eventId: ids.eventId,
+        sourceTopic: message.headers[HEADER.sourceTopic] ?? message.topic,
+      });
     }
   }
 }

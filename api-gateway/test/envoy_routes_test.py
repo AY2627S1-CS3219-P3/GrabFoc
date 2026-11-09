@@ -28,6 +28,10 @@ Author review: Reviewed by Zi Yi, 2026-11-07; pending review by Jie Yang.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Expect the new GET /orders/:orderId/history route (#184 review).
 Author review: Reviewed by Zi Yi, 2026-11-07; pending Jie Yang's approval.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: CHAT_SERVICE_URL in the test environment; the chat-ticket Order route (19 routes); the
+       "websocket" route field, WebSocket upgrades and the chat socket route (the chat plan).
+Author review: Reviewed by Deanson, 2026-11-09; Jie Yang (gateway owner) to approve.
 """
 # AI-generated; review pending.
 import importlib.util
@@ -53,7 +57,8 @@ class RouteFilesTest(unittest.TestCase):
         self.renderer = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.renderer)
         self.env = {"USER_SERVICE_URL": "http://user:3001", "SUPPLIER_SERVICE_URL": "http://supplier:3002",
-                    "ORDER_SERVICE_URL": "http://order:3005", "CREDIT_SERVICE_URL": "http://credit:3004"}
+                    "ORDER_SERVICE_URL": "http://order:3005", "CREDIT_SERVICE_URL": "http://credit:3004",
+                    "CHAT_SERVICE_URL": "http://chat:3007"}
 
     def write_service(self, definition):
         (self.root / "routes" / "30-extra.routes.json").write_text(json.dumps(definition))
@@ -172,6 +177,7 @@ class RouteFilesTest(unittest.TestCase):
         route = next(r for r in routes if r["match"].get("path") == "/example")
         self.assertEqual(route["route"]["cluster"], "extra")
         self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"], "user_token")
+        self.assertEqual(route["route"]["idle_timeout"], "10s")  # no "websocket": the global default
         self.assertEqual(routes[-1]["direct_response"]["status"], 404)
 
     # AI-generated (Claude Code).
@@ -194,7 +200,7 @@ class RouteFilesTest(unittest.TestCase):
         hcm = resources["listeners"][0]["filter_chains"][0]["filters"][0]["typed_config"]
         routes = [r for r in self.unprefixed(hcm["route_config"]["virtual_hosts"][0]["routes"])
                   if r.get("route", {}).get("cluster") == "order"]
-        self.assertEqual(len(routes), 18)
+        self.assertEqual(len(routes), 19)
         for route in routes:
             self.assertEqual(route["typed_per_filter_config"][self.renderer.JWT]["requirement_name"], "user_token")
             path = route["match"].get("path") or route["match"]["safe_regex"]["regex"]
@@ -207,6 +213,47 @@ class RouteFilesTest(unittest.TestCase):
         order = next(c for c in resources["clusters"] if c["name"] == "order")
         endpoint = order["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
         self.assertEqual(endpoint["address"]["socket_address"], {"address": "order", "port_value": 3005})
+
+    # AI-generated (Claude Code, 2026-11-08; pending review by Jie Yang)
+    def test_access_log_matches_the_log_store_shape(self):
+        """The gateway's line reads like every service's, so collecting it needs no mapping."""
+        config = self.renderer.configuration(self.env)
+        hcm = (config["static_resources"]["listeners"][0]["filter_chains"][0]
+               ["filters"][0]["typed_config"])
+        logs = hcm["access_log"]
+        base = logs[0]["typed_config"]["log_format"]["json_format"]
+        # The field names the Logging Service stores. lineId is absent on purpose: Envoy has no
+        # UUID source, and one request can emit two of these entries, so whatever collects this
+        # stdout has to mint it.
+        self.assertEqual(set(base), {"event", "level", "ts", "requestId", "method", "service",
+                                     "upstream", "status", "durationMs", "path"})
+        self.assertEqual(base["event"], "request_completed")
+        self.assertEqual(base["level"], "info")
+        self.assertEqual(base["ts"], "%START_TIME(%Y-%m-%dT%H:%M:%S.%3fZ)%")
+        self.assertNotIn("lineId", base)
+        # `service` is this gateway, as a literal, not %UPSTREAM_CLUSTER%: the store requires a
+        # service and refuses the whole line when one is null, which the operator renders for a
+        # request that reaches no upstream. The upstream keeps its own field.
+        self.assertEqual(base["service"], "gateway")
+        self.assertEqual(base["upstream"], "%UPSTREAM_CLUSTER%")
+        # Left as plain operators on purpose: this Envoy renders a value that is exactly one
+        # operator with the operator's own type, so these arrive as JSON numbers, which is what
+        # the store requires. Checked by running Envoy, not from the documentation.
+        self.assertEqual(base["status"], "%RESPONSE_CODE%")
+        self.assertEqual(base["durationMs"], "%DURATION%")
+        # An outcome worth finding on its own gets its own entry, with its own event and level -
+        # level cannot be derived from the status inside a json_format.
+        outcomes = []
+        for entry in logs[1:]:
+            fmt = entry["typed_config"]["log_format"]["json_format"]
+            comparison = entry["filter"]["status_code_filter"]["comparison"]
+            outcomes.append((fmt["event"], fmt["level"], comparison["op"],
+                             comparison["value"]["default_value"]))
+            # Same field set as the base line, whatever the outcome.
+            self.assertEqual(set(fmt), set(base))
+        self.assertEqual(outcomes, [("unauthorized_access", "warn", "EQ", 401),
+                                    ("unauthorized_access", "warn", "EQ", 403),
+                                    ("upstream_error", "error", "GE", 500)])
 
     # AI-generated (Claude Code, 2026-11-06; reviewed by Zi Yi, 2026-11-07; pending review by Jie Yang)
     def test_admin_dashboard_reads_reach_their_service_with_jwt(self):
@@ -237,6 +284,30 @@ class RouteFilesTest(unittest.TestCase):
             with self.subTest(method=method, path=path):
                 self.assertEqual(first_match(method, path)["direct_response"]["status"], 404)
 
+    # AI-generated (Claude Code, 2026-11-08): the chat plan
+    def test_chat_socket_route_is_public_websocket_with_longer_idle_timeout(self):
+        config = self.renderer.configuration({**self.env, **self.edge_env})
+        for listener in (0, 1):
+            hcm = config["static_resources"]["listeners"][listener]["filter_chains"][0]["filters"][0]["typed_config"]
+            self.assertEqual(hcm["upgrade_configs"], [{"upgrade_type": "websocket"}])
+        routes = self.routes(config)
+        for path in ("/socket.io/", "/gateway/socket.io/"):
+            with self.subTest(path=path):
+                route = next(r for r in routes if r["match"].get("path") == path)
+                self.assertEqual(route["route"]["cluster"], "chat")
+                self.assertEqual(route["match"]["headers"][0]["string_match"]["exact"], "GET")
+                self.assertTrue(route["typed_per_filter_config"][self.renderer.JWT]["disabled"])
+                self.assertEqual(route["route"]["idle_timeout"], "60s")
+        edge = next(r for r in self.routes(config, 1) if r["match"].get("path") == "/gateway/socket.io/")
+        self.assertEqual(edge["route"]["idle_timeout"], "60s")
+        others = [r for r in routes if "route" in r and r["route"]["cluster"] != "chat"]
+        self.assertTrue(others)
+        for route in others:
+            self.assertEqual(route["route"]["idle_timeout"], "10s")
+        chat = next(c for c in config["static_resources"]["clusters"] if c["name"] == "chat")
+        endpoint = chat["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
+        self.assertEqual(endpoint["address"]["socket_address"], {"address": "chat", "port_value": 3007})
+
     def test_invalid_definitions_fail_instead_of_disabling_authentication(self):
         valid = {"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",
                  "routes": [{"method": "GET", "path": "/example"}]}
@@ -245,6 +316,7 @@ class RouteFilesTest(unittest.TestCase):
             {"method": "GET", "path": "/example", "publik": True},
             {"method": "GET", "path": "/example", "regex": "/.*"},
             {"method": "GET", "path": "{unknown}/example"},
+            {"method": "GET", "path": "/example", "websocket": "true"},
         ]
         for entry in entries:
             with self.subTest(entry=entry):

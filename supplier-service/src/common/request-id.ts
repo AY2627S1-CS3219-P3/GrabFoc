@@ -13,7 +13,12 @@
  * Scope: logPath returns the route template rather than the caller's pathname, so a secret in a
  *        path segment cannot reach the log store (PR #145 review).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: a request-scoped store for the id, so a call to another service can carry
+ *        it and both halves of one flow are stored under one id (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 
@@ -39,12 +44,40 @@ export function resolveRequestId(header: string | string[] | undefined): string 
   return typeof candidate === 'string' && VALID_REQUEST_ID.test(candidate) ? candidate : randomUUID();
 }
 
+/**
+ * The id for the work happening right now, for code with no request object to read it from.
+ *
+ * A service layer calling another service has the id nowhere in its signature, so the call went
+ * out without `x-request-id`, the far side minted its own, and the two services stored their
+ * halves of one flow under different ids - which defeats the only question this logging is for.
+ * Threading a parameter through every method that might make a call would touch most of a service;
+ * the request-scoped store costs one wrapper here and a header at each call site.
+ */
+const currentId = new AsyncLocalStorage<string>();
+
+/** The id for the request being handled, or undefined outside one (a job, a test, startup). */
+export function currentRequestId(): string | undefined {
+  return currentId.getStore();
+}
+
+/**
+ * The `x-request-id` header for an outbound call, or nothing outside a request. Spread into a
+ * headers object: `{ ...requestIdHeader() }`. Nothing, rather than an empty value, because an empty
+ * header reads as "there was no request" and the far side would mint an id anyway.
+ */
+export function requestIdHeader(): Record<string, string> {
+  const id = currentRequestId();
+  return id ? { 'x-request-id': id } : {};
+}
+
 /** Stores the request id on the request and echoes it back, so a bug report can quote it. */
 export function requestIdMiddleware(req: Request, res: Response, next: NextFunction): void {
   const id = resolveRequestId(req.headers['x-request-id']);
   (req as TracedRequest).requestId = id;
   res.setHeader('x-request-id', id);
-  next();
+  // next() runs inside the store, so everything downstream - guards, handlers, the clients they
+  // call - can read the id without being handed it.
+  currentId.run(id, () => next());
 }
 
 /**

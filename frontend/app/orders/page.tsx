@@ -9,6 +9,9 @@ Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Completed and cancelled cards now open the order page (#184).
 Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Redesign: the Requester/Courier tabs re-theme the page, icon buttons for edit and cancel, empty-state art.
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
@@ -16,6 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../components/app-shell";
+import { BagIcon, BikeIcon, CloseIcon, EditIcon, EmptyArt } from "../components/icons";
 import { ErrorToast } from "../components/error-feedback";
 import { ConfirmModal } from "../components/modal";
 import { OrderCard } from "../components/order-card";
@@ -31,13 +35,13 @@ export default function OrdersPage() {
   const [tab, setTab] = useState<Tab>("requester");
   const [toast, setToast] = useState("");
   if (session.status !== "ready") return <SessionScreen failed={session.status === "error"} />;
-  return <AppShell section="orders">
+  return <AppShell section="orders" mode={tab}>
     <ErrorToast message={toast} onDismiss={() => setToast("")} />
     <div className="home-heading">
       <div><h1>My Orders</h1><p>{tab === "requester" ? "Orders you have requested." : "Orders you are delivering."}</p></div>
       <div className="mode-switch" role="group" aria-label="Choose orders">
-        <button type="button" aria-pressed={tab === "requester"} onClick={() => setTab("requester")}>Requester</button>
-        <button type="button" aria-pressed={tab === "courier"} onClick={() => setTab("courier")}>Courier</button>
+        <button type="button" aria-pressed={tab === "requester"} onClick={() => setTab("requester")}><BagIcon size={16} />Requester</button>
+        <button type="button" aria-pressed={tab === "courier"} onClick={() => setTab("courier")}><BikeIcon size={16} />Courier</button>
       </div>
     </div>
     {/* key: switching tabs remounts the list, closing its history sections */}
@@ -80,15 +84,15 @@ function OrderList({ tab, onError }: { tab: Tab; onError: (message: string) => v
     <section className="home-section order-section" aria-labelledby={`${tab}-active-title`}>
       <h2 id={`${tab}-active-title`}>Active <span className="order-section-count">{active.length}</span></h2>
       {active.length === 0
-        ? <div className="home-empty"><strong>No active orders</strong>
+        ? <div className="home-empty"><EmptyArt kind="orders" /><strong>No active orders</strong>
           <p>{tab === "requester" ? "Orders you create appear here until they finish." : "Orders you accept appear here until they finish."}</p></div>
         : <div className="order-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {active.map((order) => <OrderCard key={order.id} order={order} href={`/orders/${order.id}`} showStatus
             actions={tab === "requester" && order.status === "PENDING" ? <>
               <button type="button" className="icon-button" aria-label={`Edit ${order.orderDescription}`} title="Edit"
-                onClick={() => setEditing(order)}>✎</button>
+                onClick={() => setEditing(order)}><EditIcon size={16} /></button>
               <button type="button" className="icon-button icon-button--danger" aria-label={`Cancel ${order.orderDescription}`}
-                title="Cancel" onClick={() => setCancelling(order)}>✕</button>
+                title="Cancel" onClick={() => setCancelling(order)}><CloseIcon size={16} /></button>
             </> : undefined} />)}
         </div>}
     </section>

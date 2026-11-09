@@ -31,6 +31,12 @@
 
 # The same project name as the root file, so a standalone run reuses the same containers and
 # named volumes — and so the same database.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Forward USER_LOG_TOPIC to the container. This environment list is an allowlist
+#        and the root .env only supplies values for interpolation, so without this line a
+#        configured topic changed what the log store consumed and not what this service
+#        published (issue #52).
+# Author review: Cole Lin, read and approved.
 name: foc
 
 services:
@@ -127,6 +133,11 @@ services:
       # deliberately no depends_on on kafka or kafka-init: the service must start and accept
       # sign-ups with Kafka down, and the relay keeps retrying until the broker and topic exist.
       USER_KAFKA_BROKERS: kafka:9092
+      # Forwarded explicitly: this environment list is an allowlist, and the root .env only
+      # supplies values for interpolation - it does not reach the container. Without this
+      # line a configured topic changes what the store consumes and not what this service
+      # publishes, and the store goes quiet.
+      USER_LOG_TOPIC: ${USER_LOG_TOPIC:-logging.lines}
       USER_OUTBOX_POLL_MS: ${USER_OUTBOX_POLL_MS:-}
       USER_OUTBOX_MAX_BACKOFF_MS: ${USER_OUTBOX_MAX_BACKOFF_MS:-}
     ports:

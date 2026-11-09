@@ -28,6 +28,10 @@
 # Scope: Added notification-service to the test matrix, and its integration and Kafka tests against
 #   PostgreSQL and Kafka service containers (#155).
 # Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+# Scope: Added chat-service to the test matrix and its integration tests against a PostgreSQL
+#   service container (the chat plan).
+# Author review: Reviewed by Deanson, 2026-11-09.
 name: CI
 
 on:
@@ -61,6 +65,8 @@ jobs:
           - service: logging-service
             node: 22
           - service: notification-service
+            node: 22
+          - service: chat-service
             node: 22
     defaults:
       run:
@@ -162,6 +168,48 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: logging-service/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Integration tests
+        run: npm run test:int
+
+  # AI-generated (Claude Code, 2026-11-08): chat's idempotent save, paging and socket handlers are
+  # checked against a real PostgreSQL (the chat plan).
+  chat-integration:
+    name: Integration tests (chat-service)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: foc
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: chat_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U foc"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: chat-service
+    env:
+      # The name must end in _test: every test file empties it.
+      CHAT_TEST_DATABASE_URL: postgres://foc:ci-only-password@localhost:5432/chat_test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: chat-service/package-lock.json
       - name: Install dependencies
         run: npm ci
       - name: Integration tests

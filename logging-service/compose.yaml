@@ -11,8 +11,12 @@
 #        compose file already uses (PR #129 review).
 # Author review: Cole Lin, read and approved.
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
-# Scope: Host ports moved to 3007 and 5437; the Notification Service (#161) also chose 3006 and 5436, so one of the two had to move and this is the N2H.
-#        The container ports are unchanged.
+# Scope: Host ports moved to 3007 and 5437; the Notification Service also chose 3006 and 5436, so
+#        one of the two had to move and this is the N2H. The container ports are unchanged.
+# Author review: Cole Lin, read and approved.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+# Scope: Point ingest at the shared broker: #75 merged, so the comment saying to wait for it
+#        was the only thing keeping the store empty (issue #52).
 # Author review: Cole Lin, read and approved.
 #
 # The Logging Service and the database only it uses (root AGENTS.md §3). The root compose.yaml
@@ -22,8 +26,8 @@
 # Run only this service, from the root:       docker compose -f logging-service/compose.yaml --env-file .env up --build
 # Just its database, for the integration tests: docker compose -f logging-service/compose.yaml up -d logging-db
 #
-# Ingest is off until LOGGING_KAFKA_BROKERS is set; the query API runs either way, so this service
-# starts before the shared broker (#75) exists.
+# Ingest reads logging.lines from the shared broker. The query API runs either way: a broker that
+# cannot be reached is logged and ingest stays off, rather than taking the service down.
 
 # The same project name as the root file, so a standalone run reuses the same containers and
 # named volumes — and so the same database.
@@ -80,8 +84,12 @@ services:
       # answers 503 on its first JWKS fetch - with no way round it. Point it at a reachable
       # User Service (`http://host.docker.internal:3001/...`) for that run (PR #129 review).
       LOGGING_JWKS_URL: ${LOGGING_JWKS_URL:-http://user-service:3001/.well-known/jwks.json}
-      # Empty until the shared broker (#75) is merged; then kafka:9092.
-      LOGGING_KAFKA_BROKERS: ${LOGGING_KAFKA_BROKERS:-}
+      # The shared broker (infra/kafka). Set directly rather than interpolated: Compose's
+      # ${VAR:-default} falls back when the variable is unset *or empty*, and .env.example ships
+      # every variable empty, so an empty value could never have turned ingest off the way an
+      # earlier version of this comment claimed. To run the query API alone, run the service
+      # outside Compose with LOGGING_KAFKA_BROKERS unset.
+      LOGGING_KAFKA_BROKERS: kafka:9092
       LOGGING_KAFKA_TOPIC: ${LOGGING_KAFKA_TOPIC:-logging.lines}
       LOGGING_KAFKA_GROUP_ID: ${LOGGING_KAFKA_GROUP_ID:-logging-service}
       LOGGING_KAFKA_DLT_TOPIC: ${LOGGING_KAFKA_DLT_TOPIC:-logging.lines.dlt}

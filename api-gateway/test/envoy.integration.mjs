@@ -22,12 +22,18 @@ Author review (Jian Bing, 2026-11-07): Looked through the code and think it's ok
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Added the admin dashboard's User and Order read routes to the protected-route cases (#182).
 Author review: Reviewed by Zi Yi, 2026-11-07; pending review by Jie Yang.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Added a chat upstream (CHAT_SERVICE_URL), the chat-ticket Order route, and tests that the chat
+socket path keeps the WebSocket upgrade headers while other routes still strip them and cookies
+(the chat plan).
+Author review: Reviewed by Deanson, 2026-11-09; Jie Yang (gateway owner) to approve.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { createServer, request as rawRequest } from 'node:http';
 import { spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { before, after, test } from 'node:test';
 
 function docker(...args) {
@@ -85,6 +91,7 @@ const upstream = (instance) => createServer((req, res) => {
     res.end(JSON.stringify({ instance, method: req.method, path: req.url,
       authorization: req.headers.authorization, userId: req.headers['x-user-id'],
       userRole: req.headers['x-user-role'], cookie: req.headers.cookie, originKey: req.headers['x-origin-key'],
+      upgrade: req.headers.upgrade, connection: req.headers.connection,
       requestId: req.headers['x-request-id'], body: Buffer.concat(chunks).toString() }));
   });
 });
@@ -98,7 +105,18 @@ const frontend = createServer((req, res) => {
   res.end(JSON.stringify({ instance: 'frontend', path: req.url, host: req.headers.host, cookie: req.headers.cookie,
     proto: req.headers['x-forwarded-proto'], userId: req.headers['x-user-id'], originKey: req.headers['x-origin-key'] }));
 });
-const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2'), upstream('order'), upstream('credit'), frontend];
+// AI-generated (Claude Code, 2026-11-08): a stand-in for the chat service. It accepts any WebSocket
+// upgrade, reports the request headers it saw in response headers, then echoes bytes back.
+const chat = createServer((req, res) => {
+  res.setHeader('content-type', 'application/json');
+  res.end(JSON.stringify({ instance: 'chat', path: req.url, upgrade: req.headers.upgrade ?? null }));
+});
+chat.on('upgrade', (req, socket) => {
+  socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
+    `X-Saw-Path: ${req.url}\r\nX-Saw-Cookie: ${req.headers.cookie ?? 'none'}\r\n\r\n`);
+  socket.pipe(socket);
+});
+const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2'), upstream('order'), upstream('credit'), frontend, chat];
 const containers = [];
 let ports, gateway, balanced;
 
@@ -107,6 +125,7 @@ async function startEnvoy(overrides = {}) {
     SUPPLIER_SERVICE_URL: `http://host.docker.internal:${ports[1]}`,
     ORDER_SERVICE_URL: `http://host.docker.internal:${ports[3]}`,
     CREDIT_SERVICE_URL: `http://host.docker.internal:${ports[4]}`,
+    CHAT_SERVICE_URL: `http://host.docker.internal:${ports[6]}`,
     USER_SERVICE_JWKS_URL: `http://host.docker.internal:${ports[0]}/.well-known/jwks.json`, ...overrides };
   const args = ['run', '-d', '--entrypoint', '/bin/sh', '--label', 'foc.task=envoy-integration', '-p', '127.0.0.1::3003',
     '-p', '127.0.0.1::8080'];
@@ -172,7 +191,7 @@ test('order routes require a token and reach the Order Service unchanged', async
   const id = '11111111-1111-4111-8111-111111111111';
   const cases = [['GET', '/orders/available?page=2&pageSize=5'], ['GET', '/orders/mine'], ['GET', '/orders/assigned'],
     ['POST', '/orders'], ['GET', `/orders/${id}`], ['PATCH', `/orders/${id}`],
-    ...['accept', 'cancel', 'pick-up', 'start-delivery', 'arrive'].map((step) => ['POST', `/orders/${id}/${step}`]),
+    ...['accept', 'chat-ticket', 'cancel', 'pick-up', 'start-delivery', 'arrive'].map((step) => ['POST', `/orders/${id}/${step}`]),
     ['GET', `/orders/${id}/confirmations`], ['POST', `/orders/${id}/confirmations`],
     ['POST', `/orders/${id}/confirmations/${id}/respond`],
     ['GET', '/admin/orders?scope=live&userId=7&page=1'], ['GET', '/admin/orders/overview'],
@@ -440,6 +459,48 @@ test('stock rejects malformed registered JWT claim types', async () => {
     const value = token(old, claims);
     assert.equal((await fetch(gateway + '/locations', { headers: { authorization: `Bearer ${value}` } })).status, 401);
   }
+});
+
+// AI-generated (Claude Code, 2026-11-08): the chat plan
+function upgrade(url, path, headers = {}, method = 'GET') {
+  return new Promise((resolve, reject) => {
+    const req = rawRequest(url, { path, method, headers: { connection: 'Upgrade', upgrade: 'websocket',
+      'sec-websocket-version': '13', 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==', ...headers } });
+    req.on('upgrade', (res, socket) => resolve({ res, socket }));
+    req.on('response', (res) => resolve({ res })); // the caller reads or discards the body
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+test('the chat socket path upgrades to a WebSocket without a token, and cookies are still stripped', async () => {
+  for (const path of ['/socket.io/?EIO=4&transport=websocket', '/gateway/socket.io/?EIO=4&transport=websocket']) {
+    const { res, socket } = await upgrade(gateway, path, { cookie: 'foc_access=secret' });
+    assert.equal(res.statusCode, 101, path);
+    assert.equal(res.headers.upgrade, 'websocket');
+    assert.equal(res.headers['x-saw-path'], '/socket.io/?EIO=4&transport=websocket');
+    assert.equal(res.headers['x-saw-cookie'], 'none');
+    socket.write('ping');
+    const [echo] = await once(socket, 'data');
+    assert.equal(echo.toString(), 'ping');
+    socket.destroy();
+  }
+});
+
+test('other routes still strip the upgrade headers', async () => {
+  const { res } = await upgrade(gateway, '/auth/login', {}, 'POST');
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.headers.upgrade, undefined);
+  const chunks = [];
+  for await (const chunk of res) chunks.push(chunk);
+  const seen = JSON.parse(Buffer.concat(chunks).toString());
+  assert.equal(seen.upgrade, undefined);
+  assert.equal(seen.connection, undefined);
+  // Only GET /socket.io/ exactly is the chat route.
+  const extra = (await upgrade(gateway, '/socket.io/extra')).res;
+  extra.resume();
+  assert.equal(extra.statusCode, 404);
+  assert.equal((await fetch(gateway + '/socket.io/', { method: 'POST' })).status, 404);
 });
 
 test('connection failure uses stock 503 text', async () => {

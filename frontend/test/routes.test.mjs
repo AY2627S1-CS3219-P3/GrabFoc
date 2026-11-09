@@ -1,5 +1,10 @@
 /*
 AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Updated the home heading and transaction-history link names to the redesign's copy.
+Author review: Pending review by Jie Yang.
+
+AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-27
 Scope: Verified session flows and added JWKS-style 503 preservation/recovery checks on 2026-10-13.
 Author review: Jie Yang reviewed the earlier tests; updated layout assertions await review.
@@ -13,6 +18,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 Scope: Added a mock Order upstream and tests for the order proxy allowlist, its same-origin check, and userId in the session status.
 Author review: Pending review by Deanson.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Added chat-ticket to the order proxy allowlist test (allowed as POST, denied as GET).
+Author review: Reviewed by Deanson, 2026-11-09.
 Scope: Gave the test profile a UUID, stubbed Credit's balance and history routes, and tested the profile balance, history paging, the no-wallet state and the Credit route allowlist (#61).
 Author review: pending — Jie Yang to record the review.
 
@@ -549,7 +559,7 @@ test("profile load failure keeps a retry action", async () => {
     await page.getByLabel("Password").fill("Passw0rdSafe");
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
-    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "What do you need picked up?" }).waitFor();
     denyProfile = true;
     await page.goto(`${baseUrl}/profile`);
     await page.getByRole("button", { name: "Retry" }).waitFor();
@@ -665,7 +675,7 @@ test("expired access cookie refreshes once across simultaneous tabs", async () =
     await login.getByLabel("Password").fill("Passw0rdSafe");
     await login.getByRole("button", { name: "Sign In" }).click();
     await login.waitForURL("**/home");
-    await login.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await login.getByRole("heading", { name: "What do you need picked up?" }).waitFor();
     await login.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     assert.ok(refreshCookie);
@@ -692,7 +702,7 @@ test("a protected BFF request refreshes after gateway 401 and retries once", asy
     await page.getByRole("button", { name: "Sign In" }).click();
     assert.deepEqual(await (await loginResponse).json(), { ok: true });
     await page.waitForURL("**/home");
-    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "What do you need picked up?" }).waitFor();
     await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const context = page.context();
     const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
@@ -722,7 +732,7 @@ test("refresh 401 clears cookies and 503 leaves the session retryable without lo
     await page.getByLabel("Password").fill("Passw0rdSafe");
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
-    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "What do you need picked up?" }).waitFor();
     await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     await context.clearCookies();
@@ -753,7 +763,7 @@ test("a second protected 401 stops after one retry and ends the local session", 
     await page.getByLabel("Password").fill("Passw0rdSafe");
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
-    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "What do you need picked up?" }).waitFor();
     await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     await context.clearCookies();
@@ -813,7 +823,7 @@ test("sign-in waits for an in-progress refresh before replacing the session", as
     await oldTab.getByLabel("Password").fill("Passw0rdSafe");
     await oldTab.getByRole("button", { name: "Sign In" }).click();
     await oldTab.waitForURL("**/home");
-    await oldTab.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await oldTab.getByRole("heading", { name: "What do you need picked up?" }).waitFor();
     await oldTab.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refreshCookie = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     assert.ok(refreshCookie);
@@ -852,7 +862,7 @@ test("a completed rotation never replays credentials to the consumed token", asy
     await page.getByLabel("Password").fill("Passw0rdSafe");
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
-    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "What do you need picked up?" }).waitFor();
     await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const oldRefresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     assert.ok(oldRefresh);
@@ -880,7 +890,7 @@ test("a failed protected retry retains newly rotated cookies", async () => {
     await page.getByLabel("Password").fill("Passw0rdSafe");
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
-    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "What do you need picked up?" }).waitFor();
     await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const oldRefresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     await context.clearCookies();
@@ -902,7 +912,7 @@ test("403 stays forbidden, is logged, and does not rotate or clear cookies", asy
     await page.getByLabel("Password").fill("Passw0rdSafe");
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
-    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "What do you need picked up?" }).waitFor();
     await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refreshes = requests.filter((request) => request.path === "/auth/refresh").length;
     const logStart = appLogs.length;
@@ -963,7 +973,7 @@ test("profile logout clears cookies even when session refresh is unavailable", a
     await page.getByLabel("Password").fill("Passw0rdSafe");
     await page.getByRole("button", { name: "Sign In" }).click();
     await page.waitForURL("**/home");
-    await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+    await page.getByRole("heading", { name: "What do you need picked up?" }).waitFor();
     await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
     const refresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
     await context.clearCookies();
@@ -986,7 +996,7 @@ test("logout with only a refresh cookie rotates before revocation and always cle
       await page.getByLabel("Password").fill("Passw0rdSafe");
       await page.getByRole("button", { name: "Sign In" }).click();
       await page.waitForURL("**/home");
-      await page.getByRole("heading", { name: "Welcome to GrabFoc" }).waitFor();
+      await page.getByRole("heading", { name: "What do you need picked up?" }).waitFor();
     await page.getByRole("heading", { name: "COM3 Basement" }).waitFor();
       const oldRefresh = (await context.cookies()).find((cookie) => cookie.name === "foc_refresh");
       assert.ok(oldRefresh);
@@ -1305,7 +1315,7 @@ test("order proxy forwards only the allowlisted Order endpoints", async () => {
     ["GET", "available?page=2&pageSize=5", "/orders/available?page=2&pageSize=5"],
     ["GET", "mine", "/orders/mine"], ["GET", "assigned?page=3", "/orders/assigned?page=3"],
     ["POST", "", "/orders"], ["GET", `${orderId}?ignored=1`, `/orders/${orderId}`], ["PATCH", orderId, `/orders/${orderId}`],
-    ...["accept", "cancel", "pick-up", "start-delivery", "arrive"].map((step) => ["POST", `${orderId}/${step}`, `/orders/${orderId}/${step}`]),
+    ...["accept", "cancel", "pick-up", "start-delivery", "arrive", "chat-ticket"].map((step) => ["POST", `${orderId}/${step}`, `/orders/${orderId}/${step}`]),
     ["GET", `${orderId}/history`, `/orders/${orderId}/history`],
     ["GET", `${orderId}/confirmations`, `/orders/${orderId}/confirmations`],
     ["POST", `${orderId}/confirmations`, `/orders/${orderId}/confirmations`],
@@ -1322,7 +1332,7 @@ test("order proxy forwards only the allowlisted Order endpoints", async () => {
   }
   const denied = [["GET", ""], ["GET", "internal/orders/users/abc/active"], ["GET", "not-a-uuid"], ["PATCH", "mine"],
     ["POST", "available"], ["GET", `${orderId}/accept`], ["POST", `${orderId}/complete`], ["PATCH", `${orderId}/confirmations`],
-    ["POST", `${orderId}/confirmations/not-a-uuid/respond`], ["POST", `${orderId}/history`]];
+    ["POST", `${orderId}/confirmations/not-a-uuid/respond`], ["POST", `${orderId}/history`], ["GET", `${orderId}/chat-ticket`]];
   const before = requests.length;
   for (const [method, path] of denied) {
     const response = await fetch(`${baseUrl}/api/session/orders${path ? `/${path}` : ""}`, {
@@ -1419,7 +1429,7 @@ test("profile shows the Credit balance and the history page loads more transacti
     await page.locator(".credit-available", { hasText: "7" }).waitFor();
     assert.equal(await page.locator(".credit-reserved").textContent(), "3");
     assert.equal(requests.find((request) => request.path === `/credits/${profileUserId}`)?.authorization, "Bearer test-access");
-    await page.getByRole("link", { name: "View transaction history →" }).click();
+    await page.getByRole("link", { name: "View transaction history" }).click();
     await page.waitForURL("**/credits/history");
     await page.getByText("Reserved for an order").waitFor();
     await page.getByText("Earned as a courier").waitFor();
@@ -1443,7 +1453,7 @@ test("a missing wallet is explained and only Credit's two read routes are forwar
     noWallet = true;
     await page.goto(`${baseUrl}/profile`);
     await page.getByText("No credit wallet yet.", { exact: false }).waitFor();
-    assert.equal(await page.getByRole("link", { name: "View transaction history →" }).count(), 0);
+    assert.equal(await page.getByRole("link", { name: "View transaction history" }).count(), 0);
     noWallet = false;
     const forwardedBefore = requests.length;
     for (const path of ["not-a-uuid", `${profileUserId}/reserve`, `${profileUserId}/transactions/extra`]) {

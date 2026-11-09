@@ -12,6 +12,10 @@
 #   infra/terraform/check.sh (every stack valid, all tests passed) and checked staging (the locations list and
 #   the admin locations page load).
 
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+# Scope: Keep Syncthing's conflict copies out of the build context; with them in, nest build
+#   compiles stale drafts and the image cannot be built (issue #52).
+# Author review: Cole Lin, read and approved.
 **/node_modules
 **/dist
 **/.next
@@ -22,3 +26,9 @@
 !.env.example
 infra/secrets
 *.log
+
+# Syncthing's conflict copies. They sit next to the file they diverged from, so `COPY src ./src`
+# pulls them into the image and the build compiles them - and they are older than the file they
+# came from, so they fail. On a machine that syncs this repo, `docker compose up --build` cannot
+# work without this (issue #52).
+**/*.sync-conflict-*

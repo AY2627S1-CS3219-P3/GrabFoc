@@ -4,7 +4,12 @@
  * Scope: Generated the client for the Order Service's GET /internal/orders/users/:userId/active
  *        (#71). Fail closed (503) when Order cannot answer, as Zi Yi chose.
  * Author review: Reviewed by Zi Yi, 2026-10-20.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-08
+ * Scope: Review: forward x-request-id, so the deactivation check is stored under the same id as
+ *        the request that made it (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
+import { requestIdHeader } from '../common/request-id';
 // AI-generated (reviewed by Zi Yi)
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -31,7 +36,9 @@ export class OrderClient {
     let status: number | null = null;
     try {
       const res = await fetch(`${url}/internal/orders/users/${encodeURIComponent(userId)}/active`, {
-        headers: { 'X-Service-Key': serviceKey },
+        // The same flow, so the same id: without it Order mints its own and the deactivation
+        // check is stored as a second, unjoinable trace (issue #52).
+        headers: { 'X-Service-Key': serviceKey, ...requestIdHeader() },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       status = res.status;

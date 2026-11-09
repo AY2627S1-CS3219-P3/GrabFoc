@@ -8,6 +8,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-16
 Scope: Showed the reset-code notice on the reset step after a forgot-password request (issue #63); removed the unused message state.
 Author review: pending review by Zi Yi.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Added the campus-map backdrop behind the card.
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
@@ -17,6 +22,7 @@ import { useState, useSyncExternalStore, type FormEvent } from "react";
 import { parseServiceError, mapFieldErrors } from "@/lib/service-errors";
 import { userErrorMessage } from "@/lib/user-error-copy";
 import { ErrorToast, FieldError, useErrorFeedback } from "./error-feedback";
+import { AuthBackdrop } from "./auth-backdrop";
 
 function noSubscription() { return () => {}; }
 function pendingEmail() { return sessionStorage.getItem("pendingResetEmail") ?? ""; }
@@ -61,7 +67,7 @@ export function RecoveryScreen({ step }: { step: "forgot" | "reset" }) {
     finally { setBusy(false); }
   }
 
-  return <main className="auth-page"><section className="auth-card" aria-labelledby="recovery-title">
+  return <main className="auth-page"><AuthBackdrop /><section className="auth-card" aria-labelledby="recovery-title">
     <h1 id="recovery-title">{step === "forgot" ? "Forgot your password?" : "Reset your password"}</h1>
     {step === "reset" && rememberedEmail && !done && <p className="auth-message" role="status">If an account exists for that email, we&apos;ve sent a 6-digit code. It expires in 5 minutes. Didn&apos;t get it? Check spam, or make sure you&apos;ve registered with this address.</p>}
     {done ? <p>Your password was reset. <Link href="/signin">Sign in</Link></p> : <form className="auth-form" onSubmit={submit} onChange={(event) => {

@@ -5,6 +5,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-22
 # Scope: restart: unless-stopped on every long-running container (one-shot init containers excluded).
 # Author review: pending — Jie Yang to record the review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+# Scope: CHAT_SOCKET_URL / CHAT_SOCKET_PATH for the order page's chat socket.
+# Author review: Reviewed by Deanson, 2026-11-09.
 
 name: foc
 
@@ -18,5 +21,9 @@ services:
         FRONTEND_GATEWAY_URL: http://api-gateway:3003
     environment:
       FRONTEND_GATEWAY_URL: http://api-gateway:3003
+      # The browser opens the chat socket itself, so this is a host address (Envoy), not a
+      # container name. Read at request time by app/orders/[id]/page.tsx (the chat plan).
+      CHAT_SOCKET_URL: ${CHAT_SOCKET_URL:-http://localhost:3003}
+      CHAT_SOCKET_PATH: ${CHAT_SOCKET_PATH:-/gateway/socket.io/}
     ports:
       - "3000:3000"

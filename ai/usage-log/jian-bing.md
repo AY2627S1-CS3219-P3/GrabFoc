@@ -132,6 +132,9 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Wrote the 2026-11-07 Notification conflicts and Dependabot entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Wrote the 2026-11-08 User Service migration entry from Jian Bing's answer, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Wrote the 2026-11-08 SoCLaaS 502 and CI diagnosis entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 -->
@@ -165,13 +168,45 @@ My answer to Claude's plan for the SoCLaaS fix: "Implement this step".
 
 **What it produced:** The diagnosis of both failures; in the script, a streamed review request (read as server-sent
 events, or as plain JSON if the server ignores `stream`), the shorter-review prompt and token cap, and the 502/504
-retry; seven new tests.
+retry; seven new tests. When main was merged in (2026-11-09), Cole Lin's #223 had added the same 502/504 retry, as
+`RETRYABLE_STATUS`; this PR now uses his and keeps the streaming and the shorter reviews.
 
 **What I changed or rejected:** Nothing.
 
 **Verification:** Claude watched six of the seven new tests fail first (the seventh pins that a 400 is still not
-retried), then ran the suite: 11/11 pass. The live check needs the script on `main` (the workflow always runs
-main's copy): a manual review run on #191 after this merges. My own check: pending.
+retried), then ran the suite: 11/11 pass, also after merging main. The live check needs the script on `main` (the
+workflow always runs main's copy): a manual review run on #191 after this merges. My own check: pending.
+
+### 2026-11-08 — A migration for #180's User Service schema (found in the staging dry run)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `user-service/db/migrations/003_admin_dashboard.sql`,
+`user-service/src/infra/database/migrator.int.spec.ts`, a comment in `user-service/db/migrations/001_init.sql`, and
+the Login audit note in `user-service/AGENTS.md`
+
+**Scenario:** In the staging dry run of deploy part 3 (#191), the new User Service crashed on staging with
+`column "suspension_reason" does not exist`: #180 added its columns, enum and table by editing `001_init.sql` in
+place, which a database created before it never re-runs. Claude laid out three ways to fix staging (a migration,
+one-off SQL on staging, or resetting staging's user database, which loses every account); I chose a migration. It
+adds each object only if it is missing, so newer databases are unchanged. The User Service owners (Deanson, Zi Yi)
+review the PR.
+
+**Prompts (exact, in order):**
+
+My answer to Claude's question on how staging's user database should get #180's schema: "Add a migration
+(Recommended)".
+
+**What it produced:** `003_admin_dashboard.sql` (the two columns, the `login_outcome` enum, `login_events` and its
+indexes, each only if missing), a PostgreSQL test that strips #180's objects from a migrated database, re-runs the
+migrations and checks they are back, and one that checks a new database is unchanged; the notes in `001_init.sql`
+and `AGENTS.md`.
+
+**What I changed or rejected:** Not a one-off SQL fix on staging, and not a reset.
+
+**Verification:** Claude watched the new test fail first (the older database stayed without the columns), then pass
+with the migration; the User Service's three PostgreSQL test files passed (12/12) against a throw-away PostgreSQL
+17, and the type check passed. `outbox.relay.spec.ts` couldn't load locally (the Kafka client's native binding
+isn't built in this checkout); CI runs it. My own check: pending.
 
 ### 2026-11-07 — Updating Jie Yang's Notification PRs, and the Dependabot PRs
 

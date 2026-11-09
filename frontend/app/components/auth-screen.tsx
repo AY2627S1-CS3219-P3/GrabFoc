@@ -3,6 +3,11 @@ AI Assistance Disclosure:
 Tool: Codex (model: GPT-6), date: 2026-09-24
 Scope: Created shared authentication UI; connected registration, login and verification; added reusable error feedback on 2026-09-29.
 Author review: Jie Yang reviewed this file; team visual verification remains pending.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+Scope: Swapped the "F" logo for the redesign's route mark; sentence-case headings; campus-map backdrop behind the card.
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
@@ -13,6 +18,8 @@ import { withSessionMutation } from "@/lib/session-client";
 import { parseServiceError, mapFieldErrors } from "@/lib/service-errors";
 import { userErrorMessage } from "@/lib/user-error-copy";
 import { ErrorToast, FieldError, useErrorFeedback } from "./error-feedback";
+import { RouteMark } from "./icons";
+import { AuthBackdrop } from "./auth-backdrop";
 
 type View = "signin" | "signup" | "verify";
 
@@ -25,7 +32,7 @@ function emptySnapshot() { return ""; }
 function Brand() {
   return (
     <div className="auth-brand">
-      <span className="auth-logo" aria-label="GrabFoc">F</span>
+      <RouteMark size={34} />
       <span className="auth-tagline">GrabFoc</span>
     </div>
   );
@@ -219,10 +226,11 @@ export function AuthScreen({ view }: { view: View }) {
 
   return (
     <main className={`auth-page auth-page--${view}`}>
+      <AuthBackdrop />
       <section className="auth-card" aria-labelledby="auth-title">
         <Brand />
         <h1 id="auth-title">
-          {view === "signin" ? "Sign in to your account" : view === "signup" ? "Create An Account" : "Verification Code"}
+          {view === "signin" ? "Sign in to your account" : view === "signup" ? "Create an account" : "Enter your code"}
         </h1>
 
         {view === "verify" ? (
@@ -264,7 +272,7 @@ export function AuthScreen({ view }: { view: View }) {
         {message && <p className="auth-message" role="status">{message}</p>}
         {view !== "verify" && (
           <p className="auth-footer">
-            {view === "signin" ? "Don't have an account?" : "Already Have An Account?"}{" "}
+            {view === "signin" ? "Don't have an account?" : "Already have an account?"}{" "}
             <Link href={view === "signin" ? "/signup" : "/signin"}>{view === "signin" ? "Sign Up" : "Login"}</Link>
           </p>
         )}

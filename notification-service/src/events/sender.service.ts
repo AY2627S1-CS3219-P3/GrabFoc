@@ -8,7 +8,13 @@
  * Scope: Added the retry pass, which failures are retried, and dropping emails for an order that has
  *        moved on (#154), as decided by Jie Yang on 2026-11-04.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+ * Scope: These outcome lines go through the log shipper instead of Nest's Logger, so they reach
+ *        the Logging Service's store in the shape it stores rather than wrapped in Nest's own
+ *        timestamp, PID and context envelope for a collector to dig out (issue #52).
+ * Author review: Cole Lin, read and approved.
  */
+import { log } from '../common/log';
 // AI-generated (pending review)
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
@@ -130,7 +136,17 @@ export class SenderService {
         WHERE id = $1 AND delivery_status IN ('PENDING', 'FAILED')`,
       [row.id, SUPERSEDED],
     );
-    this.logger.log(JSON.stringify({ event: 'notification_superseded', eventId, role: row.role, status: row.status }));
+    // Not `role` and `status`: those are envelope fields with different meanings - an HTTP status
+    // and an ADMIN/USER role - and the store refuses the *whole line* when a field is outside its
+    // schema, so `role: 'COURIER'` would have had every one of these lines dead-lettered instead
+    // of stored. Under these names they land in `extra`, which is where they belong.
+    log.emit({
+      level: 'info',
+      event: 'notification_superseded',
+      eventId,
+      recipientRole: row.role,
+      orderStatus: row.status,
+    });
   }
 
   /** Sends one email and saves the result. Returns null when sent, else the error category. */
@@ -151,15 +167,14 @@ export class SenderService {
         [row.id, err.category],
       );
       // Never the address: only ids and the error category.
-      this.logger.warn(
-        JSON.stringify({
-          event: 'notification_failed',
-          eventId,
-          role: row.role,
-          error: err.category,
-          retryable: isRetryable(err.category),
-        }),
-      );
+      log.emit({
+        level: 'warn',
+        event: 'notification_failed',
+        eventId,
+        recipientRole: row.role,
+        error: err.category,
+        retryable: isRetryable(err.category),
+      });
       return err.category;
     }
     await this.pool.query(
@@ -168,7 +183,7 @@ export class SenderService {
         WHERE id = $1 AND delivery_status IN ('PENDING', 'FAILED')`,
       [row.id, messageId],
     );
-    this.logger.log(JSON.stringify({ event: 'notification_sent', eventId, role: row.role }));
+    log.emit({ level: 'info', event: 'notification_sent', eventId, recipientRole: row.role });
     return null;
   }
 }
