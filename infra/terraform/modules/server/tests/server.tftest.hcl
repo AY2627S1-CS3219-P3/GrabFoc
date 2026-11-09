@@ -2,9 +2,13 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-25
 # Scope: Generated from the deployment plan (Task 4). Plan-only with a mocked AWS provider: the data
 #        2026-10-27 and 2026-11-05 (Claude Code, Claude Opus 5.5): fixes from the Codex review on PR #146.
+#        2026-11-05 (Claude Code, Claude Opus 5.5): the /data/notification-db folder (deploy part 3, #143).
 #        volume has prevent_destroy, so the test never applies (and so never has to destroy) it.
 # Author review (Jian Bing, 2026-11-06): Not read line by line; ran infra/terraform/check.sh, which runs these
 #   tests (all passed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+# Scope: The managed-draining check (a staging server replacement hung on it).
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -54,6 +58,11 @@ run "server" {
     condition     = aws_launch_template.server.key_name == null
     error_message = "No SSH key: shell access is through Session Manager."
   }
+  # AI-generated (Claude Code): the 2026-11-08 staging server replacement hung on this.
+  assert {
+    condition     = one(aws_ecs_capacity_provider.server.auto_scaling_group_provider).managed_draining == "DISABLED"
+    error_message = "ECS managed draining is off: with one server, the old one's tasks have nowhere to go until the new one has the data volume, which the old one holds, so draining would hold the replacement for an hour."
+  }
   assert {
     condition = (
       aws_autoscaling_group.server.min_size == 1 && aws_autoscaling_group.server.max_size == 1 &&
@@ -78,7 +87,7 @@ run "server" {
   }
   assert {
     condition = strcontains(local.user_data, "ECS_CLUSTER=foc-staging") && strcontains(
-      local.user_data, "mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/redis /data/kafka"
+      local.user_data, "mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/notification-db /data/redis /data/kafka"
     ) && strcontains(local.user_data, "chown 1000:1000 /data/kafka")
     error_message = "User data must join the cluster and prepare the /data folders."
   }

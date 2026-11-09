@@ -10,6 +10,16 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 # Scope: Comment on the layers: the app services also need the one-off first-apply restart (Codex review on #146).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
+# Scope: Deploy part 3 (#143): Mailpit's allowlist and API port, the checks task, the Notification Service,
+#        and a health check for the gateway (deploy-images.sh waits for HEALTHY).
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
+# Scope: AZ rebalancing off on every service (the staging dry run failed on Mailpit's 100% maximum).
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: ORDER_CHAT_TICKET_SECRET for Order and CHAT_SERVICE_URL for the gateway, which chat (#230) requires.
+# Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
@@ -23,15 +33,17 @@ locals {
   image      = { for name, url in var.ecr_repository_urls : name => "${url}:${var.image_tag}" }
 
   # Mail: production sends straight to Gmail; staging sends to Mailpit, which keeps a copy and relays
-  # every message to Gmail (spec §6).
+  # to Gmail only the recipients on mailpit_relay_to (spec §6).
   smtp = var.mailpit_relay ? { host = "mailpit", port = "1025" } : { host = "smtp.gmail.com", port = "587" }
 
   postgres = {
     for name, cfg in {
-      "user-db"     = { db = "users", password = "POSTGRES_PASSWORD" }
-      "supplier-db" = { db = "supplier", password = "SUPPLIER_POSTGRES_PASSWORD" }
-      "credit-db"   = { db = "credit", password = "CREDIT_POSTGRES_PASSWORD" }
-      "order-db"    = { db = "orders", password = "ORDER_DB_PASSWORD" }
+      # AI-generated (Claude Code).
+      "user-db"         = { db = "users", password = "POSTGRES_PASSWORD" }
+      "supplier-db"     = { db = "supplier", password = "SUPPLIER_POSTGRES_PASSWORD" }
+      "credit-db"       = { db = "credit", password = "CREDIT_POSTGRES_PASSWORD" }
+      "order-db"        = { db = "orders", password = "ORDER_DB_PASSWORD" }
+      "notification-db" = { db = "notification", password = "NOTIFICATION_POSTGRES_PASSWORD" }
       } : name => {
       image    = "postgres:17-alpine"
       port     = 5432
@@ -111,6 +123,7 @@ locals {
         USER_SMTP_FROM             = "USER_SMTP_FROM"
         USER_BOOTSTRAP_ADMIN_EMAIL = "USER_BOOTSTRAP_ADMIN_EMAIL"
         USER_ORDER_SERVICE_KEY     = "ORDER_SERVICE_KEY"
+        USER_INTERNAL_SERVICE_KEY  = "USER_INTERNAL_SERVICE_KEY"
       }
     }
     "supplier-service" = {
@@ -154,6 +167,24 @@ locals {
         ORDER_DB_PASSWORD        = "ORDER_DB_PASSWORD"
         ORDER_CREDIT_SERVICE_KEY = "CREDIT_SERVICE_KEY"
         ORDER_SERVICE_KEY        = "ORDER_SERVICE_KEY"
+        # AI-generated (Claude Code): Order won't start without it since chat (#230);
+        # the chat service will read the same parameter.
+        ORDER_CHAT_TICKET_SECRET = "CHAT_TICKET_SECRET"
+      }
+    }
+    # AI-generated (Claude Code).
+    "notification-service" = {
+      image  = local.image["notification-service"]
+      port   = 3006
+      health = local.listening[3006]
+      memory = 192
+      env    = local.notification_env
+      secrets = {
+        PGPASSWORD                    = "NOTIFICATION_POSTGRES_PASSWORD" # as in compose: not in the URL
+        NOTIFICATION_SMTP_USER        = "USER_SMTP_USER"
+        NOTIFICATION_SMTP_PASS        = "USER_SMTP_PASS"
+        NOTIFICATION_SMTP_FROM        = "USER_SMTP_FROM"
+        NOTIFICATION_USER_SERVICE_KEY = "USER_INTERNAL_SERVICE_KEY"
       }
     }
     "api-gateway" = {
@@ -161,6 +192,8 @@ locals {
       port      = 3003
       host_port = 80 # the only port the server publishes; CloudFront's origin
       memory    = 96
+      # Envoy answers /health itself on the internal listener; the image has python3 for render.py.
+      health = ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3003/health', timeout=4)"]
       env = merge({
         GATEWAY_PORT         = "3003"
         USER_SERVICE_URL     = "http://user-service:3001"
@@ -168,6 +201,9 @@ locals {
         ORDER_SERVICE_URL    = "http://order-service:3005"
         CREDIT_SERVICE_URL   = "http://credit-service:3004"
         FRONTEND_URL         = "http://frontend:3000" # the edge listener's catch-all (deploy part 1)
+        # AI-generated (Claude Code): chat's route file (#230) needs it or the gateway
+        # won't start. The chat service isn't on AWS yet, so chat requests get 503 until it is.
+        CHAT_SERVICE_URL = "http://chat-service:3007"
         }, var.edge_container_port == 3003 ? {} : {
         GATEWAY_EDGE_PORT = tostring(var.edge_container_port)
       })
@@ -187,18 +223,14 @@ locals {
       image  = "axllent/mailpit:v1.31.2"
       health = ["CMD", "/mailpit", "readyz"]
       port   = 1025
-      memory = 48
-      env = {
-        MP_SMTP_AUTH_ALLOW_INSECURE = "true" # plain login over the server's internal network
-        MP_SMTP_RELAY_HOST          = "smtp.gmail.com"
-        MP_SMTP_RELAY_PORT          = "587"
-        MP_SMTP_RELAY_STARTTLS      = "true"
-        MP_SMTP_RELAY_AUTH          = "login"
-        MP_SMTP_RELAY_ALL           = "true"
-      }
+      # AI-generated (Claude Code).
+      # The API, for the checks task; the security group keeps it off the internet.
+      extra_ports = [8025]
+      memory      = 48
+      env         = local.mailpit_env
       secrets = {
-        # Only the User Service knows this login ("<USER_SMTP_USER>:<USER_SMTP_PASS>", the credentials
-        # it already sends), so no other container can relay mail through the Gmail account.
+        # Only the User and Notification Services know this login ("<USER_SMTP_USER>:<USER_SMTP_PASS>",
+        # the credentials they already send), so no other container can relay through the Gmail account.
         MP_SMTP_AUTH           = "MAILPIT_SMTP_AUTH"
         MP_SMTP_RELAY_USERNAME = "USER_SMTP_USER"
         MP_SMTP_RELAY_PASSWORD = "USER_SMTP_PASS"
@@ -206,9 +238,33 @@ locals {
     }
   } : {})
 
+  # AI-generated (Claude Code).
+  # Without a list, Mailpit relays nothing: the checks sign up random addresses at a real domain.
+  mailpit_env = merge({
+    MP_SMTP_AUTH_ALLOW_INSECURE = "true" # plain login over the server's internal network
+    MP_SMTP_RELAY_HOST          = "smtp.gmail.com"
+    MP_SMTP_RELAY_PORT          = "587"
+    MP_SMTP_RELAY_STARTTLS      = "true"
+    MP_SMTP_RELAY_AUTH          = "login"
+    }, length(var.mailpit_relay_to) == 0 ? {} : {
+    MP_SMTP_RELAY_MATCHING = "^(${join("|", [for a in var.mailpit_relay_to : replace(a, "/[.+]/", "\\$0")])})$"
+  })
+
+  # Values match notification-service/compose.yaml.
+  notification_env = {
+    NOTIFICATION_PORT          = "3006"
+    NOTIFICATION_DATABASE_URL  = "postgres://foc@notification-db:5432/notification" # password from PGPASSWORD
+    NOTIFICATION_KAFKA_BROKERS = "kafka:9092"
+    NOTIFICATION_RETRY_DELAYS  = "1s,5s,30s,2m,10m"
+    NOTIFICATION_SMTP_HOST     = local.smtp.host
+    NOTIFICATION_SMTP_PORT     = local.smtp.port
+    NOTIFICATION_USER_URL      = "http://user-service:3001"
+    NOTIFICATION_FRONTEND_URL  = var.public_url
+  }
+
   # Node services: healthy once something listens on the port (catches a start-up that hangs).
   listening = {
-    for port in [3000, 3001, 3002, 3004, 3005] : port => [
+    for port in [3000, 3001, 3002, 3004, 3005, 3006] : port => [
       "CMD", "node", "-e",
       "require('net').connect(${port},'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
     ]
@@ -224,15 +280,29 @@ locals {
     "order-migrate" = { image = local.image["order-service"], memory = 128, command = ["node", "dist/db/migrate-cli.js"], env = local.order_db_env, secrets = { ORDER_DB_PASSWORD = "ORDER_DB_PASSWORD" } }
   }
 
+  # AI-generated (Claude Code).
+  # Staging's on-demand checks (infra/scripts/run-checks.sh). A standalone task gets no Service
+  # Connect names, so it uses the public URL, and Mailpit through the server's Docker bridge address.
+  checks = var.mailpit_relay ? {
+    "checks" = {
+      image   = local.image["checks"]
+      memory  = 256
+      env     = { BASE_URL = "${var.public_url}/gateway", MAILPIT_URL = "http://172.17.0.1:8025" }
+      secrets = {}
+    }
+  } : {}
+
   # Environment variable names that carry secrets, and the SSM names they come from.
   secret_names = distinct(flatten([for c in merge(local.containers, local.oneoffs) : concat(keys(c.secrets), values(c.secrets))]))
 
   init_containers = {
-    "order-service"  = ["kafka-init", "order-migrate"]
-    "credit-service" = ["kafka-init"]
+    # AI-generated (Claude Code).
+    "order-service"        = ["kafka-init", "order-migrate"]
+    "credit-service"       = ["kafka-init"]
+    "notification-service" = ["kafka-init"]
   }
 
-  stops_before_replacing = toset(["user-db", "supplier-db", "credit-db", "order-db", "user-redis", "kafka", "api-gateway"])
+  stops_before_replacing = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "api-gateway", "mailpit"])
 }
 
 # --- Shared plumbing -------------------------------------------------------------------------------
@@ -242,7 +312,7 @@ resource "aws_service_discovery_http_namespace" "this" {
 }
 
 resource "aws_cloudwatch_log_group" "service" {
-  for_each          = merge(local.containers, local.oneoffs)
+  for_each          = merge(local.containers, local.oneoffs, local.checks)
   name              = "/foc/${var.env}/${each.key}"
   retention_in_days = 14
 }
@@ -273,7 +343,7 @@ resource "aws_iam_role_policy" "execution_secrets" {
 
 locals {
   container_definition = {
-    for name, c in merge(local.containers, local.oneoffs) : name => merge(
+    for name, c in merge(local.containers, local.oneoffs, local.checks) : name => merge(
       {
         name              = name
         image             = c.image
@@ -302,6 +372,7 @@ locals {
           try(c.host_port, null) != null && var.edge_container_port != c.port ? [
             { name = "edge", containerPort = var.edge_container_port, hostPort = c.host_port, protocol = "tcp" }
           ] : [],
+          [for p in try(c.extra_ports, []) : { name = "${name}-${p}", containerPort = p, hostPort = p, protocol = "tcp" }],
         )
       },
       try(c.folder, null) == null ? {} : { mountPoints = [{ sourceVolume = "data", containerPath = c.mount_to }] },
@@ -337,6 +408,17 @@ resource "aws_ecs_task_definition" "service" {
   }
 }
 
+# AI-generated (Claude Code).
+# No ECS service: run-checks.sh starts it after each staging deploy.
+resource "aws_ecs_task_definition" "checks" {
+  count                    = length(local.checks)
+  family                   = "foc-${var.env}-checks"
+  network_mode             = "bridge"
+  requires_compatibilities = ["EC2"]
+  execution_role_arn       = aws_iam_role.execution.arn
+  container_definitions    = jsonencode([local.container_definition["checks"]])
+}
+
 # --- Services ----------------------------------------------------------------------------------------
 
 # Created in three layers: a Service Connect client only learns the names that already existed when
@@ -352,8 +434,8 @@ resource "aws_ecs_task_definition" "service" {
 # stop before their replacement starts; the rest roll with a brief overlap.
 locals {
   layer = {
-    data = toset(["user-db", "supplier-db", "credit-db", "order-db", "user-redis", "kafka", "mailpit"])
-    app  = toset(["user-service", "supplier-service", "credit-service", "order-service"])
+    data = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "mailpit"])
+    app  = toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service"])
     edge = toset(["api-gateway"])
     web  = toset(["frontend"])
   }
@@ -379,6 +461,8 @@ resource "aws_ecs_service" "data" {
 
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
+  # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code)
 
   service_connect_configuration {
     enabled   = true
@@ -415,6 +499,8 @@ resource "aws_ecs_service" "app" {
 
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
+  # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code)
 
   service_connect_configuration {
     enabled   = true
@@ -451,6 +537,8 @@ resource "aws_ecs_service" "edge" {
 
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
+  # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code)
 
   service_connect_configuration {
     enabled   = true
@@ -487,6 +575,8 @@ resource "aws_ecs_service" "web" {
 
   deployment_minimum_healthy_percent = contains(local.stops_before_replacing, each.key) ? 0 : 100
   deployment_maximum_percent         = contains(local.stops_before_replacing, each.key) ? 100 : 200
+  # One server in one zone: nothing to rebalance, and ECS refuses a 100% maximum while it is on.
+  availability_zone_rebalancing = "DISABLED" # AI-generated (Claude Code)
 
   service_connect_configuration {
     enabled   = true
