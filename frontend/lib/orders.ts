@@ -24,6 +24,9 @@ Author review: Pending review by Deanson.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Added countOrders() and orderKeys.count for the Profile page's Orders Requested / Orders Delivered totals.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Added proposeTimingChange() and TIMING_CHANGE_STATES for the order page's "Propose new time" (#186), and moved toLocalInput() here from order-form-modal.tsx so both use it.
+Author review: Pending review by Jie Yang.
 */
 import { withSessionMutation } from '@/lib/session-client';
 import { type FieldIssue, parseServiceError } from '@/lib/service-errors';
@@ -216,6 +219,21 @@ export const advanceOrder = (id: string, step: Step, version: number) =>
 
 export const propose = (id: string, kind: 'CANCELLATION' | 'COMPLETION') =>
   call<Confirmation>(`/${id}/confirmations`, 'Could not send the proposal.', 'POST', { kind });
+
+// AI-generated (pending review by Jie Yang)
+/** Proposes a new window (ISO timestamps); it applies once the other party accepts. */
+export const proposeTimingChange = (id: string, windowStart: string, windowEnd: string) =>
+  call<Confirmation>(`/${id}/confirmations`, 'Could not send the proposal.', 'POST', { kind: 'TIMING_CHANGE', windowStart, windowEnd });
+
+/** States in which either party may propose a new window (the Order Service's TIMING_CHANGE rule). */
+export const TIMING_CHANGE_STATES: OrderStatus[] = ['ACCEPTED', 'PICKED_UP', 'IN_PROGRESS'];
+
+/** ISO timestamp → the browser's local "YYYY-MM-DDTHH:mm", the value a datetime-local input takes. */
+export function toLocalInput(iso: string) {
+  const date = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 export const respond = (id: string, confirmationId: string, response: 'ACCEPTED' | 'REJECTED') =>
   call<Confirmation>(`/${id}/confirmations/${confirmationId}/respond`, 'Could not send your response.', 'POST', { response });

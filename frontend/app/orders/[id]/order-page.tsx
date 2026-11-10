@@ -15,6 +15,9 @@ Author review: Reviewed by Deanson, 2026-11-09.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Redesign (re-applied after the chat moved the page here): page themed by the viewer's role, sentence-case proposal headings, bike icon on the courier step, chat heading names the other party, empty-state art.
 Author review: Pending review by Jie Yang.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: "Propose new time" for either participant while ACCEPTED, PICKED_UP or IN_PROGRESS (TimingChangeModal), and the pending proposal box shows a proposed window (#186).
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
@@ -22,15 +25,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "../../components/app-shell";
-import { BikeIcon, EmptyArt } from "../../components/icons";
+import { BikeIcon, ClockIcon, EmptyArt } from "../../components/icons";
 import { ErrorToast } from "../../components/error-feedback";
 import { ConfirmModal } from "../../components/modal";
 import { StatusBadge } from "../../components/order-card";
 import { SessionScreen, useSession } from "../../components/use-session";
 import { OrderChat } from "./order-chat";
+import { TimingChangeModal } from "./timing-change-modal";
 import { advanceOrder, cancelledBecause, cancelOrder, type Confirmation, formatTime, getConfirmations, getHistory, getOrder,
   isActive, isConflict, isUnauthorized, type Order, OrderError, orderKeys, type OrderStatus, POLL_MS, propose, respond,
-  STATUS_LABEL, type Step } from "@/lib/orders";
+  STATUS_LABEL, type Step, TIMING_CHANGE_STATES } from "@/lib/orders";
 
 type Role = "requester" | "courier";
 
@@ -61,6 +65,7 @@ function OrderDetail({ id, userId, socket }: { id: string; userId?: string; sock
   const queryClient = useQueryClient();
   const [toast, setToast] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const [proposingTime, setProposingTime] = useState(false);
   // dataUpdatedAt of the proposals when Request Completion got a 409; the next fetch clears it (decision 1).
   const [completionBlockedAt, setCompletionBlockedAt] = useState<number | null>(null);
 
@@ -146,6 +151,8 @@ function OrderDetail({ id, userId, socket }: { id: string; userId?: string; sock
   const cancelHint = pending ? (pending.proposedBy === userId ? "Waiting for a response to your proposal." : "Respond to the pending proposal first.") : "";
   const canCancel = role === "requester" ? order.status === "PENDING" || inDelivery : role === "courier" && inDelivery;
   const nextStep = STEPS[order.status];
+  // AI-generated (pending review by Jie Yang): a new window may be proposed until the order arrives or its window ends.
+  const canProposeTime = role !== null && TIMING_CHANGE_STATES.includes(order.status) && new Date(order.windowEnd) > new Date();
   // AI-generated (reviewed by Deanson, 2026-11-09): chat only for the two participants while in delivery.
   const chatOpen = Boolean(userId) && role !== null && order.courierId !== null && inDelivery;
   const chatNote = role === null ? "Chat is only for this order's requester and courier."
@@ -185,9 +192,11 @@ function OrderDetail({ id, userId, socket }: { id: string; userId?: string; sock
           {pending.proposedBy === userId ? <>
             <strong>Waiting for a reply</strong>
             <p>You proposed to {VERB[pending.kind]} the order. The {other} needs to accept before anything changes.</p>
+            {proposedWindow(pending)}
           </> : <>
             <strong>Needs your response</strong>
             <p>The {other} has proposed to {VERB[pending.kind]} the order.</p>
+            {proposedWindow(pending)}
             <div className="order-actions">
               <button type="button" className="primary-button" disabled={busy}
                 onClick={() => answer.mutate({ confirmationId: pending.id, response: "ACCEPTED" })}>Accept</button>
@@ -203,6 +212,9 @@ function OrderDetail({ id, userId, socket }: { id: string; userId?: string; sock
           {role === "courier" && order.status === "ARRIVED" && <button type="button" className="primary-button"
             disabled={busy || proposalsUnknown || Boolean(pending) || completionBlocked}
             onClick={() => proposal.mutate("COMPLETION")}>Request Completion</button>}
+          {canProposeTime && <button type="button" className="secondary-button"
+            disabled={busy || proposalsUnknown || Boolean(pending)}
+            onClick={() => setProposingTime(true)}><ClockIcon size={16} />Propose new time</button>}
           {canCancel && <button type="button" className="danger-button"
             disabled={busy || (inDelivery && (proposalsUnknown || Boolean(pending)))}
             onClick={() => setConfirming(true)}>Cancel</button>}
@@ -216,6 +228,9 @@ function OrderDetail({ id, userId, socket }: { id: string; userId?: string; sock
           : <div className="home-empty"><EmptyArt kind="chat" />{chatNote}</div>}
       </section>
     </div>
+    {proposingTime && role && <TimingChangeModal order={order} other={other} onClose={() => setProposingTime(false)}
+      onSent={() => { setProposingTime(false); refresh(); }}
+      onStale={(error) => { setProposingTime(false); failed(error); }} />}
     {confirming && (order.status === "PENDING"
       ? <ConfirmModal title="Cancel order?" confirmLabel="Cancel order" busy={directCancel.isPending}
         message="This order will be cancelled and your credits released. This can't be undone."
@@ -224,4 +239,11 @@ function OrderDetail({ id, userId, socket }: { id: string; userId?: string; sock
         message={`The ${other} must accept before the order is cancelled.`}
         onConfirm={() => proposal.mutate("CANCELLATION")} onClose={() => setConfirming(false)} />)}
   </AppShell>;
+}
+
+// AI-generated (pending review by Jie Yang)
+/** The new window a pending TIMING_CHANGE would set; nothing for other kinds. */
+function proposedWindow(proposal: Confirmation) {
+  if (proposal.kind !== "TIMING_CHANGE" || !proposal.proposedWindowStart || !proposal.proposedWindowEnd) return null;
+  return <p>New window: <strong>{formatTime(proposal.proposedWindowStart)} – {formatTime(proposal.proposedWindowEnd)}</strong></p>;
 }
