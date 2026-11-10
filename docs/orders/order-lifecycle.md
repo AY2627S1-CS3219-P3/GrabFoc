@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-21
 Scope: Wrote this description of the order lifecycle from the Order Service code (orders.service.ts, confirmations.service.ts, 001_init.sql). It documents existing behaviour and adds no design.
 Author review: Pending: Deanson to review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Added OrderChangeRequest to "Events" (#186).
+Author review: pending — Jie Yang to record the review.
 -->
 
 # Order lifecycle
@@ -112,6 +115,8 @@ The service publishes `order_history` rows to `order.events` every second, oldes
 | `CANCELLED` (not from `AWAITING_CREDIT`) | `OrderCancelled`, with `reason` |
 
 `CREATED`, `CREDIT_RESERVED` and `EDITED` publish nothing, and neither does a create cancelled because credits weren't reserved.
+
+Proposals (#186) don't change the order's state, so they publish from `order_confirmations` instead, merged with the history rows oldest first: `OrderChangeRequest` with `data.outcome` `CREATED` when a proposal is made, then `APPROVED`, `REJECTED` or `EXPIRED` when it is resolved. A `SUPERSEDED` proposal publishes nothing more.
 
 ## Source
 

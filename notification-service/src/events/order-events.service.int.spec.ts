@@ -4,6 +4,9 @@
  * Scope: Generated the order event handling tests against PostgreSQL (#150, #152), from the
  *        decisions in #148.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Added tests for OrderChangeRequest (#186).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
@@ -162,4 +165,99 @@ it('leaves no trace when the transaction fails part-way', async () => {
   expect(await lastStatus(orderId)).toBeUndefined();
   // The redelivered message is then handled from the start.
   expect(await service.handle(broken)).toBe('QUEUED');
+});
+
+describe('OrderChangeRequest (#186)', () => {
+  function change(
+    orderId: string,
+    status: OrderStatus,
+    outcome: 'CREATED' | 'APPROVED' | 'REJECTED' | 'EXPIRED',
+    kind: 'TIMING_CHANGE' | 'CANCELLATION' | 'COMPLETION',
+    proposedBy: string,
+  ): OrderEvent {
+    const timing = kind === 'TIMING_CHANGE';
+    return event(orderId, status, {
+      eventType: 'OrderChangeRequest',
+      change: {
+        outcome,
+        kind,
+        proposedBy,
+        confirmationId: randomUUID(),
+        proposedWindowStart: timing ? new Date('2026-11-10T07:00:00.000Z') : null,
+        proposedWindowEnd: timing ? new Date('2026-11-10T09:00:00.000Z') : null,
+      },
+    });
+  }
+
+  it('emails the other party, stores the proposal and leaves the order state alone', async () => {
+    const orderId = randomUUID();
+    await service.handle(event(orderId, 'ACCEPTED'));
+    const proposed = change(orderId, 'ACCEPTED', 'CREATED', 'TIMING_CHANGE', requesterId);
+    expect(await service.handle(proposed)).toBe('QUEUED');
+    expect(await recipients(proposed.eventId)).toEqual([
+      { role: 'COURIER', recipient_id: courierId, delivery_status: 'PENDING' },
+    ]);
+    const { rows } = await pool.query(
+      `SELECT change_outcome, change_kind, proposed_by, proposed_window_start FROM notification_events WHERE event_id = $1`,
+      [proposed.eventId],
+    );
+    expect(rows[0]).toEqual({
+      change_outcome: 'CREATED',
+      change_kind: 'TIMING_CHANGE',
+      proposed_by: requesterId,
+      proposed_window_start: new Date('2026-11-10T07:00:00.000Z'),
+    });
+    const { rows: states } = await pool.query(
+      'SELECT last_event_id FROM notification_order_states WHERE order_id = $1',
+      [orderId],
+    );
+    expect(states[0].last_event_id).not.toBe(proposed.eventId);
+  });
+
+  it('is not mistaken for a state change: no second "accepted" email to the requester', async () => {
+    const orderId = randomUUID();
+    await service.handle(event(orderId, 'ACCEPTED'));
+    const proposed = change(orderId, 'ACCEPTED', 'CREATED', 'CANCELLATION', courierId);
+    await service.handle(proposed);
+    // The requester gets this as a cancellation request, rendered from the change columns.
+    const { rows } = await pool.query('SELECT change_kind FROM notification_events WHERE event_id = $1', [proposed.eventId]);
+    expect(rows[0].change_kind).toBe('CANCELLATION');
+    expect((await recipients(proposed.eventId)).map((r) => r.role)).toEqual(['REQUESTER']);
+  });
+
+  it('emails the proposer when the proposal is rejected', async () => {
+    const orderId = randomUUID();
+    await service.handle(event(orderId, 'ARRIVED'));
+    const rejected = change(orderId, 'ARRIVED', 'REJECTED', 'COMPLETION', courierId);
+    expect(await service.handle(rejected)).toBe('QUEUED');
+    expect((await recipients(rejected.eventId)).map((r) => r.role)).toEqual(['COURIER']);
+  });
+
+  it('emails nobody for an approved completion: OrderCompleted covers it', async () => {
+    const orderId = randomUUID();
+    await service.handle(event(orderId, 'ARRIVED'));
+    const approved = change(orderId, 'ARRIVED', 'APPROVED', 'COMPLETION', courierId);
+    expect(await service.handle(approved)).toBe('DISCARDED_NO_AUDIENCE');
+  });
+
+  it('is stale once the order has finished', async () => {
+    const orderId = randomUUID();
+    await service.handle(event(orderId, 'ARRIVED'));
+    expect(await service.handle(change(orderId, 'COMPLETED', 'APPROVED', 'COMPLETION', courierId))).toBe('DISCARDED_STALE');
+  });
+
+  it('is stale once a later state was handled first', async () => {
+    const orderId = randomUUID();
+    await service.handle(event(orderId, 'PICKED_UP'));
+    const proposed = change(orderId, 'ACCEPTED', 'CREATED', 'TIMING_CHANGE', requesterId);
+    expect(await service.handle(proposed)).toBe('DISCARDED_STALE');
+    expect(await lastStatus(orderId)).toBe('PICKED_UP');
+  });
+
+  it('changes nothing for a duplicate', async () => {
+    const orderId = randomUUID();
+    const proposed = change(orderId, 'ACCEPTED', 'CREATED', 'TIMING_CHANGE', courierId);
+    await service.handle(proposed);
+    expect(await service.handle(proposed)).toBe('DUPLICATE');
+  });
 });

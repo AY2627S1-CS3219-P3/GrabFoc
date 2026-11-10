@@ -183,6 +183,21 @@ _Origin: Team (OSFR4–OSFR6); Restated from root communication decisions_
 
   `reason` appears only on `OrderCancelled`. `courierId` is null for an order cancelled before acceptance. Nothing is published for `CREATED`, `CREDIT_RESERVED`, `EDITED` or a create cancelled for credit. Consumers dedupe on `eventId` (root §7). Delivery is at least once.
 
+- **[Decided]** (issue [#186](https://github.com/AY2627S1-CS3219-P3/GrabFoc/issues/186), 2026-11-10) Proposals are published to `order.events` too, so the other party learns about one without opening the app. Zi Yi agreed to proposal events on the topic; Jie Yang chose the outbox on `order_confirmations` and the shape below. **Confirm the one-type-with-`outcome` shape with Zi Yi** (it replaced separate `OrderChangeProposed` / `Rejected` / `Expired` types the same day).
+  - One `eventType`, `OrderChangeRequest`, keyed by `orderId`. `data.outcome` is `CREATED` when the proposal is made, then `APPROVED`, `REJECTED` or `EXPIRED` when it is resolved. A `SUPERSEDED` proposal publishes nothing more: the state change that superseded it is its own event.
+  - `eventId` is the confirmation ID for `CREATED`, and `order_confirmations.resolution_event_id` for the resolution, so each of the two events has its own ID and a resend carries the same one.
+  - `data.status` is the order's state **when the event is published**, not when the proposal was made, so a consumer can tell the order has moved on.
+  - Outbox: migration `002_confirmation_events.sql` adds `proposal_published_at`, `resolution_event_id` and `resolution_published_at` to `order_confirmations`, with a partial index for each unpublished set. The publisher reads history and both confirmation sets in one query, oldest first; at the same instant (one transaction) a confirmation event goes before the history entry. Proposals made before the migration are marked published, so they are never announced.
+
+  ```json
+  { "eventId": "<confirmation id | resolution_event_id>", "eventType": "OrderChangeRequest", "occurredAt": "2026-11-10T04:00:00.000Z",
+    "data": { "orderId": "<uuid>", "requesterId": "<uuid>", "courierId": "<uuid>", "status": "ACCEPTED",
+              "outcome": "CREATED", "confirmationId": "<uuid>", "kind": "TIMING_CHANGE", "proposedBy": "<uuid>",
+              "proposedWindowStart": "2026-11-10T07:00:00.000Z", "proposedWindowEnd": "2026-11-10T09:00:00.000Z" } }
+  ```
+
+  `proposedWindowStart` and `proposedWindowEnd` appear only for `TIMING_CHANGE`. `occurredAt` is the proposal's `created_at` for `CREATED`, its `resolved_at` otherwise. The backlog (OSFR6) still needs an entry for these events; the team writes it.
+
 ## Integration and cross-cutting rules
 
 _Origin: Team / Restated from root §3, §6 and §8; AI doc (conflict reminders)_

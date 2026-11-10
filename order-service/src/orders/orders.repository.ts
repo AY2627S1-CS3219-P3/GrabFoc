@@ -32,6 +32,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
  * Scope: list() takes an optional status filter (GET /orders/assigned?status=).
  * Author review: Pending review by Deanson.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: The outbox query now also returns proposals and their approvals, rejections and expiries
+ *        from order_confirmations (#186), merged with history oldest first; markPublished marks either.
+ * Author review: pending — Jie Yang to record the review.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -74,6 +78,7 @@ type Db = Pool | PoolClient;
 
 /** A history entry waiting for order.events, with the order's participants. */
 export interface Unpublished {
+  source: 'HISTORY';
   id: string;
   orderId: string;
   requesterId: string;
@@ -83,6 +88,32 @@ export interface Unpublished {
   changeDetails: { reason?: string } | null;
   occurredAt: Date;
 }
+
+/** What happened to a proposal: made (CREATED), or resolved. */
+export type ChangeOutcome = 'CREATED' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+
+/**
+ * A proposal made or resolved, waiting for order.events (#186). `id` is the event id: the
+ * confirmation id for CREATED, its resolution_event_id otherwise.
+ */
+export interface UnpublishedChange {
+  source: ChangeOutcome;
+  id: string;
+  confirmationId: string;
+  orderId: string;
+  requesterId: string;
+  courierId: string | null;
+  /** The order's state when the event is published, so a consumer can tell the order has moved on. */
+  status: OrderStatus;
+  kind: ConfirmationKind;
+  proposedBy: string;
+  proposedWindowStart: Date | null;
+  proposedWindowEnd: Date | null;
+  occurredAt: Date;
+}
+
+/** Anything waiting for order.events. */
+export type Outgoing = Unpublished | UnpublishedChange;
 
 export interface Unsettled {
   id: string;
@@ -389,32 +420,75 @@ export class OrdersRepository {
   }
 
   /**
-   * History entries not yet on order.events, oldest first so each order's events go out in order.
-   * The WHERE clause matches order_history_unpublished_idx.
+   * Everything not yet on order.events, oldest first so each order's events go out in order:
+   * history entries (state changes), proposals made, and proposals resolved (#186). At the
+   * same instant (one transaction) a proposal's event goes before the history entry. Each branch's
+   * WHERE clause matches its partial index (order_history_unpublished_idx and the two
+   * order_confirmations_*_unpublished_idx).
    */
-  async unpublished(): Promise<Unpublished[]> {
+  async unpublished(): Promise<Outgoing[]> {
     const { rows } = await this.pool.query(
-      `SELECT h.id, h.order_id, o.requester_id, o.courier_id, h.action, h.new_status, h.change_details, h.occurred_at
-       FROM order_history h JOIN orders o ON o.id = h.order_id
-       WHERE h.published_at IS NULL
-         AND h.action IN ('ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')
-         AND h.previous_status <> 'AWAITING_CREDIT'
-       ORDER BY h.occurred_at, h.id LIMIT 100`,
+      `SELECT * FROM (
+         SELECT 'HISTORY' AS source, h.id, NULL::uuid AS confirmation_id, h.order_id, o.requester_id, o.courier_id,
+                h.action, h.new_status AS status, h.change_details, NULL AS kind, NULL::uuid AS proposed_by,
+                NULL::timestamptz AS proposed_window_start, NULL::timestamptz AS proposed_window_end,
+                h.occurred_at, 1 AS tie
+         FROM order_history h JOIN orders o ON o.id = h.order_id
+         WHERE h.published_at IS NULL
+           AND h.action IN ('ACCEPTED','PICKED_UP','IN_PROGRESS','ARRIVED','COMPLETED','CANCELLED')
+           AND h.previous_status <> 'AWAITING_CREDIT'
+         UNION ALL
+         SELECT 'CREATED', c.id, c.id, c.order_id, o.requester_id, o.courier_id,
+                NULL, o.status, NULL, c.kind, c.proposed_by, c.proposed_window_start, c.proposed_window_end,
+                c.created_at, 0
+         FROM order_confirmations c JOIN orders o ON o.id = c.order_id
+         WHERE c.proposal_published_at IS NULL
+         UNION ALL
+         SELECT c.status, c.resolution_event_id, c.id, c.order_id, o.requester_id, o.courier_id,
+                NULL, o.status, NULL, c.kind, c.proposed_by, c.proposed_window_start, c.proposed_window_end,
+                c.resolved_at, 0
+         FROM order_confirmations c JOIN orders o ON o.id = c.order_id
+         WHERE c.resolution_published_at IS NULL AND c.status IN ('APPROVED','REJECTED','EXPIRED')
+       ) pending
+       ORDER BY occurred_at, tie, id LIMIT 100`,
     );
-    return rows.map((row) => ({
-      id: row.id,
-      orderId: row.order_id,
-      requesterId: row.requester_id,
-      courierId: row.courier_id,
-      action: row.action,
-      newStatus: row.new_status,
-      changeDetails: row.change_details,
-      occurredAt: row.occurred_at,
-    }));
+    return rows.map((row): Outgoing =>
+      row.source === 'HISTORY'
+        ? {
+            source: 'HISTORY',
+            id: row.id,
+            orderId: row.order_id,
+            requesterId: row.requester_id,
+            courierId: row.courier_id,
+            action: row.action,
+            newStatus: row.status,
+            changeDetails: row.change_details,
+            occurredAt: row.occurred_at,
+          }
+        : {
+            source: row.source,
+            id: row.id,
+            confirmationId: row.confirmation_id,
+            orderId: row.order_id,
+            requesterId: row.requester_id,
+            courierId: row.courier_id,
+            status: row.status,
+            kind: row.kind,
+            proposedBy: row.proposed_by,
+            proposedWindowStart: row.proposed_window_start,
+            proposedWindowEnd: row.proposed_window_end,
+            occurredAt: row.occurred_at,
+          },
+    );
   }
 
-  async markPublished(historyId: string): Promise<void> {
-    await this.pool.query('UPDATE order_history SET published_at = now() WHERE id = $1', [historyId]);
+  async markPublished(entry: Outgoing): Promise<void> {
+    if (entry.source === 'HISTORY') {
+      await this.pool.query('UPDATE order_history SET published_at = now() WHERE id = $1', [entry.id]);
+      return;
+    }
+    const column = entry.source === 'CREATED' ? 'proposal_published_at' : 'resolution_published_at';
+    await this.pool.query(`UPDATE order_confirmations SET ${column} = now() WHERE id = $1`, [entry.confirmationId]);
   }
 
   /** True if the user is requester or courier on any order that has not finished. */

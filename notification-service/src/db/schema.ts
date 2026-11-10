@@ -8,6 +8,10 @@
  * Scope: Added notification_account_emails for UserSuspended and UserReactivated (#183), as
  *        approved by Jie Yang on 2026-11-04.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Added the OrderChangeRequest columns to notification_events (#186), as approved by
+ *        Jie Yang on 2026-11-10.
+ * Author review: pending — Jie Yang to record the review.
  */
 
 /**
@@ -48,6 +52,15 @@ CREATE TABLE IF NOT EXISTS notification_events (
     received_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     handled_at   TIMESTAMPTZ
 );
+
+-- OrderChangeRequest only (#186): what happened to the proposal, so its email can say what was
+-- proposed. Added with ALTER so an existing database gets them on its next start.
+ALTER TABLE notification_events
+    ADD COLUMN IF NOT EXISTS change_outcome TEXT CHECK (change_outcome IN ('CREATED','APPROVED','REJECTED','EXPIRED')),
+    ADD COLUMN IF NOT EXISTS change_kind TEXT CHECK (change_kind IN ('TIMING_CHANGE','CANCELLATION','COMPLETION')),
+    ADD COLUMN IF NOT EXISTS proposed_by UUID,
+    ADD COLUMN IF NOT EXISTS proposed_window_start TIMESTAMPTZ,  -- TIMING_CHANGE only
+    ADD COLUMN IF NOT EXISTS proposed_window_end TIMESTAMPTZ;
 
 -- The last state handled for each order, for the stale check.
 CREATE TABLE IF NOT EXISTS notification_order_states (

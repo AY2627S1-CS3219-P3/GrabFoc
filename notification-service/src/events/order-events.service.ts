@@ -7,18 +7,24 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
  * Scope: Comments now point at SenderService (#153).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Handled OrderChangeRequest (#186): recorded with its proposal columns, never moves the
+ *        order's last state, and is stale once the order has moved on or finished.
+ * Author review: pending — Jie Yang to record the review.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
 import { PG_POOL } from '../db/database';
 import { OrderEvent } from '../messaging/messages';
-import { recipientsFor } from './recipients';
+import { changeRecipients, Recipient, recipientsFor } from './recipients';
 
 /**
  * What happened to an event:
  * - DUPLICATE: its event id was seen before; nothing changed.
- * - DISCARDED_STALE: an earlier state than the last one handled, or after a final state.
- * - DISCARDED_NO_AUDIENCE: a state nobody is emailed about (PENDING).
+ * - DISCARDED_STALE: an earlier state than the last one handled, or after a final state. For an
+ *   OrderChangeRequest: the order has since moved to a later state, or has finished.
+ * - DISCARDED_NO_AUDIENCE: a state nobody is emailed about (PENDING), or a proposal outcome
+ *   nobody is emailed about (an approved completion or cancellation).
  * - QUEUED: recipient rows were created; SenderService sends them next.
  */
 export type EventOutcome = 'DUPLICATE' | 'DISCARDED_STALE' | 'DISCARDED_NO_AUDIENCE' | 'QUEUED';
@@ -49,8 +55,9 @@ export class OrderEventsService {
   private async handleIn(client: PoolClient, event: OrderEvent): Promise<EventOutcome> {
     const inserted = await client.query(
       `INSERT INTO notification_events
-              (event_id, event_type, order_id, requester_id, courier_id, status, reason, occurred_at, outcome)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PROCESSING')
+              (event_id, event_type, order_id, requester_id, courier_id, status, reason, occurred_at, outcome,
+               change_outcome, change_kind, proposed_by, proposed_window_start, proposed_window_end)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PROCESSING', $9, $10, $11, $12, $13)
        ON CONFLICT (event_id) DO NOTHING`,
       [
         event.eventId,
@@ -61,9 +68,32 @@ export class OrderEventsService {
         event.status,
         event.reason,
         event.occurredAt,
+        event.change?.outcome ?? null,
+        event.change?.kind ?? null,
+        event.change?.proposedBy ?? null,
+        event.change?.proposedWindowStart ?? null,
+        event.change?.proposedWindowEnd ?? null,
       ],
     );
     if (inserted.rowCount === 0) return 'DUPLICATE';
+
+    let recipients: Recipient[];
+    if (event.change) {
+      // A proposal doesn't change the order's state, so it never moves notification_order_states.
+      // It is stale once the order has finished or been handled in a later state than the one it
+      // was published with: a later email already says more (#186).
+      const moved = await client.query(
+        `SELECT 1 FROM notification_order_states
+          WHERE order_id = $1 AND order_status_rank(last_status) > order_status_rank($2::order_status)`,
+        [event.orderId, event.status],
+      );
+      if (moved.rowCount !== 0 || event.status === 'COMPLETED' || event.status === 'CANCELLED') {
+        return this.finish(client, event.eventId, 'DISCARDED_STALE');
+      }
+      recipients = changeRecipients(event.change, event.requesterId, event.courierId);
+      if (recipients.length === 0) return this.finish(client, event.eventId, 'DISCARDED_NO_AUDIENCE');
+      return this.queue(client, event.eventId, recipients);
+    }
 
     // No row back means the event is stale: its state is earlier than the last one handled, or
     // the order already reached a final state (#148).
@@ -79,14 +109,17 @@ export class OrderEventsService {
     );
     if (current.rowCount === 0) return this.finish(client, event.eventId, 'DISCARDED_STALE');
 
-    const recipients = recipientsFor(event.status, event.requesterId, event.courierId);
+    recipients = recipientsFor(event.status, event.requesterId, event.courierId);
     if (recipients.length === 0) return this.finish(client, event.eventId, 'DISCARDED_NO_AUDIENCE');
+    return this.queue(client, event.eventId, recipients);
+  }
 
+  private async queue(client: PoolClient, eventId: string, recipients: Recipient[]): Promise<EventOutcome> {
     for (const recipient of recipients) {
       await client.query(
         `INSERT INTO notifications (event_id, role, recipient_id) VALUES ($1, $2, $3)
          ON CONFLICT (event_id, role) DO NOTHING`,
-        [event.eventId, recipient.role, recipient.userId],
+        [eventId, recipient.role, recipient.userId],
       );
     }
     // The event stays PROCESSING until SenderService has saved every email's result.

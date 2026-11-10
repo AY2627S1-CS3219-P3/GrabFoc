@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
  * Scope: Added the user.events parser tests (#183).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Added tests for OrderChangeRequest (#186).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { randomUUID } from 'crypto';
 import { InvalidMessageError, parseOrderEvent, parseUserEvent, peekIds } from './messages';
@@ -38,6 +41,54 @@ describe('parseOrderEvent', () => {
       occurredAt: new Date('2026-11-01T10:00:00.000Z'),
       status: 'CANCELLED',
       reason: 'EXPIRED',
+      change: null,
+    });
+  });
+
+  describe('OrderChangeRequest (#186)', () => {
+    const confirmationId = randomUUID();
+    const change = (data: Record<string, unknown> = {}) =>
+      event(
+        { eventType: 'OrderChangeRequest' },
+        {
+          status: 'ACCEPTED',
+          reason: undefined,
+          outcome: 'CREATED',
+          confirmationId,
+          kind: 'TIMING_CHANGE',
+          proposedBy: ids.requesterId,
+          proposedWindowStart: '2026-11-10T07:00:00.000Z',
+          proposedWindowEnd: '2026-11-10T09:00:00.000Z',
+          ...data,
+        },
+      );
+
+    it('reads the proposal', () => {
+      expect(parseOrderEvent(bytes(change())).change).toEqual({
+        outcome: 'CREATED',
+        confirmationId,
+        kind: 'TIMING_CHANGE',
+        proposedBy: ids.requesterId,
+        proposedWindowStart: new Date('2026-11-10T07:00:00.000Z'),
+        proposedWindowEnd: new Date('2026-11-10T09:00:00.000Z'),
+      });
+    });
+
+    it('has no window for a cancellation', () => {
+      const parsed = parseOrderEvent(
+        bytes(change({ kind: 'CANCELLATION', proposedWindowStart: undefined, proposedWindowEnd: undefined })),
+      );
+      expect(parsed.change).toMatchObject({ kind: 'CANCELLATION', proposedWindowStart: null, proposedWindowEnd: null });
+    });
+
+    it.each([
+      ['an unknown outcome', { outcome: 'MAYBE' }, /outcome/],
+      ['an unknown kind', { kind: 'REFUND' }, /kind/],
+      ['a timing change with no window', { proposedWindowEnd: undefined }, /proposedWindowStart and proposedWindowEnd/],
+      ['no proposer', { proposedBy: undefined }, /proposedBy/],
+    ])('rejects %s as unreadable', (_name, data, message) => {
+      expect(() => parseOrderEvent(bytes(change(data)))).toThrow(InvalidMessageError);
+      expect(() => parseOrderEvent(bytes(change(data)))).toThrow(message);
     });
   });
 

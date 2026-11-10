@@ -178,7 +178,7 @@ its own random schema and does not truncate application tables. For a separately
 provided test PostgreSQL instance, set `ORDER_TEST_DATABASE_URL` and run
 `npm run test:int` inside `order-service/`.
 
-Tests cover schema/defaults, reference and confirmation constraints, all nine indexes,
+Tests cover schema/defaults, reference and confirmation constraints, all eleven indexes,
 migration reruns/concurrent runners and failed-migration rollback, transactional history,
 version-conditional edits, concurrent acceptance and concurrent proposal insertion.
 Concurrency tests exercise the approved SQL mechanisms directly. The database alone

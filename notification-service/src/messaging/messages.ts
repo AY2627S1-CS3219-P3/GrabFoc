@@ -12,6 +12,10 @@
  * Scope: Added the user.events parser for UserSuspended and UserReactivated (#183), following
  *        order-service/src/integrations/user.events.ts; UserReactivated is #180's proposed shape.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Parsed OrderChangeRequest (#186): a proposal made or resolved, with its outcome, kind,
+ *        proposer and proposed window.
+ * Author review: pending — Jie Yang to record the review.
  */
 import { z } from 'zod';
 
@@ -87,6 +91,38 @@ const orderEventSchema = z.object({
   }),
 });
 
+/** Order's event for a proposal made or resolved (#186); every other eventType is a state change. */
+export const CHANGE_EVENT_TYPE = 'OrderChangeRequest';
+
+export const CHANGE_OUTCOMES = ['CREATED', 'APPROVED', 'REJECTED', 'EXPIRED'] as const;
+export type ChangeOutcome = (typeof CHANGE_OUTCOMES)[number];
+export const CHANGE_KINDS = ['TIMING_CHANGE', 'CANCELLATION', 'COMPLETION'] as const;
+export type ChangeKind = (typeof CHANGE_KINDS)[number];
+
+const changeSchema = z
+  .object({
+    outcome: z.enum(CHANGE_OUTCOMES),
+    confirmationId: id,
+    kind: z.enum(CHANGE_KINDS),
+    proposedBy: id,
+    proposedWindowStart: z.string().datetime({ offset: true }).optional(),
+    proposedWindowEnd: z.string().datetime({ offset: true }).optional(),
+  })
+  .refine((c) => c.kind !== 'TIMING_CHANGE' || (c.proposedWindowStart && c.proposedWindowEnd), {
+    message: 'A TIMING_CHANGE needs proposedWindowStart and proposedWindowEnd.',
+  });
+
+/** What an OrderChangeRequest says about the proposal. */
+export interface OrderChange {
+  outcome: ChangeOutcome;
+  confirmationId: string;
+  kind: ChangeKind;
+  proposedBy: string;
+  /** TIMING_CHANGE only. */
+  proposedWindowStart: Date | null;
+  proposedWindowEnd: Date | null;
+}
+
 export interface OrderEvent {
   eventId: string;
   eventType: string;
@@ -94,8 +130,11 @@ export interface OrderEvent {
   orderId: string;
   requesterId: string;
   courierId: string | null;
+  /** For an OrderChangeRequest, the order's state when Order published it. */
   status: OrderStatus;
   reason: string | null;
+  /** OrderChangeRequest only; absent (or null) for a state change. */
+  change?: OrderChange | null;
 }
 
 function parseJson(value: Buffer | null): unknown {
@@ -112,9 +151,24 @@ function describeIssues(error: z.ZodError): string {
 }
 
 export function parseOrderEvent(value: Buffer | null): OrderEvent {
-  const result = orderEventSchema.safeParse(parseJson(value));
+  const json = parseJson(value);
+  const result = orderEventSchema.safeParse(json);
   if (!result.success) throw new InvalidMessageError(`Invalid order event: ${describeIssues(result.error)}`);
   const { eventId, eventType, occurredAt, data } = result.data;
+  let change: OrderChange | null = null;
+  if (eventType === CHANGE_EVENT_TYPE) {
+    const parsed = changeSchema.safeParse((json as { data: unknown }).data);
+    if (!parsed.success) throw new InvalidMessageError(`Invalid ${CHANGE_EVENT_TYPE}: ${describeIssues(parsed.error)}`);
+    const c = parsed.data;
+    change = {
+      outcome: c.outcome,
+      confirmationId: c.confirmationId,
+      kind: c.kind,
+      proposedBy: c.proposedBy,
+      proposedWindowStart: c.kind === 'TIMING_CHANGE' ? new Date(c.proposedWindowStart!) : null,
+      proposedWindowEnd: c.kind === 'TIMING_CHANGE' ? new Date(c.proposedWindowEnd!) : null,
+    };
+  }
   return {
     eventId,
     eventType,
@@ -124,6 +178,7 @@ export function parseOrderEvent(value: Buffer | null): OrderEvent {
     courierId: data.courierId,
     status: data.status,
     reason: data.reason ?? null,
+    change,
   };
 }
 

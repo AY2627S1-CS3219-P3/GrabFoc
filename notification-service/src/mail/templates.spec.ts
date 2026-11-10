@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
  * Scope: Added the account email and USER_SUSPENDED reason tests (#183).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Added tests for OrderChangeRequest (#186).
+ * Author review: pending — Jie Yang to record the review.
  */
 // AI-generated (pending review)
 import { renderAccountEmail, renderEmail } from './templates';
@@ -89,5 +92,56 @@ describe('renderAccountEmail', () => {
     const email = renderAccountEmail({ type: 'UserReactivated', previousStatus: 'DEACTIVATED' }, URL);
     expect(email.subject).toBe('Your FoC account has been reactivated');
     expect(email.text).toContain('Your FoC account has been reactivated.');
+  });
+});
+
+describe('renderEmail for proposals (#186)', () => {
+  const window = {
+    proposedWindowStart: new Date('2026-11-10T07:00:00.000Z'),
+    proposedWindowEnd: new Date('2026-11-10T09:00:00.000Z'),
+  };
+  const none = { proposedWindowStart: null, proposedWindowEnd: null };
+  const render = (role: 'REQUESTER' | 'COURIER', change: Parameters<typeof renderEmail>[0]['change']) =>
+    renderEmail({ status: 'ACCEPTED', role, orderId: ORDER, reason: null, change }, URL);
+
+  it('shows a proposed window in campus time, naming who proposed it', () => {
+    const email = render('COURIER', { outcome: 'CREATED', kind: 'TIMING_CHANGE', ...window });
+    expect(email.subject).toBe('New delivery window proposed');
+    expect(email.text).toContain('The requester proposed a new delivery window for an order you accepted');
+    expect(email.text).toMatch(/10 Nov 2026, 3:00\spm to 10 Nov 2026, 5:00\spm/);
+    expect(email.text).toContain(`Open FoC: ${URL}`);
+  });
+
+  it('asks the requester to agree to a cancellation', () => {
+    const email = render('REQUESTER', { outcome: 'CREATED', kind: 'CANCELLATION', ...none });
+    expect(email.subject).toBe('Request to cancel your order');
+    expect(email.text).toContain('Your courier asked to cancel your order. It is only cancelled if you agree.');
+  });
+
+  it('asks the requester to agree to a completion', () => {
+    const email = render('REQUESTER', { outcome: 'CREATED', kind: 'COMPLETION', ...none });
+    expect(email.text).toContain('paid to your courier');
+  });
+
+  it('tells the proposer a timing change was accepted', () => {
+    expect(render('REQUESTER', { outcome: 'APPROVED', kind: 'TIMING_CHANGE', ...window }).text).toContain(
+      'Your courier accepted your new delivery window',
+    );
+  });
+
+  it.each([
+    ['TIMING_CHANGE', 'The order keeps its current window.'],
+    ['CANCELLATION', 'The requester rejected your request to cancel the order. The order carries on.'],
+    ['COMPLETION', 'The requester rejected your request to mark the order complete. The order stays open.'],
+  ] as const)('tells the proposer a %s was rejected', (kind, sentence) => {
+    const email = render('COURIER', { outcome: 'REJECTED', kind, ...(kind === 'TIMING_CHANGE' ? window : none) });
+    expect(email.text).toContain(sentence);
+    expect(email.html).toContain(sentence);
+  });
+
+  it('tells the proposer a timing change expired', () => {
+    expect(render('REQUESTER', { outcome: 'EXPIRED', kind: 'TIMING_CHANGE', ...window }).subject).toBe(
+      'Your proposed delivery window expired',
+    );
   });
 });

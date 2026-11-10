@@ -13,6 +13,10 @@
  *        the Logging Service's store in the shape it stores rather than wrapped in Nest's own
  *        timestamp, PID and context envelope for a collector to dig out (issue #52).
  * Author review: Cole Lin, read and approved.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Sends OrderChangeRequest emails too (#186): reads the proposal columns, and an order with
+ *        no state handled yet no longer hides an event's emails (LEFT JOIN).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { log } from '../common/log';
 // AI-generated (pending review)
@@ -22,7 +26,7 @@ import { config } from '../config';
 import { PG_POOL } from '../db/database';
 import { MailError, Mailer } from '../mail/mailer';
 import { renderEmail } from '../mail/templates';
-import { OrderStatus } from '../messaging/messages';
+import { ChangeKind, ChangeOutcome, OrderStatus } from '../messaging/messages';
 import { UserClient, UserLookupError } from '../users/user.client';
 import { RecipientRole } from './recipients';
 
@@ -61,6 +65,10 @@ interface Row {
   status: OrderStatus;
   order_id: string;
   reason: string | null;
+  change_outcome: ChangeOutcome | null;
+  change_kind: ChangeKind | null;
+  proposed_window_start: Date | null;
+  proposed_window_end: Date | null;
   last_error: string | null;
   /** The order has been handled in a later state than this event's. */
   superseded: boolean;
@@ -93,12 +101,15 @@ export class SenderService {
   private async pass(eventId: string, include: (row: Row) => boolean, where: string): Promise<SendResult> {
     // Ranks as in the stale check (#148): both final states rank 6, so a final-state email is never
     // superseded, and a repeat of the same state doesn't supersede the earlier one.
+    // LEFT JOIN: an OrderChangeRequest never records a state, so its order may have none yet (#186).
+    // Test s.order_id, not the rank: order_status_rank(NULL) falls through to 6.
     const { rows } = await this.pool.query<Row>(
       `SELECT n.id, n.role, n.recipient_id, e.status, e.order_id, e.reason, n.last_error,
-              order_status_rank(s.last_status) > order_status_rank(e.status) AS superseded
+              e.change_outcome, e.change_kind, e.proposed_window_start, e.proposed_window_end,
+              (s.order_id IS NOT NULL AND order_status_rank(s.last_status) > order_status_rank(e.status)) AS superseded
          FROM notifications n
          JOIN notification_events e USING (event_id)
-         JOIN notification_order_states s ON s.order_id = e.order_id
+         LEFT JOIN notification_order_states s ON s.order_id = e.order_id
         WHERE n.event_id = $1 AND ${where}
         ORDER BY n.role`,
       [eventId],
@@ -155,7 +166,21 @@ export class SenderService {
     try {
       const to = await this.users.contactEmail(row.recipient_id);
       const email = renderEmail(
-        { status: row.status, role: row.role, orderId: row.order_id, reason: row.reason },
+        {
+          status: row.status,
+          role: row.role,
+          orderId: row.order_id,
+          reason: row.reason,
+          change:
+            row.change_outcome && row.change_kind
+              ? {
+                  outcome: row.change_outcome,
+                  kind: row.change_kind,
+                  proposedWindowStart: row.proposed_window_start,
+                  proposedWindowEnd: row.proposed_window_end,
+                }
+              : null,
+        },
         config.frontendUrl,
       );
       messageId = await this.mailer.send(to, email);

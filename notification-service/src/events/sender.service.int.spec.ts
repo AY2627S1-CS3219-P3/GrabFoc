@@ -6,6 +6,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-04
  * Scope: Added the retry pass and superseded-email tests (#154).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Added tests for OrderChangeRequest (#186).
+ * Author review: pending — Jie Yang to record the review.
  */
 // AI-generated (pending review)
 import { Logger } from '@nestjs/common';
@@ -274,5 +277,50 @@ describe('retries (#154)', () => {
     await expect(events.handle(event('CANCELLED', { orderId }))).resolves.toBe('DISCARDED_STALE');
     mailer.down = false;
     await expect(sender.retryFailed(completed.eventId)).resolves.toMatchObject({ sent: 2, superseded: 0 });
+  });
+});
+
+describe('OrderChangeRequest (#186)', () => {
+  const proposal = (orderId: string, status: OrderStatus, outcome: 'CREATED' | 'REJECTED'): OrderEvent =>
+    event(status, {
+      orderId,
+      eventType: 'OrderChangeRequest',
+      change: {
+        outcome,
+        kind: 'CANCELLATION',
+        proposedBy: courierId,
+        confirmationId: randomUUID(),
+        proposedWindowStart: null,
+        proposedWindowEnd: null,
+      },
+    });
+
+  it('sends the proposal email even when no state was handled for the order yet', async () => {
+    const proposed = proposal(randomUUID(), 'ACCEPTED', 'CREATED');
+    await events.handle(proposed);
+    expect(await sender.sendPending(proposed.eventId)).toMatchObject({ sent: 1, superseded: 0 });
+    expect(mailer.sent).toHaveLength(1);
+    expect(mailer.sent[0].to).toBe(`${requesterId}@foc.test`);
+    expect(mailer.sent[0].email.subject).toBe('Request to cancel your order');
+  });
+
+  it('drops a proposal email once the order has moved on', async () => {
+    const orderId = randomUUID();
+    await events.handle(event('ACCEPTED', { orderId }));
+    const proposed = proposal(orderId, 'ACCEPTED', 'CREATED');
+    await events.handle(proposed);
+    await events.handle(event('CANCELLED', { orderId, reason: 'MUTUAL_CANCELLATION' }));
+    expect(await sender.sendPending(proposed.eventId)).toMatchObject({ sent: 0, superseded: 1 });
+    expect(mailer.sent).toHaveLength(0);
+  });
+
+  it('tells the proposer about a rejection', async () => {
+    const orderId = randomUUID();
+    await events.handle(event('ACCEPTED', { orderId }));
+    const rejected = proposal(orderId, 'ACCEPTED', 'REJECTED');
+    await events.handle(rejected);
+    await sender.sendPending(rejected.eventId);
+    expect(mailer.sent.map((m) => m.to)).toEqual([`${courierId}@foc.test`]);
+    expect(mailer.sent[0].email.text).toContain('The requester rejected your request to cancel the order.');
   });
 });
