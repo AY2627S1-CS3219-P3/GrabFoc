@@ -31,6 +31,7 @@ Author review: Cole Lin, read and approved.
 Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
 Scope: `?building=` is a case-insensitive substring match rather than an exact one, matching
   `?name=`. Asked for by Cole Lin, who hit the exact match while searching for locations.
+  Both filters now escape LIKE's `%` and `_` so a typed one is matched literally (review).
 Author review: pending - Cole Lin.
 -->
 # AGENTS.md — Supplier (Location) Service
@@ -158,7 +159,7 @@ _Origin: Team_
 
 | Parameter | Matching |
 |---|---|
-| `name` | case-insensitive substring match on `name` (matches anywhere, not just the start) |
+| `name` | case-insensitive substring match on `name` (matches anywhere, not just the start); `%` and `_` are matched literally, not as wildcards |
 | `type` | exact match |
 | `building` | case-insensitive substring match on `building`, the same matching as `name` |
 | `time` | open at that time, in `HHMMhrs` format (rule below) |
@@ -167,10 +168,12 @@ _Origin: Team_
 | `order` | `asc` (default, A→Z) or `desc` (Z→A) on `name`, or `distance` (nearest first, needs `lat`/`lon`); any other value is 400 (S2.2.3) |
 | `page`, `pageSize` | paging, e.g. `?page=2&pageSize=20`; defaults `page=1`, `pageSize=20`; no upper limit on `pageSize` |
 
-Name search, as a parameterized query:
+Name and building search, as a parameterized query. The term is wrapped in `%` and bound as a
+parameter, with LIKE's own `%` and `_` escaped first, so searching for `50%` looks for a percent
+sign rather than for everything:
 
 ```sql
-lower(name) LIKE '%' || lower(:q) || '%'
+lower(name) LIKE lower(:pattern)   -- :pattern = '%' || escaped(q) || '%'
 ```
 
 Searching by a time *t* (in `HHMMhrs` format) returns the locations open at *t*. Both ends are inclusive:

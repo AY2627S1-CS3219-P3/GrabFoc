@@ -111,7 +111,9 @@ const gateway = createServer(async (request, response) => {
       let items = locations.filter((item) => url.searchParams.get("includeInactive") === "true" || item.status === "ACTIVE");
       if (url.searchParams.has("name")) items = items.filter((item) => item.name.toLowerCase().includes(url.searchParams.get("name").toLowerCase()));
       if (url.searchParams.has("type")) items = items.filter((item) => item.type === url.searchParams.get("type"));
-      // Case-insensitive substring, like the real Supplier's `?building=` and `?name=`.
+      // AI-generated (reviewed by Cole Lin).
+      // Case-insensitive substring, like the real Supplier's `?building=` and `?name=`. The
+      // service escapes LIKE's own `%` and `_`, so plain `includes` is the matching contract.
       if (url.searchParams.has("building")) items = items.filter((item) => item.building.toLowerCase().includes(url.searchParams.get("building").toLowerCase()));
       if (url.searchParams.has("time")) items = items.filter((item) => item.open_time && item.close_time && item.open_time <= url.searchParams.get("time") && item.close_time > url.searchParams.get("time"));
       items = items.toSorted((a, b) => (url.searchParams.get("order") === "desc" ? -1 : 1) * a.name.localeCompare(b.name));
@@ -1053,6 +1055,7 @@ test("users browse and filter locations while only admins manage them", async ()
     await user.getByLabel("Search name").fill("UTown");
     await user.getByRole("heading", { name: "UTown Print" }).waitFor();
     await user.getByRole("heading", { name: "COM3 Basement" }).waitFor({ state: "detached" });
+    // AI-generated (reviewed by Cole Lin).
     // Building is a substring match like the name search, so a partial, differently-cased term
     // finds the location. It was an exact, case-sensitive match, and "com" found nothing.
     await user.getByLabel("Search name").fill("");

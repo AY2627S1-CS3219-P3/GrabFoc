@@ -7,7 +7,8 @@
  *        and verified each test case in this file by hand.
  * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
  * Scope: The building filter test asserts substring matching, where it asserted an exact,
- *        case-sensitive match; `type` is asserted to stay exact.
+ *        case-sensitive match; `type` is asserted to stay exact. Added the test for LIKE
+ *        metacharacters being matched literally in both text filters (review).
  * Author review: pending - Cole Lin.
  */
 import { Pool } from 'pg';
@@ -148,6 +149,28 @@ describe('list', () => {
     expect(await names({ building: 'COM2' })).toEqual([]);
     // `type` stays exact: it is validated against location_types, which feeds the filter chips.
     expect(await names({ type: 'Food' })).toEqual([]);
+  });
+
+  // AI-generated (reviewed by Cole Lin).
+  it('takes a LIKE wildcard in a search term literally, in both text filters', async () => {
+    await insert(
+      { name: 'Cafe 50% Off', building: 'COM1' },
+      { name: 'Cafe Fifty', building: 'COM2' },
+      { name: 'Co-op', building: 'C_M3' },
+      { name: 'Back\\slash Cafe', building: 'COM4' },
+    );
+    // `%` and `_` mean something to LIKE. Unescaped, `%` matched every row and `_OM1` matched
+    // COM1, so a search box could answer with rows that have nothing to do with what was typed.
+    // Searching for `%` now means "find a percent sign": one of these four rows has one.
+    expect(await names({ name: '%' })).toEqual(['Cafe 50% Off']);
+    expect(await names({ building: '%' })).toEqual([]);
+    expect(await names({ building: '_OM1' })).toEqual([]);
+    // A term that genuinely contains one still finds it, which is the point of escaping rather
+    // than rejecting.
+    expect(await names({ name: '50%' })).toEqual(['Cafe 50% Off']);
+    expect(await names({ building: 'C_M3' })).toEqual(['Co-op']);
+    // A backslash is the escape character itself, so it has to survive being searched for.
+    expect(await names({ name: 'back\\slash' })).toEqual(['Back\\slash Cafe']);
   });
 
   it('answers 400 for an unknown type, listing the valid ones', async () => {
