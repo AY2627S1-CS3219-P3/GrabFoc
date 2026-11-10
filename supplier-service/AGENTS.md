@@ -31,7 +31,8 @@ Author review: Cole Lin, read and approved.
 Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
 Scope: `?building=` is a case-insensitive substring match rather than an exact one, matching
   `?name=`. Asked for by Cole Lin, who hit the exact match while searching for locations.
-  Both filters now escape LIKE's `%` and `_` so a typed one is matched literally (review).
+  Both filters now escape LIKE's `%` and `_`, and the `\` that escapes them, so a typed one is
+  matched literally (review).
 Author review: pending - Cole Lin.
 -->
 # AGENTS.md — Supplier (Location) Service
@@ -159,7 +160,7 @@ _Origin: Team_
 
 | Parameter | Matching |
 |---|---|
-| `name` | case-insensitive substring match on `name` (matches anywhere, not just the start); `%` and `_` are matched literally, not as wildcards |
+| `name` | case-insensitive substring match on `name` (matches anywhere, not just the start); `%`, `_` and `\` are matched literally, not as wildcards |
 | `type` | exact match |
 | `building` | case-insensitive substring match on `building`, the same matching as `name` |
 | `time` | open at that time, in `HHMMhrs` format (rule below) |
@@ -169,8 +170,8 @@ _Origin: Team_
 | `page`, `pageSize` | paging, e.g. `?page=2&pageSize=20`; defaults `page=1`, `pageSize=20`; no upper limit on `pageSize` |
 
 Name and building search, as a parameterized query. The term is wrapped in `%` and bound as a
-parameter, with LIKE's own `%` and `_` escaped first, so searching for `50%` looks for a percent
-sign rather than for everything:
+parameter, with LIKE's own `%` and `_` escaped first - and the `\` that escapes them, since it is
+the escape character itself - so searching for `50%` finds a percent sign rather than everything:
 
 ```sql
 lower(name) LIKE lower(:pattern)   -- :pattern = '%' || escaped(q) || '%'
