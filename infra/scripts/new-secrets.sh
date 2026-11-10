@@ -11,6 +11,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: CHAT_TICKET_SECRET, generated and added by --add-missing (chat, #230).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: CHAT_POSTGRES_PASSWORD, generated and added by --add-missing (chat on AWS).
+# Author review: Pending Jian Bing's review.
 #
 # Creates infra/secrets/<env>.env (git-ignored, mode 600) with fresh random values for every
 # generated secret, the same formats as .env.example asks for. It never prints a value and never
@@ -37,7 +40,7 @@ key32() { openssl rand -base64 32; }
 
 if [ "$mode" = "--add-missing" ]; then
   [ -f "$file" ] || { echo "$file doesn't exist; run without --add-missing first" >&2; exit 1; }
-  for name in NOTIFICATION_POSTGRES_PASSWORD USER_INTERNAL_SERVICE_KEY CHAT_TICKET_SECRET; do
+  for name in NOTIFICATION_POSTGRES_PASSWORD USER_INTERNAL_SERVICE_KEY CHAT_TICKET_SECRET CHAT_POSTGRES_PASSWORD; do
     grep -q "^$name=" "$file" && continue
     [ -z "$(tail -c 1 "$file")" ] || echo >> "$file" # the file may not end in a newline
     echo "$name=$(hex)" >> "$file"
@@ -59,6 +62,7 @@ umask 077
   echo "CREDIT_POSTGRES_PASSWORD=$(hex)"
   echo "ORDER_DB_PASSWORD=$(hex)"
   echo "NOTIFICATION_POSTGRES_PASSWORD=$(hex)"
+  echo "CHAT_POSTGRES_PASSWORD=$(hex)" # AI-generated (Claude Code, 2026-11-09): chat on AWS
   echo "CREDIT_SERVICE_KEY=$(hex)"
   echo "ORDER_SERVICE_KEY=$(hex)"
   echo "USER_INTERNAL_SERVICE_KEY=$(hex)"

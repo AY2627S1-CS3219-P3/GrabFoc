@@ -150,7 +150,11 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 entry on bringing #191 and #229 up to date and chat's settings on AWS from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Wrote the 2026-11-09 SoCLaaS token cap entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 entry on pinning the workflows' actions from Jian Bing's prompts, taken verbatim from the session transcript.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Wrote the 2026-11-09 chat-on-AWS entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -158,6 +162,55 @@ Author review: pending — Jian Bing to record what he checked.
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-09 — Putting chat on AWS
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** plan, generate
+**Files:** `infra/terraform/global/main.tf`, `infra/terraform/envs/{staging,production}/main.tf`,
+`infra/terraform/modules/services/main.tf`, `infra/terraform/modules/server/user_data.sh.tftpl`,
+`infra/scripts/{push-images,deploy-images,new-secrets,put-secrets}.sh`, their tests, the Terraform tests,
+`infra/terraform/README.md`, `infra/secrets/README.md`
+
+**Scenario:** Chat (#230) was never deployed to AWS, so the site's chat WebSocket got `503 no healthy upstream`
+from the gateway. Jie Yang shared a plan to deploy it. Claude compared it with `main`: #191 had already set the
+gateway's `CHAT_SERVICE_URL` and Order's ticket secret. Claude also found ordering traps: ECR tags are immutable,
+the environments look repositories up by name, `deploy-images.sh` stops if a service is missing, and the gateway
+must be restarted to learn the new name. I approved the plan with its two design calls (192 MiB for chat-service;
+one SSM secret for Order and Chat), and chose to plan the supplier images after chat. Claude began test-first on
+`feat/chat-aws` (failing tests for the new repository, database and service). At my request it wrote a handoff
+document for a teammate, then I decided to continue myself, so Claude finished the change and removed the
+handoff document from the branch (it stays in the branch's history, commit `0454d9c`).
+
+**Prompts (exact, in order):**
+> ok new pr, lets do 1 and 3, then also we didnt properly deploy real time chat [Image #34]
+
+(Pasted with it: Jie Yang's chat about the WebSocket failure. Image #34: the site's chat stuck on "Reconnecting".)
+
+> @yimyamyum also the supplier image is there a way to host them in AWS instead of github.. lowk loading it is q slow haha
+
+(A teammate's message, pasted.)
+
+(Then Jie Yang's pasted plan, "Deploy the Chat Service to AWS: Plan".)
+
+My answers to Claude's questions: "Approve, you build it (Recommended)" and "Plan it after chat (Recommended)".
+
+> before usage runs out, explort all thsi to a md to give my teammate to continue
+
+> nvm lets continue ourself
+
+**What it produced:** `chat-db`, `chat-migrate` (an init container in the chat-service task) and `chat-service` in
+the services module, copying `chat-service/compose.yaml`; the chat-service image repository and its lookups;
+`/data/chat-db` for new servers; chat-service in `push-images.sh` and in `deploy-images.sh`'s app layer;
+`CHAT_POSTGRES_PASSWORD` in both secrets scripts; and a runbook section on adding a service to a running
+environment, which includes restarting the gateway so Service Connect gives it the new name.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude watched each new test fail first, then pass. That covers chat's environment, secrets,
+image and migration order; the repository count; the folder, stop-first and layer lists; the server folder; the
+image build; the deploy order; and both secrets scripts. Then `infra/terraform/check.sh` (every stack), all six
+script tests, the checks-selection tests and `actionlint` passed. The live check is the staging rollout before
+merging. My own check: pending.
 
 ### 2026-11-09 — Pinning the actions that can sign in to AWS, and the staging and production URLs
 
@@ -188,6 +241,43 @@ only, monthly, grouped), and three checks in `repo-checks.test.sh`.
 
 **Verification:** Claude watched the three new checks fail first, then pass (7/7), confirmed each tag and its
 latest release resolve to the same commit through the GitHub API, and ran `actionlint`. My own check: pending.
+
+### 2026-11-09 — The SoCLaaS token cap cut a review short
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** debug, generate
+**Files:** `.github/scripts/soclaas_review.py`, `.github/scripts/test_soclaas_review.py`
+
+**Scenario:** With #229 on main, the automatic SoCLaaS review of #191 no longer got a 502: the streamed answer
+arrived in 37 s. It failed instead with "The model did not finish normally". The script didn't say why; the likely
+cause is #229's 4,000-token cap (the old request had none), which a model that spends tokens before writing can use
+up. Removing the cap entirely was flagged by an automated security review (untrusted PR content could make the
+model write endlessly and burn the API budget), so I chose bounds: reading stops, closing the connection, once a
+review passes 30,000 characters (the most a comment can hold), and a 16,000-token cap stays only as a budget
+backstop. The error now names the finish reason (only a short word-like value, never arbitrary upstream text).
+Separately, a CI job on #191 failed again on a
+GitHub incident ("Increased timeouts due to surge in anonymous users", 504 on release downloads); re-running it
+passed.
+
+**Prompts (exact, in order):**
+> [Image #31] user service ci fiaeld for 191
+
+(Image #31: #191's failed "Test (user-service)" job, at `npm ci`.)
+
+> also i merged 229 already
+
+My answers to Claude's questions: "Implement this step" (removing the cap) and, after the security review, "Stop at
+30k + 16k cap (Recommended)".
+
+**What it produced:** A 16,000-token backstop instead of the 4,000 cap; reading stops past 30,000 characters; the
+finish reason in the "did not finish normally" error; four new tests and one changed.
+
+**What I changed or rejected:** No cap at all (flagged by the security review); a 30,000-character stop without a
+token backstop.
+
+**Verification:** Claude watched each new test fail first (the backstop sent, reading stopped before a stalled
+stream times out, `finish_reason: length` named, `none` when the stream ends without one; another pins that an odd
+reason isn't echoed), then ran the suite: 14/14 pass. The live check is the next automatic review after this merges.
+My own check: pending.
 
 ### 2026-11-09 — Bringing #191 and #229 up to date with main, and chat's settings on AWS
 

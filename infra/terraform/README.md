@@ -20,6 +20,9 @@ Author review (Jian Bing, 2026-11-09): Looked through the code and think it's ok
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Replacing the server: the downtime, the refresh preferences, and why ECS managed draining is off.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Chat on AWS: chat-migrate, chat-service in the first-apply restart, and adding a service to a running environment.
+Author review: Pending Jian Bing's review.
 -->
 
 # AWS deployment runbook
@@ -94,24 +97,46 @@ aws ssm put-parameter --name /foc-deploy/staging/image-tag --type String --value
 After that, leave `-var image_tag` out: a manual apply keeps the tag the workflow last deployed.
 
 The first apply starts the server; give it a few minutes to join the cluster. Nothing else to run:
-the one-shot `kafka-init` (topics) and `order-migrate` (Order's tables) run inside the Credit and
-Order service tasks, which start only after they succeed. Services that start before their database
+the one-shot `kafka-init` (topics), `order-migrate` (Order's tables) and `chat-migrate` (chat's
+tables) run inside the service tasks that need them (Credit, Order, Notification, chat), which start
+only after they succeed. Services that start before their database
 or Kafka is ready fail their health check or exit, and ECS restarts them until they come up.
 
 **Only on an environment's very first apply:** a Service Connect client only learns the names that
-existed when it started. The five app services start together and call each other (for example
+existed when it started. The six app services start together and call each other (for example
 user-service and order-service each call the other, and notification-service calls user-service),
 and the gateway is created before the frontend, so some of these calls fail until the caller
 restarts. Once every service is running, restart them once:
 
 ```bash
-for service in user-service supplier-service credit-service order-service notification-service api-gateway; do
+for service in user-service supplier-service credit-service order-service notification-service chat-service api-gateway; do
   aws ecs update-service --cluster foc-<env> --service "$service" --force-new-deployment
 done
 ```
 
 Later applies and deploys don't need this: the services and their names already exist, and every
 deploy restarts all services anyway.
+
+### Adding a service to a running environment
+
+<!-- AI-generated (Claude Code, 2026-11-09): written for chat (#230), which reached AWS after staging existed. -->
+A new service needs these steps **before** the pull request that adds it merges. The deploy workflow
+stops if a service it deploys doesn't exist in ECS yet, and the environment looks its image
+repository up by name.
+
+1. Add its secrets: `infra/scripts/new-secrets.sh <env> --add-missing`, then
+   `infra/scripts/put-secrets.sh <env>`.
+2. Apply `global` from the branch, to create its image repository.
+3. Push the branch's images under a new tag (repositories are immutable, so an existing tag can't be
+   pushed again): `infra/scripts/push-images.sh "$(git rev-parse --short=7 HEAD)"`.
+4. Apply the environment from the branch with that tag: `-var image_tag=<the tag>`.
+5. Restart the services that call it, so Service Connect gives them its name. For chat, that's
+   only the gateway, whose task definition doesn't otherwise change:
+   `aws ecs update-service --cluster foc-<env> --service api-gateway --force-new-deployment`.
+6. Merge. The deploy workflow then deploys the merge commit to every service, the new one included.
+
+A new database folder under `/data` needs no manual step: ECS creates a missing host folder, and
+`user_data.sh.tftpl` creates it on a new server.
 
 ## 5. Check it
 

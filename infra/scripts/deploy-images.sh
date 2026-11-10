@@ -7,6 +7,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 # Scope: Stop before any change if a foc/ image the services run is missing on the tag (PR #191 review).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: chat-service in the app layer (chat on AWS).
+# Author review: Pending Jian Bing's review.
 #
 # Rolls an image tag onto an environment's services, in the order Service Connect needs: the apps,
 # then the gateway, then the frontend. The images must already be in ECR (push-images.sh).
@@ -33,7 +36,7 @@ health_interval="${HEALTH_INTERVAL:-15}"
 . "$(dirname "$0")/lib/task-definition.sh"
 
 layers=(
-  "user-service supplier-service credit-service order-service notification-service"
+  "user-service supplier-service credit-service order-service notification-service chat-service"
   "api-gateway"
   "frontend"
 )

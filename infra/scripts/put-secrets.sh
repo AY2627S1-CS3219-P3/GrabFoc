@@ -12,6 +12,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: CHAT_TICKET_SECRET is required (chat, #230).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: CHAT_POSTGRES_PASSWORD is required (chat on AWS).
+# Author review: Pending Jian Bing's review.
 #
 # Loads one environment's secrets into SSM Parameter Store as SecureStrings under /foc/<env>/.
 #   infra/scripts/put-secrets.sh staging      # reads infra/secrets/staging.env (git-ignored)
@@ -35,7 +38,7 @@ file="$root/infra/secrets/$env.env"
 # built below.
 required=(
   POSTGRES_PASSWORD SUPPLIER_POSTGRES_PASSWORD CREDIT_POSTGRES_PASSWORD ORDER_DB_PASSWORD
-  NOTIFICATION_POSTGRES_PASSWORD
+  NOTIFICATION_POSTGRES_PASSWORD CHAT_POSTGRES_PASSWORD
   USER_AES_KEY USER_EMAIL_HMAC_KEY USER_OTP_HMAC_KEY USER_JWT_PRIVATE_KEY USER_JWT_KID
   USER_SMTP_USER USER_SMTP_PASS USER_SMTP_FROM USER_BOOTSTRAP_ADMIN_EMAIL
   CREDIT_SERVICE_KEY ORDER_SERVICE_KEY USER_INTERNAL_SERVICE_KEY CHAT_TICKET_SECRET

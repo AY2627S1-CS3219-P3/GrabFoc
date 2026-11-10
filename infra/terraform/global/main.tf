@@ -8,6 +8,9 @@
 # Scope: Deploy part 3 (#143): the checks and notification-service repos, the plan role's parameter
 #        exceptions, and the deploy roles' tag parameters and log reads.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: The chat-service image repository (chat on AWS).
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 # One stack per account (staging and production share the NUS-managed account, spec §6). It keeps
@@ -19,7 +22,7 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
   # AI-generated (Claude Code).
   images = [
-    "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
+    "user-service", "supplier-service", "credit-service", "order-service", "notification-service", "chat-service",
     "api-gateway", "frontend", "kafka-init", "checks",
   ]
 

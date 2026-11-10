@@ -35,6 +35,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
  * Scope: Added chatTicket (the chat plan): participants of an active order get a chat ticket.
  * Author review: Reviewed by Deanson, 2026-11-09.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+ * Scope: list() forwards an optional status filter (GET /orders/assigned?status=).
+ * Author review: Pending review by Deanson.
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type { PoolClient } from 'pg';
@@ -110,8 +113,8 @@ export class OrdersService {
     private readonly creditCommands: CreditCommands,
   ) {}
 
-  list(list: OrderList, caller: Caller, page: PageQuery): Promise<Page<Order>> {
-    return this.orders.list(list, caller.id, page);
+  list(list: OrderList, caller: Caller, page: PageQuery, status?: OrderStatus): Promise<Page<Order>> {
+    return this.orders.list(list, caller.id, page, status);
   }
 
   async get(caller: Caller, orderId: string): Promise<Order> {

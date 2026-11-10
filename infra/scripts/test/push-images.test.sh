@@ -7,6 +7,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: the Notification and checks images (deploy part 3).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Expects the chat-service image (chat on AWS).
+# Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/push-images.test.sh   (no AWS or Docker access needed)
 # AI-generated (Claude Code).
@@ -40,8 +43,10 @@ check "rerun succeeds" '[ $code -eq 0 ]'
 check "existing tags are skipped" '! grep -qE "(build|push).*foc/(user|order)-service:" "$DOCKER_CALLS"'
 check "skips are reported" 'grep -q "foc/user-service:abc1234 already in ECR, skipped" <<<"$out"'
 # AI-generated (Claude Code).
-check "missing tags are built and pushed" '[ "$(grep -c "^push " "$DOCKER_CALLS")" = 7 ]'
+check "missing tags are built and pushed" '[ "$(grep -c "^push " "$DOCKER_CALLS")" = 8 ]'
 check "Notification builds from its own folder" 'grep -qE "^build .*foc/notification-service:abc1234 .*notification-service/Dockerfile .*/notification-service$" "$DOCKER_CALLS"'
+# AI-generated (Claude Code, 2026-11-09): chat on AWS.
+check "Chat builds from its own folder" 'grep -qE "^build .*foc/chat-service:abc1234 .*chat-service/Dockerfile .*/chat-service$" "$DOCKER_CALLS"'
 check "checks build from the repository root" 'grep -qE "^build .*foc/checks:abc1234 .*infra/checks/Dockerfile " "$DOCKER_CALLS"'
 
 # Codex review on #146: supplier-service builds from the repository root, where infra/secrets/ lives.

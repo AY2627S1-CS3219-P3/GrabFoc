@@ -29,6 +29,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
  * Scope: Added the admin list, live counts and recent cancellations (#181).
  * Author review: Reviewed by Zi Yi, 2026-11-05.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+ * Scope: list() takes an optional status filter (GET /orders/assigned?status=).
+ * Author review: Pending review by Deanson.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -208,16 +211,18 @@ export class OrdersRepository {
     return rows[0] && toOrder(rows[0]);
   }
 
-  /** Newest first; `id` breaks ties so pages never overlap. */
-  async list(list: OrderList, userId: string, { page, pageSize }: PageQuery): Promise<Page<Order>> {
-    const where = LISTS[list];
+  /** Newest first; `id` breaks ties so pages never overlap. No `status` means every status. */
+  async list(list: OrderList, userId: string, { page, pageSize }: PageQuery, status?: OrderStatus): Promise<Page<Order>> {
+    // AI-generated (pending review by Deanson): `$2` is the optional status, always a bound parameter.
+    const where = `${LISTS[list]} AND ($2::text IS NULL OR status = $2)`;
+    const filter = [userId, status ?? null];
     const [items, count] = await Promise.all([
-      this.pool.query(`SELECT * FROM orders WHERE ${where} ORDER BY created_at DESC, id LIMIT $2 OFFSET $3`, [
-        userId,
+      this.pool.query(`SELECT * FROM orders WHERE ${where} ORDER BY created_at DESC, id LIMIT $3 OFFSET $4`, [
+        ...filter,
         pageSize,
         (page - 1) * pageSize,
       ]),
-      this.pool.query<{ n: string }>(`SELECT count(*) AS n FROM orders WHERE ${where}`, [userId]),
+      this.pool.query<{ n: string }>(`SELECT count(*) AS n FROM orders WHERE ${where}`, filter),
     ]);
     return { items: items.rows.map(toOrder), page, pageSize, total: Number(count.rows[0].n) };
   }
