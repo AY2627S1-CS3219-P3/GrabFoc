@@ -1,5 +1,10 @@
 /*
 AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Added the order proxy case for /orders/assigned?status=COMPLETED (Profile page totals).
+Author review: Pending review by Deanson.
+
+AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Updated the home heading and transaction-history link names to the redesign's copy.
 Author review: Pending review by Jie Yang.
@@ -135,7 +140,11 @@ const gateway = createServer(async (request, response) => {
   if (request.url?.startsWith("/orders")) {
     if (!request.headers.authorization) { response.writeHead(401).end(); return; }
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ method: request.method, path: request.url, body }));
+    // AI-generated (Claude Code, 2026-11-09; pending review by Deanson): the list routes also get an empty page, so
+    // Home's Available Orders and the Profile page's order totals render instead of reading undefined items/total.
+    const emptyPage = request.method === "GET" && /^\/orders\/(available|mine|assigned)(\?|$)/.test(request.url)
+      ? { items: [], page: 1, pageSize: 1, total: 0 } : {};
+    response.end(JSON.stringify({ ...emptyPage, method: request.method, path: request.url, body }));
     return;
   }
   // AI-generated (Claude Code, 2026-11-07; reviewed by Zi Yi): echoes what the admin proxy forwarded.
@@ -1314,6 +1323,8 @@ test("order proxy forwards only the allowlisted Order endpoints", async () => {
   const allowed = [
     ["GET", "available?page=2&pageSize=5", "/orders/available?page=2&pageSize=5"],
     ["GET", "mine", "/orders/mine"], ["GET", "assigned?page=3", "/orders/assigned?page=3"],
+    // AI-generated (Claude Code, 2026-11-09; pending review by Deanson): the Profile page's Orders Delivered total.
+    ["GET", "assigned?page=1&pageSize=1&status=COMPLETED", "/orders/assigned?page=1&pageSize=1&status=COMPLETED"],
     ["POST", "", "/orders"], ["GET", `${orderId}?ignored=1`, `/orders/${orderId}`], ["PATCH", orderId, `/orders/${orderId}`],
     ...["accept", "cancel", "pick-up", "start-delivery", "arrive", "chat-ticket"].map((step) => ["POST", `${orderId}/${step}`, `/orders/${orderId}/${step}`]),
     ["GET", `${orderId}/history`, `/orders/${orderId}/history`],
@@ -1455,13 +1466,16 @@ test("a missing wallet is explained and only Credit's two read routes are forwar
     await page.getByText("No credit wallet yet.", { exact: false }).waitFor();
     assert.equal(await page.getByRole("link", { name: "View transaction history" }).count(), 0);
     noWallet = false;
-    const forwardedBefore = requests.length;
+    // AI-generated (Claude Code, 2026-11-09; pending review by Deanson): count Credit requests only, since the
+    // profile page's order totals can still be in flight.
+    const creditRequests = () => requests.filter((request) => request.path?.startsWith("/credits")).length;
+    const forwardedBefore = creditRequests();
     for (const path of ["not-a-uuid", `${profileUserId}/reserve`, `${profileUserId}/transactions/extra`]) {
       const status = await page.evaluate((target) => fetch(`/api/session/credits/${target}`).then((r) => r.status), path);
       assert.equal(status, 404, path);
     }
     const post = await page.evaluate((target) => fetch(`/api/session/credits/${target}`, { method: "POST" }).then((r) => r.status), profileUserId);
     assert.equal(post, 405);
-    assert.equal(requests.length, forwardedBefore, "refused paths never reach the gateway");
+    assert.equal(creditRequests(), forwardedBefore, "refused paths never reach the gateway");
   } finally { noWallet = false; await page.close(); }
 });

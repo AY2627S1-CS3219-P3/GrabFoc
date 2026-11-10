@@ -42,6 +42,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
  * Scope: Added chat ticket tests and ORDER_CHAT_TICKET_SECRET (the chat plan).
  * Author review: Reviewed by Deanson, 2026-11-09.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+ * Scope: Added the GET /orders/assigned?status= filter test.
+ * Author review: Pending review by Deanson.
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -233,6 +236,28 @@ test('mine and assigned list the caller\'s orders in any status, newest first', 
   assert.deepEqual(ids((await get('/orders/mine', alice)).body), [third, second, first]);
   assert.deepEqual(ids((await get('/orders/assigned', bob)).body), [third, second]);
   assert.deepEqual(ids((await get('/orders/assigned', alice)).body), []);
+});
+
+// AI-generated (pending review by Deanson)
+test('assigned filters by an optional status and counts only the matches', async () => {
+  const done = await insertOrder({ status: 'COMPLETED', courier_id: bob, created_at: '2026-10-01T00:00Z' });
+  const doneLater = await insertOrder({ status: 'COMPLETED', courier_id: bob, created_at: '2026-10-02T00:00Z' });
+  await insertOrder({ status: 'CANCELLED', courier_id: bob });
+  await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  await insertOrder({ status: 'COMPLETED', courier_id: carol });
+
+  const { status, body } = await get('/orders/assigned?status=COMPLETED&page=1&pageSize=1', bob);
+  assert.equal(status, 200);
+  assert.deepEqual(ids(body), [doneLater]);
+  assert.equal(body.total, 2);
+  assert.deepEqual(ids((await get('/orders/assigned?status=COMPLETED', bob)).body), [doneLater, done]);
+  assert.equal((await get('/orders/assigned', bob)).body.total, 4);
+
+  for (const query of ['status=BOGUS', 'status=completed', 'state=COMPLETED']) {
+    const res = await get(`/orders/assigned?${query}`, bob);
+    assert.equal(res.status, 400, query);
+    assert.equal(res.body.error.code, 'VALIDATION_ERROR');
+  }
 });
 
 test('lists paginate and reject invalid paging parameters', async () => {
