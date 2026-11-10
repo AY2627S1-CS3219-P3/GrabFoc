@@ -38,6 +38,11 @@ Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 Scope: Review: name the admin token TOKEN, which is what section 5's command expands - the only
   named variables were the two from the flow.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: the admin recovery pointed at a "First admin" section of user-service/AGENTS.md that
+  does not exist. Replaced with the SQL promotion, walked through end to end, including that the
+  token you already hold keeps answering 403 because the role is a claim inside it.
+Author review: Cole Lin, read and approved.
 -->
 
 # Demo runbook
@@ -92,11 +97,24 @@ four items here are the ones that catch you out on a `.env` you believed was fin
 
    - On a reused volume, claim the admin that is already there - not whatever address you have just
      put in `.env`.
-   - If there are rows but no ACTIVE admin, the service says so loudly at startup ("No ACTIVE admin
-     exists") and there is no reset flow out of it: recovery is a manual database change, described
-     under "First admin" in `user-service/AGENTS.md`. `GET /logs` is ADMIN-only, so that blocks
-     section 5 entirely. The safe move on the day is a fresh volume (`docker compose down -v`,
-     which also wipes the orders and the log lines).
+   - If there are rows but no ACTIVE admin, the service says so loudly at startup ("No ACTIVE
+     admin exists") and there is no reset flow out of it. `GET /logs` is ADMIN-only, so that
+     blocks section 5 entirely. Two ways out, and the first is the one to take on the day:
+
+     **A fresh volume.** `docker compose down -v`, which also wipes the orders and the stored log
+     lines.
+
+     **Or promote an existing account by hand.** Log in as the user you want, read their id from
+     `GET /users/me` (the field is `userId`), then:
+
+     ```bash
+     docker exec foc-user-db-1 psql -U foc -d users        -c "UPDATE users SET role = 'ADMIN', updated_at = now() WHERE id = '<userId>';"
+     ```
+
+     **Then log in again.** The role is a claim in the access token, so the token you already hold
+     keeps answering 403 — which looks exactly like the update not working. Walked through on
+     2026-11-10: as a USER `GET /logs` was 403; after the `UPDATE` the row read `ADMIN ACTIVE` and
+     the old token was still 403; a fresh login returned 200.
 
 3. **A `logging-db` volume whose password matches `.env`.** PostgreSQL fixes the password when the
    data directory is first created, so a volume older than your current `.env` refuses every

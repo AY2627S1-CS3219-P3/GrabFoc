@@ -27,7 +27,14 @@ Scope: Route validation: no two routes may render the same matcher for the same 
   after the prefixes are substituted, and counting the /gateway copy of each route as well - a
   prefix of /gateway/logs left Supplier and Logging both matching GET /gateway/logs on the internal
   listener, with Supplier first. /gateway itself is reserved: a prefix inside it is swallowed by the
-  unprefixed routes, which the duplicate check cannot see when the matcher is a regex. The prefix check compared prefixes with one another only, so
+  unprefixed routes, which the duplicate check cannot see when the matcher is a regex.
+Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Route validation: one service's regex may not match another service's exact path. A prefix of
+  /admin rendered Supplier's `{locations}/[^/]+` as `GET /admin/[^/]+`, which matches Order's exact
+  `GET /admin/orders`, and Supplier's regex is emitted first - so that request reached Supplier.
+  Equal matchers could not see it. Overlaps inside one service stay allowed: Order declares
+  /orders/available beside {orders}/[^/]+ on purpose. The prefix check compared prefixes with one another only, so
   GATEWAY_LOCATIONS_PREFIX=/logs was accepted and sent authenticated log queries to the Supplier
   Service, which answers 200. Comparing what is rendered rather than whole prefix namespaces keeps
   a prefix nested under a fixed path, or landing on one under another method, working - these
@@ -185,6 +192,7 @@ def load_routes(env):
         if value == GATEWAY_PREFIX or value.startswith(GATEWAY_PREFIX + "/"):
             raise ValueError(f"A gateway route prefix must not start with {GATEWAY_PREFIX}")
     literal = set()
+    emitted = []
     for definition in services:
         for entry in definition["routes"]:
             if (not isinstance(entry, dict) or
@@ -234,6 +242,25 @@ def load_routes(env):
                     raise ValueError(
                         f"Two gateway routes render the same {kind} for {entry['method']}: {rendered[2]}")
                 literal.add(rendered)
+                emitted.append((*rendered, definition["service"]))
+    # An exact path and another service's regex can match the same request without being equal, so
+    # the tuples above cannot see it. GATEWAY_LOCATIONS_PREFIX=/admin rendered Supplier's
+    # `{locations}/[^/]+` as `GET /admin/[^/]+`, which matches Order's exact `GET /admin/orders` -
+    # and Supplier's regex is emitted first, so that request went to Supplier (fourth review).
+    #
+    # Only across services. Within one file an overlap is deliberate and harmless: Order declares
+    # `GET /orders/available` and `GET {orders}/[^/]+`, the exact one first, and both reach Order
+    # either way. Refusing those would reject the default configuration.
+    exact = [item for item in emitted if item[1] == "path"]
+    for method, _, pattern, service in (item for item in emitted if item[1] == "regex"):
+        try:
+            compiled = re.compile(pattern)
+        except re.error as err:
+            raise ValueError(f"Invalid gateway route pattern {pattern}: {err}") from err
+        for other_method, _, path, other in exact:
+            if other_method == method and other != service and compiled.fullmatch(path):
+                raise ValueError(
+                    f"A gateway route for {service} matches {other}'s {method} {path}: {pattern}")
     if "user" not in names:
         raise ValueError("User service routes are required for JWT key discovery")
     return services, prefixes

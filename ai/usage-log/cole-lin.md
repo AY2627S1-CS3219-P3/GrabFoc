@@ -16,12 +16,26 @@ Scope: Drafted the entries dated 2026-11-09 from the prompts and work in those s
   per-entry Tool lines are not a substitute for the header (review); I had argued twice that they
   were, and the project document says a header comment at the top of each AI-influenced file.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Drafted the entries dated 2026-11-10 the same way. Dated separately rather than widening the
+  entry above, because that one says 2026-11-09 and a scope that quietly grows to cover later work
+  is the thing these headers are meant to prevent (review).
+Author review: Cole Lin, read and approved.
 -->
 
 # AI Usage Log — Cole Lin
 
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-10 — One service's regex over another's path, and three in my own checker (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: "fix 233, wait for further conversations until done"
+- **The collision check compared tuples, so it could not see an overlap across matcher kinds.** With `GATEWAY_LOCATIONS_PREFIX=/admin`, Supplier's `{locations}/[^/]+` renders as the regex `GET /admin/[^/]+`, which matches Order's exact `GET /admin/orders` - different `kind`, so no duplicate. Reproduced it: `GET /admin/orders` went to **supplier** at route 28, ahead of Order's exact route at 49. Now every regex is tested against every other **service's** exact paths with `re.fullmatch`. Only across services, deliberately: Order declares `GET /orders/available` beside `{orders}/[^/]+` on purpose, both reach Order, and refusing that would reject the default configuration - which is the mistake I made two rounds ago by comparing whole namespaces.
+- **My checker reported a file that was correctly disclosed.** Five `tsconfig.json` files carry a `//` commented header, and I had keyed the single-line JSON rule on the `.json` suffix, so a tsconfig that properly gained `// Tool` / `// Scope` lines was still reported as missing one. The marker's own style decides now, not the file name. Control: the previous version flags it, today's does not.
+- **And the header on this log covered only 2026-11-09** while the change adding it also added a 2026-11-10 entry. Dated separately rather than widening yesterday's scope - a scope that quietly grows to cover later work is exactly what these headers exist to stop.
+- **A reference I invented.** The runbook sent anyone with "rows but no ACTIVE admin" to a "First admin" section of `user-service/AGENTS.md`. There is no such section, and no documented procedure anywhere - a repo-wide search finds only my own line. Replaced with the real thing and walked through it: as a USER `GET /logs` was 403; after `UPDATE users SET role = 'ADMIN' …` the row read `ADMIN ACTIVE` and **the old token was still 403**, because the role is a claim inside it; a fresh login returned 200. That last step is the one that would have looked like the fix not working.
 
 ### 2026-11-10 — The /gateway namespace, and a disclosure the merge ate (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug

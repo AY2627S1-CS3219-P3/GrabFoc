@@ -81,9 +81,13 @@ def header_lines(text, json_file=False):
     # the route files, `description` in the Postman collection - and that value's line is the whole
     # header. Keying on `_disclosure` alone left every later line of a Postman collection counting
     # as header, which passed any edit to it (review).
-    if json_file:
-        return [lines[start]]
     line_style = lines[start].lstrip().startswith(LINE_COMMENT)
+    # The marker's own style decides, not the file name. Five tsconfig.json files carry a `//`
+    # commented header, and keying on the .json suffix cut those down to the marker line, so a
+    # tsconfig that correctly gained `// Tool` / `// Scope` lines was still reported as missing
+    # one (review).
+    if json_file and not line_style:
+        return [lines[start]]
     out = []
     for line in lines[start:]:
         stripped = line.strip()

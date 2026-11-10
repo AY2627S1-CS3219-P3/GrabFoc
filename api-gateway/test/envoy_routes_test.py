@@ -425,6 +425,16 @@ class RouteFilesTest(unittest.TestCase):
         #     /users/me that 10-user.routes.json fixes;
         #   /location-types collides with Supplier's fixed route only for GET, and Order's root
         #     route there is POST.
+        # An overlap across matcher kinds, which equal tuples cannot see: with /admin, Supplier's
+        # `{locations}/[^/]+` renders as the regex `GET /admin/[^/]+`, and that matches Order's
+        # exact `GET /admin/orders`. Supplier's regex is emitted first, so the request went there -
+        # route 28 against Order's route 49 (fourth review).
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/admin"})
+        self.assertRegex(str(caught.exception), r"^A gateway route for supplier matches \w+'s GET ")
+        # Checked across services only. Order declares `GET /orders/available` beside
+        # `{orders}/[^/]+` on purpose, both reach Order, and the defaults must stay valid - the
+        # version of this check that compared whole namespaces rejected them.
         # /gatewayish is not inside /gateway, so the reservation must not catch it either.
         for name, value in (("GATEWAY_AUTH_PREFIX", "/users/me/auth"),
                             ("GATEWAY_ORDERS_PREFIX", "/location-types"),
