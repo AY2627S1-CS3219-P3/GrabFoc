@@ -6,6 +6,9 @@ Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Worded a SUPPLIER_DEACTIVATED cancellation in the order timeline (#121's reason).
 Author review: Pending review by Zi Yi.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Added changeRole for promoting and demoting admins (PATCH /admin/users/:userId/role).
+Author review: Pending review by Zi Yi.
 */
 import { useQuery } from '@tanstack/react-query';
 import { withSessionMutation } from '@/lib/session-client';
@@ -93,6 +96,9 @@ export const suspendUser = (userId: string, reason: string) =>
 
 export const reactivateUser = (userId: string) =>
   call<AdminUser>(`/users/${userId}/reactivate`, 'Could not reactivate the account.', 'POST');
+
+export const changeRole = (userId: string, role: AdminUser['role']) =>
+  call<AdminUser>(`/users/${userId}/role`, 'Could not change the role.', 'PATCH', { role });
 
 export const getOverview = () => call<OrdersOverview>('/orders/overview', 'Could not load the order overview.');
 

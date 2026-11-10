@@ -3,13 +3,16 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Added the admin user page: header, suspend and reactivate dialogs, Orders and Login history tabs (docs/admin-dashboard-plan.md UC5 and UC3, #184).
 Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Added the Make admin / Remove admin button, which opens RoleChangeModal (PATCH /admin/users/:userId/role).
+Author review: Pending review by Zi Yi.
 */
 "use client";
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import { type FormEvent, useState } from "react";
-import { AdminPage, Empty, useLeaveOnAuthError, UserStatusBadge } from "../../admin-page";
+import { AdminPage, Empty, RoleChangeModal, useLeaveOnAuthError, UserStatusBadge } from "../../admin-page";
 import { OrderPanel, OrderTable } from "../../order-panel";
 import { ErrorToast } from "../../../components/error-feedback";
 import { ConfirmModal, Modal } from "../../../components/modal";
@@ -27,7 +30,7 @@ function UserDetail({ userId, self }: { userId: string; self: boolean }) {
   const queryClient = useQueryClient();
   const users = useUsers();
   const [tab, setTab] = useState<"orders" | "logins">("orders");
-  const [dialog, setDialog] = useState<"suspend" | "reactivate" | null>(null);
+  const [dialog, setDialog] = useState<"suspend" | "reactivate" | "role" | null>(null);
   const [toast, setToast] = useState("");
   const refreshUsers = () => void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
   const changed = () => {
@@ -57,7 +60,10 @@ function UserDetail({ userId, self }: { userId: string; self: boolean }) {
         <p>{user.email} · {user.role === "ADMIN" ? "Admin" : "User"}</p>
       </div>
       {!self && (user.status === "ACTIVE"
-        ? <button type="button" className="admin-danger-button" onClick={() => { suspend.reset(); setDialog("suspend"); }}>Suspend</button>
+        ? <div className="flex flex-wrap gap-2">
+          <button type="button" className="secondary-button" onClick={() => setDialog("role")}>{user.role === "ADMIN" ? "Remove admin" : "Make admin"}</button>
+          <button type="button" className="admin-danger-button" onClick={() => { suspend.reset(); setDialog("suspend"); }}>Suspend</button>
+        </div>
         : <button type="button" className="primary-button" onClick={() => setDialog("reactivate")}>Reactivate</button>)}
     </div>
     {user.status === "SUSPENDED" && <div className="admin-banner admin-banner--danger" role="status">
@@ -79,6 +85,7 @@ function UserDetail({ userId, self }: { userId: string; self: boolean }) {
     {dialog === "reactivate" && <ConfirmModal title={`Reactivate ${user.displayName}?`} confirmLabel="Reactivate" busy={reactivate.isPending}
       message="They can sign in again and get an email saying their account is active. Orders cancelled by the suspension stay cancelled."
       onConfirm={() => reactivate.mutate()} onClose={() => setDialog(null)} />}
+    {dialog === "role" && <RoleChangeModal user={user} onClose={() => setDialog(null)} />}
   </>;
 }
 
