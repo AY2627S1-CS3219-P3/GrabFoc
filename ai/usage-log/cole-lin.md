@@ -28,6 +28,15 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-10 — A checker fooled by the rule it enforces (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: "fix 233, wait for further conversations until done"
+- One finding, in `ai/check-disclosures.py` again, and a neat one: several documents **quote the disclosure template in their body as an example**, including the root `AGENTS.md` inside a fenced code block. My search took the first marker anywhere in the file, so with the real top-of-file header deleted it landed on the example at line 68, treated everything after it as the header, and any edited body line looked like an added disclosure line. The removal reported clean.
+- The marker is now looked for only where a header can be: the leading comment block, which ends at the first line of real content. A JSON file is judged differently, because its first line is `{` and its disclosure lives in a field - `_disclosure` in the route files, `description` in `package.json`, `info.description` in the Postman collection - so the file is parsed and those fields are what count, rather than any string that happens to mention the template.
+- Control: with `AGENTS.md`'s header deleted and a body line edited, today's version says `disclosure header REMOVED: AGENTS.md` and yesterday's says everything is fine. Then the whole regression again - clean tree, bad ref, Lua body change, rename, shell body change, a tsconfig that *does* gain an entry (not flagged), a Postman edit that does not (flagged), clean again - eight cases, all correct.
+- Header bounds across every style in the repo, which is the part that was silently wrong before: `AGENTS.md` 31 lines of 379, `render.py` 44 of 537, `push-images.sh` 19 of 58, `frontend.lua` 6 of 31, `envoy.integration.mjs` 34 of 607, `tsconfig.json` 4 of 20, a route file 1 of 11, the Postman collection 1 of 3785, `package.json` 1 of 68, this log 22 of 628, the services module 33 of 698.
+
 ### 2026-11-10 — Equality, then one direction of overlap, then overlap (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

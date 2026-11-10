@@ -26,6 +26,13 @@ Scope: Review: say so when a change removes a header outright. That left no line
   the file was skipped in silence and a branch whose only change deleted a disclosure read clean -
   the most complete version of what this is for.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: find the marker only where a header can be. Several documents quote the disclosure
+  template in their body as an example - the root AGENTS.md does, in a fenced code block - so with
+  the real top-of-file header deleted the search landed on that one, the "header" ran to the end of
+  the document, and any added body line read as an added disclosure line. A JSON file is judged by
+  its disclosure field instead, since its first line is `{`.
+Author review: Cole Lin, read and approved.
 """
 # Lists files your branch changes that carry an AI disclosure header but gained no entry in it.
 #
@@ -37,6 +44,7 @@ Author review: Cole Lin, read and approved.
 # Findings exit 0, so it blocks nothing; only a git failure exits non-zero, because a check that
 # silently examined nothing must not read as a pass.
 # AI-generated (reviewed by Cole Lin).
+import json
 import subprocess
 import sys
 
@@ -63,6 +71,53 @@ def git(*args):
     return done.stdout.decode("utf-8", "replace")
 
 
+# A JSON file keeps its disclosure in a field rather than a comment, so the "leading comment block"
+# bound does not apply to it: its first line is `{`. The field is what makes it a header - named
+# `_disclosure` in the route files, `description` in package.json, and `info.description` in the
+# Postman collection - so look for it there rather than anywhere a string happens to mention the
+# template (review).
+JSON_FIELDS = ("_disclosure", "description")
+
+def json_disclosure(text):
+    """Whether this JSON file carries its disclosure in a disclosure field."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return False          # a JSON file with comments; the comment rule applies to it
+    if not isinstance(data, dict):
+        return False
+    objects = [data] + [value for value in data.values() if isinstance(value, dict)]
+    return any(isinstance(obj.get(field), str) and MARKER in obj[field]
+               for obj in objects for field in JSON_FIELDS)
+
+
+def leading_region(lines):
+    """How many lines of the top of the file could hold a header.
+
+    The marker has to be found inside this, not anywhere in the file. Several documents quote the
+    disclosure template in their body as an example - the root AGENTS.md does, inside a fenced code
+    block - and a search over the whole file picks that up once the real top-of-file header is
+    deleted. For AGENTS.md the "header" then ran to the end of the document, so any added body line
+    looked like an added disclosure line and the removal was reported as clean (review).
+    """
+    inside = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if inside:
+            if any(stripped.startswith(end) or stripped.endswith(end) for end in BLOCK_ENDERS):
+                return index + 1
+            continue
+        if not stripped or stripped.startswith("#!"):
+            continue
+        if stripped.startswith(("<!--", "/*")) or stripped.startswith('"""'):
+            inside = True
+            continue
+        if stripped.startswith(LINE_COMMENT):
+            continue
+        return index          # the first line of real content ends it
+    return len(lines)
+
+
 def header_lines(text, json_file=False):
     """The disclosure header's own lines, stopping where its comment block ends.
 
@@ -70,8 +125,14 @@ def header_lines(text, json_file=False):
     disclosure lines would pass a file whose header had not been touched at all.
     """
     lines = text.splitlines()
+    # Only the top of the file: a body mention of the template is not a header (review). JSON keeps
+    # its disclosure in a field rather than a comment, and in every one here that field is written
+    # first, so the same bound holds.
+    if json_file and json_disclosure(text):
+        return [line for line in lines if MARKER in line][:1]
+    limit = leading_region(lines)
     try:
-        start = next(i for i, line in enumerate(lines) if MARKER in line)
+        start = next(i for i, line in enumerate(lines[:limit]) if MARKER in line)
     except StopIteration:
         return []
     # How the header is written decides how it ends. A marker line that itself begins with a line
@@ -82,12 +143,10 @@ def header_lines(text, json_file=False):
     # header. Keying on `_disclosure` alone left every later line of a Postman collection counting
     # as header, which passed any edit to it (review).
     line_style = lines[start].lstrip().startswith(LINE_COMMENT)
-    # The marker's own style decides, not the file name. Five tsconfig.json files carry a `//`
-    # commented header, and keying on the .json suffix cut those down to the marker line, so a
-    # tsconfig that correctly gained `// Tool` / `// Scope` lines was still reported as missing
-    # one (review).
-    if json_file and not line_style:
-        return [lines[start]]
+    # Nothing special for .json here any more: a JSON file with a disclosure field returned above,
+    # and one with `//` comments - five tsconfig.json files - is a line-comment header like any
+    # other. Keying on the suffix instead had cut those down to the marker line, so a tsconfig that
+    # correctly gained `// Tool` / `// Scope` lines was reported as missing one (earlier review).
     out = []
     for line in lines[start:]:
         stripped = line.strip()
