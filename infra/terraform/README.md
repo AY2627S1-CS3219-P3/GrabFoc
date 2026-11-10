@@ -28,6 +28,9 @@ Author review: pending - Jian Bing owns the deployment.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Replacing the server: the downtime, the refresh preferences, and why ECS managed draining is off.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-11
+Scope: Applies and deploys take turns (the shared state lock).
+Author review: Pending Jian Bing's review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Chat on AWS: chat-migrate, chat-service in the first-apply restart, and adding a service to a running environment.
 Author review: Pending Jian Bing's review.
@@ -159,6 +162,21 @@ repository up by name.
 
 A new database folder under `/data` needs no manual step: ECS creates a missing host folder, and
 `user_data.sh.tftpl` creates it on a new server.
+
+### Applies and deploys take turns
+
+<!-- AI-generated (Claude Code, 2026-11-11): after a deploy and an apply changed production at once. -->
+A deploy (`deploy-images.sh`, so both deploy workflows) holds the environment's Terraform state
+lock, the same `<env>/terraform.tfstate.tflock` file `terraform apply` takes. So the two can't
+change one environment at once:
+
+- **An apply during a deploy** fails with "Error acquiring the state lock", and its Lock Info
+  names the deploy (`Who: GitHub run …`). Add `-lock-timeout=20m` to wait for it instead.
+- **A deploy during an apply** waits up to 15 minutes, then stops without changing anything.
+- **A lock left by a crashed run** is taken over after 3 hours. To clear it sooner, run
+  `terraform force-unlock <ID>` in `envs/<env>` (the ID is in the error).
+- A change that skips the lock (the ECS console, say) and moves a service mid-deploy makes the
+  deploy stop at once with "<service> was moved to <revision> by another change". Run it again.
 
 ## 5. Check it
 

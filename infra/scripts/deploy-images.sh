@@ -14,6 +14,10 @@
 # Scope: The Logging Service joins the app layer; name every repository missing the tag at once, and
 #        say how to roll back to a tag older than a service (review).
 # Author review: pending - Jian Bing owns the deployment.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-11
+# Scope: Holds Terraform's state lock for the whole deploy, and fails at once, saying what happened,
+#        when another change moves a service mid-deploy (Jian Bing's choice, after a clash).
+# Author review: Pending Jian Bing's review.
 #
 # Rolls an image tag onto an environment's services, in the order Service Connect needs: the apps,
 # then the gateway, then the frontend. The images must already be in ECR (push-images.sh).
@@ -38,6 +42,13 @@ health_checks="${HEALTH_CHECKS:-20}"
 health_interval="${HEALTH_INTERVAL:-15}"
 # shellcheck source=lib/task-definition.sh
 . "$(dirname "$0")/lib/task-definition.sh"
+# shellcheck source=lib/state-lock.sh
+. "$(dirname "$0")/lib/state-lock.sh"
+
+# AI-generated (Claude Code, 2026-11-11): nothing else may change this environment while it rolls:
+# a "terraform apply" waits for the lock, and this waits for an apply's (lib/state-lock.sh).
+state_lock_take "$env" "$region" "deploy-images.sh $env $tag"
+trap 'state_lock_release || exit 1' EXIT
 
 layers=(
   "user-service supplier-service credit-service order-service notification-service chat-service logging-service"
@@ -86,6 +97,8 @@ if [ ${#absent[@]} -gt 0 ]; then
   exit 1
 fi
 
+all_services=()
+all_arns=()
 roll() {
   local service arn
   rolled_services=()
@@ -97,6 +110,24 @@ roll() {
     echo "== $service: $arn"
     rolled_services+=("$service")
     rolled_arns+=("$arn")
+    all_services+=("$service")
+    all_arns+=("$arn")
+  done
+}
+
+# AI-generated (Claude Code, 2026-11-11): a change that skipped the lock (the console, say) may
+# point a service this deploy just rolled at another revision. Waiting can't fix that, so say so.
+not_moved() {
+  local i primary
+  for i in "${!rolled_services[@]}"; do
+    primary=$(aws ecs describe-services --region "$region" --cluster "$cluster" --services "${rolled_services[$i]}" \
+      --output json | jq -r '.services[0].deployments[] | select(.status == "PRIMARY") | .taskDefinition')
+    if [ -n "$primary" ] && [ "$primary" != "${rolled_arns[$i]}" ]; then
+      echo "${rolled_services[$i]} was moved to ${primary##*/} by another change while this deploy waited" >&2
+      echo "(a terraform apply, the console, or another deploy). The recorded tag hasn't changed; run the" >&2
+      echo "deploy again once that change is done." >&2
+      return 1
+    fi
   done
 }
 
@@ -104,6 +135,7 @@ roll() {
 wait_stable() {
   local round
   for round in 1 2 3; do
+    not_moved || return 1
     if aws ecs wait services-stable --region "$region" --cluster "$cluster" --services "$@"; then
       return 0
     fi
@@ -135,6 +167,7 @@ healthy() {
 # that crashed in between is a new task).
 wait_healthy() {
   local i _ seen now
+  not_moved || return 1
   for i in "${!rolled_services[@]}"; do
     seen=""
     for _ in $(seq "$health_checks"); do
@@ -157,6 +190,12 @@ for layer in "${layers[@]}"; do
   wait_stable $layer
   wait_healthy
 done
+
+# AI-generated (Claude Code, 2026-11-11, Codex review on #246): an earlier layer's service may have
+# been moved while a later layer rolled; check them all before recording the tag.
+rolled_services=("${all_services[@]}")
+rolled_arns=("${all_arns[@]}")
+not_moved || exit 1
 
 aws ssm put-parameter --region "$region" --name "/foc-deploy/$env/image-tag" --type String --overwrite \
   --value "$tag" > /dev/null

@@ -10,6 +10,10 @@
 # Scope: Checks that outside actions are pinned to commit hashes, the email secrets reach only the
 #   plan step, and Dependabot covers the actions (security review of #191).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-11
+# Scope: Job timeouts include the deploy's wait for Terraform's state lock; the PR plan doesn't
+#   take the lock.
+# Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/repo-checks.test.sh
 # AI-generated (Claude Code).
@@ -24,8 +28,13 @@ check "the email lists come from secrets, not variables" '! grep -rq "vars\.TF_V
 # AI-generated (Claude Code, 2026-11-06): a job timeout shorter than the scripts' own
 # retries kills a slow deploy halfway, before the script can fail cleanly (PR #191 review).
 timeout() { grep -m1 -oE "timeout-minutes: [0-9]+" "$ROOT/.github/workflows/$1" | grep -oE "[0-9]+"; }
-check "production's job outlasts deploy-images.sh at its slowest (~132 min)" '[ "$(timeout deploy-production.yml)" -ge 140 ]'
-check "staging's job outlasts push + deploy + checks at their slowest (~187 min)" '[ "$(timeout deploy-staging.yml)" -ge 200 ]'
+# AI-generated (Claude Code, 2026-11-11): plus up to 15 min waiting for Terraform's state lock
+# (lib/state-lock.sh LOCK_WAIT), when an apply is running.
+check "production's job outlasts deploy-images.sh at its slowest (~132 min + 15 min lock wait)" '[ "$(timeout deploy-production.yml)" -ge 155 ]'
+check "staging's job outlasts push + deploy + checks at their slowest (~187 min + 15 min lock wait)" '[ "$(timeout deploy-staging.yml)" -ge 215 ]'
+# A deploy holds the state lock for its whole run; a pull request's plan only reads, so it mustn't
+# fail just because a deploy is running.
+check "the pull-request plan doesn't take the state lock" 'grep -qE "terraform plan .*-lock=false" "$ROOT/.github/workflows/terraform.yml"'
 check "no runbook command continues a line after a comment" '! grep -nE "\\\\[[:space:]]+#" "$ROOT/infra/terraform/README.md"'
 
 # AI-generated (Claude Code, 2026-11-09): a tag can be moved by the action's owner; a full commit

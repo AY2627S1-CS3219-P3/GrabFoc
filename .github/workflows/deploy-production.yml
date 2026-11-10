@@ -10,6 +10,9 @@
 # Scope: configure-aws-credentials pinned to a full commit hash (security review of #191; Jian Bing
 #   chose the fix).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-11
+# Scope: Job timeout includes the deploy's wait for Terraform's state lock (deploy lock).
+# Author review: Pending Jian Bing's review.
 # Started by hand, and waits for approval in the production environment. Deploys the tag staging
 # last passed; nothing is rebuilt. Give an older tag to roll back.
 # AI-generated (Claude Code).
@@ -38,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     # AI-generated (Claude Code, 2026-11-06): above deploy-images.sh at its slowest, about
     # 132 min (per layer up to 3 x 10 min stable waits, per service up to 20 x 15 s health checks).
-    timeout-minutes: 150
+    timeout-minutes: 160 # + up to 15 min waiting for the state lock (2026-11-11)
     environment: production
     steps:
       - uses: actions/checkout@v7

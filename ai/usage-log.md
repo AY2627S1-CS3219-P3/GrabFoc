@@ -7,6 +7,9 @@ Scope: Combined the five member logs (ai/usage-log/<member>.md) into this one fi
   request. The full entry-by-entry logs, prompts included, are in git history at commit 32bbb85
   (`git show 32bbb85:ai/usage-log/<member>.md`).
 Author review: Human reviewed. Confirmed by every member (recorded by Jie Yang, 2026-11-10).
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-11
+Scope: One line in Jian Bing's Cloud deployment decisions (the deploy lock).
+Author review: Pending Jian Bing's review.
 -->
 
 # AI Usage Log: FoC (CS3219 AY26/27 S1, Group 3)
@@ -284,6 +287,10 @@ _2026-10-14 to 2026-11-10 · issues #58, #141–#143, PRs #146, #156, #191_
 - Single AWS account; staging deploys on merge, production on manual approval.
 - Larger servers (t3.xlarge) for staging and production instead of deploying apps one at a time.
 - A manual restart step on first deploy instead of an automatic one.
+- 2026-11-11, after a deploy and a `terraform apply` changed production at once: deploys share
+  Terraform's own state lock (chosen over a separate lock and an apply wrapper), and a deploy says
+  plainly when another change moved a service, instead of reporting it unhealthy. AI-generated with
+  Claude Code; review pending.
 
 ---
 

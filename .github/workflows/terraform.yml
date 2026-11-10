@@ -11,6 +11,9 @@
 # Scope: Outside actions pinned to full commit hashes; the email secrets set on the plan step only
 #   (security review of #191; Jian Bing chose the fix).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-11
+# Scope: The pull-request plan runs with -lock=false, so a running deploy doesn't fail it (deploy lock).
+# Author review: Pending Jian Bing's review.
 # Terraform and deployment-script checks on pull requests that touch the infrastructure (issue #100),
 # then "terraform plan" against staging.
 # AI-generated (Claude Code).
@@ -88,5 +91,5 @@ jobs:
           TF_VAR_alert_emails: ${{ secrets.TF_VAR_alert_emails }}
           TF_VAR_mailpit_relay_to: ${{ secrets.TF_VAR_mailpit_relay_to }}
         run: |
-          terraform plan -input=false -no-color -var-file=staging.tfvars 2>&1 |
+          terraform plan -input=false -no-color -lock=false -var-file=staging.tfvars 2>&1 |
             sed -E 's/[A-Za-z0-9._%+\\-]+@[A-Za-z0-9\\.-]+/<email>/g'
