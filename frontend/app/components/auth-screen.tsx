@@ -8,6 +8,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Swapped the "F" logo for the redesign's route mark; sentence-case headings; campus-map backdrop behind the card.
 Author review: Pending review by Jie Yang.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Exported OtpInputs for the Profile OTP modal.
+Author review: Pending review by Deanson.
 */
 "use client";
 
@@ -60,7 +63,7 @@ function Field({ label, name, type = "text", placeholder, autoComplete, minLengt
 }
 
 // AI-generated (reviewed by Jie Yang)
-function OtpInputs({ onChange, invalid }: { onChange: (code: string) => void; invalid: boolean }) {
+export function OtpInputs({ onChange, invalid }: { onChange: (code: string) => void; invalid: boolean }) {
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   const [digits, setDigits] = useState(Array(6).fill("") as string[]);
 

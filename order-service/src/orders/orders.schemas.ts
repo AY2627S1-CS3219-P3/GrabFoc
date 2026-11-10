@@ -13,6 +13,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
  * Scope: Added AdminOrdersQuery and the live/past admin scopes (#181).
  * Author review: Reviewed by Zi Yi, 2026-11-05.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+ * Scope: Added ORDER_STATUSES and AssignedQuery, an optional `status` filter for GET /orders/assigned
+ *        (interface change confirmed by Deanson, 2026-11-09).
+ * Author review: Pending review by Deanson.
  */
 import { z } from 'zod';
 
@@ -90,6 +94,22 @@ export const AdminOrdersQuery = PageQuery.extend({
     path: ['state'],
   });
 export type AdminOrdersQuery = z.infer<typeof AdminOrdersQuery>;
+
+// AI-generated (pending review by Deanson)
+export const ORDER_STATUSES = [
+  'AWAITING_CREDIT',
+  'PENDING',
+  'ACCEPTED',
+  'PICKED_UP',
+  'IN_PROGRESS',
+  'ARRIVED',
+  'COMPLETED',
+  'CANCELLED',
+] as const satisfies readonly OrderStatus[];
+
+/** GET /orders/assigned: paging plus an optional single status, e.g. COMPLETED for deliveries made. */
+export const AssignedQuery = PageQuery.extend({ status: z.enum(ORDER_STATUSES).optional() }).strict();
+export type AssignedQuery = z.infer<typeof AssignedQuery>;
 
 export type OrderStatus =
   | 'AWAITING_CREDIT' // created, Credit has not confirmed the hold yet

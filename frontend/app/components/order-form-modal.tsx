@@ -8,6 +8,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Redesign: route preview of the chosen pickup and drop-off, coin icon on the credit field, optional pickup prefilled from a location card, and a "dispatched" success view with an animation after an order is created.
 Author review: Pending review by Jie Yang.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Editable timing window (datetime-local inputs) on create and edit, sent as toISOString(), with a start-before-end check.
+Author review: Pending review by Deanson.
 */
 "use client";
 
@@ -18,7 +23,7 @@ import { FieldError } from "@/app/components/error-feedback";
 import { CoinIcon, DispatchedArt, RoutePreview } from "@/app/components/icons";
 import { Modal } from "@/app/components/modal";
 import { activeLocations } from "@/lib/locations";
-import { createOrder, editOrder, formatTime, isConflict, isUnauthorized, type Order, OrderError,
+import { createOrder, editOrder, isConflict, isUnauthorized, type Order, OrderError,
   type OrderEdit, orderKeys } from "@/lib/orders";
 import { mapFieldErrors } from "@/lib/service-errors";
 
@@ -26,6 +31,14 @@ type Mode = { kind: "create"; pickupId?: number } | { kind: "edit"; order: Order
 type Fields = Record<string, string[]>;
 
 const MAX_INT = 2147483647;
+
+// AI-generated (pending review by Deanson)
+/** ISO timestamp → the browser's local "YYYY-MM-DDTHH:mm", the value a datetime-local input takes. */
+function toLocalInput(iso: string) {
+  const date = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 // AI-generated (pending review by Deanson)
 export function OrderFormModal({ mode, onClose, onSaved }: { mode: Mode; onClose: () => void; onSaved: (order: Order) => void }) {
@@ -36,6 +49,11 @@ export function OrderFormModal({ mode, onClose, onSaved }: { mode: Mode; onClose
   const [pickup, setPickup] = useState(order ? String(order.pickupLocationId) : mode.kind === "create" && mode.pickupId ? String(mode.pickupId) : "");
   const [delivery, setDelivery] = useState(order ? String(order.deliveryLocationId) : "");
   const [credits, setCredits] = useState(order ? String(order.creditOffer) : "");
+  // Local "YYYY-MM-DDTHH:mm" strings; blank on create means the server's default window.
+  const initialStart = order ? toLocalInput(order.windowStart) : "";
+  const initialEnd = order ? toLocalInput(order.windowEnd) : "";
+  const [windowStart, setWindowStart] = useState(initialStart);
+  const [windowEnd, setWindowEnd] = useState(initialEnd);
   const [fields, setFields] = useState<Fields>({});
   const [formError, setFormError] = useState("");
   // Set after a create succeeds, to show the dispatched view before closing.
@@ -75,13 +93,19 @@ export function OrderFormModal({ mode, onClose, onSaved }: { mode: Mode; onClose
     if (!delivery) next.deliveryLocationId = ["Choose a delivery location."];
     const offer = Number(credits);
     if (!order && (!/^\d+$/.test(credits.trim()) || offer < 1 || offer > MAX_INT)) next.creditOffer = ["Offer a whole number of credits, at least 1."];
+    // On edit a cleared field keeps the order's current time, so compare against that.
+    const start = windowStart || initialStart;
+    const end = windowEnd || initialEnd;
+    if (start && end && new Date(start) >= new Date(end)) next.windowEnd = ["End time must be after the start time."];
     setFields(next);
     setFormError("");
     if (Object.keys(next).length) return;
 
     if (!order) {
       save.mutate({ create: true, body: { orderDescription: description.trim(), pickupLocationId: Number(pickup),
-        deliveryLocationId: Number(delivery), creditOffer: offer } });
+        deliveryLocationId: Number(delivery), creditOffer: offer,
+        ...(windowStart && { windowStart: new Date(windowStart).toISOString() }),
+        ...(windowEnd && { windowEnd: new Date(windowEnd).toISOString() }) } });
       return;
     }
     // PATCH takes only the fields that changed.
@@ -89,6 +113,8 @@ export function OrderFormModal({ mode, onClose, onSaved }: { mode: Mode; onClose
     if (description.trim() !== order.orderDescription) edit.orderDescription = description.trim();
     if (Number(pickup) !== order.pickupLocationId) edit.pickupLocationId = Number(pickup);
     if (Number(delivery) !== order.deliveryLocationId) edit.deliveryLocationId = Number(delivery);
+    if (windowStart && windowStart !== initialStart) edit.windowStart = new Date(windowStart).toISOString();
+    if (windowEnd && windowEnd !== initialEnd) edit.windowEnd = new Date(windowEnd).toISOString();
     if (!Object.keys(edit).length) { setFormError("Change at least one field."); return; }
     save.mutate({ create: false, edit });
   }
@@ -144,9 +170,18 @@ export function OrderFormModal({ mode, onClose, onSaved }: { mode: Mode; onClose
         {order && <span className="order-form-note">The credit offer can&apos;t be changed.</span>}
       </label>
       <div className="order-form-pair grid grid-cols-1 sm:grid-cols-2">
-        <label>Window from<input value={order ? formatTime(order.windowStart) : "Now"} readOnly /></label>
-        <label>Window to<input value={order ? formatTime(order.windowEnd) : "24 hours after creation"} readOnly /></label>
+        <label>Window from
+          <input type="datetime-local" value={windowStart} aria-invalid={Boolean(fields.windowStart)}
+            aria-describedby="order-window-start-error" onChange={(event) => setWindowStart(event.target.value)} />
+          <FieldError id="order-window-start-error" messages={fields.windowStart} />
+        </label>
+        <label>Window to
+          <input type="datetime-local" value={windowEnd} aria-invalid={Boolean(fields.windowEnd)}
+            aria-describedby="order-window-end-error" onChange={(event) => setWindowEnd(event.target.value)} />
+          <FieldError id="order-window-end-error" messages={fields.windowEnd} />
+        </label>
       </div>
+      {!order && <span className="order-form-note">Leave the times blank to start now and end 24 hours later.</span>}
       {formError && <p className="field-error" role="alert">{formError}</p>}
       <div className="order-modal-actions">
         <button type="button" className="secondary-button" onClick={onClose} disabled={busy}>Back</button>
