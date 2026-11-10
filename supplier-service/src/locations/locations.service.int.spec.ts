@@ -151,7 +151,7 @@ describe('list', () => {
     expect(await names({ type: 'Food' })).toEqual([]);
   });
 
-  // AI-generated (reviewed by Cole Lin).
+  // AI-generated (Claude Code); review pending - Cole Lin.
   it('takes a LIKE wildcard in a search term literally, in both text filters', async () => {
     await insert(
       { name: 'Cafe 50% Off', building: 'COM1' },

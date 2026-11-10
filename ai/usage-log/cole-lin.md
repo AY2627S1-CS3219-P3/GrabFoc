@@ -21,6 +21,14 @@ Scope: Drafted the entries dated 2026-11-10 the same way. Dated separately rathe
   entry above, because that one says 2026-11-09 and a scope that quietly grows to cover later work
   is the thing these headers are meant to prevent (review).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Drafted the entry about the Supplier building filter, and then corrected that same entry
+  where it recorded the LIKE escaping as rejected after the escaping had in fact been done.
+  Recorded as its own stanza rather than leaning on the one above, which I had argued covered this
+  because it carries the same date. That was wrong: it says "read and approved", and an approval
+  cannot attest to text written after it. The stanza above is left unchanged for the same reason
+  (review).
+Author review: pending - Cole Lin.
 -->
 
 # AI Usage Log — Cole Lin

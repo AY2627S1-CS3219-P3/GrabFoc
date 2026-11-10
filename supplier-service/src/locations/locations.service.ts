@@ -91,7 +91,7 @@ function toDto(row: LocationRow & { distance_m?: string | null }): LocationDto {
  * character in PostgreSQL, and the pattern is bound as a parameter, so nothing here is parsed as a
  * string literal on the way in.
  */
-// AI-generated (reviewed by Cole Lin).
+// AI-generated (Claude Code); review pending - Cole Lin.
 function contains(term: string): string {
   return `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
 }
@@ -153,7 +153,7 @@ export class LocationsService {
     // Matched like `name` above: case-insensitive substring. An exact, case-sensitive match
     // meant `COM` found nothing and `com1` found nothing either, so a building could only
     // be filtered by typing its stored spelling exactly.
-    // AI-generated (reviewed by Cole Lin).
+    // AI-generated (Claude Code); review pending - Cole Lin.
     if (query.building !== undefined)
       where.push(`lower(building) LIKE lower(${param(contains(query.building))})`);
     if (query.time !== undefined) {
