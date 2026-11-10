@@ -13,11 +13,14 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
  * Scope: Added POST /orders/:orderId/chat-ticket (the chat plan).
  * Author review: Reviewed by Deanson, 2026-11-09.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+ * Scope: GET /orders/assigned accepts an optional `status` query (interface change confirmed by Deanson, 2026-11-09).
+ * Author review: Pending review by Deanson.
  */
 import { Body, Controller, Get, Headers, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { Caller, CurrentUser } from '../common/jwt-auth.guard';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
-import { CreateOrderBody, EditOrderBody, OrderIdParam, PageQuery, VersionBody } from './orders.schemas';
+import { AssignedQuery, CreateOrderBody, EditOrderBody, OrderIdParam, PageQuery, VersionBody } from './orders.schemas';
 import { OrdersService } from './orders.service';
 
 const orderId = new ZodValidationPipe(OrderIdParam);
@@ -52,10 +55,11 @@ export class OrdersController {
     return this.orders.list('requester', caller, page);
   }
 
-  /** Every order assigned to the caller as courier, in any status. */
+  /** Orders assigned to the caller as courier: every status, or only `status` when given. */
+  // AI-generated (pending review by Deanson)
   @Get('assigned')
-  assigned(@CurrentUser() caller: Caller, @Query(pageQuery) page: PageQuery) {
-    return this.orders.list('courier', caller, page);
+  assigned(@CurrentUser() caller: Caller, @Query(new ZodValidationPipe(AssignedQuery)) { status, ...page }: AssignedQuery) {
+    return this.orders.list('courier', caller, page, status);
   }
 
   @Get(':orderId')

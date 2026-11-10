@@ -10,6 +10,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: CHAT_TICKET_SECRET is written (chat, #230).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Expects CHAT_POSTGRES_PASSWORD to be written (chat on AWS).
+# Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/put-secrets.test.sh   (no AWS access needed)
 # AI-generated (Claude Code).
@@ -59,6 +62,7 @@ CREDIT_SERVICE_KEY=credit-key
 ORDER_SERVICE_KEY=order-key
 USER_INTERNAL_SERVICE_KEY=user-internal-key
 CHAT_TICKET_SECRET=chat-ticket-secret
+CHAT_POSTGRES_PASSWORD=pg-chat-pw
 ENV
 }
 
@@ -75,8 +79,10 @@ full > "$work/repo/infra/secrets/staging.env"
 : > "$AWS_CALLS"
 out=$(FOC_REPO_ROOT="$work/repo" "$SCRIPT" staging 2>&1); code=$?
 check "full file exits zero" '[ $code -eq 0 ]'
-check "21 parameters written" '[ "$(wc -l < "$AWS_CALLS" | tr -d " ")" = 21 ]'
+check "22 parameters written" '[ "$(wc -l < "$AWS_CALLS" | tr -d " ")" = 22 ]'
 # AI-generated (Claude Code): Order needs it since chat (#230).
+# AI-generated (Claude Code, 2026-11-09): chat on AWS.
+check "chat's database password written" 'grep -qx "/foc/staging/CHAT_POSTGRES_PASSWORD=pg-chat-pw" "$AWS_CALLS"'
 check "chat's ticket secret written" 'grep -qx "/foc/staging/CHAT_TICKET_SECRET=chat-ticket-secret" "$AWS_CALLS"'
 check "Notification's secrets written" 'grep -qx "/foc/staging/NOTIFICATION_POSTGRES_PASSWORD=pg-notification-pw" "$AWS_CALLS" && grep -qx "/foc/staging/USER_INTERNAL_SERVICE_KEY=user-internal-key" "$AWS_CALLS"'
 check "names are under /foc/staging/" '! grep -qv "^/foc/staging/" "$AWS_CALLS"'

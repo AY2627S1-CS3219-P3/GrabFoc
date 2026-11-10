@@ -11,6 +11,10 @@ Author review: pending — Jie Yang to record the review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-27
 Scope: Documented the /gateway prefix and the edge listener (#141).
 Author review (Jian Bing, 2026-11-07): Looked through the code and think it's okay.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Listed the chat and logging route files, and what adding a route file costs the integration
+  harness (#52).
+Author review: pending - Jie Yang owns the gateway's route files.
 -->
 
 # Stock Envoy gateway
@@ -37,7 +41,10 @@ layer. Editing the renderer, route files or Lua header filter only copies those 
 `10-user.routes.json`, Supplier routes in `20-supplier.routes.json`, Order routes
 (approved by Jie Yang, 2026-10-22; never `/internal/**`) in `30-order.routes.json`, and
 Credit's balance and history reads in `40-credit.routes.json` (Credit's `/internal` and
-`/admin` routes are not routed).
+`/admin` routes are not routed). `50-chat.routes.json` holds the public chat socket, and
+`50-logging.routes.json` the log store's one ADMIN-only read, `GET /logs` (#52): authentication is
+this gateway's, while the ADMIN check stays in the service, and the store's ingest is Kafka rather
+than HTTP, so nothing else of it is routed.
 Each file declares a `service` (upstream cluster name), `urlEnv` (the service URL's
 environment variable), and a `routes` array. JSON files carry their AI disclosure
 in the first `_disclosure` field because JSON does not support comments.
@@ -48,6 +55,11 @@ regex matching does not rewrite them. Declared `prefixes` support placeholders s
 as `{auth}`, `{locations}` and `{orders}` using an environment variable and a default value.
 The renderer escapes substituted prefixes in regex routes. Health and the final
 404 response remain shared renderer configuration.
+
+A new route file's `urlEnv` is **required**: the renderer refuses to start without it, so adding one
+means adding that variable to `compose.yaml`, to `.env.example`, and to the environment
+`test/envoy.integration.mjs` starts Envoy with. Omitting the last one fails all 29 integration tests
+at once while the unit suite, which builds its own environment, still passes.
 
 Every route is also served under `/gateway` (for example `/gateway/locations`), with the prefix
 removed before forwarding. That is the public API path on AWS, and Postman uses it locally too, so

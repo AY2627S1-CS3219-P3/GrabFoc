@@ -18,6 +18,12 @@ Author review: Pending review by Zi Yi.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Retuned the status badge colours to the redesign palette (PENDING now gold, waiting for a courier).
 Author review: Pending review by Jie Yang.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Added optional windowStart / windowEnd to OrderInput (and so OrderEdit), matching the existing POST/PATCH bodies.
+Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Added countOrders() and orderKeys.count for the Profile page's Orders Requested / Orders Delivered totals.
+Author review: Pending review by Deanson.
 */
 import { withSessionMutation } from '@/lib/session-client';
 import { type FieldIssue, parseServiceError } from '@/lib/service-errors';
@@ -75,7 +81,8 @@ export type HistoryEntry = {
 
 export type OrderList = 'available' | 'mine' | 'assigned';
 export type Step = 'pick-up' | 'start-delivery' | 'arrive';
-export type OrderInput = { orderDescription: string; pickupLocationId: number; deliveryLocationId: number; creditOffer: number };
+export type OrderInput = { orderDescription: string; pickupLocationId: number; deliveryLocationId: number; creditOffer: number;
+  windowStart?: string; windowEnd?: string };
 export type OrderEdit = Partial<Omit<OrderInput, 'creditOffer'>>;
 
 export const POLL_MS = 10_000;
@@ -85,6 +92,7 @@ export const orderKeys = {
   all: ['orders'] as const,
   list: (list: OrderList, page: number) => ['orders', list, page] as const,
   everything: (list: 'mine' | 'assigned') => ['orders', list, 'all'] as const,
+  count: (list: 'mine' | 'assigned', status?: OrderStatus) => ['orders', list, 'count', status ?? 'any'] as const,
   order: (id: string) => ['order', id] as const,
   confirmations: (id: string) => ['confirmations', id] as const,
   history: (id: string) => ['order-history', id] as const,
@@ -152,6 +160,14 @@ async function call<T>(path: string, fallback: string, method = 'GET', body?: un
 export function listOrders(list: OrderList, page: number): Promise<Page<Order>> {
   const query = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
   return call(`/${list}?${query}`, 'Could not load orders.');
+}
+
+// AI-generated (pending review by Deanson)
+/** How many orders the list holds: one item is fetched and its `total` read. `status` works on `assigned` only. */
+export async function countOrders(list: 'mine' | 'assigned', status?: OrderStatus): Promise<number> {
+  const query = new URLSearchParams({ page: '1', pageSize: '1', ...(status ? { status } : {}) });
+  const result = await call<Page<Order>>(`/${list}?${query}`, 'Could not load your order totals.');
+  return result.total;
 }
 
 // AI-generated (pending review by Deanson)

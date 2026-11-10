@@ -14,6 +14,162 @@ Deanson's entries, newest first. The template and rules (Appendix 2 of the proje
 [`ai/usage-log.md`](../usage-log.md): exact prompts, summarised responses, what was changed or
 rejected, and how it was verified.
 
+### 2026-11-10 — OTP-protected email, mobile, password and deactivation on the profile page (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `frontend/app/api/session/account/[...path]/route.ts`, `frontend/app/components/otp-modal.tsx`, `frontend/app/components/auth-screen.tsx`, `frontend/app/profile/page.tsx`, `frontend/app/profile/contact-details.tsx`, `frontend/app/profile/use-otp-flow.ts`, `frontend/app/globals.css`, `frontend/lib/user-error-copy.ts`
+
+**Scenario:** the User Service already had the six OTP-protected `/users/me` routes, but students could not reach them from Profile. I gave the AI a written plan for the frontend work and had it check the plan against the code before implementing it.
+
+**Prompts (exact):**
+> Based on the plan that I have written for you, clarify what you understood and implement the plan accordingly
+
+**What it produced:** the allowlisted proxy, the OTP modal, the shared flow hook (`use-otp-flow.ts`), the contact and password forms (`contact-details.tsx`) and the Profile wiring and styles.
+
+**What the AI added to my plan after checking the code (I approved these):** no Resend at the new-address step (that code can only be re-issued by `POST /email`, and the first code is already spent); a failed OTP request shows inside the password form, because the native dialog covers toasts; no fallback text is passed to `userErrorMessage`, so the backend's messages show; the "changed" email check ignores case; `OtpInputs` is reused from sign-up. It also pointed out that the backend's limit of 3 OTP requests per 10 minutes can block a corrected email resubmit, which I accepted.
+
+**Verification:** `tsc --noEmit` and ESLint pass. A script against the compose stack with throwaway accounts passed all 28 checks on the proxy (allowlist, cross-origin, each flow with real codes from Mailpit). 
+
+### 2026-11-10 — Grouping the email and mobile number on the profile page (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `frontend/app/profile/page.tsx`, `frontend/app/globals.css`
+
+**Scenario:** the email sat right under the display name while the mobile number was far below it in a different style. I had the AI group them.
+
+**Prompts (exact):**
+> can you group mobileNumber and email together in the sense that they are in a div together, and are relatively close to each other. But are far away from the displayName. also, ensure that the font / styling of both mobileNumber and email are the same / consistent. Clarify before proceeding
+
+**Clarifying answers (mine):** about 16px below the display name; both use the email's existing style (muted, 14px).
+
+**What it produced:** a `.profile-contact` div holding both lines 4px apart, replacing the `.profile-email` class.
+
+**Verification:** frontend `tsc` and ESLint on `page.tsx` pass. Not yet checked by me in the running app.
+
+### 2026-11-10 — Editing the display name from the profile page (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `frontend/app/profile/page.tsx`, `frontend/app/api/session/profile/route.ts`, `frontend/lib/session-input.ts`, `frontend/app/globals.css`
+
+**Scenario:** I asked which non-admin endpoints the frontend doesn't use yet, then what `PATCH /users/me` expects and returns, then had the AI wire it into the profile page.
+
+**Prompts (exact, in order):**
+> Tell me what endpoints are currently not being used by the frontend, excluding admin endpoints
+
+> show me the expected payload and response from PATCH /users/me
+
+> On the frontend, add a pencil icon beside the user's displayName. When they click the pencil, they are able to submit a new Displayname to PATCH /users/me. On the frontend, do a simple non-empty and different from current displayName check. Clarify before proceeding
+
+**Clarifying answers (mine):** inline edit, not a modal; yes, add a `PATCH` method to the `/api/session/profile` proxy (the AI flagged this as an interface change under the AI policy); on error, return to normal mode (name + pencil) and show a toast.
+
+**What it produced:** the list of unused endpoints (the seven `/users/me/*` self-service routes and `GET /locations/:locationId`); the `PATCH /users/me` contract from the DTO, service and error filter; a `PATCH` handler in the profile proxy (same-origin check, strict `{ displayName }` schema, forwards to `/users/me`); the pencil button and inline form with the non-empty and unchanged checks, Enter to save and Esc to cancel; styles for both.
+
+**Verification:** frontend `tsc` and ESLint on the changed files pass. Not yet checked by me in the running app.
+
+### 2026-11-09 — Removing the Credits Earned card from the profile page (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** refactor
+**Files:** `frontend/app/profile/page.tsx`, `frontend/app/globals.css`
+
+**Scenario:** the profile page's "Credits Earned" stat card always showed "—" because nothing fed it data. I had the AI remove it.
+
+**Prompts (exact):**
+> On the frontend profile page, can you remove the block that holds 'credits earned'. Clarify before proceeding
+
+**Clarifying answers (mine):** make the stats row two columns so the remaining two cards fill it.
+
+**What it produced:** removed the card, renamed the row's `aria-label` from "Order and credit totals" to "Order totals", and changed `.profile-stats` from three columns to two.
+
+**Verification:** no "Credits Earned" references are left. Frontend `tsc` passes, and ESLint passes on `page.tsx`. Not yet checked by me in the running app.
+
+### 2026-11-09 — Frontend endpoint audit and removing the header avatar (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, refactor
+**Files:** `frontend/app/components/app-shell.tsx`, `frontend/app/globals.css`
+
+**Scenario:** I asked which backend endpoints the frontend doesn't use yet, how the profile picture is shown and whether user data is kept in browser storage. Then I had the AI remove the placeholder "?" circle at the top right of the header.
+
+**Prompts (exact, in order):**
+> for the frontend profile, how is the profile picture displayed?
+
+> is user information stored in localStorage?
+
+> remove the top right circle from frontend completely, clarify before proceeding
+
+**Clarifying answers (mine):** remove both the span and its `.header-avatar` CSS rule; keep the mode chip; add file headers and this log entry.
+
+**What it produced:**
+- An audit comparing the gateway route files with the frontend's calls. The unused non-admin endpoints are the seven `/users/me` self-service routes (PATCH profile, OTP, email change and verify, password, mobile, deactivate) and `GET /locations/:id`.
+- An explanation that the profile "picture" is the first letter of the display name (the header circle was a hardcoded "?"), and that the backend has no image field.
+- An explanation that tokens are in httpOnly cookies, that `sessionStorage` holds only short-lived values (pending registration or reset email, the logout notice), that the profile is kept only in the in-memory React Query cache, and that nothing uses `localStorage`.
+- Removed the header avatar span and its CSS rule.
+
+**Verification:** no `header-avatar` references are left outside the disclosure comment. Frontend `tsc` passes, and ESLint passes on `app-shell.tsx`. Route tests not run. Not yet checked by me in the running app.
+
+### 2026-11-09 — Profile page order totals and `GET /orders/assigned?status=` (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate, debug
+**Files:** `order-service/src/orders/orders.{schemas,controller,service,repository}.ts`, `order-service/src/test/orders.api.test.ts`, `order-service/README.md`, `frontend/lib/orders.ts`, `frontend/app/profile/page.tsx`, `frontend/test/routes.test.mjs`
+
+**Scenario:** the Profile page's Orders Requested and Orders Delivered cards showed "—". I asked how orders are listed and counted today, then had the AI fill the two totals. The AI flagged that a new `status` query is an API interface change under the AI policy; I confirmed it.
+
+**Prompts (exact, in order):**
+> currently, is there an endpoint whereby we can check the number of orders a user requested or delivered either indrirectly or directly?
+
+> currently, how is the frontend displaying assigned orders and my orders in the 'My Orders' page? is it manually filtering on the frontend?
+
+> It's fetching every page? Is it not fetching page by page and filtering by status accordingly?
+
+> GET /orders/mine
+> GET /orders/assigned
+>
+> what do these two endpoints require in terms of queries, and what is the payload returned in JSON
+
+> TASK:
+> - I want the Orders Requested and Orders Delivered data to be filled in the frontend (on the Profile Page)
+>
+> - For the orders assigned endpoint, add a status query for completed orders so that we can return orders delivered. Use pageSize of 1 and page = 1. This endpoint is used to fill the data Orders Delivered
+> - For the orders/mine endpoint, it also uses pageSize of 1 and page = 1. This endpoint is used to fill the data Orders Requested.
+> - In the meantime, also remove the line 'orde rtotals and credits earned will appear when Order service intergration is ready' from the frontend (profile page)
+>
+> Clarify before proceeding
+
+**Clarifying answers (mine):** confirmed the interface change; `status` accepts any single order status; added to `/orders/assigned` only (Orders Requested counts every status, cancelled included); Credits Earned keeps showing "—".
+
+**What it produced:**
+- An optional `status` query on `GET /orders/assigned` (strict Zod enum of all 8 statuses, parameterized SQL, applied to `items` and `total`).
+- `countOrders()` in `frontend/lib/orders.ts`, and the Profile page reading `total` from `mine?page=1&pageSize=1` and `assigned?status=COMPLETED&page=1&pageSize=1`, with a Retry on error and 401 → sign in.
+- The "integration is ready" note removed.
+- An API test, a proxy route case, and a README row update.
+
+**Debugging:** two frontend route tests failed after the change.
+- The test gateway echoed `/orders/*` list calls without `items`/`total`, so Home crashed once its list loaded. Before, the test only passed by clicking Profile before that response arrived. The stub now returns an empty page for the list routes.
+- The no-wallet test counted every forwarded request, and the new order-total calls raced it. It now counts Credit requests only.
+
+**Verification:** order-service `tsc` clean, unit tests 14/14, `compose.test.yaml` integration tests 83/83 (new test included). Frontend `tsc` and ESLint clean; `npm run test:routes` with `FOC_TEST_BROWSER_CHANNEL=chrome` 47/47 (twice; baseline without the change was also 47/47). Not yet checked by me in the running app.
+
+### 2026-11-09 — Order timing window in the Create/Edit Order modal (branch `feat/frontend-fixes`)
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `frontend/app/components/order-form-modal.tsx`, `frontend/lib/orders.ts`
+
+**Scenario:** the modal showed the timing window as read-only text, so requesters couldn't set one. I checked the create-order contract first, then had the AI add the inputs. 
+
+**Prompts (exact, in order):**
+> What is the create orders endpoint? and its expected payload?
+
+> windowStart and windowEnd expected formatting? it is UTC + 8 (ISO 8601?)
+
+> On the frontend, for the create order modal, do new Date(localInput).toISOString() for windowStart and windowEnd. Also, do a simple check on the frontend that the windowStart and windowEnd is valid in the sense that windowStart < windowEnd
+>
+> Clarify that u understand before proceeding
+
+*(The AI pointed out the modal had no time inputs yet and asked three questions. I chose: the fields are optional, so a blank one uses the server default; check only when both are filled; apply to edit too. Plan mode: I approved the plan.)*
+
+**What it produced:** the explanation that `POST /orders` takes any ISO 8601 offset (`Z` or `+08:00`), and that UTC+8 is only used on the server for the opening-hours check. In the modal, `datetime-local` inputs replace the read-only boxes, and filled values are sent with `new Date(value).toISOString()`. A start-before-end check runs before submitting. On edit the inputs are prefilled with the order's window, only changed times go in the PATCH, and a cleared field keeps the current time. `OrderInput` gained optional `windowStart` / `windowEnd`.
+**What I changed or rejected:** I extended the change to edit mode, beyond my first ask. The check doesn't look at past times or opening hours; the server enforces those.
+**Verification:** `tsc --noEmit` and eslint on both files are clean. The modal has no automated tests. Manual browser check pending.
+
 ### 2026-11-08 — Real-time chat frontend, phase 2 (branch `feature/chat`)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate

@@ -13,6 +13,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 # Scope: Passed CHAT_SERVICE_URL through for the chat socket route (the chat plan).
 # Author review: Reviewed by Deanson, 2026-11-09.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Passed LOGGING_SERVICE_URL through for the log store's GET /logs route (issue #52).
+# Author review: pending - Jie Yang owns the gateway's route files.
 
 name: foc
 
@@ -42,6 +45,7 @@ services:
       CREDIT_SERVICE_URL: ${CREDIT_SERVICE_URL:-http://credit-service:3004}
       # The chat socket route in 50-chat.routes.json. Required: the gateway won't start without it.
       CHAT_SERVICE_URL: ${CHAT_SERVICE_URL:-http://chat-service:3007}
+      LOGGING_SERVICE_URL: ${LOGGING_SERVICE_URL:-http://logging-service:3006}
       USER_SERVICE_JWKS_URL: ${USER_SERVICE_JWKS_URL:-}
       GATEWAY_AUTH_PREFIX: ${GATEWAY_AUTH_PREFIX:-/auth}
       GATEWAY_LOCATIONS_PREFIX: ${GATEWAY_LOCATIONS_PREFIX:-/locations}

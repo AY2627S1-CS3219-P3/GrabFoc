@@ -18,6 +18,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: Checks Kafka's health check timing and CPU reservation, and that no other container changes.
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Chat on AWS: expect its repository, database, migrations and service.
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -54,6 +57,7 @@ variables {
     "credit-service"       = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/credit-service"
     "order-service"        = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/order-service"
     "notification-service" = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/notification-service"
+    "chat-service"         = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/chat-service"
     "api-gateway"          = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/api-gateway"
     "frontend"             = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/frontend"
     "kafka-init"           = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/kafka-init"
@@ -126,14 +130,14 @@ run "staging" {
   }
   assert {
     condition = alltrue([
-      for name, folder in { "user-db" = "/data/user-db", "supplier-db" = "/data/supplier-db", "credit-db" = "/data/credit-db", "order-db" = "/data/order-db", "notification-db" = "/data/notification-db", "user-redis" = "/data/redis", "kafka" = "/data/kafka" } :
+      for name, folder in { "user-db" = "/data/user-db", "supplier-db" = "/data/supplier-db", "credit-db" = "/data/credit-db", "order-db" = "/data/order-db", "notification-db" = "/data/notification-db", "chat-db" = "/data/chat-db", "user-redis" = "/data/redis", "kafka" = "/data/kafka" } :
       one(aws_ecs_task_definition.service[name].volume).host_path == folder
     ])
     error_message = "Each data store mounts its own folder on the /data volume."
   }
   assert {
     condition = alltrue([
-      for name in ["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "api-gateway", "mailpit"] :
+      for name in ["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "user-redis", "kafka", "api-gateway", "mailpit"] :
       local.ecs_services[name].deployment_minimum_healthy_percent == 0 && local.ecs_services[name].deployment_maximum_percent == 100
     ])
     error_message = "Data stores, the gateway and Mailpit are stopped before being replaced: two copies must never share a folder or a host port."
@@ -142,8 +146,8 @@ run "staging" {
   # deployment was created, so services are created in layers: data → apps → edge → web.
   assert {
     condition = (
-      toset(keys(aws_ecs_service.data)) == toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "user-redis", "kafka", "mailpit"]) &&
-      toset(keys(aws_ecs_service.app)) == toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service"]) &&
+      toset(keys(aws_ecs_service.data)) == toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "user-redis", "kafka", "mailpit"]) &&
+      toset(keys(aws_ecs_service.app)) == toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service", "chat-service"]) &&
       toset(keys(aws_ecs_service.edge)) == toset(["api-gateway"]) &&
       toset(keys(aws_ecs_service.web)) == toset(["frontend"])
     )
@@ -203,7 +207,7 @@ run "staging" {
   assert {
     condition = alltrue([
       for name, g in aws_cloudwatch_log_group.service : g.name == "/foc/staging/${name}" && g.retention_in_days == 14
-    ]) && length(aws_cloudwatch_log_group.service) == length(aws_ecs_task_definition.service) + 3
+    ]) && length(aws_cloudwatch_log_group.service) == length(aws_ecs_task_definition.service) + 4 # kafka-init, order-migrate, chat-migrate, checks
     error_message = "One log group per container, /foc/<env>/<name>, kept 14 days."
   }
   # Final review, Critical 1: a standalone run-task gets no Service Connect names, so the one-shot
@@ -285,6 +289,35 @@ run "staging" {
       for c in jsondecode(aws_ecs_task_definition.service["notification-service"].container_definitions) : c.name if !c.essential
     ]) == toset(["kafka-init"])
     error_message = "Notification's topics are created before it starts."
+  }
+  # AI-generated (Claude Code, 2026-11-09): chat on AWS, as in chat-service/compose.yaml (Jie Yang's
+  # plan, approved by Jian Bing). Order and Chat read the one SSM secret CHAT_TICKET_SECRET.
+  assert {
+    condition = (
+      local.chat_env == { CHAT_PORT = "3007", CHAT_DATABASE_URL = "postgres://foc@chat-db:5432/chat" } &&
+      strcontains(jsondecode(aws_ecs_task_definition.service["chat-service"].container_definitions)[0].image, "foc/chat-service:abc1234") &&
+      [for e in jsondecode(aws_ecs_task_definition.service["chat-db"].container_definitions)[0].environment : e.value if e.name == "POSTGRES_DB"][0] == "chat"
+    )
+    error_message = "Chat listens on 3007 and uses its own database, chat on chat-db."
+  }
+  assert {
+    condition = {
+      for x in jsondecode(aws_ecs_task_definition.service["chat-service"].container_definitions)[0].secrets : x.name => element(split("/", x.valueFrom), 3)
+      } == {
+      PGPASSWORD         = "CHAT_POSTGRES_PASSWORD"
+      CHAT_TICKET_SECRET = "CHAT_TICKET_SECRET"
+    }
+    error_message = "Chat gets its database password and the ticket secret Order signs with."
+  }
+  assert {
+    condition = (
+      toset([for c in jsondecode(aws_ecs_task_definition.service["chat-service"].container_definitions) : c.name if !c.essential]) == toset(["chat-migrate"]) &&
+      toset([
+        for d in [for c in jsondecode(aws_ecs_task_definition.service["chat-service"].container_definitions) : c if c.name == "chat-service"][0].dependsOn : "${d.containerName}:${d.condition}"
+      ]) == toset(["chat-migrate:SUCCESS"]) &&
+      [for c in jsondecode(aws_ecs_task_definition.service["chat-service"].container_definitions) : c.command if c.name == "chat-migrate"][0] == ["node", "dist/db/migrate-cli.js"]
+    )
+    error_message = "Chat starts only after its migrations succeed."
   }
 
   # Final review, Important 5: a container that hangs on start-up is restarted, not left "running".

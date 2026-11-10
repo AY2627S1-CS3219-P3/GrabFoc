@@ -42,6 +42,9 @@ Author review: Reviewed by Zi Yi, 2026-11-05.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 Scope: Said which Postman folders leave A with a cancelled order for folder 6 (PR #192 review).
 Author review: Reviewed by Zi Yi, 2026-11-06.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Documented the optional `status` query on GET /orders/assigned.
+Author review: Pending review by Deanson.
 -->
 
 # Order Service
@@ -205,7 +208,7 @@ Errors use the User Service envelope `{ "error": { "code", "message", "details" 
 | `POST /orders` | any user | create an order; returns it as `PENDING` (201) |
 | `GET /orders/available` | any user | unexpired `PENDING` orders, excluding the caller's own |
 | `GET /orders/mine` | any user | orders the caller created, any status |
-| `GET /orders/assigned` | any user | orders assigned to the caller as courier, any status |
+| `GET /orders/assigned` | any user | orders assigned to the caller as courier, any status; optional `?status=` (one order status, e.g. `COMPLETED`) narrows the list and its `total` |
 | `GET /orders/:orderId` | requester, assigned courier, or anyone while the order is available | one order |
 | `PATCH /orders/:orderId` | requester, `PENDING` only | edit description, locations or timing (200) |
 | `POST /orders/:orderId/accept` | any user except the requester | take the order as courier (200) |

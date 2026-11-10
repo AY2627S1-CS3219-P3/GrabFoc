@@ -13,6 +13,20 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Order chat restyle (2026-11-09). Campus-map backdrop styles for the auth screens (route crawl, courier halo). Rewrote the whole stylesheet for the "campus route slip" redesign: design tokens, requester/courier accent switch, fonts, header, auth, location cards with hover motion, order slips, route preview, dispatch animation, lifecycle tracker, modal and toast motion, reduced-motion handling. Kept every existing class name.
 Author review: Pending review by Jie Yang.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Removed the unused .header-avatar rule after the header avatar was removed. Made .profile-stats two columns after the Credits Earned card was removed.
+Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Styles for the profile display-name edit (pencil button row, inline form); added its input to the shared field selectors.
+Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Replaced .profile-email with .profile-contact, which groups and styles the email and mobile number together.
+Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Styles for the Profile contact rows and inline edits, change-password and deactivate buttons, password rules, and OTP modal messages.
+Author review: Pending review by Deanson.
 */
 /* AI-generated (pending review by Jie Yang); design rules in .claude/skills/foc-design/SKILL.md */
 @layer theme, base, components, utilities;
@@ -86,14 +100,14 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 /* Shared field look */
 .auth-field input, .phone-fields select, .location-filters input, .location-filters select,
 .manage-form input, .manage-form select, .manage-form textarea, .manage-search input,
-.order-form input, .order-form select, .order-form textarea, .browse-search input {
+.order-form input, .order-form select, .order-form textarea, .browse-search input, .profile-name-form input {
   width: 100%; min-height: 44px; padding: 9px 12px;
   border: 1.5px solid var(--line); border-radius: var(--radius-s);
   background: var(--surface); color: var(--ink); font-size: 14.5px; font-weight: 400;
   transition: border-color .15s, box-shadow .15s;
 }
-:is(.auth-field input, .phone-fields select, .location-filters input, .location-filters select, .manage-form input, .manage-form select, .manage-form textarea, .manage-search input, .order-form input, .order-form select, .order-form textarea):hover { border-color: var(--line-strong); }
-:is(.auth-field input, .phone-fields select, .location-filters input, .location-filters select, .manage-form input, .manage-form select, .manage-form textarea, .manage-search input, .order-form input, .order-form select, .order-form textarea):focus {
+:is(.auth-field input, .phone-fields select, .location-filters input, .location-filters select, .manage-form input, .manage-form select, .manage-form textarea, .manage-search input, .order-form input, .order-form select, .order-form textarea, .profile-name-form input):hover { border-color: var(--line-strong); }
+:is(.auth-field input, .phone-fields select, .location-filters input, .location-filters select, .manage-form input, .manage-form select, .manage-form textarea, .manage-search input, .order-form input, .order-form select, .order-form textarea, .profile-name-form input):focus {
   border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-wash); outline: none;
 }
 input::placeholder, textarea::placeholder { color: var(--faint); opacity: 1; }
@@ -229,7 +243,6 @@ input::placeholder, textarea::placeholder { color: var(--faint); opacity: 1; }
 .app-nav a[aria-current="page"] { color: var(--ink); background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--ink); }
 .header-account { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .header-mode { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; background: var(--accent-wash); color: var(--accent-deep); font-size: 12.5px; font-weight: 700; transition: background-color .3s, color .3s; }
-.header-avatar { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: var(--ink); color: #fff; font-size: 14px; font-weight: 700; }
 .app-main { width: min(100% - 48px, 1200px); margin: 0 auto; padding: 36px 0 88px; }
 @media (max-width: 760px) {
   .app-header { flex-wrap: wrap; gap: 0 12px; padding: 10px 16px 0; }
@@ -383,7 +396,36 @@ input::placeholder, textarea::placeholder { color: var(--faint); opacity: 1; }
   box-shadow: 0 0 0 6px var(--surface), 0 0 0 7.5px var(--line);
 }
 .profile-card h2 { margin: 18px 0 0; font-size: 22px; }
-.profile-email { margin: 4px 0 22px; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.profile-name-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; }
+.profile-name-row h2 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.profile-name-edit { flex: none; width: 32px; height: 32px; color: var(--muted); }
+.profile-name-edit:hover:not(:disabled) { color: var(--ink); }
+.profile-name-form { display: grid; gap: 8px; margin-top: 18px; text-align: left; }
+.profile-name-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.profile-contact { display: grid; gap: 4px; margin-top: 16px; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.profile-contact p { margin: 0; }
+/* AI-generated (pending review by Deanson) */
+.profile-contact-row { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.profile-contact-row p { min-width: 0; }
+.profile-contact-form { margin-top: 0; }
+.profile-mobile-field { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; }
+.profile-password-button {
+  width: 100%; min-height: 42px; margin-top: 14px; padding: 0 18px;
+  border: 0; border-radius: 999px; background: var(--red-wash); color: var(--red);
+  font-family: var(--font-body); font-size: 14px; font-weight: 700; cursor: pointer;
+  transition: background-color .15s, color .15s;
+}
+.profile-password-button:hover { background: var(--red); color: var(--surface); }
+.profile-deactivate {
+  display: block; margin: 12px auto 0; padding: 4px 8px; border: 0; background: none;
+  color: var(--red); font-family: var(--font-body); font-size: 13px; cursor: pointer;
+}
+.profile-deactivate:hover { text-decoration: underline; }
+.profile-card dialog { text-align: left; }
+.profile-password-rules { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.5; list-style: disc; }
+.otp-modal-message { margin: 12px 0 0; font-size: 13px; text-align: center; }
+.otp-modal-notice { color: var(--muted); }
+.otp-modal-actions { margin-top: 20px; }
 .profile-card .outline-link { width: 100%; }
 .outline-link--muted { border-color: #efb3a8; color: var(--red); cursor: not-allowed; }
 .profile-divider { height: 1px; margin: 22px 0; background: var(--line); }
@@ -401,7 +443,7 @@ input::placeholder, textarea::placeholder { color: var(--faint); opacity: 1; }
 .credit-history { display: inline-block; margin-top: 18px; color: var(--gold-bright); font-size: 14px; font-weight: 700; text-decoration: none; }
 a.credit-history:hover { text-decoration: underline; }
 .credit-card:has(.credit-values) .data-note, .credit-card:has(.credit-values) .load-error { color: rgb(255 255 255 / 75%); }
-.profile-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.profile-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
 .stat-card { min-height: 112px; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-end; gap: 4px; padding: 18px; }
 .stat-card strong { font-family: var(--font-display); font-size: 28px; line-height: 1; }
 .stat-card span { color: var(--muted); font-size: 13px; }
