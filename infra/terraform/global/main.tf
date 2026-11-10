@@ -14,6 +14,9 @@
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 # Scope: A tenth ECR repository, foc/logging-service (issue #52).
 # Author review: pending - Jian Bing owns the deployment.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-11
+# Scope: Deploy roles may create, read and delete their own environment's state lock file (deploy lock).
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 # One stack per account (staging and production share the NUS-managed account, spec §6). It keeps
@@ -199,6 +202,13 @@ resource "aws_iam_role_policy" "deploy" {
         Effect   = "Allow"
         Action   = ["ssm:GetParameter", "ssm:PutParameter"]
         Resource = "arn:aws:ssm:ap-southeast-1:${local.account_id}:parameter/foc-deploy/${each.value}/*"
+      },
+      # AI-generated (Claude Code, 2026-11-11): deploy-images.sh holds Terraform's own state lock
+      # for this environment, so a deploy and a "terraform apply" can't change it at once.
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = "${aws_s3_bucket.state.arn}/${each.value}/terraform.tfstate.tflock"
       },
       # run-checks.sh prints the checks' output into the workflow log.
       {

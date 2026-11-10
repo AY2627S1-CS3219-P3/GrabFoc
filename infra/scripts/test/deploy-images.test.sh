@@ -15,6 +15,10 @@
 #        two checks that every repository missing the tag is named with the way out (issue #52,
 #        review). Verified against the committed script: both fail, nothing else changes.
 # Author review: pending - Jian Bing owns the deployment.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-11
+# Scope: The deploy takes Terraform's state lock, and fails fast when another change moves a
+#   service mid-deploy (Jian Bing's choice after a deploy and an apply clashed on production).
+# Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/deploy-images.test.sh   (no AWS access needed; needs jq)
 # AI-generated (Claude Code).
@@ -34,7 +38,10 @@ echo "$*" >> "$AWS_CALLS"
 arg() { local want="$1"; shift; while [ $# -gt 0 ]; do [ "$1" = "$want" ] && { echo "$2"; return; }; shift; done; }
 list() { local want="$1" on=0; shift; for a in "$@"; do case "$a" in "$want") on=1; continue ;; --*) on=0 ;; esac; [ $on = 1 ] && echo "$a"; done; }
 td() { echo "arn:aws:ecs:ap-southeast-1:1:task-definition/foc-staging-$1:$2"; }
-revision() { if [ -f "$AWS_CALLS.updated.$1" ] && [ "$1" != "${FAKE_STUCK:-}" ]; then echo 4; else echo 3; fi; }
+revision() {
+  if [ -f "$AWS_CALLS.updated.$1" ] && [ "$1" = "${FAKE_MOVED:-}" ]; then echo 5   # someone else's change
+  elif [ -f "$AWS_CALLS.updated.$1" ] && [ "$1" != "${FAKE_STUCK:-}" ]; then echo 4; else echo 3; fi
+}
 case "$*" in
   ecs\ describe-services*)
     services=""; failures=""
@@ -70,6 +77,22 @@ JSON
       foc/${FAKE_NO_IMAGE:-none}) echo "An error occurred (ImageNotFoundException) when calling the DescribeImages operation" >&2; exit 254 ;;
     esac
     echo '{"imageDetails":[{}]}' ;;
+  # AI-generated (Claude Code, 2026-11-11): Terraform's lock file in the state bucket. A put fails
+  # while the file exists, as an S3 conditional write does; FAKE_LOCK_FREES_AFTER=n frees it on the
+  # n-th refused put, like an apply finishing.
+  sts\ get-caller-identity*) echo 111122223333 ;;
+  s3api\ put-object*)
+    if [ -f "$AWS_CALLS.lock" ]; then
+      n=$(( $(cat "$AWS_CALLS.held" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$AWS_CALLS.held"
+      [ -n "${FAKE_LOCK_FREES_AFTER:-}" ] && [ "$n" -ge "$FAKE_LOCK_FREES_AFTER" ] && rm -f "$AWS_CALLS.lock"
+      echo "An error occurred (PreconditionFailed) when calling the PutObject operation: At least one of the pre-conditions you specified did not hold" >&2
+      exit 254
+    fi
+    cp "$(arg --body "$@")" "$AWS_CALLS.lock"; cp "$AWS_CALLS.lock" "$AWS_CALLS.body"; echo '{}' ;;
+  s3api\ get-object*)
+    [ -f "$AWS_CALLS.lock" ] || { echo "An error occurred (NoSuchKey) when calling the GetObject operation" >&2; exit 254; }
+    cp "$AWS_CALLS.lock" "${*: -1}"; echo '{}' ;;
+  s3api\ delete-object*) rm -f "$AWS_CALLS.lock"; echo '{}' ;;
   ecs\ update-service*) touch "$AWS_CALLS.updated.$(arg --service "$@")"; echo '{}' ;;
   ecs\ wait*) case " $* " in *" ${FAKE_WAIT_FAIL:-none} "*) exit 255 ;; esac ;;
   ecs\ list-tasks*) echo "{\"taskArns\":[\"arn:aws:ecs:ap-southeast-1:1:task/foc-staging/$(arg --service-name "$@")-1\"]}" ;;
@@ -86,6 +109,10 @@ FAKE
 chmod +x "$work/bin/aws"
 export PATH="$work/bin:$PATH" AWS_CALLS="$work/calls" HEALTH_INTERVAL=0 HEALTH_CHECKS=3
 reset() { rm -f "$AWS_CALLS".*; : > "$AWS_CALLS"; }
+# Someone else holds the lock: who, and since when (RFC 3339, as Terraform writes it).
+hold() { printf '{"ID":"other-id","Operation":"OperationTypeApply","Who":"%s","Created":"%s"}' "$1" "$2" > "$AWS_CALLS.lock"; }
+now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+export LOCK_POLL=0
 
 reset
 out=$("$SCRIPT" staging new1234 2>&1); code=$?
@@ -109,8 +136,8 @@ update frontend
 wait frontend"
 check "layers in order, each waiting before the next" '[ "$order" = "$expected" ]'
 check "services move to the new revision" 'grep -q "update-service .*--service frontend .*task-definition/foc-staging-frontend:4" "$AWS_CALLS"'
-check "tag recorded last" 'tail -1 "$AWS_CALLS" | grep -q "^ssm put-parameter .*--name /foc-deploy/staging/image-tag .*--value new1234"'
-check "tag parameter overwrites and is a plain String" 'tail -1 "$AWS_CALLS" | grep -q -- "--type String --overwrite"'
+check "tag recorded last" 'grep -v -E "^(s3api|sts) " "$AWS_CALLS" | tail -1 | grep -q "^ssm put-parameter .*--name /foc-deploy/staging/image-tag .*--value new1234"'
+check "tag parameter overwrites and is a plain String" 'grep -v -E "^(s3api|sts) " "$AWS_CALLS" | tail -1 | grep -q -- "--type String --overwrite"'
 check "every call pins the region" '[ "$(grep -vc -- "--region ap-southeast-1" "$AWS_CALLS")" = 0 ]'
 check "uses the environment's cluster" 'grep -q "update-service --region ap-southeast-1 --cluster foc-staging" "$AWS_CALLS"'
 
@@ -118,6 +145,46 @@ repos=$(grep "^ecr describe-images" "$AWS_CALLS" | sed -E 's/.*--repository-name
 check "every foc image is checked on the tag" '[ "$repos" = "foc/api-gateway foc/chat-service foc/credit-service foc/frontend foc/kafka-init foc/logging-service foc/notification-service foc/order-service foc/supplier-service foc/user-service " ]'
 check "images are checked with the tag under deploy" '[ "$(grep "^ecr describe-images" "$AWS_CALLS" | grep -vc -- "--image-ids imageTag=new1234")" = 0 ]'
 check "images are checked before any change" '[ "$(grep -n "^ecr describe-images" "$AWS_CALLS" | tail -1 | cut -d: -f1)" -lt "$(grep -n "^ecs register-task-definition" "$AWS_CALLS" | head -1 | cut -d: -f1)" ]'
+
+# AI-generated (Claude Code, 2026-11-11): the deploy holds Terraform's own state lock, so a
+# "terraform apply" and a deploy can never change one environment at once.
+check "the lock is Terraform's lock file for the environment" 'grep -q "^s3api put-object .*--bucket foc-terraform-state-111122223333 .*--key staging/terraform.tfstate.tflock" "$AWS_CALLS"'
+check "the lock is only taken if nobody holds it" 'grep "^s3api put-object" "$AWS_CALLS" | grep -q -- "--if-none-match \*"'
+check "the lock is taken before anything is read or changed" '[ "$(grep -n "^s3api put-object" "$AWS_CALLS" | head -1 | cut -d: -f1)" -lt "$(grep -n "^ecs describe-services" "$AWS_CALLS" | head -1 | cut -d: -f1)" ]'
+check "the lock is released at the end" 'tail -1 "$AWS_CALLS" | grep -q "^s3api delete-object .*--key staging/terraform.tfstate.tflock" && [ ! -f "$AWS_CALLS.lock" ]'
+
+reset
+hold "jianbing@laptop (terraform apply)" "$(now)"
+out=$(LOCK_WAIT=0 "$SCRIPT" staging new1234 2>&1); code=$?
+check "a held lock stops the deploy before any change" '[ $code -ne 0 ] && ! grep -q -E "describe-services|update-service|put-parameter" "$AWS_CALLS"'
+check "the refusal says who holds the lock" 'grep -q "jianbing@laptop" <<<"$out"'
+check "someone else's lock is left alone" 'grep -q other-id "$AWS_CALLS.lock" && ! grep -q "^s3api delete-object" "$AWS_CALLS"'
+
+reset
+hold "jianbing@laptop (terraform apply)" "$(now)"
+out=$(FAKE_LOCK_FREES_AFTER=2 LOCK_WAIT=60 "$SCRIPT" staging new1234 2>&1); code=$?
+check "the deploy waits for a held lock and then runs" '[ $code -eq 0 ] && grep -q "locked by jianbing@laptop" <<<"$out" && grep -q "put-parameter .*image-tag" "$AWS_CALLS"'
+
+reset
+hold "a crashed run" "2020-01-01T00:00:00Z"
+out=$(LOCK_WAIT=0 "$SCRIPT" staging new1234 2>&1); code=$?
+check "an abandoned lock (over 3 hours) is taken over" '[ $code -eq 0 ] && grep -q "a crashed run" <<<"$out"'
+
+reset
+out=$(FAKE_WAIT_FAIL=api-gateway "$SCRIPT" staging new1234 2>&1); code=$?
+check "a failed deploy still releases the lock" '[ $code -ne 0 ] && grep -q "^s3api delete-object" "$AWS_CALLS" && [ ! -f "$AWS_CALLS.lock" ]'
+
+reset
+GITHUB_RUN_ID=42 GITHUB_WORKFLOW="Deploy staging" "$SCRIPT" staging new1234 > /dev/null 2>&1
+check "the lock says which run holds it" '[ "$(jq -r .Who "$AWS_CALLS.body")" = "GitHub run 42 (Deploy staging)" ]'
+
+# A change that skips the lock (the console, say) moving a service mid-deploy: say so at once,
+# rather than waiting out the health checks and calling the service unhealthy.
+reset
+out=$(FAKE_MOVED=user-service HEALTH_CHECKS=50 "$SCRIPT" staging new1234 2>&1); code=$?
+check "a service moved by another change fails the deploy" '[ $code -ne 0 ] && ! grep -q "put-parameter" "$AWS_CALLS"'
+check "the failure says it was moved, and to what" 'grep -q "user-service was moved to foc-staging-user-service:5 by another change" <<<"$out"'
+check "it fails at once, not after the health checks" '[ "$(grep -c "^ecs describe-services" "$AWS_CALLS")" -lt 10 ]'
 
 reset
 out=$(FAKE_NO_IMAGE=frontend "$SCRIPT" production new1234 2>&1); code=$?

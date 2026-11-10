@@ -14,6 +14,9 @@
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 # Scope: An eleventh ECR repository, foc/logging-service (issue #52).
 # Author review: pending - Jian Bing owns the deployment.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-11
+# Scope: Checks the deploy roles' access to the state bucket is only their own lock file (deploy lock).
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -138,6 +141,21 @@ run "least_privilege" {
       ])
     ])
     error_message = "The plan role may write only the two environments' lock files."
+  }
+  # AI-generated (Claude Code, 2026-11-11): a deploy holds Terraform's state lock (deploy-images.sh),
+  # so it may create, read and delete its own environment's lock file, and nothing else in the bucket.
+  assert {
+    condition = alltrue([
+      for env in ["staging", "production"] : [
+        for s in jsondecode(aws_iam_role_policy.deploy["deploy-${env}"].policy).Statement : s
+        if length([for a in flatten([s.Action]) : a if startswith(a, "s3:")]) > 0
+        ] == [{
+          Effect   = "Allow"
+          Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+          Resource = "${aws_s3_bucket.state.arn}/${env}/terraform.tfstate.tflock"
+      }]
+    ])
+    error_message = "A deploy role may touch only its own environment's state lock file in the state bucket."
   }
 }
 
