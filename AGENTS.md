@@ -30,6 +30,9 @@ Author review: Jian Bing supplied the approval it records; the wording is Claude
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-30
 Scope: Moved §7 Notification Service into notification-service/AGENTS.md, now that the folder exists (#149); §7 and the "Where to find things" row point there.
 Author review: pending — Jie Yang to record the review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Pointed the AI-attribution rule at the single ai/usage-log.md after the member logs were combined.
+Author review: Human reviewed (Jie Yang, 2026-11-10).
 -->
 
 # AGENTS.md — FoC (CS3219 AY26/27 S1, Project Group 3)
@@ -104,7 +107,7 @@ _Origin: AI doc; Restated from the Lecture and Brief Appendix 2_
     Author review: <what the human validated, edited or added>
     ```
   - **Pasted AI code blocks marked** with a comment such as `// AI-generated (edited by <name>)`.
-  - **An entry in your own log, `/ai/usage-log/<member>.md`** (indexed by `/ai/usage-log.md`; don't add entries to the index), with the timestamp, tool and mode (generate / refactor / debug / explain), the **exact prompts** and key responses, and the usage scenario.
+  - **An entry in your section of `/ai/usage-log.md`**, under the service the work was for: the date, the tool, what was discussed and built with the AI, and the decisions you made. (The earlier entry-by-entry logs, with exact prompts, are in git history at commit `32bbb85`.)
   - A human reviews, tests and understands the change before it is merged; each member stays accountable for the whole codebase.
   - Before final submission: a project-level **AI Use Summary** as the last section of `README.md` (tools, prohibited phases avoided, what AI was used for, how outputs were verified, link to the log), and all `AGENTS.md` / `SKILLS.md` files committed.
 - Small changes inside one service that follow the documented rules (a bug fix, a test, a copy change) can go ahead without a separate plan.

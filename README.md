@@ -124,7 +124,7 @@ top-level folder, with no `backend/` wrapper.
 │   ├── kafka/             # the shared broker and its topic list
 │   └── terraform/         # AWS deployment
 ├── docs/                  # designs, plans and the demo runbook
-├── ai/usage-log/          # per-member AI usage logs
+├── ai/usage-log.md        # the team's AI usage log
 ├── compose.yaml           # includes each service's own compose.yaml
 ├── .env.example
 ├── AGENTS.md
