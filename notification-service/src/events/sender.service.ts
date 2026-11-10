@@ -21,6 +21,9 @@
  * Scope: A CREATED proposal email counts as superseded once its proposal's resolution is recorded
  *        (#186, from Jie Yang's review).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Proposal emails are superseded by proposal_moot(), not by any later state (#186).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { log } from '../common/log';
 // AI-generated (pending review)
@@ -107,15 +110,19 @@ export class SenderService {
     // superseded, and a repeat of the same state doesn't supersede the earlier one.
     // LEFT JOIN: an OrderChangeRequest never records a state, so its order may have none yet (#186).
     // Test s.order_id, not the rank: order_status_rank(NULL) falls through to 6.
-    // A CREATED proposal email is also superseded once its proposal's resolution has been recorded:
-    // a resolution doesn't change the order's state, so the rank check can't see it (#186).
+    // Proposal emails (#186) follow the proposal, not every state change: superseded once it can't
+    // be answered (proposal_moot: order finished, or a timing change's order arrived), and a CREATED
+    // email once its proposal's resolution is recorded. A pickup in between leaves them to send.
     const { rows } = await this.pool.query<Row>(
       `SELECT n.id, n.role, n.recipient_id, e.status, e.order_id, e.reason, n.last_error,
               e.change_outcome, e.change_kind, e.proposed_window_start, e.proposed_window_end,
-              ((s.order_id IS NOT NULL AND order_status_rank(s.last_status) > order_status_rank(e.status))
-                OR (e.change_outcome = 'CREATED' AND EXISTS (
-                      SELECT 1 FROM notification_events r
-                       WHERE r.confirmation_id = e.confirmation_id AND r.change_outcome <> 'CREATED'))) AS superseded
+              CASE WHEN e.change_outcome IS NULL
+                THEN s.order_id IS NOT NULL AND order_status_rank(s.last_status) > order_status_rank(e.status)
+                ELSE (s.order_id IS NOT NULL AND proposal_moot(s.last_status, e.change_kind))
+                  OR (e.change_outcome = 'CREATED' AND EXISTS (
+                        SELECT 1 FROM notification_events r
+                         WHERE r.confirmation_id = e.confirmation_id AND r.change_outcome <> 'CREATED'))
+              END AS superseded
          FROM notifications n
          JOIN notification_events e USING (event_id)
          LEFT JOIN notification_order_states s ON s.order_id = e.order_id

@@ -13,6 +13,10 @@
  * Scope: Added tests that a proposal's resolution supersedes its CREATED email waiting for a retry
  *        (#186, from Jie Yang's review).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Added tests that a proposal's waiting email survives a pickup but not the end of the
+ *        proposal (#186).
+ * Author review: pending — Jie Yang to record the review.
  */
 // AI-generated (pending review)
 import { Logger } from '@nestjs/common';
@@ -408,5 +412,62 @@ describe('a resolved proposal supersedes its unsent CREATED email (#186)', () =>
     const confirmationId = randomUUID();
     await events.handle(change(orderId, confirmationId, 'REJECTED'));
     expect(await events.handle(change(orderId, confirmationId, 'CREATED'))).toBe('DISCARDED_STALE');
+  });
+});
+
+describe('a waiting proposal email follows the proposal, not every state change (#186)', () => {
+  type Kind = 'TIMING_CHANGE' | 'CANCELLATION' | 'COMPLETION';
+  const created = (orderId: string, kind: Kind): OrderEvent =>
+    event('ACCEPTED', {
+      orderId,
+      eventType: 'OrderChangeRequest',
+      change: {
+        outcome: 'CREATED',
+        kind,
+        proposedBy: courierId,
+        confirmationId: randomUUID(),
+        proposedWindowStart: kind === 'TIMING_CHANGE' ? new Date('2026-11-11T04:00:00.000Z') : null,
+        proposedWindowEnd: kind === 'TIMING_CHANGE' ? new Date('2026-11-11T06:00:00.000Z') : null,
+      },
+    });
+
+  /** The courier proposes at ACCEPTED; the email to the requester fails while User is down. */
+  async function failed(kind: Kind) {
+    const orderId = randomUUID();
+    await events.handle(event('ACCEPTED', { orderId }));
+    const proposal = created(orderId, kind);
+    await events.handle(proposal);
+    users.down = true;
+    expect((await sender.sendPending(proposal.eventId)).retryable).toEqual(['USER_UNAVAILABLE']);
+    users.down = false;
+    return { orderId, proposal };
+  }
+
+  it.each(['TIMING_CHANGE', 'CANCELLATION'] as const)('still sends a %s request on the retry after a pickup', async (kind) => {
+    const { orderId, proposal } = await failed(kind);
+    await events.handle(event('PICKED_UP', { orderId }));
+    await events.handle(event('IN_PROGRESS', { orderId }));
+    expect(await sender.retryFailed(proposal.eventId)).toMatchObject({ sent: 1, superseded: 0 });
+    expect(mailer.sent.map((m) => m.email.subject)).toContain(
+      kind === 'TIMING_CHANGE' ? 'New delivery window proposed' : 'Request to cancel your order',
+    );
+  });
+
+  it('drops a timing change request once the order has arrived', async () => {
+    const { orderId, proposal } = await failed('TIMING_CHANGE');
+    await events.handle(event('ARRIVED', { orderId }));
+    expect(await sender.retryFailed(proposal.eventId)).toMatchObject({ sent: 0, superseded: 1 });
+  });
+
+  it('keeps a cancellation request once the order has arrived, since it can still be agreed', async () => {
+    const { orderId, proposal } = await failed('CANCELLATION');
+    await events.handle(event('ARRIVED', { orderId }));
+    expect(await sender.retryFailed(proposal.eventId)).toMatchObject({ sent: 1, superseded: 0 });
+  });
+
+  it.each(['COMPLETED', 'CANCELLED'] as const)('drops any request once the order is %s', async (status) => {
+    const { orderId, proposal } = await failed('CANCELLATION');
+    await events.handle(event(status, { orderId }));
+    expect(await sender.retryFailed(proposal.eventId)).toMatchObject({ sent: 0, superseded: 1 });
   });
 });

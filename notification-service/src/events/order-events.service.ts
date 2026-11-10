@@ -16,6 +16,9 @@
  *        still be sent, and a CREATED arriving after its resolution is stale (#186, from Jie Yang's
  *        review).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: A proposal event is stale only when proposal_moot() says so, not on any later state (#186).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -28,7 +31,8 @@ import { isRetryable, SUPERSEDED } from './sender.service';
  * What happened to an event:
  * - DUPLICATE: its event id was seen before; nothing changed.
  * - DISCARDED_STALE: an earlier state than the last one handled, or after a final state. For an
- *   OrderChangeRequest: the order has since moved to a later state, or has finished.
+ *   OrderChangeRequest: the proposal can't be answered any more (order finished, or a timing
+ *   change's order arrived), or a CREATED whose proposal is already resolved.
  * - DISCARDED_NO_AUDIENCE: a state nobody is emailed about (PENDING), or a proposal outcome
  *   nobody is emailed about (an approved completion or cancellation).
  * - QUEUED: recipient rows were created; SenderService sends them next.
@@ -113,16 +117,16 @@ export class OrderEventsService {
         return this.finish(client, event.eventId, 'DISCARDED_STALE');
       }
       // A proposal doesn't change the order's state, so it never moves notification_order_states.
-      // It is stale once the order has finished or been handled in a later state than the one it
-      // was published with: a later email already says more (#186).
-      const moved = await client.query(
-        `SELECT 1 FROM notification_order_states
-          WHERE order_id = $1 AND order_status_rank(last_status) > order_status_rank($2::order_status)`,
-        [event.orderId, event.status],
+      // It is stale only once the proposal can't be answered any more (proposal_moot): the order
+      // has finished, or a timing change's order has arrived. A pickup or start of delivery leaves
+      // it open (#186). Checked against the event's own status and the last state handled.
+      const moot = await client.query<{ moot: boolean }>(
+        `SELECT proposal_moot($2::order_status, $3)
+                OR EXISTS (SELECT 1 FROM notification_order_states
+                            WHERE order_id = $1 AND proposal_moot(last_status, $3)) AS moot`,
+        [event.orderId, event.status, event.change.kind],
       );
-      if (moved.rowCount !== 0 || event.status === 'COMPLETED' || event.status === 'CANCELLED') {
-        return this.finish(client, event.eventId, 'DISCARDED_STALE');
-      }
+      if (moot.rows[0].moot) return this.finish(client, event.eventId, 'DISCARDED_STALE');
       recipients = changeRecipients(event.change, event.requesterId, event.courierId);
       if (recipients.length === 0) return this.finish(client, event.eventId, 'DISCARDED_NO_AUDIENCE');
       return this.queue(client, event.eventId, recipients);

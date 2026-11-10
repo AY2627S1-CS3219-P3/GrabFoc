@@ -16,6 +16,10 @@
  * Scope: Added notification_events.confirmation_id and its partial index, so a proposal's
  *        resolution can supersede its unsent CREATED email (#186); asked for by Jie Yang in review.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Added proposal_moot(): proposal emails follow the proposal's lifetime, not every state
+ *        change (#186), as Jie Yang asked.
+ * Author review: pending — Jie Yang to record the review.
  */
 
 /**
@@ -40,6 +44,13 @@ CREATE OR REPLACE FUNCTION order_status_rank(s order_status) RETURNS INT IMMUTAB
         WHEN 'PENDING' THEN 0 WHEN 'ACCEPTED' THEN 1 WHEN 'PICKED_UP' THEN 2
         WHEN 'IN_PROGRESS' THEN 3 WHEN 'ARRIVED' THEN 4 ELSE 6
     END
+$fn$;
+
+-- Whether a proposal of this kind can no longer be answered once the order is in state s (#186):
+-- the order has finished, or, for a timing change, the order has arrived (no window changes after
+-- that). Moving through PICKED_UP or IN_PROGRESS leaves a proposal open, so its emails still matter.
+CREATE OR REPLACE FUNCTION proposal_moot(s order_status, kind TEXT) RETURNS BOOLEAN IMMUTABLE LANGUAGE SQL AS $fn$
+    SELECT order_status_rank(s) = 6 OR (kind = 'TIMING_CHANGE' AND order_status_rank(s) >= 4)
 $fn$;
 
 -- One row per order.events event. The insert (ON CONFLICT DO NOTHING) is the deduplication.

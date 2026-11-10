@@ -28,6 +28,9 @@ Author review: pending — Jie Yang to record the review.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
 Scope: Recorded that a proposal's resolution supersedes its unsent CREATED email, and the confirmation_id column (from Jie Yang's review).
 Author review: pending — Jie Yang to record the review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Recorded that proposal emails follow the proposal's lifetime (proposal_moot), from Jie Yang's decision.
+Author review: pending — Jie Yang to record the review.
 -->
 
 # AGENTS.md — Notification Service
@@ -149,7 +152,7 @@ _Origin: Team (Jie Yang, 2026-11-10, from Claude Code's options in chat)_
 
 - **[Decided]** Recorded in `notification_events` like any event (deduplicated on `eventId`), with six more columns: `change_outcome`, `change_kind`, `proposed_by`, `proposed_window_start`, `proposed_window_end` and `confirmation_id` (indexed), which ties a proposal's two events together. Added with `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, so an existing database gets them on its next start.
 - **[Decided]** A proposal never moves `notification_order_states`: it is not a state change. Its `data.status` is the order's state when Order published it.
-- **[Decided]** Stale check: discarded as `DISCARDED_STALE` when its `status` is `COMPLETED` or `CANCELLED`, or a later state than its `status` has been handled. Before a send, first or retry, its email is dropped as `SUPERSEDED` once a later state has been handled, as for state emails.
+- **[Decided]** (Jie Yang, 2026-11-10) Proposal emails follow the proposal, not every state change. A proposal event is `DISCARDED_STALE`, and its email dropped as `SUPERSEDED` before a send or retry, only once the proposal can't be answered: the order is `COMPLETED` or `CANCELLED`, or, for a `TIMING_CHANGE`, the order has reached `ARRIVED` (no window changes after that). A pickup or start of delivery leaves it open, so a request waiting for a retry still goes out. The rule is the SQL function `proposal_moot()` in `schema.ts`, used by both checks.
 - **[Decided]** (Jie Yang, 2026-11-10, in review) A resolution (`APPROVED`, `REJECTED`, `EXPIRED`) doesn't change the order's state, so the rank check can't see it. When one is handled, the same proposal's `CREATED` emails that could still go out (`PENDING`, or `FAILED` with a retryable error) are marked `FAILED` / `SUPERSEDED` in the same transaction. Otherwise a retry would ask the other party to answer a proposal that is already settled. An email that failed for good keeps its error. The sender also counts a `CREATED` email as superseded once a resolution for its proposal is recorded, and a `CREATED` that arrives after its resolution is `DISCARDED_STALE`.
 - **[Decided]** The email is chosen by `change_outcome` and `change_kind`, never by `status`. Otherwise a proposal on an `ACCEPTED` order would be emailed as a second "A courier accepted your order".
 - Templates in `src/mail/templates.ts`; proposed windows are shown in Singapore time.

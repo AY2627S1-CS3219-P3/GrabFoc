@@ -7,6 +7,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
  * Scope: Added tests for OrderChangeRequest (#186).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: A proposal stays open through a pickup; a timing change is stale once the order arrived (#186).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
@@ -246,12 +249,20 @@ describe('OrderChangeRequest (#186)', () => {
     expect(await service.handle(change(orderId, 'COMPLETED', 'APPROVED', 'COMPLETION', courierId))).toBe('DISCARDED_STALE');
   });
 
-  it('is stale once a later state was handled first', async () => {
+  it('stays open through a pickup: a later state alone does not make a proposal stale', async () => {
     const orderId = randomUUID();
     await service.handle(event(orderId, 'PICKED_UP'));
     const proposed = change(orderId, 'ACCEPTED', 'CREATED', 'TIMING_CHANGE', requesterId);
-    expect(await service.handle(proposed)).toBe('DISCARDED_STALE');
+    expect(await service.handle(proposed)).toBe('QUEUED');
     expect(await lastStatus(orderId)).toBe('PICKED_UP');
+  });
+
+  it('is stale once a timing change can no longer apply: the order has arrived', async () => {
+    const orderId = randomUUID();
+    await service.handle(event(orderId, 'ARRIVED'));
+    expect(await service.handle(change(orderId, 'IN_PROGRESS', 'CREATED', 'TIMING_CHANGE', requesterId))).toBe('DISCARDED_STALE');
+    // A cancellation can still be agreed at ARRIVED.
+    expect(await service.handle(change(orderId, 'IN_PROGRESS', 'CREATED', 'CANCELLATION', courierId))).toBe('QUEUED');
   });
 
   it('changes nothing for a duplicate', async () => {
