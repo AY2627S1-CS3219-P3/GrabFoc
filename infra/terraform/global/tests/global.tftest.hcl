@@ -8,6 +8,9 @@
 # Scope: Deploy part 3 (#143): the checks and notification-service repos, the plan role's parameter
 #        exceptions, and the deploy roles' tag parameters and log reads.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Chat on AWS: expect its repository, database, migrations and service.
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -42,17 +45,17 @@ run "global" {
     error_message = "State bucket must block all public access."
   }
   assert {
-    condition = length(aws_ecr_repository.service) == 9 && alltrue([
+    condition = length(aws_ecr_repository.service) == 10 && alltrue([
       for r in aws_ecr_repository.service : r.image_tag_mutability == "IMMUTABLE"
     ])
-    error_message = "Nine immutable ECR repositories expected."
+    error_message = "Ten immutable ECR repositories expected."
   }
   assert {
     condition = toset(keys(output.ecr_repository_urls)) == toset([
       "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
-      "api-gateway", "frontend", "kafka-init", "checks",
+      "chat-service", "api-gateway", "frontend", "kafka-init", "checks",
     ])
-    error_message = "ecr_repository_urls must be keyed by the nine image names."
+    error_message = "ecr_repository_urls must be keyed by the ten image names."
   }
   assert {
     condition     = jsondecode(aws_iam_role.github["deploy-production"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AY2627S1-CS3219-P3@326464642/GrabFoc@1361285513:environment:production"

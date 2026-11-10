@@ -151,6 +151,8 @@ Scope: Wrote the 2026-11-09 entry on bringing #191 and #229 up to date and chat'
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 SoCLaaS token cap entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Wrote the 2026-11-09 chat-on-AWS entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
 -->
 
@@ -158,6 +160,55 @@ Author review: pending — Jian Bing to record what he checked.
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-09 — Putting chat on AWS
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** plan, generate
+**Files:** `infra/terraform/global/main.tf`, `infra/terraform/envs/{staging,production}/main.tf`,
+`infra/terraform/modules/services/main.tf`, `infra/terraform/modules/server/user_data.sh.tftpl`,
+`infra/scripts/{push-images,deploy-images,new-secrets,put-secrets}.sh`, their tests, the Terraform tests,
+`infra/terraform/README.md`, `infra/secrets/README.md`
+
+**Scenario:** Chat (#230) was never deployed to AWS, so the site's chat WebSocket got `503 no healthy upstream`
+from the gateway. Jie Yang shared a plan to deploy it. Claude compared it with `main`: #191 had already set the
+gateway's `CHAT_SERVICE_URL` and Order's ticket secret. Claude also found ordering traps: ECR tags are immutable,
+the environments look repositories up by name, `deploy-images.sh` stops if a service is missing, and the gateway
+must be restarted to learn the new name. I approved the plan with its two design calls (192 MiB for chat-service;
+one SSM secret for Order and Chat), and chose to plan the supplier images after chat. Claude began test-first on
+`feat/chat-aws` (failing tests for the new repository, database and service). At my request it wrote a handoff
+document for a teammate, then I decided to continue myself, so Claude finished the change and removed the
+handoff document from the branch (it stays in the branch's history, commit `0454d9c`).
+
+**Prompts (exact, in order):**
+> ok new pr, lets do 1 and 3, then also we didnt properly deploy real time chat [Image #34]
+
+(Pasted with it: Jie Yang's chat about the WebSocket failure. Image #34: the site's chat stuck on "Reconnecting".)
+
+> @yimyamyum also the supplier image is there a way to host them in AWS instead of github.. lowk loading it is q slow haha
+
+(A teammate's message, pasted.)
+
+(Then Jie Yang's pasted plan, "Deploy the Chat Service to AWS: Plan".)
+
+My answers to Claude's questions: "Approve, you build it (Recommended)" and "Plan it after chat (Recommended)".
+
+> before usage runs out, explort all thsi to a md to give my teammate to continue
+
+> nvm lets continue ourself
+
+**What it produced:** `chat-db`, `chat-migrate` (an init container in the chat-service task) and `chat-service` in
+the services module, copying `chat-service/compose.yaml`; the chat-service image repository and its lookups;
+`/data/chat-db` for new servers; chat-service in `push-images.sh` and in `deploy-images.sh`'s app layer;
+`CHAT_POSTGRES_PASSWORD` in both secrets scripts; and a runbook section on adding a service to a running
+environment, which includes restarting the gateway so Service Connect gives it the new name.
+
+**What I changed or rejected:** Nothing.
+
+**Verification:** Claude watched each new test fail first, then pass. That covers chat's environment, secrets,
+image and migration order; the repository count; the folder, stop-first and layer lists; the server folder; the
+image build; the deploy order; and both secrets scripts. Then `infra/terraform/check.sh` (every stack), all six
+script tests, the checks-selection tests and `actionlint` passed. The live check is the staging rollout before
+merging. My own check: pending.
 
 ### 2026-11-09 — The SoCLaaS token cap cut a review short
 

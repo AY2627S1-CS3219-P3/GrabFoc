@@ -9,6 +9,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 # Scope: The managed-draining check (a staging server replacement hung on it).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Expects the /data/chat-db folder (chat on AWS).
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -87,7 +90,7 @@ run "server" {
   }
   assert {
     condition = strcontains(local.user_data, "ECS_CLUSTER=foc-staging") && strcontains(
-      local.user_data, "mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/notification-db /data/redis /data/kafka"
+      local.user_data, "mkdir -p /data/user-db /data/supplier-db /data/credit-db /data/order-db /data/notification-db /data/chat-db /data/redis /data/kafka"
     ) && strcontains(local.user_data, "chown 1000:1000 /data/kafka")
     error_message = "User data must join the cluster and prepare the /data folders."
   }
