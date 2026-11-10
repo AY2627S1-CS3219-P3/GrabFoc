@@ -28,6 +28,15 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-10 — A control that proved nothing, and two claims I had not checked (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: "fix 233, wait for further conversations until done"
+- **A set difference is not an append.** My JSON entry comparison took the chunks that were not in the old set as new - so editing a *historical* entry (`Author review: Pending human review.` to a real name) made that chunk look fresh and complete, and a change that appended nothing reported success. It counts now: the entries beyond the old count are the appended ones.
+- **My first control for that proved nothing, and I nearly believed it.** I wrote the test edit against `Author review: pending`, which is not the text in that file (`Pending human review.`), so `str.replace` silently did nothing, both versions agreed, and the output looked like a result. Fixed the string, asserted the edit applied, and then it separated cleanly: flagged by today's version, **not** flagged by yesterday's. A control that cannot fail is worse than no control, because it reads as evidence.
+- **Two claims in the runbook I had not verified.** The smoke id was `date +%s`, so two runs in the same second - or two people rehearsing at once - share an id and read each other's rows, which is the same false pass as the fixed `smoke-1` two rounds ago wearing a timestamp. `$RANDOM` added. And I had written that `.env.example` "carries the `openssl` line for each" of the three 32-byte User Service keys; it carries one, for the JWT key. So I added the missing line to `.env.example` (`openssl rand -base64 32`, checked that it decodes to exactly 32 bytes) and spelled the commands out in the runbook too, saying plainly that this file did not have them when the runbook claimed it did.
+- Verified: the whole checker regression, both controls in both directions, the smoke block run verbatim (`rows=2`), 23 renderer tests, 29 integration tests on the real pinned Envoy.
+
 ### 2026-11-10 — An escape is not a literal, and the tool's own blind spot (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

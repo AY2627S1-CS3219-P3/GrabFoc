@@ -48,6 +48,11 @@ Scope: Review: the smoke check waits for both of its rows rather than for the co
   and section 5 polls as well, since step 9's own line can still be in flight. Noted that the
   section 5 block needs jq, which this machine does not have - the loop spins silently without it.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: the smoke id takes $RANDOM as well as the timestamp, because two runs in one second
+  would share it and read each other's rows; and the openssl commands are spelled out here, since
+  this file claimed .env.example carried them and it did not.
+Author review: Cole Lin, read and approved.
 -->
 
 # Demo runbook
@@ -66,7 +71,11 @@ Four things, none of which you want to discover live.
 every value blank, and `user-service` refuses to start without its own keys:
 `USER_AES_KEY`, `USER_EMAIL_HMAC_KEY` and `USER_OTP_HMAC_KEY` (32 bytes base64 each),
 `USER_JWT_PRIVATE_KEY` (a PKCS#8 PEM, base64 on one line) and `USER_JWT_KID` (any stable string).
-`.env.example` carries the `openssl` line for each. Set those first, or nothing below happens — the
+Generate all three 32-byte ones with `openssl rand -base64 32`, and the signing key with
+`openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 | base64 | tr -d '
+'`; `USER_JWT_KID`
+is any stable string. `.env.example` now carries those lines too - it did not when this was written,
+which is why they are repeated here. Set them first, or nothing below happens — the
 four items here are the ones that catch you out on a `.env` you believed was finished.
 
 1. **Four secrets in the root `.env`**, each at least 32 characters
@@ -178,7 +187,7 @@ What is listening, on the host:
 One command, and it proves the whole feature (the loop is not optional - see below):
 
 ```bash
-id="smoke-$(date +%s)"
+id="smoke-$(date +%s)-$RANDOM"
 curl -s -o /dev/null -H "x-request-id: $id" http://localhost:3002/locations
 for attempt in $(seq 20); do
   rows=$(docker exec foc-logging-db-1 psql -U foc -d logging -tAc \
@@ -205,7 +214,9 @@ writing.
 **A fresh id every time, not a fixed one.** The store's volume survives a `down`/`up`, so a
 hard-coded id finds the rows from the last rehearsal and reports success whatever the shipper, the
 consumer or the database are doing now. The whole value of this check is that the rows cannot
-already exist.
+already exist - which is also why `$RANDOM` is there and not just the timestamp: two runs in the
+same second, or two people rehearsing at once, would otherwise share an id and read each other's
+rows.
 
 ---
 

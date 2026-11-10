@@ -43,6 +43,11 @@ Scope: Review: validate the Tool line's shape rather than its label - "Tool: Cla
   because that header is one physical line, so editing a character in it made git call the whole
   line added and every historical entry on it looked new.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: count a JSON file's entries rather than diffing them as a set. Editing a historical
+  entry made that chunk look fresh, so a change that appended nothing reported success; the entries
+  beyond the old count are the appended ones.
+Author review: Cole Lin, read and approved.
 """
 # Lists files your branch changes that carry an AI disclosure header but gained no entry in it.
 #
@@ -259,9 +264,13 @@ def main():
         value = json_disclosure_value(text) if json_file else None
         if value is not None:
             was = json_disclosure_value(git("show", f"{merge_base}:{base_of[path]}")) or ""
-            before = set(entry_chunks(was))
-            fresh = [c for c in entry_chunks(value) if c not in before]
-            if not any(complete_entry(chunk) for chunk in fresh):
+            now = entry_chunks(value)
+            # Count, not set difference: editing a historical entry - `Author review: pending`
+            # to `approved`, say - makes that chunk absent from the old set and look fresh, so a
+            # set difference reported success for a change that appended nothing. The entries
+            # beyond the old count are the appended ones, and one has to be complete (review).
+            appended = now[len(entry_chunks(was)):]
+            if not any(complete_entry(chunk) for chunk in appended):
                 missing.append(path)
             continue
         # Elsewhere an entry spans lines, so the added header lines are what to look at. A complete
