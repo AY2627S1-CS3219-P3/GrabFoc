@@ -7,6 +7,11 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: Deactivation saves a SupplierDeactivated event in the same transaction (issue #120).
  * Author review: pending — Jie Yang to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+ * Scope: The `building` list filter matches like `name` - case-insensitive substring -
+ *        instead of an exact, case-sensitive match. Both filters escape LIKE's own `%` and
+ *        `_`, so a typed one is matched literally rather than as a wildcard (review).
+ * Author review: pending - Cole Lin.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -80,6 +85,17 @@ function toDto(row: LocationRow & { distance_m?: string | null }): LocationDto {
   };
 }
 
+/**
+ * A LIKE pattern matching `term` anywhere, with LIKE's own metacharacters taken literally, so a
+ * search for "50%" looks for "50%" rather than for everything. Backslash is LIKE's default escape
+ * character in PostgreSQL, and the pattern is bound as a parameter, so nothing here is parsed as a
+ * string literal on the way in.
+ */
+// AI-generated (Claude Code); review pending - Cole Lin.
+function contains(term: string): string {
+  return `%${term.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
+}
+
 /** Maps API field names to column values (hours converted from HHMMhrs to minutes). */
 function toColumns(input: Partial<CreateLocation>): Record<string, unknown> {
   const cols: Record<string, unknown> = {};
@@ -129,12 +145,17 @@ export class LocationsService {
     };
 
     if (query.includeInactive !== 'true') where.push(`status = 'ACTIVE'`);
-    if (query.name !== undefined) where.push(`lower(name) LIKE '%' || lower(${param(query.name)}) || '%'`);
+    if (query.name !== undefined) where.push(`lower(name) LIKE lower(${param(contains(query.name))})`);
     if (query.type !== undefined) {
       await this.assertTypeExists(query.type);
       where.push(`type = ${param(query.type)}`);
     }
-    if (query.building !== undefined) where.push(`building = ${param(query.building)}`);
+    // Matched like `name` above: case-insensitive substring. An exact, case-sensitive match
+    // meant `COM` found nothing and `com1` found nothing either, so a building could only
+    // be filtered by typing its stored spelling exactly.
+    // AI-generated (Claude Code); review pending - Cole Lin.
+    if (query.building !== undefined)
+      where.push(`lower(building) LIKE lower(${param(contains(query.building))})`);
     if (query.time !== undefined) {
       const t = param(hhmmToMinutes(query.time));
       // Open at t, both ends inclusive; open_min > close_min means it closes after midnight.

@@ -11,6 +11,10 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Redesign of the location cards: icons for building and hours, an "Order from here" action revealed on hover or focus that opens Create Order with this pickup, and empty-state art.
 Author review: Pending review by Jie Yang.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: The building filter's placeholder no longer says "Exact building", because that
+filter is now a substring match like the name search.
+Author review: pending - Cole Lin.
 */
 "use client";
 
@@ -94,7 +98,7 @@ export function LocationBrowser({ role, onOrderFrom }: { role?: "ADMIN" | "USER"
     <div className="location-filters flex flex-nowrap overflow-x-auto pb-2">
       <label><span>Search name</span><input type="search" value={draft.name} onChange={(event) => change("name", event.target.value)} placeholder="Search pickup points" /></label>
       <label><span>Type</span><select value={draft.type} disabled={typesLoading || Boolean(typesError)} onChange={(event) => change("type", event.target.value)}><option value="">All types</option>{types.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
-      <label><span>Building</span><input value={draft.building} onChange={(event) => change("building", event.target.value)} placeholder="Exact building" /></label>
+      <label><span>Building</span><input value={draft.building} onChange={(event) => change("building", event.target.value)} placeholder="Search building" /></label>
       <label><span>Open at</span><input type="time" value={draft.time} onChange={(event) => change("time", event.target.value)} /></label>
       <label><span>Name order</span><select value={draft.order} onChange={(event) => change("order", event.target.value as Filters["order"])}><option value="asc">A–Z</option><option value="desc">Z–A</option></select></label>
     </div>

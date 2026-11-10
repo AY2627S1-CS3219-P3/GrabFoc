@@ -28,6 +28,12 @@ Scope: The logging section said no broker was configured and that handing the sh
   scoped instruction file, so it would have told the next change the publisher was absent
   (issue #52).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: `?building=` is a case-insensitive substring match rather than an exact one, matching
+  `?name=`. Asked for by Cole Lin, who hit the exact match while searching for locations.
+  Both filters now escape LIKE's `%` and `_`, and the `\` that escapes them, so a typed one is
+  matched literally (review).
+Author review: pending - Cole Lin.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
 Scope: The seed's ImageURL rule on AWS (SUPPLIER_IMAGE_BASE_URL; the location photos on S3).
 Author review: Pending Jian Bing's review.
@@ -157,19 +163,21 @@ _Origin: Team_
 
 | Parameter | Matching |
 |---|---|
-| `name` | case-insensitive substring match on `name` (matches anywhere, not just the start) |
+| `name` | case-insensitive substring match on `name` (matches anywhere, not just the start); `%`, `_` and `\` are matched literally, not as wildcards |
 | `type` | exact match |
-| `building` | exact match |
+| `building` | case-insensitive substring match on `building`, the same matching as `name` |
 | `time` | open at that time, in `HHMMhrs` format (rule below) |
 | `includeInactive=true` | also return `INACTIVE` locations (ADMIN only) |
 | `lat`, `lon` | the caller's coordinate in decimal degrees, as a phone's GPS reports it (e.g. `lat=1.296600&lon=103.776400`). Must be given together; they filter nothing, they add `distance_m` to each item |
 | `order` | `asc` (default, A→Z) or `desc` (Z→A) on `name`, or `distance` (nearest first, needs `lat`/`lon`); any other value is 400 (S2.2.3) |
 | `page`, `pageSize` | paging, e.g. `?page=2&pageSize=20`; defaults `page=1`, `pageSize=20`; no upper limit on `pageSize` |
 
-Name search, as a parameterized query:
+Name and building search, as a parameterized query. The term is wrapped in `%` and bound as a
+parameter, with LIKE's own `%` and `_` escaped first - and the `\` that escapes them, since it is
+the escape character itself - so searching for `50%` finds a percent sign rather than everything:
 
 ```sql
-lower(name) LIKE '%' || lower(:q) || '%'
+lower(name) LIKE lower(:pattern)   -- :pattern = '%' || escaped(q) || '%'
 ```
 
 Searching by a time *t* (in `HHMMhrs` format) returns the locations open at *t*. Both ends are inclusive:

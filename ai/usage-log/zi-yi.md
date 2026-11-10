@@ -73,6 +73,57 @@ Author review: Reviewed by Zi Yi, 2026-11-07.
 Zi Yi's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-10 — Frontend: promote and demote admins from the user page
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate
+**Files:** `frontend/lib/admin.ts`, `frontend/app/admin/users/[userId]/page.tsx`,
+`frontend/app/admin/admins/page.tsx` (new), `frontend/app/admin/admin-page.tsx`,
+`frontend/app/api/session/admin/[...path]/route.ts`, `frontend/test/routes.test.mjs`,
+`docs/admin-dashboard-plan.md`
+
+**Scenario:** add Make admin / Remove admin to the admin user page on branch
+`feat/admin-promote-demote`, using the existing `PATCH /admin/users/:userId/role` (User Service and
+gateway unchanged). Claude found the frontend admin proxy deliberately refused this route, warned that
+opening it is a security trade-off under the AI policy, and laid out pros and cons; I decided to open it.
+
+**Prompts:**
+> create a branch, on frontend, admin panel needs to add promoting a user to admin and depromote them. before implementing, do we have the relevant endpoints>
+
+> okay add frontend for it
+
+> if we dont open it, what happens? and whats the pros and cons of opening it
+
+> recommended is to open it?
+
+> okay open it
+
+> is it need 15mins to take effect after promotig?
+
+> admin promoted carol to admin, carol logged out and sign in again but the functions are not working well, i cant select user (screenshot: the Find a user dropdown shows Bob Tan but clicking does nothing)
+
+> is it possible to add a page to show list of admins? do we have the endpoint right now? dont implement anything yet
+
+> add admins tab to show current admin and search user to make admin or demote
+
+> add the admin tab to between users and locations
+
+**Key responses:** the endpoint, gateway route and backend checks (LAST_ADMIN, CANNOT_MODIFY_SELF,
+USER_NOT_ACTIVE) already existed; only the frontend fetcher, button, confirm dialog and proxy
+allowlist entry were missing. Risks named: a hijacked admin session could promote another account,
+and a demoted admin's token keeps its role in other services for up to 15 minutes. A promoted user
+gets admin access after signing in again or within 15 minutes. The unclickable picker was put down
+to Safari not focusing a clicked button, so the blur closed the list first; fixed with
+`onMouseDown` preventDefault (not reproduced by Claude, only by me in the browser). The Admins tab
+needed no new endpoint: it filters the full user list already loaded on the page. First built as a
+third tab on the Users page, then moved to its own Admins navigation item between Users and Locations.
+
+**Verification:** `eslint` clean on the changed files; `tsc` showed no errors in them (the only errors
+are the existing missing `socket.io-client` in `order-chat.tsx`);
+`FOC_TEST_BROWSER_CHANNEL=chrome node --test --test-name-pattern=admin test/routes.test.mjs`:
+6/6 pass, including PATCH role forwarded with its body and PATCH on another path refused; re-run
+after the Admins tab, still 6/6. Rebuilt the frontend container and it served 200.
+<!-- TODO Zi Yi: click through promote/demote against the real stack before merging. -->
+
 ### 2026-11-07 — Frontend: admin dashboard (#184)
 
 **Tool:** Claude Code (Claude Opus 5.5) · **Mode:** generate

@@ -5,6 +5,12 @@ Scope: Added the order proxy case for /orders/assigned?status=COMPLETED (Profile
 Author review: Pending review by Deanson.
 
 AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: The fake Supplier matches `?building=` as a case-insensitive substring, as the real
+service now does, and the browse test searches by a partial, differently-cased building.
+Author review: pending - Cole Lin.
+
+AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Updated the home heading and transaction-history link names to the redesign's copy.
 Author review: Pending review by Jie Yang.
@@ -41,6 +47,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Added a mock admin upstream and tests for the admin proxy allowlist, its same-origin check, the USER redirect from /admin/* and the "Admin Panel" link; made the stale-edit test wait for its list reload, which otherwise reached the next test; allowed GET history in the order proxy test (#184).
 Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: The admin proxy test now expects PATCH users/:uuid/role to be forwarded, and PATCH on any other path to be refused.
+Author review: Pending review by Zi Yi.
 */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -105,7 +116,10 @@ const gateway = createServer(async (request, response) => {
       let items = locations.filter((item) => url.searchParams.get("includeInactive") === "true" || item.status === "ACTIVE");
       if (url.searchParams.has("name")) items = items.filter((item) => item.name.toLowerCase().includes(url.searchParams.get("name").toLowerCase()));
       if (url.searchParams.has("type")) items = items.filter((item) => item.type === url.searchParams.get("type"));
-      if (url.searchParams.has("building")) items = items.filter((item) => item.building === url.searchParams.get("building"));
+      // AI-generated (Claude Code); review pending - Cole Lin.
+      // Case-insensitive substring, like the real Supplier's `?building=` and `?name=`. The
+      // service escapes LIKE's own `%` and `_`, so plain `includes` is the matching contract.
+      if (url.searchParams.has("building")) items = items.filter((item) => item.building.toLowerCase().includes(url.searchParams.get("building").toLowerCase()));
       if (url.searchParams.has("time")) items = items.filter((item) => item.open_time && item.close_time && item.open_time <= url.searchParams.get("time") && item.close_time > url.searchParams.get("time"));
       items = items.toSorted((a, b) => (url.searchParams.get("order") === "desc" ? -1 : 1) * a.name.localeCompare(b.name));
       const page = Number(url.searchParams.get("page") || 1);
@@ -1046,6 +1060,14 @@ test("users browse and filter locations while only admins manage them", async ()
     await user.getByLabel("Search name").fill("UTown");
     await user.getByRole("heading", { name: "UTown Print" }).waitFor();
     await user.getByRole("heading", { name: "COM3 Basement" }).waitFor({ state: "detached" });
+    // AI-generated (Claude Code); review pending - Cole Lin.
+    // Building is a substring match like the name search, so a partial, differently-cased term
+    // finds the location. It was an exact, case-sensitive match, and "com" found nothing.
+    await user.getByLabel("Search name").fill("");
+    await user.getByLabel("Building").fill("com");
+    await user.getByRole("heading", { name: "COM3 Basement" }).waitFor();
+    await user.getByRole("heading", { name: "UTown Print" }).waitFor({ state: "detached" });
+    await user.getByLabel("Building").fill("");
     const denied = await user.evaluate(() => fetch("/api/session/supplier/locations", {
       method: "POST", headers: { "content-type": "application/json" }, body: "{}",
     }).then((response) => response.status));
@@ -1368,6 +1390,7 @@ test("admin proxy forwards only the dashboard's routes, with their query", async
     ["GET", `users/${orderId}/login-events?page=2&pageSize=5`, `/admin/users/${orderId}/login-events?page=2&pageSize=5`],
     ["POST", `users/${orderId}/suspend`, `/admin/users/${orderId}/suspend`, '{"reason":"No-shows"}'],
     ["POST", `users/${orderId}/reactivate`, `/admin/users/${orderId}/reactivate`],
+    ["PATCH", `users/${orderId}/role`, `/admin/users/${orderId}/role`, '{"role":"ADMIN"}'],
     ["GET", "orders?scope=live&state=PENDING&userId=u&page=2", "/admin/orders?scope=live&state=PENDING&userId=u&page=2"],
     ["GET", "orders/overview", "/admin/orders/overview"], ["GET", `orders/${orderId}/history?x=1`, `/admin/orders/${orderId}/history`],
   ];
@@ -1380,14 +1403,14 @@ test("admin proxy forwards only the dashboard's routes, with their query", async
     assert.deepEqual(data.body, body ? JSON.parse(body) : {});
     assert.equal(data.contentType, body ? "application/json" : null, "reactivate is sent without a body");
   }
-  const denied = [["GET", "users/not-a-uuid/login-events"], ["PATCH", `users/${orderId}/role`], ["POST", `users/${orderId}/role`],
+  const denied = [["GET", "users/not-a-uuid/login-events"], ["PATCH", `users/${orderId}/suspend`], ["POST", `users/${orderId}/role`],
     ["GET", `users/${orderId}/suspend`], ["POST", "users"], ["GET", "users/me"], ["POST", "orders/overview"],
     ["GET", `orders/${orderId}`], ["GET", `orders/${orderId}/history/extra`], ["GET", "credits/dead-letters"], ["GET", "locations"]];
   const before = requests.length;
   for (const [method, path] of denied) {
     const response = await fetch(`${baseUrl}/api/session/admin/${path}`, {
       method, headers: orderHeaders(baseUrl), ...(method === "GET" ? {} : { body: "{}" }) });
-    assert.equal(response.status, method === "PATCH" ? 405 : 404, `${method} ${path}`);
+    assert.equal(response.status, 404, `${method} ${path}`);
   }
   assert.equal(requests.length, before, "denied paths never reach the gateway");
 });
