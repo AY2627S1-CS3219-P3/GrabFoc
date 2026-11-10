@@ -8,6 +8,9 @@ Scope: Wrote this plan from the N2H slide, the mockup (admin-dashboard-mockup.ht
        The use cases and the items marked "Decided" are the dashboard owner's choices; items marked
        [Proposed] are Claude's suggestions and still need confirming.
 Author review: Reviewed by Zi Yi, 2026-11-05.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Added PATCH users/:uuid/role to the §8.1 proxy allowlist, recorded Zi Yi's decision, and added Admins to the §8.2 navigation.
+Author review: Pending review by Zi Yi.
 -->
 
 # Admin Dashboard: implementation plan (N2H)
@@ -376,9 +379,12 @@ One allowlist, following `api/session/orders`. Anything else returns 404. POSTs 
 | GET | `users/:uuid/login-events` | `/admin/users/:uuid/login-events` |
 | POST | `users/:uuid/suspend` | `/admin/users/:uuid/suspend` (JSON body) |
 | POST | `users/:uuid/reactivate` | `/admin/users/:uuid/reactivate` |
+| PATCH | `users/:uuid/role` | `/admin/users/:uuid/role` (JSON body `{ "role": "ADMIN" \| "USER" }`) |
 | GET | `orders` | `/admin/orders` |
 | GET | `orders/overview` | `/admin/orders/overview` |
 | GET | `orders/:uuid/history` | `/admin/orders/:uuid/history` |
+
+**Role changes [Decided, Zi Yi, 2026-11-10]:** the user page and a new Admins page (`/admin/admins`: current admins, and a search to make a user an admin) promote and demote admins, so the proxy forwards `PATCH users/:uuid/role`. The User Service already enforces ADMIN, re-reads the caller's role under its lock, refuses last-admin and self demotion, and audit-logs each change. Accepted risk: a hijacked admin session could promote another account, and a demoted admin keeps admin access in the other services until their token expires (up to 15 minutes).
 
 ### 8.2 Pages
 
@@ -391,7 +397,7 @@ One allowlist, following `api/session/orders`. Anything else returns 404. POSTs 
 | `app/admin/users/[userId]/page.tsx` | UC5, UC3 | Header, action button and dialog, Orders tab (`/admin/orders?userId=`, `OrderPanel`), Login history tab |
 
 Shared pieces:
-- `app/admin/admin-page.tsx`: the role gate, moved out of `admin/locations/page.tsx` (redirect to `/signin` or `/home`), plus admin navigation: Overview · Orders · Logins · Users · Locations.
+- `app/admin/admin-page.tsx`: the role gate, moved out of `admin/locations/page.tsx` (redirect to `/signin` or `/home`), plus admin navigation: Overview · Orders · Logins · Users · Admins · Locations (Admins added 2026-11-10).
 - `app/admin/order-panel.tsx`: order details and the timeline from `/history`. A cancellation shows `changeDetails.reason`.
 - `lib/admin.ts`: types, fetch functions and React Query keys. It reuses `Order` from `lib/orders.ts`.
 - **Names:** orders store user ids, not names. The admin pages download the full user list once (`GET /admin/users`, cached for 60 s) and use it to:
