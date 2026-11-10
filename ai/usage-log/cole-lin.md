@@ -30,7 +30,8 @@ Scope: Drafted the entry about the Supplier building filter, and then corrected 
   (review).
 Author review: pending - Cole Lin.
 Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
-Scope: Drafted the entry about rewriting the root README.
+Scope: Drafted the entry about rewriting the root README, and corrected it when the AI Use Summary
+  and the file's disclosure header were removed at Cole Lin's instruction.
 Author review: pending - Cole Lin.
 -->
 
@@ -42,9 +43,9 @@ Cole Lin's entries for the FoC AI usage log. The template and rules are in
 ### 2026-11-10 — Rewriting the root README, including the required AI Use Summary
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** generate
 
-- Prompt: "update our root README".
+- Prompts: "update our root README", then "remove AI Assistance Disclosure and AI use summary, we dont need it for README".
 - Usage scenario: The root README was still the template's skeleton - five rows of "Your Name", and a repository structure listing four services when the repo has nine folders of code, no `api-gateway/`, `frontend/`, `infra/` or `data/`, and no mention of Kafka, the gateway or how to start anything.
-- Key response: A rewrite covering the product, the team and their ownership, local run steps, a service table, the real repository tree, an architecture summary, deployment, and the **AI Use Summary** the project document requires as the last section of this file. That section was missing entirely, and D4's final commit is tomorrow.
+- Key response: A rewrite covering the product, the team and their ownership, local run steps, a service table, the real repository tree, an architecture summary and deployment. I had also drafted an AI Use Summary section and a disclosure header for the file; Cole Lin asked for both to be removed from the README, and they were.
 - What I changed or rejected: Every statement is taken from `AGENTS.md`, the service READMEs, `compose.yaml`, the CI workflows or the repository tree - no design decisions were made in a README. Two claims were corrected after checking rather than assuming: "every service folder has a README" (`user-service/` does not have one), and a blanket claim that the test suites run in CI (no workflow references `order-service` at all, and the frontend's browser tests are run by hand). The ownership table follows the plan in `AGENTS.md` §3 including the three N2H reassignments recorded there.
 - **What needs the team, not me.** The team table and the AI Use Summary describe five people's work and practice. I can state what the repository evidences - the warn-before-design rule, the origin labels, the per-file disclosure headers, the per-member logs, human review before merge - but whether each member actually kept AI out of the restricted phases is theirs to confirm, not mine to assert. The file's disclosure header says so, and each member should read their own row before submission.
 - Verification: Checked all 15 links resolve, that every database image is `postgres:17-alpine`, which services the CI matrix covers, and that `.env.example` carries the `openssl` lines the run steps point at.

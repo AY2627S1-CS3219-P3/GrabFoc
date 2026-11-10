@@ -1,18 +1,3 @@
-<!--
-AI Assistance Disclosure:
-Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
-Scope: Rewrote this file. The original was the template's skeleton: placeholder team names, and a
-  repository structure listing four services when the repo has nine folders of code. Replaced the
-  team table from the ownership in AGENTS.md §3, the structure from the actual tree, and added the
-  run steps (from docs/demo-runbook.md, which was walked against a real `docker compose up`), the
-  service table, the architecture summary and the AI Use Summary the project document requires as
-  this file's last section. No design decisions were made here; every statement is taken from
-  AGENTS.md, the service READMEs or the repository itself.
-Author review: pending - Cole Lin. The team table and the AI Use Summary describe the whole team's
-  work and practice, so each member should confirm their own row and the summary's claims before
-  this is submitted.
--->
-
 # Friend on Campus (FoC)
 
 **CS3219 — Software Design and Architecture, AY2026/27 Semester 1 · Group 3**
@@ -179,47 +164,3 @@ cases. Longer design documents are in [`docs/`](docs/).
 The stack also runs on AWS — ECS on EC2, one task per service, with CloudFront in front of the
 gateway as the only public path. The Terraform lives in [`infra/terraform/`](infra/terraform/);
 its README covers the environments, the secrets and the first deploy.
-
----
-
-## AI Use Summary
-
-This project was built with AI coding assistants, under the course AI policy (Appendix 2 of the
-project document). This section is required by that policy; the full record is in
-[`ai/usage-log.md`](ai/usage-log.md) and the per-member logs it indexes.
-
-**Tools used.** Claude Code (Anthropic Claude Opus 5 and 5.5), OpenAI Codex (GPT-6), and GitHub
-Copilot and Codex as automated pull-request reviewers. A SoCLaaS reviewer also comments on pull
-requests.
-
-**What AI was used for.** Implementing code from designs the team had already settled;
-boilerplate and configuration; tests; debugging; refactoring; documentation; and reviewing pull
-requests. Day-to-day work is recorded per member in [`ai/usage-log/`](ai/usage-log/), with the
-date, tool, mode, the exact prompts, the key responses, and what the member changed, rejected or
-verified.
-
-**Phases AI was kept out of.** The policy restricts AI from design work. The repository enforces
-this as a documented rule rather than a convention: [`AGENTS.md`](AGENTS.md) requires an agent to
-**warn and stop for human confirmation** before proposing or changing system architecture,
-service boundaries, design patterns, data schemas, interfaces (endpoints, parameters, response
-shapes, event names or payloads), or performance and security trade-offs — and before writing
-decision rationales or doing backlog work beyond formatting. Every heading in `AGENTS.md` carries
-an **origin label** (`Team`, `Restated` or `AI doc`) saying whether its content is the team's own
-decision, a restatement of the brief, or process text written by AI, so that nothing written by
-AI is presented as the team's design.
-
-**How outputs were verified.** Three mechanisms, all visible in the history:
-
-- **Attribution in the files themselves.** Every AI-influenced file carries a disclosure header
-  naming the tool, model, date, scope and what the human reviewed; AI-written blocks carry an
-  inline marker. `ai/check-disclosures.py` checks that a branch's changed files gained an entry.
-- **Human review before merge.** Every change goes through a pull request. A member reads, runs
-  and understands it before it merges; the disclosure header records what they checked, and says
-  `pending` until they have.
-- **Tests and automated review.** Services carry unit and integration test suites. CI runs unit
-  tests and builds per service, several services' integration tests against PostgreSQL in Docker
-  rather than a substitute, CodeQL, and the frontend's lint and build; the remaining suites, such
-  as the frontend's browser route tests, are run by hand. Automated reviewers comment on each
-  pull request, and their findings are answered and resolved rather than dismissed.
-
-Each member remains accountable for the whole codebase, including the parts an assistant wrote.
