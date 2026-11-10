@@ -9,6 +9,9 @@ Author review (Jian Bing, 2026-11-09): Looked through the code and think it's ok
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: CHAT_TICKET_SECRET (chat, #230).
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: CHAT_POSTGRES_PASSWORD (chat on AWS).
+Author review: Pending Jian Bing's review.
 Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 Scope: LOGGING_POSTGRES_PASSWORD, and LOGGING_DATABASE_URL among the names the script builds
   (issue #52).
@@ -49,6 +52,7 @@ it. It refuses to run if any name below is missing, and prints names only, never
 | `CREDIT_POSTGRES_PASSWORD` | Credit Service database password |
 | `ORDER_DB_PASSWORD` | Order Service database password |
 | `NOTIFICATION_POSTGRES_PASSWORD` | Notification Service database password |
+| `CHAT_POSTGRES_PASSWORD` | Chat Service database password |
 | `LOGGING_POSTGRES_PASSWORD` | Centralized Logging database password |
 | `USER_AES_KEY`, `USER_EMAIL_HMAC_KEY`, `USER_OTP_HMAC_KEY` | User Service encryption and HMAC keys |
 | `USER_JWT_PRIVATE_KEY`, `USER_JWT_KID` | User Service token signing key and its key id |

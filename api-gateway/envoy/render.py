@@ -22,6 +22,31 @@ Scope: The access log carries the field names the Logging Service stores, so a l
   reached - the store requires it and refuses the whole line otherwise; the destination is
   under `upstream`. `lineId` is absent because Envoy has no UUID source (issue #52).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Route validation: no two routes may render the same matcher for the same method, compared
+  after the prefixes are substituted, and counting the /gateway copy of each route as well - a
+  prefix of /gateway/logs left Supplier and Logging both matching GET /gateway/logs on the internal
+  listener, with Supplier first. /gateway itself is reserved: a prefix inside it is swallowed by the
+  unprefixed routes, which the duplicate check cannot see when the matcher is a regex.
+Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Route validation: two routes of different services may not both match one request, which
+  equal matchers could not see. A prefix of /admin rendered Supplier's `{locations}/[^/]+` as
+  `GET /admin/[^/]+`, matching Order's exact `GET /admin/orders`, and Supplier's regex is emitted
+  first; a prefix of /admin/users/foo then made two regexes meet at
+  /admin/users/foo/login-events. Matchers are compared as segment lists, so exact-versus-exact,
+  exact-versus-regex and regex-versus-regex go the same way. Overlaps inside one service stay
+  allowed: Order declares /orders/available beside {orders}/[^/]+ on purpose, and refusing those
+  would reject the default configuration (issue #52, two rounds of review).
+Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: a regex segment may hold only safe characters or a backslash escape of
+  punctuation, and the renderer's own GET /health and GET /gateway/health are in the comparison.
+  A bare dot was modelled as a literal although RE2 reads it as any character, and allowing an
+  escape of anything then modelled a digit class as the literal `d` - so `/foo.json/[^/]+` and
+  `/foo/` + a digit class both looked distinct from exact routes of other services that they
+  match. An exact `path` is unaffected: a dot there is a dot (issue #52, two rounds of review).
+Author review: pending - Jie Yang owns the gateway's route files.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
 import json
@@ -119,6 +144,62 @@ def cluster(name, urls, settings):
                     "exact": parsed[0].hostname}}]}}}}
     return result
 
+# AI-generated (Claude Code, 2026-11-10): route matchers as segment lists, so two of them can be
+# tested for overlap rather than only for equality (fourth and fifth review).
+#
+# The grammar is deliberately tiny: a matcher is `/`-separated segments, and a segment is either a
+# literal or the whole wildcard `[^/]+`. Every regex in routes/ is already of that shape. Keeping it
+# that way is what makes the overlap test below exact instead of best-effort - a pattern outside it
+# is refused at startup rather than quietly skipped, because a collision check with a blind spot is
+# the kind of thing that reads as a guarantee and is not one.
+# Not a legal service name (those are [a-z][a-z0-9_-]*), so it can never collide with a real one.
+OWNED = "the gateway itself"
+WILDCARD = "[^/]+"
+# A literal segment of an exact path: `.` is an ordinary character to Envoy there.
+PATH_LITERAL = re.compile(r"[A-Za-z0-9._~-]*")
+# A literal segment of a *regex*, where `.` is not ordinary - RE2 reads it as any character.
+# Safe characters, or a backslash escape of *punctuation* (re.escape writes prefixes that way and
+# never escapes a letter or a digit - checked). An unescaped dot was accepted and modelled as a
+# literal, so `/foo.json/[^/]+` looked distinct from another service's exact `/fooXjson/bar` while
+# both match it; and allowing an escape of anything then modelled `\d` as the literal `d`, so
+# `/foo/\d` looked distinct from another service's exact `/foo/7`, which RE2 matches (two reviews).
+REGEX_LITERAL = re.compile(r"(?:[A-Za-z0-9_~-]|\\[^A-Za-z0-9])*")
+
+def segments(matcher, regex):
+    """A matcher as segments: None for a wildcard, else the literal text."""
+    if regex:
+        # `/` is never escaped (re.escape leaves it alone) and the wildcard is the only construct,
+        # so hide the wildcard, split, then undo re.escape's backslashes in the literals.
+        matcher = matcher.replace(WILDCARD, "\x00")
+    parts = []
+    for part in matcher.split("/"):
+        if part == "\x00":
+            parts.append(None)
+            continue
+        if "\x00" in part:
+            raise ValueError(f"A route pattern may only use {WILDCARD} as a whole segment")
+        literal = re.sub(r"\\(.)", r"\1", part) if regex else part
+        if not (REGEX_LITERAL if regex else PATH_LITERAL).fullmatch(part):
+            raise ValueError(f"Unsupported characters in the route pattern segment {part!r}")
+        parts.append(literal)
+    return parts
+
+def overlaps(left, right):
+    """Whether two segment lists can match the same request path."""
+    if len(left) != len(right):
+        return False
+    for one, other in zip(left, right):
+        if one is None and other is None:
+            continue
+        if one is None or other is None:
+            # A wildcard matches one character or more, so it cannot meet an empty segment.
+            if not (one or other):
+                return False
+            continue
+        if one != other:
+            return False
+    return True
+
 def load_routes(env):
     """Load service files in filename order; reject invalid configuration at startup."""
     files = sorted(Path(__file__).with_name("routes").glob("*.routes.json"))
@@ -162,6 +243,27 @@ def load_routes(env):
         for other in values[index + 1:]:
             if value == other or value.startswith(other + "/") or other.startswith(value + "/"):
                 raise ValueError("Gateway route prefixes must not overlap")
+    # /gateway belongs to the renderer, not to a service: every route is also rendered under it,
+    # and the unprefixed routes come first in the list. A prefix reaching into it is swallowed
+    # whole - GATEWAY_LOCATIONS_PREFIX=/gateway made Supplier's `{locations}/[^/]+` answer
+    # /gateway/logs, /gateway/orders, /gateway/mine and even /gateway/health, none of which the
+    # duplicate check below can see, because a regex matcher never equals an exact path. Reserved
+    # by name instead (third review).
+    for value in prefixes.values():
+        if value == GATEWAY_PREFIX or value.startswith(GATEWAY_PREFIX + "/"):
+            raise ValueError(f"A gateway route prefix must not start with {GATEWAY_PREFIX}")
+    literal = set()
+    emitted = []
+    # The renderer's own routes, which are not in any route file: configuration() puts GET /health
+    # and GET /gateway/health in front of everything. GATEWAY_LOCATIONS_PREFIX=/health was accepted
+    # because only route-file entries were compared, and Supplier's location-root reads then never
+    # arrived - the health response is route 0 and answered them (sixth review).
+    #
+    # The final 404 is deliberately left out: it is a prefix match on "/" that is meant to catch
+    # everything the routes above did not, so every route "overlaps" it by design.
+    for owned in ("/health", GATEWAY_PREFIX + "/health"):
+        literal.add(("GET", "path", owned))
+        emitted.append(("GET", "path", owned, OWNED, segments(owned, False)))
     for definition in services:
         for entry in definition["routes"]:
             if (not isinstance(entry, dict) or
@@ -171,12 +273,67 @@ def load_routes(env):
                     type(entry.get("public", False)) is not bool or
                     type(entry.get("websocket", False)) is not bool):
                 raise ValueError(f"Invalid route entry for {definition['service']}")
+            regex = "regex" in entry
             path = entry.get("path", entry.get("regex"))
             if not isinstance(path, str) or not path:
                 raise ValueError("Route path must be a nonempty string")
-            for key in re.findall(r"\{([a-z][a-z0-9_]*)\}", path):
+            keys = re.findall(r"\{([a-z][a-z0-9_]*)\}", path)
+            for key in keys:
                 if key not in prefixes:
                     raise ValueError(f"Unknown route prefix: {key}")
+            # Two routes that come out identical are both rendered, and Envoy answers with
+            # whichever matched first - which is filename order, so the earlier file silently wins.
+            # The prefix loop above compares prefixes with one another and never looks at the paths
+            # another file fixes, so GATEWAY_LOCATIONS_PREFIX=/logs was accepted: Supplier rendered
+            # GET /logs, 20-supplier sorts before 50-logging, and an authenticated log query
+            # reached Supplier, which answers 200 (review).
+            #
+            # Compared after substitution and per method, which is the collision itself rather than
+            # a proxy for it: a prefix merely nested under a fixed path (GATEWAY_AUTH_PREFIX=
+            # /users/me/auth) cannot match the exact /users/me, and a prefix that lands on a fixed
+            # path under a different method (GATEWAY_ORDERS_PREFIX=/location-types, where Order's
+            # root route is POST and Supplier's fixed one is GET) does not collide either. An
+            # earlier version rejected both, and these prefixes are documented as configurable
+            # (second review).
+            #
+            # Both the route and its /gateway copy, in one set, because every route is rendered
+            # twice and a copy can collide with another file's plain route. With
+            # GATEWAY_LOCATIONS_PREFIX=/gateway/logs the unprefixed definitions were all distinct,
+            # so startup succeeded - and the internal listener then held three routes matching
+            # `GET /gateway/logs`: Supplier's own at index 26 and 27, Logging's copy at 107. Envoy
+            # takes the first, so a log query there reached Supplier (third review).
+            matcher = re.sub(
+                r"\{([a-z][a-z0-9_]*)\}",
+                lambda match: (re.escape(prefixes[match[1]]) if regex else prefixes[match[1]]),
+                path)
+            kind = "regex" if regex else "path"
+            public = (re.escape(GATEWAY_PREFIX) if regex else GATEWAY_PREFIX) + matcher
+            for rendered in ((entry["method"], kind, matcher), (entry["method"], kind, public)):
+                if rendered in literal:
+                    raise ValueError(
+                        f"Two gateway routes render the same {kind} for {entry['method']}: {rendered[2]}")
+                literal.add(rendered)
+                emitted.append((*rendered, definition["service"],
+                                segments(rendered[2], regex)))
+    # Any two routes of different services that can match one request, not only ones whose matchers
+    # are equal. Equality missed an exact path meeting another service's regex
+    # (GATEWAY_LOCATIONS_PREFIX=/admin put Supplier's `/admin/[^/]+` over Order's `/admin/orders`),
+    # and comparing a regex against exact paths alone then missed two regexes meeting
+    # (/admin/users/foo made Supplier's `/admin/users/foo/[^/]+` meet User's
+    # `/admin/users/[^/]+/login-events` at /admin/users/foo/login-events). Segment lists decide all
+    # three cases the same way (fifth review).
+    #
+    # Across services only. Inside one file an overlap is deliberate and harmless: Order declares
+    # `GET /orders/available` and `GET {orders}/[^/]+`, the exact one first, and both reach Order.
+    # Refusing those would reject the default configuration.
+    for index, (method, kind, matcher, service, shape) in enumerate(emitted):
+        for other_method, other_kind, other_matcher, other, other_shape in emitted[index + 1:]:
+            if other_method != method or other == service:
+                continue
+            if overlaps(shape, other_shape):
+                raise ValueError(
+                    f"A {service} route and a {other} route both match {method} requests: "
+                    f"{matcher} and {other_matcher}")
     if "user" not in names:
         raise ValueError("User service routes are required for JWT key discovery")
     return services, prefixes

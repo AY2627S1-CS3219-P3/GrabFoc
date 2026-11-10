@@ -9,6 +9,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-05
 # Scope: the Notification and checks images (deploy part 3).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Builds and pushes the chat-service image (chat on AWS).
+# Author review: Pending Jian Bing's review.
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 # Scope: the Logging Service image, which builds from the repository root (issue #52).
 # Author review: pending - Jian Bing owns the deployment.
@@ -34,6 +37,7 @@ images=(
   "credit-service|credit-service|credit-service/Dockerfile"
   "order-service|order-service|order-service/Dockerfile"
   "notification-service|notification-service|notification-service/Dockerfile"
+  "chat-service|chat-service|chat-service/Dockerfile"
   # Its Dockerfile copies logging-service/... paths, so the context is the repository root, as in
   # logging-service/compose.yaml (issue #52).
   "logging-service|.|logging-service/Dockerfile"

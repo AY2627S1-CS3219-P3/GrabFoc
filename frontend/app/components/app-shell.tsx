@@ -13,6 +13,11 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Redesign: route logo and wordmark, a mode prop that sets data-mode (requester orange / courier blue) on the page, and a mode chip in the header.
 Author review: Pending review by Jie Yang.
+
+AI Assistance Disclosure:
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Removed the hardcoded "?" avatar circle from the header; the mode chip stays.
+Author review: Pending review by Deanson.
 */
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -36,7 +41,6 @@ export function AppShell({ section, mode, children }: { section: "profile" | "lo
         </nav>
         <div className="header-account">
           {mode && <span className="header-mode">{mode === "courier" ? <><BikeIcon size={14} />Courier mode</> : <><BagIcon size={14} />Requester mode</>}</span>}
-          <span className="header-avatar" role="img" aria-label="Account information unavailable">?</span>
         </div>
       </header>
       <main className="app-main">{children}</main>

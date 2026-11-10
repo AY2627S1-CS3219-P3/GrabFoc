@@ -20,6 +20,14 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: ORDER_CHAT_TICKET_SECRET for Order and CHAT_SERVICE_URL for the gateway, which chat (#230) requires.
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: chat-db, chat-migrate and chat-service, as in chat-service/compose.yaml (chat on AWS; Jie Yang's plan, approved by Jian Bing).
+# Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: LOGGING_SERVICE_URL for the gateway, which the log store's route file (#52) requires. The
+#        service itself is deployed separately; until then GET /logs is a 503, as chat's was.
+# Author review: pending - Jian Bing owns the deployment.
+#        Re-added on 2026-11-10: the merge from main kept the env line and dropped this entry.
 # Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 # Scope: The Logging Service and its database, and the broker address Supplier was missing, so its
 #        lines reach the store too (issue #52). The gateway's LOGGING_SERVICE_URL is set alongside
@@ -53,6 +61,7 @@ locals {
       "credit-db"       = { db = "credit", password = "CREDIT_POSTGRES_PASSWORD" }
       "order-db"        = { db = "orders", password = "ORDER_DB_PASSWORD" }
       "notification-db" = { db = "notification", password = "NOTIFICATION_POSTGRES_PASSWORD" }
+      "chat-db"         = { db = "chat", password = "CHAT_POSTGRES_PASSWORD" } # AI-generated (Claude Code, 2026-11-09)
       # AI-generated (Claude Code): the log store (issue #52).
       "logging-db" = { db = "logging", password = "LOGGING_POSTGRES_PASSWORD" }
       } : name => {
@@ -202,6 +211,18 @@ locals {
         NOTIFICATION_USER_SERVICE_KEY = "USER_INTERNAL_SERVICE_KEY"
       }
     }
+    # AI-generated (Claude Code, 2026-11-09): chat (#230), as in chat-service/compose.yaml.
+    "chat-service" = {
+      image  = local.image["chat-service"]
+      port   = 3007
+      health = local.listening[3007]
+      memory = 192
+      env    = local.chat_env
+      secrets = {
+        PGPASSWORD         = "CHAT_POSTGRES_PASSWORD" # as in compose: not in the URL
+        CHAT_TICKET_SECRET = "CHAT_TICKET_SECRET"     # the one Order signs tickets with
+      }
+    }
     # AI-generated (Claude Code): the log store (issue #52). Port 3006 inside its own container, the
     # same as Notification's: in bridge mode nothing binds it on the server, and Service Connect
     # addresses a service by name, so the two never collide. (The repo's compose files publish 3006
@@ -230,9 +251,12 @@ locals {
         ORDER_SERVICE_URL    = "http://order-service:3005"
         CREDIT_SERVICE_URL   = "http://credit-service:3004"
         FRONTEND_URL         = "http://frontend:3000" # the edge listener's catch-all (deploy part 1)
-        # AI-generated (Claude Code): chat's route file (#230) needs it or the gateway
-        # won't start. The chat service isn't on AWS yet, so chat requests get 503 until it is.
+        # AI-generated (Claude Code): chat's route file (#230) needs it or the gateway won't start.
         CHAT_SERVICE_URL = "http://chat-service:3007"
+        # AI-generated (Claude Code): the log store's route file (#52) needs it for the same
+        # reason, or the gateway won't start. The Logging Service isn't on AWS yet either, so
+        # GET /logs gets 503 until it is.
+        LOGGING_SERVICE_URL = "http://logging-service:3006"
         }, var.edge_container_port == 3003 ? {} : {
         GATEWAY_EDGE_PORT = tostring(var.edge_container_port)
       })
@@ -291,6 +315,12 @@ locals {
     NOTIFICATION_FRONTEND_URL  = var.public_url
   }
 
+  # AI-generated (Claude Code, 2026-11-09). Values match chat-service/compose.yaml.
+  chat_env = {
+    CHAT_PORT         = "3007"
+    CHAT_DATABASE_URL = "postgres://foc@chat-db:5432/chat" # password from PGPASSWORD
+  }
+
   # AI-generated (Claude Code).
   # Values match logging-service/compose.yaml, except the database URL, which is a secret: it
   # carries the password. Retention and the purge interval are the service's own defaults, written
@@ -308,7 +338,7 @@ locals {
 
   # Node services: healthy once something listens on the port (catches a start-up that hangs).
   listening = {
-    for port in [3000, 3001, 3002, 3004, 3005, 3006] : port => [
+    for port in [3000, 3001, 3002, 3004, 3005, 3006, 3007] : port => [
       "CMD", "node", "-e",
       "require('net').connect(${port},'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
     ]
@@ -322,6 +352,8 @@ locals {
   oneoffs = {
     "kafka-init"    = { image = local.image["kafka-init"], memory = 256, command = null, env = {}, secrets = {} }
     "order-migrate" = { image = local.image["order-service"], memory = 128, command = ["node", "dist/db/migrate-cli.js"], env = local.order_db_env, secrets = { ORDER_DB_PASSWORD = "ORDER_DB_PASSWORD" } }
+    # AI-generated (Claude Code, 2026-11-09): chat's migrations, as compose's chat-migrate.
+    "chat-migrate" = { image = local.image["chat-service"], memory = 128, command = ["node", "dist/db/migrate-cli.js"], env = { CHAT_DATABASE_URL = local.chat_env.CHAT_DATABASE_URL }, secrets = { PGPASSWORD = "CHAT_POSTGRES_PASSWORD" } }
   }
 
   # AI-generated (Claude Code).
@@ -344,6 +376,7 @@ locals {
     "order-service"        = ["kafka-init", "order-migrate"]
     "credit-service"       = ["kafka-init"]
     "notification-service" = ["kafka-init"]
+    "chat-service"         = ["chat-migrate"]
     # AI-generated (Claude Code): its topic and dead-letter topic are created there, and
     # KAFKA_AUTO_CREATE_TOPICS_ENABLE is false (issue #52).
     "logging-service" = ["kafka-init"]
@@ -352,21 +385,22 @@ locals {
   # Everything except the frontend. The data stores and the gateway are here because two copies
   # must never share a folder or a host port; the app services are here for memory (review).
   #
-  # deploy-images.sh updates all of the app layer and then waits, so rolling them would put six
-  # second copies on the server at once - 2,304 MiB of reservations on top of everything already
-  # running, which does not fit beside the injected Service Connect proxies (local.memory_at_peak
-  # below). And it buys nothing: api-gateway stops before being replaced, so every deploy already
-  # has a gap at the one public entry point, and a service rolled smoothly behind a gateway that is
-  # about to stop is still unreachable. The cost is that each app service is down for a few seconds
-  # during its own replacement, which the gateway answers as a 503.
+  # deploy-images.sh updates all of the app layer and then waits, so rolling them would put a
+  # second copy of every app service on the server at once - with chat and logging that is
+  # 2,624 MiB of reservations on top of everything already running, which does not fit beside
+  # the injected Service Connect proxies (local.memory_at_peak below). And it buys nothing:
+  # api-gateway stops before being replaced, so every deploy already has a gap at the one
+  # public entry point, and a service rolled smoothly behind a gateway that is about to stop is
+  # still unreachable. The cost is that each app service is down for a few seconds during its
+  # own replacement, which the gateway answers as a 503.
   #
   # The alternative, if that gap ever matters, is to roll the app layer one service at a time in
   # deploy-images.sh: then only one duplicate exists at a time and the peak stays low too.
   stops_before_replacing = toset([
-    "user-db", "supplier-db", "credit-db", "order-db", "notification-db", "logging-db",
-    "user-redis", "kafka", "mailpit", "api-gateway",
-    "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
-    "logging-service",
+    "user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db",
+    "logging-db", "user-redis", "kafka", "mailpit", "api-gateway",
+    "user-service", "supplier-service", "credit-service", "order-service",
+    "notification-service", "chat-service", "logging-service",
   ])
 }
 
@@ -499,8 +533,8 @@ resource "aws_ecs_task_definition" "checks" {
 # stop before their replacement starts; the rest roll with a brief overlap.
 locals {
   layer = {
-    data = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "logging-db", "user-redis", "kafka", "mailpit"])
-    app  = toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service", "logging-service"])
+    data = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "logging-db", "user-redis", "kafka", "mailpit"])
+    app  = toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service", "chat-service", "logging-service"])
     edge = toset(["api-gateway"])
     web  = toset(["frontend"])
   }
@@ -522,6 +556,10 @@ locals {
     for name, c in local.containers : name =>
     c.memory + sum(concat([0], [for i in lookup(local.init_containers, name, []) : local.oneoffs[i].memory]))
   }
+  # With chat and logging both on the server the staging peak is 6,992 MiB against the 7,000 the
+  # test allows: **8 MiB of slack**. That is not a number to design around - the next service, or a
+  # bump to any reservation above, needs a larger instance or a smaller footprint somewhere else.
+  # Said here rather than only in the test, because this is where someone adds the next one.
   proxy_memory  = 64
   memory_steady = sum([for name in keys(local.containers) : local.task_memory[name]])
   rolling = {
