@@ -9,6 +9,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
  * Scope: Added tests for OrderChangeRequest (#186).
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Added tests that a proposal's resolution supersedes its CREATED email waiting for a retry
+ *        (#186, from Jie Yang's review).
+ * Author review: pending — Jie Yang to record the review.
  */
 // AI-generated (pending review)
 import { Logger } from '@nestjs/common';
@@ -322,5 +326,87 @@ describe('OrderChangeRequest (#186)', () => {
     await sender.sendPending(rejected.eventId);
     expect(mailer.sent.map((m) => m.to)).toEqual([`${courierId}@foc.test`]);
     expect(mailer.sent[0].email.text).toContain('The requester rejected your request to cancel the order.');
+  });
+});
+
+describe('a resolved proposal supersedes its unsent CREATED email (#186)', () => {
+  type Outcome = 'CREATED' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+  const change = (orderId: string, confirmationId: string, outcome: Outcome): OrderEvent =>
+    event('ACCEPTED', {
+      orderId,
+      eventType: 'OrderChangeRequest',
+      change: {
+        outcome,
+        kind: 'TIMING_CHANGE',
+        proposedBy: courierId,
+        confirmationId,
+        proposedWindowStart: new Date('2026-11-11T04:00:00.000Z'),
+        proposedWindowEnd: new Date('2026-11-11T06:00:00.000Z'),
+      },
+    });
+
+  /** A CREATED email to the requester that failed because User was down: waiting for a retry. */
+  async function failedProposal(): Promise<{ orderId: string; confirmationId: string; created: OrderEvent }> {
+    const orderId = randomUUID();
+    const confirmationId = randomUUID();
+    await events.handle(event('ACCEPTED', { orderId }));
+    const created = change(orderId, confirmationId, 'CREATED');
+    await events.handle(created);
+    users.down = true;
+    expect((await sender.sendPending(created.eventId)).retryable).toEqual(['USER_UNAVAILABLE']);
+    users.down = false;
+    return { orderId, confirmationId, created };
+  }
+
+  it.each(['REJECTED', 'EXPIRED', 'APPROVED'] as const)(
+    'drops the waiting request email once the proposal is %s, and the retry sends nothing',
+    async (outcome) => {
+      const { orderId, confirmationId, created } = await failedProposal();
+      await events.handle(change(orderId, confirmationId, outcome));
+
+      expect(await rows(created.eventId)).toMatchObject([{ role: 'REQUESTER', delivery_status: 'FAILED', last_error: SUPERSEDED }]);
+      expect(await sender.retryFailed(created.eventId)).toMatchObject({ sent: 0, retryable: [] });
+      expect(mailer.sent.filter((m) => m.email.subject === 'New delivery window proposed')).toHaveLength(0);
+    },
+  );
+
+  it('still sends the resolution email itself', async () => {
+    const { orderId, confirmationId } = await failedProposal();
+    const rejected = change(orderId, confirmationId, 'REJECTED');
+    await events.handle(rejected);
+    await sender.sendPending(rejected.eventId);
+    expect(mailer.sent.map((m) => [m.to, m.email.subject])).toEqual([
+      [`${courierId}@foc.test`, 'Your new delivery window was rejected'],
+    ]);
+  });
+
+  it('supersedes in the send pass too, if the row was never marked', async () => {
+    const { orderId, confirmationId, created } = await failedProposal();
+    await events.handle(change(orderId, confirmationId, 'REJECTED'));
+    // As if the resolution had been recorded without marking the row (e.g. by an older version).
+    await pool.query(`UPDATE notifications SET last_error = 'USER_UNAVAILABLE' WHERE event_id = $1`, [created.eventId]);
+    expect(await sender.retryFailed(created.eventId)).toMatchObject({ sent: 0, superseded: 1 });
+  });
+
+  it("leaves another proposal's email, and an email that failed for good, alone", async () => {
+    const { orderId, created } = await failedProposal();
+    await events.handle(change(orderId, randomUUID(), 'REJECTED')); // a different proposal
+    expect(await rows(created.eventId)).toMatchObject([{ delivery_status: 'FAILED', last_error: 'USER_UNAVAILABLE' }]);
+
+    const other = randomUUID();
+    const lost = change(orderId, other, 'CREATED');
+    await events.handle(lost);
+    users.missing.add(requesterId);
+    await sender.sendPending(lost.eventId);
+    users.missing.delete(requesterId);
+    await events.handle(change(orderId, other, 'REJECTED'));
+    expect(await rows(lost.eventId)).toMatchObject([{ delivery_status: 'FAILED', last_error: 'USER_NOT_FOUND' }]);
+  });
+
+  it('discards a CREATED that arrives after its resolution', async () => {
+    const orderId = randomUUID();
+    const confirmationId = randomUUID();
+    await events.handle(change(orderId, confirmationId, 'REJECTED'));
+    expect(await events.handle(change(orderId, confirmationId, 'CREATED'))).toBe('DISCARDED_STALE');
   });
 });

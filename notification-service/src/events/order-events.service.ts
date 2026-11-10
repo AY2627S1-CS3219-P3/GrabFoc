@@ -11,12 +11,18 @@
  * Scope: Handled OrderChangeRequest (#186): recorded with its proposal columns, never moves the
  *        order's last state, and is stale once the order has moved on or finished.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Stored confirmation_id; a proposal's resolution supersedes its CREATED email that could
+ *        still be sent, and a CREATED arriving after its resolution is stale (#186, from Jie Yang's
+ *        review).
+ * Author review: pending — Jie Yang to record the review.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
 import { PG_POOL } from '../db/database';
 import { OrderEvent } from '../messaging/messages';
 import { changeRecipients, Recipient, recipientsFor } from './recipients';
+import { isRetryable, SUPERSEDED } from './sender.service';
 
 /**
  * What happened to an event:
@@ -56,8 +62,8 @@ export class OrderEventsService {
     const inserted = await client.query(
       `INSERT INTO notification_events
               (event_id, event_type, order_id, requester_id, courier_id, status, reason, occurred_at, outcome,
-               change_outcome, change_kind, proposed_by, proposed_window_start, proposed_window_end)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PROCESSING', $9, $10, $11, $12, $13)
+               change_outcome, change_kind, proposed_by, proposed_window_start, proposed_window_end, confirmation_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PROCESSING', $9, $10, $11, $12, $13, $14)
        ON CONFLICT (event_id) DO NOTHING`,
       [
         event.eventId,
@@ -73,12 +79,39 @@ export class OrderEventsService {
         event.change?.proposedBy ?? null,
         event.change?.proposedWindowStart ?? null,
         event.change?.proposedWindowEnd ?? null,
+        event.change?.confirmationId ?? null,
       ],
     );
     if (inserted.rowCount === 0) return 'DUPLICATE';
 
     let recipients: Recipient[];
     if (event.change) {
+      if (event.change.outcome !== 'CREATED') {
+        // AI-generated (pending review by Jie Yang)
+        // The proposal is resolved, so asking the other party to answer it is moot. A CREATED email
+        // still waiting for a retry would otherwise go out later: a resolution doesn't change the
+        // order's state, so the rank check never supersedes it. Done before the stale check, so it
+        // also happens when this event itself emails nobody.
+        // Only emails that could still go out: PENDING, or FAILED with an error a retry would send
+        // again. One that failed for good keeps its error.
+        const { rows } = await client.query<{ id: string; delivery_status: string; last_error: string | null }>(
+          `SELECT n.id, n.delivery_status, n.last_error FROM notifications n
+             JOIN notification_events c ON c.event_id = n.event_id
+            WHERE c.confirmation_id = $1 AND c.change_outcome = 'CREATED' AND n.delivery_status IN ('PENDING', 'FAILED')
+            FOR UPDATE OF n`,
+          [event.change.confirmationId],
+        );
+        const sendable = rows.filter((r) => r.delivery_status === 'PENDING' || isRetryable(r.last_error)).map((r) => r.id);
+        if (sendable.length) {
+          await client.query(`UPDATE notifications SET delivery_status = 'FAILED', last_error = $2 WHERE id = ANY($1)`, [
+            sendable,
+            SUPERSEDED,
+          ]);
+        }
+      } else if (await this.resolved(client, event.change.confirmationId)) {
+        // Order publishes CREATED first and keys both by orderId, so this only guards a replay.
+        return this.finish(client, event.eventId, 'DISCARDED_STALE');
+      }
       // A proposal doesn't change the order's state, so it never moves notification_order_states.
       // It is stale once the order has finished or been handled in a later state than the one it
       // was published with: a later email already says more (#186).
@@ -124,6 +157,15 @@ export class OrderEventsService {
     }
     // The event stays PROCESSING until SenderService has saved every email's result.
     return 'QUEUED';
+  }
+
+  /** Whether an APPROVED, REJECTED or EXPIRED event for this proposal has been recorded. */
+  private async resolved(client: PoolClient, confirmationId: string): Promise<boolean> {
+    const { rowCount } = await client.query(
+      `SELECT 1 FROM notification_events WHERE confirmation_id = $1 AND change_outcome <> 'CREATED' LIMIT 1`,
+      [confirmationId],
+    );
+    return rowCount !== 0;
   }
 
   private async finish(

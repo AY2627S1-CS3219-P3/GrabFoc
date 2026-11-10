@@ -12,6 +12,10 @@
  * Scope: Added the OrderChangeRequest columns to notification_events (#186), as approved by
  *        Jie Yang on 2026-11-10.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Added notification_events.confirmation_id and its partial index, so a proposal's
+ *        resolution can supersede its unsent CREATED email (#186); asked for by Jie Yang in review.
+ * Author review: pending — Jie Yang to record the review.
  */
 
 /**
@@ -60,7 +64,12 @@ ALTER TABLE notification_events
     ADD COLUMN IF NOT EXISTS change_kind TEXT CHECK (change_kind IN ('TIMING_CHANGE','CANCELLATION','COMPLETION')),
     ADD COLUMN IF NOT EXISTS proposed_by UUID,
     ADD COLUMN IF NOT EXISTS proposed_window_start TIMESTAMPTZ,  -- TIMING_CHANGE only
-    ADD COLUMN IF NOT EXISTS proposed_window_end TIMESTAMPTZ;
+    ADD COLUMN IF NOT EXISTS proposed_window_end TIMESTAMPTZ,
+    -- The proposal both of its events belong to, so its resolution can supersede the CREATED email
+    -- (a resolution doesn't change the order's state, so the rank check can't see it).
+    ADD COLUMN IF NOT EXISTS confirmation_id UUID;
+CREATE INDEX IF NOT EXISTS notification_events_confirmation
+    ON notification_events (confirmation_id) WHERE confirmation_id IS NOT NULL;
 
 -- The last state handled for each order, for the stale check.
 CREATE TABLE IF NOT EXISTS notification_order_states (
