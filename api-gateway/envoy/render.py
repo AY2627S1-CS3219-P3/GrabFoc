@@ -30,17 +30,22 @@ Scope: Route validation: no two routes may render the same matcher for the same 
   unprefixed routes, which the duplicate check cannot see when the matcher is a regex.
 Author review: pending - Jie Yang owns the gateway's route files.
 Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
-Scope: Route validation: one service's regex may not match another service's exact path. A prefix of
-  /admin rendered Supplier's `{locations}/[^/]+` as `GET /admin/[^/]+`, which matches Order's exact
-  `GET /admin/orders`, and Supplier's regex is emitted first - so that request reached Supplier.
-  Equal matchers could not see it. Overlaps inside one service stay allowed: Order declares
-  /orders/available beside {orders}/[^/]+ on purpose. The prefix check compared prefixes with one another only, so
-  GATEWAY_LOCATIONS_PREFIX=/logs was accepted and sent authenticated log queries to the Supplier
-  Service, which answers 200. Comparing what is rendered rather than whole prefix namespaces keeps
-  a prefix nested under a fixed path, or landing on one under another method, working - these
-  prefixes are documented as configurable (issue #52, two rounds of review). The prefix check compared prefixes with one
-  another only, so GATEWAY_LOCATIONS_PREFIX=/logs was accepted and sent authenticated log queries
-  to the Supplier Service, which answers 200 (issue #52, review).
+Scope: Route validation: two routes of different services may not both match one request, which
+  equal matchers could not see. A prefix of /admin rendered Supplier's `{locations}/[^/]+` as
+  `GET /admin/[^/]+`, matching Order's exact `GET /admin/orders`, and Supplier's regex is emitted
+  first; a prefix of /admin/users/foo then made two regexes meet at
+  /admin/users/foo/login-events. Matchers are compared as segment lists, so exact-versus-exact,
+  exact-versus-regex and regex-versus-regex go the same way. Overlaps inside one service stay
+  allowed: Order declares /orders/available beside {orders}/[^/]+ on purpose, and refusing those
+  would reject the default configuration (issue #52, two rounds of review).
+Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: a regex segment may hold only safe characters or a backslash escape of
+  punctuation, and the renderer's own GET /health and GET /gateway/health are in the comparison.
+  A bare dot was modelled as a literal although RE2 reads it as any character, and allowing an
+  escape of anything then modelled a digit class as the literal `d` - so `/foo.json/[^/]+` and
+  `/foo/` + a digit class both looked distinct from exact routes of other services that they
+  match. An exact `path` is unaffected: a dot there is a dot (issue #52, two rounds of review).
 Author review: pending - Jie Yang owns the gateway's route files.
 """
 # AI-generated; review pending. This process exits before Envoy serves requests.
@@ -153,10 +158,12 @@ WILDCARD = "[^/]+"
 # A literal segment of an exact path: `.` is an ordinary character to Envoy there.
 PATH_LITERAL = re.compile(r"[A-Za-z0-9._~-]*")
 # A literal segment of a *regex*, where `.` is not ordinary - RE2 reads it as any character.
-# Safe characters, or a backslash escape (re.escape writes prefixes that way). An unescaped
-# dot was accepted and modelled as a literal, so `/foo.json/[^/]+` looked distinct from
-# another service's exact `/fooXjson/bar` while both match it (review).
-REGEX_LITERAL = re.compile(r"(?:[A-Za-z0-9_~-]|\\.)*")
+# Safe characters, or a backslash escape of *punctuation* (re.escape writes prefixes that way and
+# never escapes a letter or a digit - checked). An unescaped dot was accepted and modelled as a
+# literal, so `/foo.json/[^/]+` looked distinct from another service's exact `/fooXjson/bar` while
+# both match it; and allowing an escape of anything then modelled `\d` as the literal `d`, so
+# `/foo/\d` looked distinct from another service's exact `/foo/7`, which RE2 matches (two reviews).
+REGEX_LITERAL = re.compile(r"(?:[A-Za-z0-9_~-]|\\[^A-Za-z0-9])*")
 
 def segments(matcher, regex):
     """A matcher as segments: None for a wildcard, else the literal text."""

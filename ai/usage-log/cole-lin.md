@@ -28,6 +28,16 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-10 — An escape is not a literal, and the tool's own blind spot (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: "fix 233, wait for further conversations until done"
+- **I fixed the bare dot and left the escapes wide open.** My rule allowed a backslash before *any* character, so a digit class was unescaped into the literal `d` and `/foo/` + that class looked distinct from another service's exact `/foo/7`, which RE2 matches. An escape may now only cover punctuation, which is exactly what `re.escape` produces - I checked that it never escapes a letter or a digit before relying on it. Both class escapes are refused now, the escaped dot still accepted.
+- **The JSON disclosure loophole.** A JSON header is one physical line, so changing a single character inside it makes git call the whole line added - and every historical `Tool`/`Scope`/`Author review` on that line then looked like a new entry. Reproduced with a one-character "typo fix" plus a new route in `10-user.routes.json`: clean. It compares the disclosure *value* against the base now and wants an entry that was not there before; with a real entry appended it passes again.
+- **And two of my own changes went undisclosed, which the tool could not see.** It compares against the merge base, so a file whose header grew in an *earlier* commit of the same branch passes for every later change to it - that is how the escaped-dot fix in `render.py` and the model/date validation in the checker both slipped through. Entries added, and the tool's header now states that limitation alongside two others, because a check that reads as a guarantee and is not one is the trap I have fallen into repeatedly on this branch.
+- While there I found `render.py`'s header had a passage duplicated twice over by one of my own scripted edits. Rewritten.
+- Verified: 23 renderer tests, 29 integration tests on the real pinned Envoy, the whole checker regression, and the two new controls in both directions.
+
 ### 2026-11-10 — A dot is not a dot, and two races I left in the runbook (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

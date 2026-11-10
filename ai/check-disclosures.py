@@ -37,14 +37,25 @@ Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
 Scope: Review: require a complete Tool/Scope/Author-review entry among the added header lines. Any
   added line counted before, so a blank comment or a rewrapped Scope line satisfied it.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: validate the Tool line's shape rather than its label - "Tool: Claude Code" with no
+  model and no date was passing - and compare a JSON file's disclosure value against the base,
+  because that header is one physical line, so editing a character in it made git call the whole
+  line added and every historical entry on it looked new.
+Author review: Cole Lin, read and approved.
 """
 # Lists files your branch changes that carry an AI disclosure header but gained no entry in it.
 #
 #   python ai/check-disclosures.py              # against origin/main
 #   python ai/check-disclosures.py main         # against another base
 #
-# It is a prompt, not a gate: it cannot tell whether an entry *describes* the change, only whether
-# the header grew, and a change a human wrote unaided needs no entry. Read the list and judge.
+# It is a prompt, not a gate. Three things it cannot do, each of which has bitten this branch:
+#   - it cannot tell whether an entry *describes* the change, only that one was added;
+#   - it compares against the merge base, so a file whose header grew in an earlier commit of the
+#     same branch passes for every later change to it - two such changes went undisclosed here
+#     until a reviewer named them;
+#   - a change a human wrote unaided needs no entry at all.
+# Read the list, then read the entries. This narrows where to look; it does not decide.
 # Findings exit 0, so it blocks nothing; only a git failure exits non-zero, because a check that
 # silently examined nothing must not read as a pass.
 # AI-generated (reviewed by Cole Lin).
@@ -103,6 +114,30 @@ def json_disclosure(text):
     objects = [data] + [value for value in data.values() if isinstance(value, dict)]
     return any(isinstance(obj.get(field), str) and MARKER in obj[field]
                for obj in objects for field in JSON_FIELDS)
+
+
+def json_disclosure_value(text):
+    """The disclosure string a JSON file carries, or None."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    for obj in [data] + [value for value in data.values() if isinstance(value, dict)]:
+        for field in JSON_FIELDS:
+            value = obj.get(field)
+            if isinstance(value, str) and MARKER in value:
+                return value
+    return None
+
+def entry_chunks(value):
+    """A disclosure string split into its entries, one per `Tool:`."""
+    return ["Tool:" + chunk for chunk in value.split("Tool:")[1:]]
+
+def complete_entry(text):
+    """Whether one entry carries all of Tool (with model and date), Scope and Author review."""
+    return bool(TOOL_LINE.search(text)) and all(field in text for field in ENTRY_FIELDS)
 
 
 def leading_region(lines):
@@ -200,7 +235,8 @@ def main():
                 text = handle.read()
         except (OSError, UnicodeDecodeError):
             continue
-        head = header_lines(text, json_file=path.endswith(".json"))
+        json_file = path.endswith(".json")
+        head = header_lines(text, json_file=json_file)
         if not head:
             # No header now. If the base had one, this change removed it, which is the most
             # complete version of the thing this check exists to catch - and it used to be
@@ -216,14 +252,25 @@ def main():
         paths = [base_of[path]] + ([path] if path != base_of[path] else [])
         added = {line[1:] for line in git("diff", "--find-renames", merge_base, "--", *paths).splitlines()
                  if line.startswith("+") and not line.startswith("+++")}
-        # A complete entry, not merely a changed header line. One JSON field holds all three on
-        # its single line, so the same test works there.
+        # A JSON disclosure is one physical line, so git calls the whole of it added the moment a
+        # character inside it changes - and every historical entry on that line then looked like a
+        # new one. Compare the values instead and require an entry that was not there before
+        # (review).
+        value = json_disclosure_value(text) if json_file else None
+        if value is not None:
+            was = json_disclosure_value(git("show", f"{merge_base}:{base_of[path]}")) or ""
+            before = set(entry_chunks(was))
+            fresh = [c for c in entry_chunks(value) if c not in before]
+            if not any(complete_entry(chunk) for chunk in fresh):
+                missing.append(path)
+            continue
+        # Elsewhere an entry spans lines, so the added header lines are what to look at. A complete
+        # entry, not merely a changed header line: any added line used to satisfy this, so a blank
+        # comment or a rewrapped Scope line passed.
         grew = [line for line in head if line in added]
-        complete = all(any(field in line for line in grew) for field in ENTRY_FIELDS)
-        if complete and not any(TOOL_LINE.search(line) for line in grew):
-            complete = False          # a Tool line without its model or its date
-        if not complete:
+        if not complete_entry(chr(10).join(grew)):
             missing.append(path)
+
     for path in removed:
         print(f"disclosure header REMOVED: {path}")
     for path in missing:
