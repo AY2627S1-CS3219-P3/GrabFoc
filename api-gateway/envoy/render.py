@@ -147,6 +147,8 @@ def cluster(name, urls, settings):
 # that way is what makes the overlap test below exact instead of best-effort - a pattern outside it
 # is refused at startup rather than quietly skipped, because a collision check with a blind spot is
 # the kind of thing that reads as a guarantee and is not one.
+# Not a legal service name (those are [a-z][a-z0-9_-]*), so it can never collide with a real one.
+OWNED = "the gateway itself"
 WILDCARD = "[^/]+"
 SEGMENT_LITERAL = re.compile(r"[A-Za-z0-9._~-]*")
 
@@ -239,6 +241,16 @@ def load_routes(env):
             raise ValueError(f"A gateway route prefix must not start with {GATEWAY_PREFIX}")
     literal = set()
     emitted = []
+    # The renderer's own routes, which are not in any route file: configuration() puts GET /health
+    # and GET /gateway/health in front of everything. GATEWAY_LOCATIONS_PREFIX=/health was accepted
+    # because only route-file entries were compared, and Supplier's location-root reads then never
+    # arrived - the health response is route 0 and answered them (sixth review).
+    #
+    # The final 404 is deliberately left out: it is a prefix match on "/" that is meant to catch
+    # everything the routes above did not, so every route "overlaps" it by design.
+    for owned in ("/health", GATEWAY_PREFIX + "/health"):
+        literal.add(("GET", "path", owned))
+        emitted.append(("GET", "path", owned, OWNED, segments(owned, False)))
     for definition in services:
         for entry in definition["routes"]:
             if (not isinstance(entry, dict) or

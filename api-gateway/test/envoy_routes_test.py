@@ -59,6 +59,11 @@ Scope: Review: two routes of different services may not both match one request, 
        lists - which covers exact-versus-regex and regex-versus-regex alike - and a route pattern
        must stay inside the grammar that test understands.
 Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: the renderer's own GET /health and GET /gateway/health are in the overlap check, so
+       a prefix cannot be shadowed by them; and GATEWAY_AUTH_PREFIX=/health stays valid, because
+       every /auth route has a segment after the prefix.
+Author review: pending - Jie Yang owns the gateway's route files.
 """
 # AI-generated; review pending.
 import importlib.util
@@ -425,6 +430,13 @@ class RouteFilesTest(unittest.TestCase):
             self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/gateway"})
         self.assertEqual(str(caught.exception),
                          "A gateway route prefix must not start with /gateway")
+        # The renderer's own routes count too. configuration() puts GET /health and
+        # GET /gateway/health in front of everything, and they are in no route file, so
+        # GATEWAY_LOCATIONS_PREFIX=/health was accepted while the health response at route 0
+        # answered Supplier's location-root reads (sixth review).
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/health"})
+        self.assertIn("/health", str(caught.exception))
         # Allowed, and rejected by the first version of this check:
         #   /users/me/auth renders /users/me/auth/login etc., which cannot match the exact
         #     /users/me that 10-user.routes.json fixes;
@@ -451,7 +463,11 @@ class RouteFilesTest(unittest.TestCase):
         # /gatewayish is not inside /gateway, so the reservation must not catch it either.
         for name, value in (("GATEWAY_AUTH_PREFIX", "/users/me/auth"),
                             ("GATEWAY_ORDERS_PREFIX", "/location-types"),
-                            ("GATEWAY_LOCATIONS_PREFIX", "/gatewayish")):
+                            ("GATEWAY_LOCATIONS_PREFIX", "/gatewayish"),
+                            # Every /auth route has a segment after the prefix, so this renders
+                            # /health/login and friends and never the bare /health. Listed so the
+                            # health check above is not mistaken for "no prefix may say health".
+                            ("GATEWAY_AUTH_PREFIX", "/health")):
             with self.subTest(**{name: value}):
                 self.assertTrue(self.routes(self.renderer.configuration({**self.env, name: value})))
 

@@ -28,6 +28,15 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-10 — The routes the renderer owns, and "a line changed" is not "an entry" (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: "fix 233, wait for further conversations until done"
+- **`/health` is the renderer's own route and was not in the overlap set.** `configuration()` puts `GET /health` and `GET /gateway/health` in front of everything, and neither comes from a route file, so I had been comparing only route-file entries. `GATEWAY_LOCATIONS_PREFIX=/health` was accepted and the health response at **route 0** answered Supplier's location-root reads, which never arrived. Both are seeded into the comparison now, under a name no route file can use. The final 404 stays out on purpose: it is a `/` prefix match meant to catch whatever the routes above did not, so everything "overlaps" it by design.
+- Checking that, I found my own expectation was wrong about `GATEWAY_AUTH_PREFIX=/health`, which is **fine** - every `/auth` route has a segment after the prefix, so it renders `/health/login` and never the bare `/health`. It is in the allowed list now, so nobody later reads the health check as "no prefix may say health".
+- **And the checker accepted any added header line as an entry.** A bare `#`, a rewrapped `Scope` line, unrelated prose - all passed, which defeats the point of it. It requires `Tool:`, `Scope:` and `Author review:` among the added header lines now; one JSON field holds all three on its single line, so the same test works there. Control: a bare `--` added to `frontend.lua`'s header plus a code line below is flagged today and was clean yesterday.
+- Verified: 23 renderer tests over 8 consecutive runs, 29 integration tests against the real pinned Envoy, and against the live gateway `/health` still answers `{"status":"ok"}` with 200 while `/logs` is 401 without a token and 200 for an admin, on both the plain and `/gateway` paths.
+
 ### 2026-11-10 — A checker fooled by the rule it enforces (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

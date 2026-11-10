@@ -33,6 +33,10 @@ Scope: Review: find the marker only where a header can be. Several documents quo
   the document, and any added body line read as an added disclosure line. A JSON file is judged by
   its disclosure field instead, since its first line is `{`.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: require a complete Tool/Scope/Author-review entry among the added header lines. Any
+  added line counted before, so a blank comment or a rewrapped Scope line satisfied it.
+Author review: Cole Lin, read and approved.
 """
 # Lists files your branch changes that carry an AI disclosure header but gained no entry in it.
 #
@@ -77,6 +81,10 @@ def git(*args):
 # Postman collection - so look for it there rather than anywhere a string happens to mention the
 # template (review).
 JSON_FIELDS = ("_disclosure", "description")
+# What makes an added header line an *entry* rather than a reflowed comment. Accepting any added
+# header line meant a blank `#`, a rewrapped old Scope line or unrelated prose passed, so a change
+# with no new entry read as clean - which is the whole thing this checks for (review).
+ENTRY_FIELDS = ("Tool:", "Scope:", "Author review:")
 
 def json_disclosure(text):
     """Whether this JSON file carries its disclosure in a disclosure field."""
@@ -202,7 +210,10 @@ def main():
         paths = [base_of[path]] + ([path] if path != base_of[path] else [])
         added = {line[1:] for line in git("diff", "--find-renames", merge_base, "--", *paths).splitlines()
                  if line.startswith("+") and not line.startswith("+++")}
-        if not any(line in added for line in head):
+        # A complete entry, not merely a changed header line. One JSON field holds all three on
+        # its single line, so the same test works there.
+        grew = [line for line in head if line in added]
+        if not all(any(field in line for line in grew) for field in ENTRY_FIELDS):
             missing.append(path)
     for path in removed:
         print(f"disclosure header REMOVED: {path}")
