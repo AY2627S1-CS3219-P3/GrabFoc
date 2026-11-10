@@ -3,6 +3,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-07
 Scope: Moved the admin role gate out of admin/locations and added the admin navigation (docs/admin-dashboard-plan.md §8.2, #184).
 Author review: Reviewed and tested locally by Zi Yi, 2026-11-07.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: UserPicker results now respond to clicks in Safari (pressing one no longer blurs the input and closes the list first).
+Author review: Pending review by Zi Yi.
 */
 "use client";
 
@@ -81,7 +84,8 @@ export function UserPicker({ label, users, selected, onPick }: {
     {open && typed !== "" && <ul id={listId} className="user-picker-list" role="listbox">
       {matches.length === 0 ? <li className="user-picker-empty">No matching users</li>
         : matches.map((user) => <li key={user.userId} role="option" aria-selected={false}>
-          <button type="button" onClick={() => { onPick(user); setText(""); setOpen(false); }}>
+          {/* Safari doesn't focus a clicked button, so without this the blur closes the list before the click lands. */}
+          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { onPick(user); setText(""); setOpen(false); }}>
             <span><strong>{user.displayName}</strong><small>{user.email}</small></span><UserStatusBadge status={user.status} />
           </button>
         </li>)}
