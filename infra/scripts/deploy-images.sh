@@ -48,7 +48,7 @@ health_interval="${HEALTH_INTERVAL:-15}"
 # AI-generated (Claude Code, 2026-11-11): nothing else may change this environment while it rolls:
 # a "terraform apply" waits for the lock, and this waits for an apply's (lib/state-lock.sh).
 state_lock_take "$env" "$region" "deploy-images.sh $env $tag"
-trap state_lock_release EXIT
+trap 'state_lock_release || exit 1' EXIT
 
 layers=(
   "user-service supplier-service credit-service order-service notification-service chat-service logging-service"
@@ -97,6 +97,8 @@ if [ ${#absent[@]} -gt 0 ]; then
   exit 1
 fi
 
+all_services=()
+all_arns=()
 roll() {
   local service arn
   rolled_services=()
@@ -108,6 +110,8 @@ roll() {
     echo "== $service: $arn"
     rolled_services+=("$service")
     rolled_arns+=("$arn")
+    all_services+=("$service")
+    all_arns+=("$arn")
   done
 }
 
@@ -186,6 +190,12 @@ for layer in "${layers[@]}"; do
   wait_stable $layer
   wait_healthy
 done
+
+# AI-generated (Claude Code, 2026-11-11, Codex review on #246): an earlier layer's service may have
+# been moved while a later layer rolled; check them all before recording the tag.
+rolled_services=("${all_services[@]}")
+rolled_arns=("${all_arns[@]}")
+not_moved || exit 1
 
 aws ssm put-parameter --region "$region" --name "/foc-deploy/$env/image-tag" --type String --overwrite \
   --value "$tag" > /dev/null

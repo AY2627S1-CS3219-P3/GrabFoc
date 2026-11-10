@@ -38,8 +38,10 @@ echo "$*" >> "$AWS_CALLS"
 arg() { local want="$1"; shift; while [ $# -gt 0 ]; do [ "$1" = "$want" ] && { echo "$2"; return; }; shift; done; }
 list() { local want="$1" on=0; shift; for a in "$@"; do case "$a" in "$want") on=1; continue ;; --*) on=0 ;; esac; [ $on = 1 ] && echo "$a"; done; }
 td() { echo "arn:aws:ecs:ap-southeast-1:1:task-definition/foc-staging-$1:$2"; }
+etag() { cksum < "$AWS_CALLS.lock" | cut -d' ' -f1; }
 revision() {
   if [ -f "$AWS_CALLS.updated.$1" ] && [ "$1" = "${FAKE_MOVED:-}" ]; then echo 5   # someone else's change
+  elif [ -f "$AWS_CALLS.updated.api-gateway" ] && [ "$1" = "${FAKE_MOVED_LATE:-}" ]; then echo 5   # after its layer passed
   elif [ -f "$AWS_CALLS.updated.$1" ] && [ "$1" != "${FAKE_STUCK:-}" ]; then echo 4; else echo 3; fi
 }
 case "$*" in
@@ -90,9 +92,22 @@ JSON
     fi
     cp "$(arg --body "$@")" "$AWS_CALLS.lock"; cp "$AWS_CALLS.lock" "$AWS_CALLS.body"; echo '{}' ;;
   s3api\ get-object*)
+    if [ -n "${FAKE_RELEASE_GET_FAIL:-}" ] && [ -f "$AWS_CALLS.recorded" ]; then
+      echo "Could not connect to the endpoint URL" >&2; exit 255
+    fi
     [ -f "$AWS_CALLS.lock" ] || { echo "An error occurred (NoSuchKey) when calling the GetObject operation" >&2; exit 254; }
-    cp "$AWS_CALLS.lock" "${*: -1}"; echo '{}' ;;
-  s3api\ delete-object*) rm -f "$AWS_CALLS.lock"; echo '{}' ;;
+    cp "$AWS_CALLS.lock" "${*: -1}"; echo "{\"ETag\":\"\\\"$(etag)\\\"\"}" ;;
+  s3api\ delete-object*)
+    if [ -n "${FAKE_REPLACE_ON_DELETE:-}" ] && [ ! -f "$AWS_CALLS.replaced" ]; then
+      touch "$AWS_CALLS.replaced"   # another run takes over between our read and our delete
+      printf '{"ID":"fresh-id","Who":"another deploy","Created":"%s"}' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$AWS_CALLS.lock"
+    fi
+    want=$(arg --if-match "$@")
+    if [ -n "$want" ] && [ "$want" != "\"$(etag)\"" ]; then
+      echo "An error occurred (PreconditionFailed) when calling the DeleteObject operation" >&2; exit 254
+    fi
+    rm -f "$AWS_CALLS.lock"; echo '{}' ;;
+  ssm\ put-parameter*) touch "$AWS_CALLS.recorded"; echo '{}' ;;
   ecs\ update-service*) touch "$AWS_CALLS.updated.$(arg --service "$@")"; echo '{}' ;;
   ecs\ wait*) case " $* " in *" ${FAKE_WAIT_FAIL:-none} "*) exit 255 ;; esac ;;
   ecs\ list-tasks*) echo "{\"taskArns\":[\"arn:aws:ecs:ap-southeast-1:1:task/foc-staging/$(arg --service-name "$@")-1\"]}" ;;
@@ -173,6 +188,21 @@ check "an abandoned lock (over 3 hours) is taken over" '[ $code -eq 0 ] && grep 
 reset
 out=$(FAKE_WAIT_FAIL=api-gateway "$SCRIPT" staging new1234 2>&1); code=$?
 check "a failed deploy still releases the lock" '[ $code -ne 0 ] && grep -q "^s3api delete-object" "$AWS_CALLS" && [ ! -f "$AWS_CALLS.lock" ]'
+
+# Codex review on #246.
+reset
+"$SCRIPT" staging new1234 > /dev/null 2>&1
+check "every delete of the lock is conditional on the copy just read" '[ "$(grep -c "^s3api delete-object" "$AWS_CALLS")" -gt 0 ] && [ "$(grep "^s3api delete-object" "$AWS_CALLS" | grep -vc -- "--if-match")" = 0 ]'
+reset
+hold "a crashed run" "2020-01-01T00:00:00Z"
+out=$(FAKE_REPLACE_ON_DELETE=1 LOCK_WAIT=0 "$SCRIPT" staging new1234 2>&1); code=$?
+check "taking over an abandoned lock never deletes a fresh one" '[ $code -ne 0 ] && grep -q fresh-id "$AWS_CALLS.lock" && grep -q "another deploy" <<<"$out"'
+reset
+out=$(FAKE_MOVED_LATE=user-service "$SCRIPT" staging new1234 2>&1); code=$?
+check "a service moved after its layer passed is caught before the tag is recorded" '[ $code -ne 0 ] && ! grep -q "put-parameter" "$AWS_CALLS" && grep -q "user-service was moved" <<<"$out"'
+reset
+out=$(FAKE_RELEASE_GET_FAIL=1 "$SCRIPT" staging new1234 2>&1); code=$?
+check "a lock that can't be released fails loudly, after retrying" '[ $code -ne 0 ] && grep -q "put-parameter .*image-tag" "$AWS_CALLS" && grep -q "force-unlock" <<<"$out" && [ "$(sed -n "/put-parameter/,\$p" "$AWS_CALLS" | grep -c "^s3api get-object")" -ge 3 ]'
 
 reset
 GITHUB_RUN_ID=42 GITHUB_WORKFLOW="Deploy staging" "$SCRIPT" staging new1234 > /dev/null 2>&1

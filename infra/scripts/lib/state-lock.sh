@@ -5,6 +5,10 @@
 #   the deploy failed on a revision the apply had replaced. Jian Bing chose to share Terraform's own
 #   state lock rather than add a separate one.
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-11
+# Scope: Codex review on #246: every delete is conditional on the copy just read (S3 If-Match), and
+#   a lock that can't be released is retried, then reported.
+# Author review: Pending Jian Bing's review.
 #
 # Terraform's S3 backend (use_lockfile) locks an environment by creating
 # <env>/terraform.tfstate.tflock in the state bucket, only if it doesn't exist. A deploy takes the
@@ -25,7 +29,7 @@ lock_age() {
 
 # state_lock_take <env> <region> <what this run is doing>
 state_lock_take() {
-  local env="$1" region="$2" info="$3" body held out who created me waited=0
+  local env="$1" region="$2" info="$3" body held out who created me meta etag waited=0
   if [ -n "${GITHUB_RUN_ID:-}" ]; then me="GitHub run $GITHUB_RUN_ID (${GITHUB_WORKFLOW:-deploy})"
   else me="$(whoami)@$(hostname -s)"; fi
   lock_region="$region"
@@ -49,12 +53,14 @@ state_lock_take() {
       *) echo "couldn't take $env's lock: $out" >&2; rm -f "$body" "$held"; return 1 ;;
     esac
     # Released between the two calls: just try again.
-    aws s3api get-object --region "$region" --bucket "$lock_bucket" --key "$lock_key" "$held" > /dev/null 2>&1 || continue
+    meta=$(aws s3api get-object --region "$region" --bucket "$lock_bucket" --key "$lock_key" "$held" 2> /dev/null) || continue
+    etag=$(jq -r '.ETag // ""' <<< "$meta")
     who=$(jq -r '.Who // "someone"' "$held" 2>/dev/null || echo someone)
     created=$(jq -r '.Created // ""' "$held" 2>/dev/null || echo "")
     if [ -n "$created" ] && [ "$(lock_age "$created")" -gt "$lock_stale" ]; then
       echo "== taking over $env's lock from $who: held since $created, over $((lock_stale / 3600)) hours, so abandoned"
-      aws s3api delete-object --region "$region" --bucket "$lock_bucket" --key "$lock_key" > /dev/null
+      # Only that exact copy: if another run took it over first, this is refused and the loop sees theirs.
+      aws s3api delete-object --region "$region" --bucket "$lock_bucket" --key "$lock_key" --if-match "$etag" > /dev/null 2>&1 || true
       continue
     fi
     if [ "$waited" -ge "$lock_wait" ]; then
@@ -70,15 +76,26 @@ state_lock_take() {
   done
 }
 
-# Releases the lock, but only if it is still ours (it may have been taken over).
+# Releases the lock, but only if it is still ours (it may have been taken over), and only that exact
+# copy. Retried; a lock left behind would block the next apply or deploy, so failing says so.
 state_lock_release() {
   [ "${lock_held:-}" = 1 ] || return 0
-  local held
+  local held meta try
   held=$(mktemp)
-  if aws s3api get-object --region "$lock_region" --bucket "$lock_bucket" --key "$lock_key" "$held" > /dev/null 2>&1 &&
-    [ "$(jq -r '.ID // ""' "$held")" = "$lock_id" ]; then
-    aws s3api delete-object --region "$lock_region" --bucket "$lock_bucket" --key "$lock_key" > /dev/null
-  fi
+  for try in 1 2 3; do
+    if meta=$(aws s3api get-object --region "$lock_region" --bucket "$lock_bucket" --key "$lock_key" "$held" 2>&1); then
+      if [ "$(jq -r '.ID // ""' "$held")" != "$lock_id" ]; then lock_held=""; break; fi   # not ours any more
+      if aws s3api delete-object --region "$lock_region" --bucket "$lock_bucket" --key "$lock_key" \
+          --if-match "$(jq -r '.ETag // ""' <<< "$meta")" > /dev/null 2>&1; then lock_held=""; break; fi
+    elif grep -q NoSuchKey <<< "$meta"; then
+      lock_held=""; break   # already gone
+    fi
+    [ "$try" = 3 ] || sleep "$lock_poll"
+  done
   rm -f "$held"
-  lock_held=""
+  if [ -n "${lock_held:-}" ]; then
+    echo "The lock s3://$lock_bucket/$lock_key wasn't released (tried 3 times). Until it is, applies and" >&2
+    echo "deploys to this environment wait. Release it: terraform force-unlock $lock_id  (in infra/terraform/envs/<env>)" >&2
+    return 1
+  fi
 }
