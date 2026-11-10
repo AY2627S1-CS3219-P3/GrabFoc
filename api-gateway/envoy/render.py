@@ -139,6 +139,52 @@ def cluster(name, urls, settings):
                     "exact": parsed[0].hostname}}]}}}}
     return result
 
+# AI-generated (Claude Code, 2026-11-10): route matchers as segment lists, so two of them can be
+# tested for overlap rather than only for equality (fourth and fifth review).
+#
+# The grammar is deliberately tiny: a matcher is `/`-separated segments, and a segment is either a
+# literal or the whole wildcard `[^/]+`. Every regex in routes/ is already of that shape. Keeping it
+# that way is what makes the overlap test below exact instead of best-effort - a pattern outside it
+# is refused at startup rather than quietly skipped, because a collision check with a blind spot is
+# the kind of thing that reads as a guarantee and is not one.
+WILDCARD = "[^/]+"
+SEGMENT_LITERAL = re.compile(r"[A-Za-z0-9._~-]*")
+
+def segments(matcher, regex):
+    """A matcher as segments: None for a wildcard, else the literal text."""
+    if regex:
+        # `/` is never escaped (re.escape leaves it alone) and the wildcard is the only construct,
+        # so hide the wildcard, split, then undo re.escape's backslashes in the literals.
+        matcher = matcher.replace(WILDCARD, "\x00")
+    parts = []
+    for part in matcher.split("/"):
+        if part == "\x00":
+            parts.append(None)
+            continue
+        if "\x00" in part:
+            raise ValueError(f"A route pattern may only use {WILDCARD} as a whole segment")
+        literal = re.sub(r"\\(.)", r"\1", part) if regex else part
+        if not SEGMENT_LITERAL.fullmatch(literal):
+            raise ValueError(f"Unsupported characters in the route pattern segment {part!r}")
+        parts.append(literal)
+    return parts
+
+def overlaps(left, right):
+    """Whether two segment lists can match the same request path."""
+    if len(left) != len(right):
+        return False
+    for one, other in zip(left, right):
+        if one is None and other is None:
+            continue
+        if one is None or other is None:
+            # A wildcard matches one character or more, so it cannot meet an empty segment.
+            if not (one or other):
+                return False
+            continue
+        if one != other:
+            return False
+    return True
+
 def load_routes(env):
     """Load service files in filename order; reject invalid configuration at startup."""
     files = sorted(Path(__file__).with_name("routes").glob("*.routes.json"))
@@ -242,25 +288,27 @@ def load_routes(env):
                     raise ValueError(
                         f"Two gateway routes render the same {kind} for {entry['method']}: {rendered[2]}")
                 literal.add(rendered)
-                emitted.append((*rendered, definition["service"]))
-    # An exact path and another service's regex can match the same request without being equal, so
-    # the tuples above cannot see it. GATEWAY_LOCATIONS_PREFIX=/admin rendered Supplier's
-    # `{locations}/[^/]+` as `GET /admin/[^/]+`, which matches Order's exact `GET /admin/orders` -
-    # and Supplier's regex is emitted first, so that request went to Supplier (fourth review).
+                emitted.append((*rendered, definition["service"],
+                                segments(rendered[2], regex)))
+    # Any two routes of different services that can match one request, not only ones whose matchers
+    # are equal. Equality missed an exact path meeting another service's regex
+    # (GATEWAY_LOCATIONS_PREFIX=/admin put Supplier's `/admin/[^/]+` over Order's `/admin/orders`),
+    # and comparing a regex against exact paths alone then missed two regexes meeting
+    # (/admin/users/foo made Supplier's `/admin/users/foo/[^/]+` meet User's
+    # `/admin/users/[^/]+/login-events` at /admin/users/foo/login-events). Segment lists decide all
+    # three cases the same way (fifth review).
     #
-    # Only across services. Within one file an overlap is deliberate and harmless: Order declares
-    # `GET /orders/available` and `GET {orders}/[^/]+`, the exact one first, and both reach Order
-    # either way. Refusing those would reject the default configuration.
-    exact = [item for item in emitted if item[1] == "path"]
-    for method, _, pattern, service in (item for item in emitted if item[1] == "regex"):
-        try:
-            compiled = re.compile(pattern)
-        except re.error as err:
-            raise ValueError(f"Invalid gateway route pattern {pattern}: {err}") from err
-        for other_method, _, path, other in exact:
-            if other_method == method and other != service and compiled.fullmatch(path):
+    # Across services only. Inside one file an overlap is deliberate and harmless: Order declares
+    # `GET /orders/available` and `GET {orders}/[^/]+`, the exact one first, and both reach Order.
+    # Refusing those would reject the default configuration.
+    for index, (method, kind, matcher, service, shape) in enumerate(emitted):
+        for other_method, other_kind, other_matcher, other, other_shape in emitted[index + 1:]:
+            if other_method != method or other == service:
+                continue
+            if overlaps(shape, other_shape):
                 raise ValueError(
-                    f"A gateway route for {service} matches {other}'s {method} {path}: {pattern}")
+                    f"A {service} route and a {other} route both match {method} requests: "
+                    f"{matcher} and {other_matcher}")
     if "user" not in names:
         raise ValueError("User service routes are required for JWT key discovery")
     return services, prefixes

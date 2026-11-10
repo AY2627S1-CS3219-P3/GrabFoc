@@ -54,6 +54,11 @@ Scope: Review: the /gateway copies count in the collision check, and /gateway is
        prefix of /gateway/logs collided only in the copies, and /gateway alone was swallowed by a
        regex route the duplicate check cannot see.
 Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: two routes of different services may not both match one request, compared as segment
+       lists - which covers exact-versus-regex and regex-versus-regex alike - and a route pattern
+       must stay inside the grammar that test understands.
+Author review: pending - Jie Yang owns the gateway's route files.
 """
 # AI-generated; review pending.
 import importlib.util
@@ -431,7 +436,15 @@ class RouteFilesTest(unittest.TestCase):
         # route 28 against Order's route 49 (fourth review).
         with self.assertRaises(ValueError) as caught:
             self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/admin"})
-        self.assertRegex(str(caught.exception), r"^A gateway route for supplier matches \w+'s GET ")
+        self.assertRegex(str(caught.exception), r"^A \w+ route and a \w+ route both match GET requests: ")
+        # Two regexes meeting, which comparing a regex against exact paths alone still missed:
+        # /admin/users/foo renders Supplier's `{locations}/[^/]+` as `/admin/users/foo/[^/]+`, and
+        # that meets User's `/admin/users/[^/]+/login-events` at /admin/users/foo/login-events.
+        # User is emitted first, so a Supplier location whose id is "login-events" went to User
+        # (fifth review).
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/admin/users/foo"})
+        self.assertIn("login-events", str(caught.exception))
         # Checked across services only. Order declares `GET /orders/available` beside
         # `{orders}/[^/]+` on purpose, both reach Order, and the defaults must stay valid - the
         # version of this check that compared whole namespaces rejected them.
@@ -443,6 +456,24 @@ class RouteFilesTest(unittest.TestCase):
                 self.assertTrue(self.routes(self.renderer.configuration({**self.env, name: value})))
 
     # AI-generated (Claude Code, 2026-11-09; review)
+    # AI-generated (Claude Code, 2026-11-10; review)
+    def test_route_patterns_stay_inside_the_grammar_the_overlap_test_understands(self):
+        """A matcher is `/`-separated segments, each a literal or the whole wildcard `[^/]+`.
+
+        That restriction is what makes the overlap test exact rather than best-effort, so a pattern
+        outside it is refused at startup instead of quietly skipped. A collision check with a blind
+        spot reads as a guarantee and is not one (review).
+        """
+        for pattern, expected in (("/x(a|b)", "Unsupported characters"),
+                                  ("/x/pre[^/]+post", "only use [^/]+ as a whole segment"),
+                                  ("/x/.*", "Unsupported characters")):
+            with self.subTest(pattern=pattern):
+                self.write_service({"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",
+                                    "routes": [{"method": "GET", "regex": pattern}]})
+                with self.assertRaises(ValueError) as caught:
+                    self.renderer.configuration({**self.env, "EXTRA_SERVICE_URL": "http://extra:9000"})
+                self.assertIn(expected, str(caught.exception))
+
     def test_two_route_files_cannot_render_the_same_path(self):
         """The same collision from two files rather than from a prefix."""
         self.write_service({"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",

@@ -28,6 +28,16 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-10 — Equality, then one direction of overlap, then overlap (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: "fix 233, wait for further conversations until done"
+- One finding, and it is the third correction to the same check in a row. Last round I started testing each regex against other services' **exact** paths. That still left two regexes meeting each other: `GATEWAY_LOCATIONS_PREFIX=/admin/users/foo` renders Supplier's `{locations}/[^/]+` as `/admin/users/foo/[^/]+`, which meets User's `/admin/users/[^/]+/login-events` at `/admin/users/foo/login-events`. Reproduced: route 21 (user) and routes 28-29 (supplier) all match it, and user is first - so a Supplier location whose id happens to be `login-events` was answered by the User Service.
+- I stopped patching directions and changed what is compared. A matcher is now a list of `/`-separated segments, each a literal or the whole wildcard, and two routes overlap when the lists are the same length and every pair is compatible. **One rule covers exact-vs-exact, exact-vs-regex and regex-vs-regex**, which is what I should have written when the first of these came in.
+- That only works if every pattern is inside the grammar the test understands, so a `regex` outside it is now refused at startup: `/x(a|b)` and `/x/.*` fail on characters, `/x/pre[^/]+post` on using the wildcard as part of a segment. Every regex in `routes/` already complied - I checked before restricting it. A collision check with a blind spot reads as a guarantee and is not one, which is the mistake I had been making three rounds running.
+- Still across services only, and the defaults still render: Order declares `GET /orders/available` beside `{orders}/[^/]+` on purpose, and refusing that was exactly the over-reach of two rounds ago.
+- Verified: nine configurations behave as intended, **23** renderer tests across 8 consecutive runs with no flakes, **29** integration tests against the real pinned Envoy. Control: 5 of the new assertions fail against the committed renderer.
+
 ### 2026-11-10 — One service's regex over another's path, and three in my own checker (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 
