@@ -28,6 +28,15 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-10 — A dot is not a dot, and two races I left in the runbook (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: "fix 233, wait for further conversations until done"
+- **My segment grammar let `.` through as a literal, and RE2 reads it as any character.** So `/foo.json/[^/]+` was modelled as the literal `foo.json` and looked distinct from another service's exact `/fooXjson/bar`, which it matches - the cross-service guarantee I had just written into `AGENTS.md` was not true. A regex segment now takes safe characters or a backslash escape only: `/foo.json/[^/]+` is refused, `/foo\.json/[^/]+` is accepted. An exact `path` still allows a bare dot, because there it *is* a dot. No regex in `routes/` contained one, which I checked before tightening.
+- **The disclosure checker took the `Tool:` label as an entry.** `Tool: Claude Code` with no model and no date satisfied it. It validates the shape now - tool, `(model: ...)`, and an ISO date - and allows `dates:` because existing headers use it for a range. Checked against five real and malformed lines.
+- Two races in the runbook, both mine. The smoke loop stopped as soon as the count left zero, but the two rows arrive in **separate** Kafka deliveries, so it could print one and look like a half-failure; it waits for 2. And section 5 queried straight after step 9, whose own line can still be in the one-second buffer - it polls now, same as section 2. Ran both blocks verbatim: the smoke one waited 2 seconds for both rows, and the section 5 loop reached its count in 1 second with three calls under one id.
+- **And a consequence of my own fix that I nearly missed:** the section 5 block needs `jq`, which this machine does not have. Without it every iteration prints `command not found`, the count never matches, and you wait out twenty seconds for nothing - the exact failure the loop exists to prevent, wearing a different hat. The runbook says so now, with a psql fallback that needs no `jq`.
+
 ### 2026-11-10 — The routes the renderer owns, and "a line changed" is not "an entry" (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
 

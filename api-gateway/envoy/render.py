@@ -150,7 +150,13 @@ def cluster(name, urls, settings):
 # Not a legal service name (those are [a-z][a-z0-9_-]*), so it can never collide with a real one.
 OWNED = "the gateway itself"
 WILDCARD = "[^/]+"
-SEGMENT_LITERAL = re.compile(r"[A-Za-z0-9._~-]*")
+# A literal segment of an exact path: `.` is an ordinary character to Envoy there.
+PATH_LITERAL = re.compile(r"[A-Za-z0-9._~-]*")
+# A literal segment of a *regex*, where `.` is not ordinary - RE2 reads it as any character.
+# Safe characters, or a backslash escape (re.escape writes prefixes that way). An unescaped
+# dot was accepted and modelled as a literal, so `/foo.json/[^/]+` looked distinct from
+# another service's exact `/fooXjson/bar` while both match it (review).
+REGEX_LITERAL = re.compile(r"(?:[A-Za-z0-9_~-]|\\.)*")
 
 def segments(matcher, regex):
     """A matcher as segments: None for a wildcard, else the literal text."""
@@ -166,7 +172,7 @@ def segments(matcher, regex):
         if "\x00" in part:
             raise ValueError(f"A route pattern may only use {WILDCARD} as a whole segment")
         literal = re.sub(r"\\(.)", r"\1", part) if regex else part
-        if not SEGMENT_LITERAL.fullmatch(literal):
+        if not (REGEX_LITERAL if regex else PATH_LITERAL).fullmatch(part):
             raise ValueError(f"Unsupported characters in the route pattern segment {part!r}")
         parts.append(literal)
     return parts

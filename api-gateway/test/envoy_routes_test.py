@@ -64,6 +64,10 @@ Scope: Review: the renderer's own GET /health and GET /gateway/health are in the
        a prefix cannot be shadowed by them; and GATEWAY_AUTH_PREFIX=/health stays valid, because
        every /auth route has a segment after the prefix.
 Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: a bare dot in a regex is refused and the escaped form accepted, because RE2 reads a
+       bare one as any character.
+Author review: pending - Jie Yang owns the gateway's route files.
 """
 # AI-generated; review pending.
 import importlib.util
@@ -480,15 +484,28 @@ class RouteFilesTest(unittest.TestCase):
         outside it is refused at startup instead of quietly skipped. A collision check with a blind
         spot reads as a guarantee and is not one (review).
         """
+        # A bare dot is refused: RE2 reads it as any character, so modelling `foo.json` as a
+        # literal would call this route distinct from another service's exact `/fooXjson/bar`,
+        # which it matches. Escaped, it is a dot and allowed. In an exact `path` a dot is just a
+        # dot, which is why only the regex grammar is this strict (review).
         for pattern, expected in (("/x(a|b)", "Unsupported characters"),
                                   ("/x/pre[^/]+post", "only use [^/]+ as a whole segment"),
-                                  ("/x/.*", "Unsupported characters")):
+                                  ("/x/.*", "Unsupported characters"),
+                                  ("/foo.json/[^/]+", "Unsupported characters")):
             with self.subTest(pattern=pattern):
                 self.write_service({"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",
                                     "routes": [{"method": "GET", "regex": pattern}]})
                 with self.assertRaises(ValueError) as caught:
                     self.renderer.configuration({**self.env, "EXTRA_SERVICE_URL": "http://extra:9000"})
                 self.assertIn(expected, str(caught.exception))
+        # The escaped form is accepted, and so is a dot in an exact path.
+        for pattern in ("/foo" + "\\" + ".json/[^/]+", "/x/[^/]+"):
+            with self.subTest(allowed=pattern):
+                self.write_service({"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",
+                                    "routes": [{"method": "GET", "regex": pattern}]})
+                config = self.renderer.configuration(
+                    {**self.env, "EXTRA_SERVICE_URL": "http://extra:9000"})
+                self.assertTrue(self.routes(config))
 
     def test_two_route_files_cannot_render_the_same_path(self):
         """The same collision from two files rather than from a prefix."""

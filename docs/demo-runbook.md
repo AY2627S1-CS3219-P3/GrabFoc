@@ -43,6 +43,11 @@ Scope: Review: the admin recovery pointed at a "First admin" section of user-ser
   does not exist. Replaced with the SQL promotion, walked through end to end, including that the
   token you already hold keeps answering 403 because the role is a claim inside it.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: the smoke check waits for both of its rows rather than for the count to leave zero,
+  and section 5 polls as well, since step 9's own line can still be in flight. Noted that the
+  section 5 block needs jq, which this machine does not have - the loop spins silently without it.
+Author review: Cole Lin, read and approved.
 -->
 
 # Demo runbook
@@ -176,8 +181,9 @@ One command, and it proves the whole feature (the loop is not optional - see bel
 id="smoke-$(date +%s)"
 curl -s -o /dev/null -H "x-request-id: $id" http://localhost:3002/locations
 for attempt in $(seq 20); do
-  docker exec foc-logging-db-1 psql -U foc -d logging -tAc \
-    "select count(*) from log_lines where request_id = '$id';" | grep -qx 0 || break
+  rows=$(docker exec foc-logging-db-1 psql -U foc -d logging -tAc \
+    "select count(*) from log_lines where request_id = '$id';" | tr -d ' \r')
+  [ "$rows" = 2 ] && break
   sleep 1
 done
 docker exec foc-logging-db-1 psql -U foc -d logging \
@@ -187,6 +193,10 @@ docker exec foc-logging-db-1 psql -U foc -d logging \
 **The loop is the point.** Nothing here is synchronous: the service buffers the line and flushes
 on a one-second timer, then Kafka has to deliver it and the store has to insert it. Query once,
 straight after the request, and an entirely healthy pipeline shows you nothing.
+
+The loop waits for **both** rows, not for the count to stop being zero: the two lines arrive in
+separate Kafka deliveries, so stopping at the first one shows you half the answer and looks like a
+partial failure.
 
 A request with no token gets a 401 and writes **two** lines — `request_completed` and
 `access_denied` — both carrying that id. If they are there, ingest is consuming and the store is
@@ -274,8 +284,27 @@ Then:
 The point of the whole thing: one request id, every service that touched it.
 
 ```bash
-curl -s -H "Authorization: Bearer $TOKEN" "http://localhost:3003/logs?requestId=<the id you sent>&pageSize=50" | jq '.lines[] | {service, event, method, path, status}'
+id=<the id you sent>
+for attempt in $(seq 20); do
+  lines=$(curl -s -H "Authorization: Bearer $TOKEN" \
+    "http://localhost:3003/logs?requestId=$id&pageSize=50" | jq '.lines | length')
+  [ "$lines" = 10 ] && break
+  sleep 1
+done
+curl -s -H "Authorization: Bearer $TOKEN" "http://localhost:3003/logs?requestId=$id&pageSize=50" \
+  | jq '.lines[] | {service, event, method, path, status}'
 ```
+
+**Poll here too.** Step 9's own line can still be in the shipper's one-second buffer or in Kafka
+when you run this, so an immediate query can show **nine** lines of the ten and look like a service
+that failed to log. Same race as section 2, same answer.
+
+**This block needs `jq`** (`winget install jqlang.jq`, or `apt install jq`). Without it every
+iteration prints `jq: command not found`, the count never matches, and you wait out the twenty
+seconds for nothing - which is the failure this loop was added to prevent, wearing a different hat.
+If you would rather not install it, drop the loop and read the store directly:
+`docker exec foc-logging-db-1 psql -U foc -d logging -c "select service, event, method, path, status
+from log_lines where request_id = '<the id>' order by ts;"`.
 
 Through the gateway on `:3003`, like every other call in the demo. The store is also still on
 `:3007` directly, which is the one to fall back to if the gateway is the thing being debugged.

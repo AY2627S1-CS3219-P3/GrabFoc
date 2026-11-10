@@ -49,6 +49,7 @@ Author review: Cole Lin, read and approved.
 # silently examined nothing must not read as a pass.
 # AI-generated (reviewed by Cole Lin).
 import json
+import re
 import subprocess
 import sys
 
@@ -85,6 +86,11 @@ JSON_FIELDS = ("_disclosure", "description")
 # header line meant a blank `#`, a rewrapped old Scope line or unrelated prose passed, so a change
 # with no new entry read as clean - which is the whole thing this checks for (review).
 ENTRY_FIELDS = ("Tool:", "Scope:", "Author review:")
+# The Tool line has a shape, not just a label: the project document asks for the tool, the
+# model in brackets and an ISO date. Checking the label alone passed "Tool: Claude Code" with
+# no model and no date, which is a policy-incomplete attribution reported as complete
+# (review). "dates:" is allowed because existing headers use it for a range.
+TOOL_LINE = re.compile(r"Tool:.*\((?:model|models):[^)]+\),\s*(?:date|dates):\s*\d{4}-\d{2}-\d{2}")
 
 def json_disclosure(text):
     """Whether this JSON file carries its disclosure in a disclosure field."""
@@ -213,7 +219,10 @@ def main():
         # A complete entry, not merely a changed header line. One JSON field holds all three on
         # its single line, so the same test works there.
         grew = [line for line in head if line in added]
-        if not all(any(field in line for line in grew) for field in ENTRY_FIELDS):
+        complete = all(any(field in line for line in grew) for field in ENTRY_FIELDS)
+        if complete and not any(TOOL_LINE.search(line) for line in grew):
+            complete = False          # a Tool line without its model or its date
+        if not complete:
             missing.append(path)
     for path in removed:
         print(f"disclosure header REMOVED: {path}")
