@@ -156,12 +156,39 @@ Scope: Wrote the 2026-11-09 entry on Kafka's restarts during the first staging d
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 chat-on-AWS entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Wrote the 2026-11-10 production entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-10 — Creating the production environment
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** plan, generate
+**Files:** `infra/terraform/envs/production/production.tfvars`
+
+**Scenario:** After chat (#236), logging (#234) and Kafka's fix (#235) were on staging and passed, I asked to
+create production. Claude checked what exists: GitHub's `production` environment (required reviewers, branch rule),
+no production secrets in SSM, and #234's memory model, which puts production's deploy peak at 6,880 MiB of the
+~7,000 MiB a t3.large leaves for containers. I chose a t3.xlarge like staging and accepted the extra cost.
+`production.tfvars` now sets it, so a later apply can't shrink (and so replace) the server.
+
+**Prompts (exact, in order):**
+> ok lets set up production env now!!!
+
+My answers to Claude's questions: "t3.xlarge, like staging (Recommended)" and "Yes, create production".
+
+**What it produced:** `instance_type = "t3.xlarge"` in `production.tfvars`, and the setup steps (secrets, plan and
+apply, record the tag, first-apply restart, checks, a first run of the production workflow).
+
+**What I changed or rejected:** The default t3.large.
+
+**Verification:** `infra/terraform/check.sh` passes. The production plan is shown before it is applied. My own
+check: pending.
 
 ### 2026-11-09 — Putting chat on AWS
 
