@@ -49,6 +49,11 @@ Scope: Review: no two routes may render the same matcher for one method. GATEWAY
        round: compare what is rendered rather than whole prefix namespaces, so a prefix nested
        under a fixed path, or landing on one under another method, still works.
 Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: the /gateway copies count in the collision check, and /gateway is reserved - a
+       prefix of /gateway/logs collided only in the copies, and /gateway alone was swallowed by a
+       regex route the duplicate check cannot see.
+Author review: pending - Jie Yang owns the gateway's route files.
 """
 # AI-generated; review pending.
 import importlib.util
@@ -399,13 +404,31 @@ class RouteFilesTest(unittest.TestCase):
             self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/logs"})
         self.assertEqual(str(caught.exception),
                          "Two gateway routes render the same path for GET: /logs")
+        # The /gateway copies count too. Every route is rendered twice, and the unprefixed set
+        # comes first, so a prefix reaching into /gateway is taken by whichever service got there
+        # first. With /gateway/logs the unprefixed definitions were all distinct and startup
+        # succeeded, while the internal listener held three routes matching `GET /gateway/logs` -
+        # Supplier at index 26 and 27, Logging's copy at 107 (third review).
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/gateway/logs"})
+        self.assertIn("/gateway", str(caught.exception))
+        # /gateway itself is worse and invisible to the duplicate check: Supplier's
+        # `{locations}/[^/]+` then answered /gateway/logs, /gateway/orders, /gateway/mine and
+        # /gateway/health, and a regex matcher never equals an exact path, so nothing collided.
+        # Reserved by name.
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/gateway"})
+        self.assertEqual(str(caught.exception),
+                         "A gateway route prefix must not start with /gateway")
         # Allowed, and rejected by the first version of this check:
         #   /users/me/auth renders /users/me/auth/login etc., which cannot match the exact
         #     /users/me that 10-user.routes.json fixes;
         #   /location-types collides with Supplier's fixed route only for GET, and Order's root
         #     route there is POST.
+        # /gatewayish is not inside /gateway, so the reservation must not catch it either.
         for name, value in (("GATEWAY_AUTH_PREFIX", "/users/me/auth"),
-                            ("GATEWAY_ORDERS_PREFIX", "/location-types")):
+                            ("GATEWAY_ORDERS_PREFIX", "/location-types"),
+                            ("GATEWAY_LOCATIONS_PREFIX", "/gatewayish")):
             with self.subTest(**{name: value}):
                 self.assertTrue(self.routes(self.renderer.configuration({**self.env, name: value})))
 

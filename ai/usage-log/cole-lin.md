@@ -23,6 +23,17 @@ Author review: Cole Lin, read and approved.
 Cole Lin's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
 
+### 2026-11-10 — The /gateway namespace, and a disclosure the merge ate (issue #52)
+**Tool:** Claude Code (Claude Opus 5) · **Mode:** debug
+
+- Prompt: "fix 233"
+- Three findings on the gateway route PR after main was merged into it overnight.
+- **The collision check only looked at half the routes.** Every route is rendered twice - plain and under `/gateway` - and I compared only the plain set. With `GATEWAY_LOCATIONS_PREFIX=/gateway/logs` the plain definitions were all distinct, startup succeeded, and the internal listener then held **three** routes matching `GET /gateway/logs`: Supplier's at index 26 and 27, Logging's copy at 107. Envoy takes the first. I reproduced that before fixing it. Both copies are in the set now.
+- **Checking that turned up something worse.** `GATEWAY_LOCATIONS_PREFIX=/gateway` was still accepted, and no duplicate exists to find: Supplier's `{locations}/[^/]+` is a *regex*, and a regex matcher string never equals an exact path. Rendered and asked who answers what, the whole namespace was gone - `/gateway/logs`, `/gateway/orders`, `/gateway/mine` and even `/gateway/health` all reached Supplier. `/gateway` is the renderer's own namespace, so it is reserved by name now; `/gatewayish` still works, which is the obvious way to get that wrong.
+- **The merge ate my disclosure entry on `infra/terraform/modules/services/main.tf`** - it kept the `LOGGING_SERVICE_URL` line and dropped the header entry that explains it. I did not spot that; `ai/check-disclosures.py` did, which is the first time the thing I built for this class caught a case before a human named it. Re-added, and the entry says why it is dated twice.
+- And the checker had one more hole: a change that **removes** a header outright left nothing to compare, so the file was skipped in silence. A branch whose only change deleted a disclosure read as clean - the most complete version of what it exists to catch. Proved it by stripping `frontend.lua`'s header: today's version reports `disclosure header REMOVED`, yesterday's says everything is fine.
+- Verified after the merge, which brought chat onto AWS and so changed the module under me: **22** renderer tests (8 consecutive runs, no flakes), **29** integration tests against the real pinned Envoy, every Terraform stack valid with 13 tests passing, `fmt` clean. Docker Desktop was down after the restart and the first integration run failed on the daemon, not the code - worth saying, because that output looks exactly like a broken change.
+
 ### 2026-11-09 — A route for the log store, and what adding one costs the test harness (issue #52)
 **Tool:** Claude Code (Claude Opus 5) · **Mode:** generate
 

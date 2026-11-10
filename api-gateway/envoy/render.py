@@ -24,7 +24,10 @@ Scope: The access log carries the field names the Logging Service stores, so a l
 Author review: Cole Lin, read and approved.
 Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 Scope: Route validation: no two routes may render the same matcher for the same method, compared
-  after the prefixes are substituted. The prefix check compared prefixes with one another only, so
+  after the prefixes are substituted, and counting the /gateway copy of each route as well - a
+  prefix of /gateway/logs left Supplier and Logging both matching GET /gateway/logs on the internal
+  listener, with Supplier first. /gateway itself is reserved: a prefix inside it is swallowed by the
+  unprefixed routes, which the duplicate check cannot see when the matcher is a regex. The prefix check compared prefixes with one another only, so
   GATEWAY_LOCATIONS_PREFIX=/logs was accepted and sent authenticated log queries to the Supplier
   Service, which answers 200. Comparing what is rendered rather than whole prefix namespaces keeps
   a prefix nested under a fixed path, or landing on one under another method, working - these
@@ -172,6 +175,15 @@ def load_routes(env):
         for other in values[index + 1:]:
             if value == other or value.startswith(other + "/") or other.startswith(value + "/"):
                 raise ValueError("Gateway route prefixes must not overlap")
+    # /gateway belongs to the renderer, not to a service: every route is also rendered under it,
+    # and the unprefixed routes come first in the list. A prefix reaching into it is swallowed
+    # whole - GATEWAY_LOCATIONS_PREFIX=/gateway made Supplier's `{locations}/[^/]+` answer
+    # /gateway/logs, /gateway/orders, /gateway/mine and even /gateway/health, none of which the
+    # duplicate check below can see, because a regex matcher never equals an exact path. Reserved
+    # by name instead (third review).
+    for value in prefixes.values():
+        if value == GATEWAY_PREFIX or value.startswith(GATEWAY_PREFIX + "/"):
+            raise ValueError(f"A gateway route prefix must not start with {GATEWAY_PREFIX}")
     literal = set()
     for definition in services:
         for entry in definition["routes"]:
@@ -204,14 +216,24 @@ def load_routes(env):
             # root route is POST and Supplier's fixed one is GET) does not collide either. An
             # earlier version rejected both, and these prefixes are documented as configurable
             # (second review).
-            rendered = (entry["method"], "regex" if regex else "path", re.sub(
+            #
+            # Both the route and its /gateway copy, in one set, because every route is rendered
+            # twice and a copy can collide with another file's plain route. With
+            # GATEWAY_LOCATIONS_PREFIX=/gateway/logs the unprefixed definitions were all distinct,
+            # so startup succeeded - and the internal listener then held three routes matching
+            # `GET /gateway/logs`: Supplier's own at index 26 and 27, Logging's copy at 107. Envoy
+            # takes the first, so a log query there reached Supplier (third review).
+            matcher = re.sub(
                 r"\{([a-z][a-z0-9_]*)\}",
                 lambda match: (re.escape(prefixes[match[1]]) if regex else prefixes[match[1]]),
-                path))
-            if rendered in literal:
-                raise ValueError(
-                    f"Two gateway routes render the same {rendered[1]} for {rendered[0]}: {rendered[2]}")
-            literal.add(rendered)
+                path)
+            kind = "regex" if regex else "path"
+            public = (re.escape(GATEWAY_PREFIX) if regex else GATEWAY_PREFIX) + matcher
+            for rendered in ((entry["method"], kind, matcher), (entry["method"], kind, public)):
+                if rendered in literal:
+                    raise ValueError(
+                        f"Two gateway routes render the same {kind} for {entry['method']}: {rendered[2]}")
+                literal.add(rendered)
     if "user" not in names:
         raise ValueError("User service routes are required for JWT key discovery")
     return services, prefixes

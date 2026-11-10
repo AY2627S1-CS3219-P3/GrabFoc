@@ -21,6 +21,11 @@ Scope: Review: follow renames, so a moved file is not mistaken for a newly writt
   `description` in the Postman collection - keying on one name let the rest of the document count
   as header.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: say so when a change removes a header outright. That left no lines to compare, so
+  the file was skipped in silence and a branch whose only change deleted a disclosure read clean -
+  the most complete version of what this is for.
+Author review: Cole Lin, read and approved.
 """
 # Lists files your branch changes that carry an AI disclosure header but gained no entry in it.
 #
@@ -107,6 +112,7 @@ def main():
             base_of[parts[2]] = parts[1]
     files = list(base_of)
     missing = []
+    removed = []
     for path in sorted(set(files)):
         # A file this branch adds is disclosed by its whole content, which its author just wrote.
         if subprocess.run(["git", "cat-file", "-e", f"{merge_base}:{base_of[path]}"],
@@ -119,6 +125,13 @@ def main():
             continue
         head = header_lines(text, json_file=path.endswith(".json"))
         if not head:
+            # No header now. If the base had one, this change removed it, which is the most
+            # complete version of the thing this check exists to catch - and it used to be
+            # skipped in silence, so a branch whose only change deleted a header read as clean
+            # (review).
+            base_text = git("show", f"{merge_base}:{base_of[path]}")
+            if MARKER in base_text:
+                removed.append(path)
             continue
         # Both paths when the file moved, and --find-renames, so a rename renders as a
         # similarity entry rather than as a brand-new file: scoped to the destination alone, every
@@ -128,10 +141,13 @@ def main():
                  if line.startswith("+") and not line.startswith("+++")}
         if not any(line in added for line in head):
             missing.append(path)
+    for path in removed:
+        print(f"disclosure header REMOVED: {path}")
     for path in missing:
         print(f"no disclosure entry added: {path}")
-    if missing:
-        print(f"{len(missing)} file(s) above: add an entry, or satisfy yourself none is needed.")
+    if removed or missing:
+        print(f"{len(removed) + len(missing)} file(s) above: add an entry, or satisfy yourself "
+              "none is needed.")
     else:
         print("every changed file with a disclosure header gained an entry.")
 

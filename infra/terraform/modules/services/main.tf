@@ -23,6 +23,11 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: chat-db, chat-migrate and chat-service, as in chat-service/compose.yaml (chat on AWS; Jie Yang's plan, approved by Jian Bing).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: LOGGING_SERVICE_URL for the gateway, which the log store's route file (#52) requires. The
+#        service itself is deployed separately; until then GET /logs is a 503, as chat's was.
+# Author review: pending - Jian Bing owns the deployment.
+#        Re-added on 2026-11-10: the merge from main kept the env line and dropped this entry.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
