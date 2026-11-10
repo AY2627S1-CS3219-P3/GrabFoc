@@ -9,6 +9,9 @@ Author review: Reviewed in full.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-18
 Scope: Expect the ninth index, order_history_unpublished_idx (order.events outbox, Phase D).
 Author review: Reviewed
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Expect migration 002_confirmation_events.sql and its two outbox indexes (#186).
+Author review: pending — Jie Yang to record the review.
 */
 // AI-generated; human review pending.
 import assert from 'node:assert/strict';
@@ -33,7 +36,7 @@ before(async () => {
   // Only this test run's random schema is created/removed; existing tables are untouched.
   await admin.query(`CREATE SCHEMA ${schema}`);
   const results = await Promise.all([runMigrations(pool), runMigrations(pool)]);
-  assert.deepEqual(results.flat(), ['001_init.sql']); // applied once
+  assert.deepEqual(results.flat(), ['001_init.sql', '002_confirmation_events.sql']); // applied once
 });
 after(async () => {
   await pool.end();
@@ -74,13 +77,13 @@ const sqlState = (code: string) => (error: unknown) => {
   return true;
 };
 
-test('migrations serialize, run once and create exactly the nine approved indexes', async () => {
+test('migrations serialize, run once and create exactly the eleven approved indexes', async () => {
   assert.deepEqual(await runMigrations(pool), []);
   const versions = await pool.query('SELECT version FROM schema_migrations');
-  assert.deepEqual(versions.rows, [{ version: '001_init.sql' }]);
+  assert.deepEqual(versions.rows.map((r) => r.version).sort(), ['001_init.sql', '002_confirmation_events.sql']);
   const indexes = await pool.query(`SELECT indexname FROM pg_indexes
     WHERE schemaname = $1 AND indexname NOT LIKE '%_pkey'`, [schema]);
-  assert.equal(indexes.rowCount, 9);
+  assert.equal(indexes.rowCount, 11);
 });
 
 test('creation generates UUID/timestamps, a 24-hour window and exact snapshot precision', async () => {

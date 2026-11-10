@@ -13,6 +13,9 @@ AI Assistance Disclosure:
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Editable timing window (datetime-local inputs) on create and edit, sent as toISOString(), with a start-before-end check.
 Author review: Pending review by Deanson.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: toLocalInput() moved to lib/orders.ts, shared with the order page's "Propose new time" (#186).
+Author review: Pending review by Jie Yang.
 */
 "use client";
 
@@ -24,21 +27,13 @@ import { CoinIcon, DispatchedArt, RoutePreview } from "@/app/components/icons";
 import { Modal } from "@/app/components/modal";
 import { activeLocations } from "@/lib/locations";
 import { createOrder, editOrder, isConflict, isUnauthorized, type Order, OrderError,
-  type OrderEdit, orderKeys } from "@/lib/orders";
+  type OrderEdit, orderKeys, toLocalInput } from "@/lib/orders";
 import { mapFieldErrors } from "@/lib/service-errors";
 
 type Mode = { kind: "create"; pickupId?: number } | { kind: "edit"; order: Order };
 type Fields = Record<string, string[]>;
 
 const MAX_INT = 2147483647;
-
-// AI-generated (pending review by Deanson)
-/** ISO timestamp → the browser's local "YYYY-MM-DDTHH:mm", the value a datetime-local input takes. */
-function toLocalInput(iso: string) {
-  const date = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
 
 // AI-generated (pending review by Deanson)
 export function OrderFormModal({ mode, onClose, onSaved }: { mode: Mode; onClose: () => void; onSaved: (order: Order) => void }) {

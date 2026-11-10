@@ -45,6 +45,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
  * Scope: Added the GET /orders/assigned?status= filter test.
  * Author review: Pending review by Deanson.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Proposals publish OrderChangeRequest (#186): updated the two order.events tests that now
+ *        see them, and added tests for its payload, ordering, expiry and resend.
+ * Author review: pending — Jie Yang to record the review.
  */
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
@@ -60,7 +64,7 @@ import { AppModule, configureApp } from '../app.module';
 import { PG_POOL } from '../db/database.module';
 import { CREDIT_COMMANDS_TOPIC, CreditCommand } from '../integrations/credit.commands';
 import { KafkaProducer } from '../integrations/kafka.producer';
-import { ORDER_EVENTS_TOPIC, OrderEvent, OrderEvents } from '../integrations/order.events';
+import { ORDER_EVENTS_TOPIC, OrderChangeEvent, OrderEvent, OrderEvents } from '../integrations/order.events';
 import { runMigrations } from '../db/migrator';
 import { OrdersService } from '../orders/orders.service';
 import { SUPPLIER_EVENTS_DLT, SupplierEvents } from '../integrations/supplier.events';
@@ -113,7 +117,7 @@ const downstream = createServer(async (req, res) => {
 
 // Records messages instead of sending them to Kafka; `kafkaDown` makes every send fail.
 let commands: CreditCommand[] = [];
-let events: { key: string; value: OrderEvent }[] = [];
+let events: { key: string; value: any }[] = []; // OrderEvent or OrderChangeEvent
 let deadLetters: { key: string; value: unknown; headers?: Record<string, string> }[] = [];
 let kafkaDown = false;
 class FakeKafkaProducer extends KafkaProducer {
@@ -122,7 +126,7 @@ class FakeKafkaProducer extends KafkaProducer {
   async send(topic: string, key: string, value: object | string, headers?: Record<string, string>) {
     if (kafkaDown) throw new Error('broker unreachable');
     if (topic === CREDIT_COMMANDS_TOPIC) commands.push(value as CreditCommand);
-    else if (topic === ORDER_EVENTS_TOPIC) events.push({ key, value: value as OrderEvent });
+    else if (topic === ORDER_EVENTS_TOPIC) events.push({ key, value: value as OrderEvent | OrderChangeEvent });
     else if (topic === USER_EVENTS_DLT || topic === SUPPLIER_EVENTS_DLT) deadLetters.push({ key, value, headers });
     else throw new Error(`unexpected topic ${topic}`);
   }
@@ -788,6 +792,8 @@ test('expiry racing a timing approval: whichever commits first wins', async () =
 // ---- Phase D: order.events ----
 
 const eventTypes = () => events.map((e) => e.value.eventType);
+// Without OrderChangeRequest (#186), for tests about state changes that also leave a proposal behind.
+const stateEventsOnly = () => events.filter((e) => e.value.eventType !== 'OrderChangeRequest');
 
 test('each state change is published once to order.events, in order, keyed by order, with its history ID', async () => {
   const id = await insertOrder();
@@ -799,15 +805,22 @@ test('each state change is published once to order.events, in order, keyed by or
   assert.equal((await respond(id, proposed, alice, 'ACCEPTED')).status, 200);
 
   await publishEvents();
-  assert.deepEqual(eventTypes(), ['OrderAccepted', 'OrderPickedUp', 'OrderInProgress', 'OrderArrived', 'OrderCompleted']);
+  // The completion proposal and its approval come from order_confirmations (#186); at the same
+  // instant the approval goes before the state change it caused.
+  assert.deepEqual(eventTypes(), [
+    'OrderAccepted', 'OrderPickedUp', 'OrderInProgress', 'OrderArrived',
+    'OrderChangeRequest', 'OrderChangeRequest', 'OrderCompleted',
+  ]);
+  assert.deepEqual(events.filter((e) => e.value.data.outcome).map((e) => e.value.data.outcome), ['CREATED', 'APPROVED']);
   assert.ok(events.every((e) => e.key === id));
-  assert.deepEqual(events.map((e) => e.value.eventId), (await history(id)).map((h: { id: string }) => h.id));
+  const stateEvents = events.filter((e) => e.value.eventType !== 'OrderChangeRequest');
+  assert.deepEqual(stateEvents.map((e) => e.value.eventId), (await history(id)).map((h: { id: string }) => h.id));
   const completed = events.at(-1)!.value;
   assert.deepEqual(completed.data, { orderId: id, requesterId: alice, courierId: bob, status: 'COMPLETED' });
   assert.ok(!Number.isNaN(Date.parse(completed.occurredAt)));
 
   await publishEvents(); // already published
-  assert.equal(events.length, 5);
+  assert.equal(events.length, 7);
 });
 
 test('OrderCancelled carries the reason; a create Credit refused publishes nothing', async () => {
@@ -849,7 +862,11 @@ test('failed transitions add no history and publish no event', async () => {
   expectError(await respond(id, proposed, alice, 'ACCEPTED'), 409, 'INVALID_STATE'); // already resolved
 
   await publishEvents();
-  assert.deepEqual(eventTypes(), ['OrderPickedUp']);
+  // The rejected proposal is announced (#186), but adds no history entry.
+  assert.deepEqual(
+    events.map((e) => [e.value.eventType, e.value.data.outcome]),
+    [['OrderPickedUp', undefined], ['OrderChangeRequest', 'CREATED'], ['OrderChangeRequest', 'REJECTED']],
+  );
   assert.deepEqual((await history(id)).map((h: any) => h.action), ['PICKED_UP']);
 });
 
@@ -913,7 +930,7 @@ test('UserSuspended cancels every unfinished order the user is on, as requester 
   assert.deepEqual(sent().sort(), [awaiting, pending, arrived].map((id) => ['ReleaseCredits', id]).sort());
   // The AWAITING_CREDIT order was never visible, so nobody is told it was cancelled.
   await publishEvents();
-  assert.deepEqual(events.map((e) => [e.value.data.orderId, e.value.data.reason]).sort(), [
+  assert.deepEqual(stateEventsOnly().map((e) => [e.value.data.orderId, e.value.data.reason]).sort(), [
     [arrived, 'USER_SUSPENDED'],
     [pending, 'USER_SUSPENDED'],
   ].sort());
@@ -988,7 +1005,7 @@ test('SupplierDeactivated cancels orders delivering to the location, and those p
   assert.deepEqual(sent().sort(), cancelled.map((id) => ['ReleaseCredits', id]).sort());
   await publishEvents();
   // One OrderCancelled per order anyone saw; the AWAITING_CREDIT one was never visible.
-  assert.deepEqual(events.map((e) => [e.value.data.orderId, e.value.data.reason]).sort(),
+  assert.deepEqual(stateEventsOnly().map((e) => [e.value.data.orderId, e.value.data.reason]).sort(),
     [pending, accepted, ...delivering].map((id) => [id, 'SUPPLIER_DEACTIVATED']).sort());
 });
 
@@ -1126,4 +1143,83 @@ test('admin history matches the participant view and carries the cancellation re
   assert.deepEqual(body.items.map((h: any) => h.changeDetails), [{ reason: 'REQUESTER_CANCELLED' }]);
   expectError(await get(`/admin/orders/${randomUUID()}/history`, dana), 404, 'NOT_FOUND');
   expectError(await get('/admin/orders/not-a-uuid/history', dana), 400, 'VALIDATION_ERROR');
+});
+
+// ---- #186: OrderChangeRequest ----
+
+test('a proposal and its rejection are published once each, with the proposal in the payload', async () => {
+  const id = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  const proposed = await post(confirmations(id), alice, timingChange);
+  assert.equal((await respond(id, proposed, bob, 'REJECTED')).status, 200);
+
+  await publishEvents();
+  assert.equal(events.length, 2);
+  const [created, rejected] = events.map((e) => e.value as OrderChangeEvent);
+  assert.ok(events.every((e) => e.key === id));
+  assert.equal(created.eventId, proposed.body.id);
+  assert.notEqual(rejected.eventId, created.eventId);
+  assert.deepEqual(created.data, {
+    orderId: id,
+    requesterId: alice,
+    courierId: bob,
+    status: 'ACCEPTED',
+    outcome: 'CREATED',
+    confirmationId: proposed.body.id,
+    kind: 'TIMING_CHANGE',
+    proposedBy: alice,
+    proposedWindowStart: '2030-01-01T02:00:00.000Z',
+    proposedWindowEnd: '2030-01-01T04:00:00.000Z',
+  });
+  assert.deepEqual([rejected.eventType, rejected.data.outcome, rejected.data.confirmationId], [
+    'OrderChangeRequest', 'REJECTED', proposed.body.id,
+  ]);
+  assert.ok(Date.parse(rejected.occurredAt) >= Date.parse(created.occurredAt));
+
+  await publishEvents(); // already published
+  assert.equal(events.length, 2);
+});
+
+test('a cancellation proposal carries no window; an approved timing change is published', async () => {
+  const id = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  const timing = await post(confirmations(id), bob, timingChange);
+  assert.equal((await respond(id, timing, alice, 'ACCEPTED')).status, 200);
+  const cancel = await post(confirmations(id), bob, { kind: 'CANCELLATION' });
+
+  await publishEvents();
+  assert.deepEqual(events.map((e) => [e.value.data.kind, e.value.data.outcome, e.value.data.proposedBy]), [
+    ['TIMING_CHANGE', 'CREATED', bob],
+    ['TIMING_CHANGE', 'APPROVED', bob],
+    ['CANCELLATION', 'CREATED', bob],
+  ]);
+  assert.equal(events[2].value.eventId, cancel.body.id);
+  assert.ok(!('proposedWindowStart' in events[2].value.data));
+});
+
+test('an expired timing change is published; a superseded proposal is not', async () => {
+  const late = await insertOrder({ status: 'IN_PROGRESS', courier_id: bob });
+  const proposed = await post(confirmations(late), alice, timingChange);
+  await pool.query('UPDATE orders SET window_start = $2, window_end = $3 WHERE id = $1', [late, expiredWindow.window_start, expiredWindow.window_end]);
+  expectError(await respond(late, proposed, bob, 'ACCEPTED'), 409, 'INVALID_STATE');
+
+  const arriving = await insertOrder({ status: 'IN_PROGRESS', courier_id: carol }); // one active order per courier
+  await post(confirmations(arriving), alice, timingChange);
+  assert.equal((await post(`/orders/${arriving}/arrive`, carol, { version: 1 })).status, 200); // supersedes it
+
+  await publishEvents();
+  assert.deepEqual(events.filter((e) => e.key === late).map((e) => e.value.data.outcome), ['CREATED', 'EXPIRED']);
+  assert.deepEqual(events.filter((e) => e.key === arriving).map((e) => [e.value.eventType, e.value.data.outcome]), [
+    ['OrderChangeRequest', 'CREATED'],
+    ['OrderArrived', undefined],
+  ]);
+});
+
+test('proposal events Kafka did not store are resent with the same event ID', async () => {
+  const id = await insertOrder({ status: 'ACCEPTED', courier_id: bob });
+  const proposed = await post(confirmations(id), alice, { kind: 'CANCELLATION' });
+  kafkaDown = true;
+  await publishEvents();
+  assert.equal(events.length, 0);
+  kafkaDown = false;
+  await publishEvents();
+  assert.deepEqual(events.map((e) => e.value.eventId), [proposed.body.id]);
 });

@@ -22,6 +22,15 @@ Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
 Scope: Added the Logging section: this service's outcome lines now go through the shipper into
   the Logging Service's store, and this file did not mention logging at all (issue #52).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Wrote "Proposal emails (#186)" from Jie Yang's decisions in chat; updated "Status" and "Who gets emailed".
+Author review: pending — Jie Yang to record the review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Recorded that a proposal's resolution supersedes its unsent CREATED email, and the confirmation_id column (from Jie Yang's review).
+Author review: pending — Jie Yang to record the review.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Recorded that proposal emails follow the proposal's lifetime (proposal_moot), from Jie Yang's decision.
+Author review: pending — Jie Yang to record the review.
 -->
 
 # AGENTS.md — Notification Service
@@ -38,7 +47,8 @@ _Origin: AI doc_
 - Retries (#154): an event with emails that may still go out moves through `notification.order-events.retry.<n>`, then to `notification.order-events.dlt`. An email for an order that has since moved on is dropped as `SUPERSEDED`.
 - Account emails (#183): `user.events` is consumed too. `UserSuspended` and `UserReactivated` email that user; other types are skipped. `UserReactivated` only arrives once the User Service publishes it (#180).
 - CI (#155): unit, integration and Kafka tests run in CI. The UI demo is still to do.
-- Not yet: the admin dead-letter endpoints (deferred), emails for completion/cancellation/timing-change requests (#186). Tracking issue: #147.
+- Proposal emails (#186): `OrderChangeRequest` emails the other party when a timing change, cancellation or completion is proposed, and the proposer when it is approved (timing changes only), rejected or expires.
+- Not yet: the admin dead-letter endpoints (deferred). Tracking issue: #147.
 
 ## Purpose
 
@@ -57,6 +67,8 @@ _Origin: Team (Backlog NTFR2)_
 | `COMPLETED` | requester and courier |
 | `CANCELLED` | requester, plus the courier if one was assigned |
 | any other state | recorded and discarded |
+
+Proposals (`OrderChangeRequest`, #186) are emailed as in "Proposal emails (#186)" below.
 
 ## Rules
 
@@ -125,6 +137,26 @@ _Origin: Team (issue #183; Jie Yang approved Claude Code's plan, 2026-11-04)_
 - **[Decided]** The suspension reason is never included: the events don't carry it.
 - **[Proposed]** `UserReactivated` (`{ type, eventId, userId, occurredAt, previousStatus }`) is the shape #180 proposes; the User Service owners (Deanson, Zi Yi) define it. Confirm before relying on it.
 - An `OrderCancelled` with reason `USER_SUSPENDED` (sent by Order for each unfinished order of a suspended user) says "It was cancelled because an account on this order was suspended." So a suspended user may get several emails at once.
+
+## Proposal emails (#186)
+
+_Origin: Team (Jie Yang, 2026-11-10, from Claude Code's options in chat)_
+
+| `data.outcome` | Kind | Email to |
+|---|---|---|
+| `CREATED` | `TIMING_CHANGE`, `CANCELLATION`, `COMPLETION` | the other party (not `proposedBy`) |
+| `APPROVED` | `TIMING_CHANGE` | the proposer ("New delivery window accepted") |
+| `APPROVED` | `CANCELLATION`, `COMPLETION` | nobody: the `OrderCompleted` / `OrderCancelled` email already tells both parties |
+| `REJECTED` | any | the proposer |
+| `EXPIRED` | `TIMING_CHANGE` (the only kind that expires) | the proposer |
+
+- **[Decided]** Recorded in `notification_events` like any event (deduplicated on `eventId`), with six more columns: `change_outcome`, `change_kind`, `proposed_by`, `proposed_window_start`, `proposed_window_end` and `confirmation_id` (indexed), which ties a proposal's two events together. Added with `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, so an existing database gets them on its next start.
+- **[Decided]** A proposal never moves `notification_order_states`: it is not a state change. Its `data.status` is the order's state when Order published it.
+- **[Decided]** (Jie Yang, 2026-11-10) Proposal emails follow the proposal, not every state change. A proposal event is `DISCARDED_STALE`, and its email dropped as `SUPERSEDED` before a send or retry, only once the proposal can't be answered: the order is `COMPLETED` or `CANCELLED`, or, for a `TIMING_CHANGE`, the order has reached `ARRIVED` (no window changes after that). A pickup or start of delivery leaves it open, so a request waiting for a retry still goes out. The rule is the SQL function `proposal_moot()` in `schema.ts`, used by both checks.
+- **[Decided]** (Jie Yang, 2026-11-10, in review) A resolution (`APPROVED`, `REJECTED`, `EXPIRED`) doesn't change the order's state, so the rank check can't see it. When one is handled, the same proposal's `CREATED` emails that could still go out (`PENDING`, or `FAILED` with a retryable error) are marked `FAILED` / `SUPERSEDED` in the same transaction. Otherwise a retry would ask the other party to answer a proposal that is already settled. An email that failed for good keeps its error. The sender also counts a `CREATED` email as superseded once a resolution for its proposal is recorded, and a `CREATED` that arrives after its resolution is `DISCARDED_STALE`.
+- **[Decided]** The email is chosen by `change_outcome` and `change_kind`, never by `status`. Otherwise a proposal on an `ACCEPTED` order would be emailed as a second "A courier accepted your order".
+- Templates in `src/mail/templates.ts`; proposed windows are shown in Singapore time.
+- **Deploy Notification before (or with) Order.** An older Notification picks the email by `data.status` and would send that duplicate "accepted" email for every proposal.
 
 ## Logging (issue #52)
 

@@ -9,10 +9,14 @@
  * Scope: Added the account emails (suspended, reinstated, reactivated) with #183's wording, and the
  *        USER_SUSPENDED cancellation reason (#183), as approved by Jie Yang on 2026-11-04.
  * Author review: pending — Jie Yang to record the review.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: Added the proposal emails (#186): a timing change, cancellation or completion proposed,
+ *        and a proposal approved, rejected or expired. Wording to be checked by Jie Yang.
+ * Author review: pending — Jie Yang to record the review.
  */
 // AI-generated (pending review)
 import { RecipientRole } from '../events/recipients';
-import { AccountEvent, OrderStatus } from '../messaging/messages';
+import { AccountEvent, ChangeKind, ChangeOutcome, OrderStatus } from '../messaging/messages';
 
 export interface EmailInput {
   status: OrderStatus;
@@ -20,6 +24,16 @@ export interface EmailInput {
   orderId: string;
   /** OrderCancelled only: REQUESTER_CANCELLED, MUTUAL_CANCELLATION, EXPIRED or USER_SUSPENDED. */
   reason: string | null;
+  /** OrderChangeRequest only (#186): what happened to the proposal. */
+  change?: EmailChange | null;
+}
+
+export interface EmailChange {
+  outcome: ChangeOutcome;
+  kind: ChangeKind;
+  /** TIMING_CHANGE only. */
+  proposedWindowStart: Date | null;
+  proposedWindowEnd: Date | null;
 }
 
 export interface RenderedEmail {
@@ -85,6 +99,72 @@ function copyFor({ status, role, reason }: EmailInput): Copy {
   }
 }
 
+/** Campus time, e.g. "10 Nov 2026, 3:00 pm". */
+const formatTime = (value: Date) =>
+  new Intl.DateTimeFormat('en-SG', { timeZone: 'Asia/Singapore', dateStyle: 'medium', timeStyle: 'short' }).format(value);
+
+const REJECTED_COPY: Record<ChangeKind, { subject: string; request: (window: string) => string; after: string }> = {
+  TIMING_CHANGE: {
+    subject: 'Your new delivery window was rejected',
+    request: (window) => `change the delivery window to ${window}`,
+    after: 'The order keeps its current window.',
+  },
+  CANCELLATION: { subject: 'Your cancellation request was rejected', request: () => 'cancel the order', after: 'The order carries on.' },
+  COMPLETION: { subject: 'Your completion request was rejected', request: () => 'mark the order complete', after: 'The order stays open.' },
+};
+
+/**
+ * The email about a proposal (#186). It goes to the other party when the proposal is made and to the
+ * proposer when it is resolved, so the person on the other side is always the recipient's
+ * counterpart: the courier for a requester, the requester for a courier.
+ */
+function changeCopy(change: EmailChange, role: RecipientRole): Copy {
+  const other = role === 'REQUESTER' ? 'your courier' : 'the requester';
+  const Other = other[0].toUpperCase() + other.slice(1);
+  const window =
+    change.proposedWindowStart && change.proposedWindowEnd
+      ? `${formatTime(change.proposedWindowStart)} to ${formatTime(change.proposedWindowEnd)}`
+      : 'a new time';
+  const yourOrder = role === 'REQUESTER' ? 'your order' : 'an order you accepted';
+
+  if (change.outcome === 'CREATED') {
+    if (change.kind === 'TIMING_CHANGE') {
+      return {
+        subject: 'New delivery window proposed',
+        message: `${Other} proposed a new delivery window for ${yourOrder}: ${window}. The current window stays unless you accept it.`,
+      };
+    }
+    if (change.kind === 'CANCELLATION') {
+      return {
+        subject: `Request to cancel ${yourOrder}`,
+        message: `${Other} asked to cancel ${yourOrder}. It is only cancelled if you agree.`,
+      };
+    }
+    return {
+      subject: `Request to complete ${yourOrder}`,
+      message:
+        role === 'REQUESTER'
+          ? 'Your courier asked to mark your order complete. Once you agree, its credits are paid to your courier.'
+          : 'The requester asked to mark an order you accepted complete. Once you agree, its credits are added to your balance.',
+    };
+  }
+  if (change.outcome === 'APPROVED') {
+    // Only a timing change gets here (changeRecipients): an approved completion or cancellation is
+    // the OrderCompleted / OrderCancelled email.
+    return { subject: 'New delivery window accepted', message: `${Other} accepted your new delivery window: ${window}.` };
+  }
+  if (change.outcome === 'REJECTED') {
+    const copy = REJECTED_COPY[change.kind];
+    return { subject: copy.subject, message: `${Other} rejected your request to ${copy.request(window)}. ${copy.after}` };
+  }
+  // EXPIRED: only a timing change expires: the order's current window, or the proposed one, ended
+  // before it was accepted. The wording fits both.
+  return {
+    subject: 'Your proposed delivery window expired',
+    message: `Your proposed delivery window (${window}) can no longer be applied, because a window ended before it was accepted. The order's window is unchanged.`,
+  };
+}
+
 const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
@@ -113,7 +193,7 @@ function layout(subject: string, message: string, note: string | null, link: str
 
 /** The email for one recipient of one event. The button opens `frontendUrl` (there is no order page yet). */
 export function renderEmail(input: EmailInput, frontendUrl: string): RenderedEmail {
-  const { subject, message } = copyFor(input);
+  const { subject, message } = input.change ? changeCopy(input.change, input.role) : copyFor(input);
   // The first block of the UUID, enough to tell orders apart in an inbox.
   return layout(subject, message, `Order reference: ${input.orderId.slice(0, 8)}`, frontendUrl);
 }
