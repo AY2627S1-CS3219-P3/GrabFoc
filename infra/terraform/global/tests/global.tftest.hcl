@@ -11,6 +11,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: Chat on AWS: expect its repository, database, migrations and service.
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: An eleventh ECR repository, foc/logging-service (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -45,17 +48,17 @@ run "global" {
     error_message = "State bucket must block all public access."
   }
   assert {
-    condition = length(aws_ecr_repository.service) == 10 && alltrue([
+    condition = length(aws_ecr_repository.service) == 11 && alltrue([
       for r in aws_ecr_repository.service : r.image_tag_mutability == "IMMUTABLE"
     ])
-    error_message = "Ten immutable ECR repositories expected."
+    error_message = "Eleven immutable ECR repositories expected."
   }
   assert {
     condition = toset(keys(output.ecr_repository_urls)) == toset([
       "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
-      "chat-service", "api-gateway", "frontend", "kafka-init", "checks",
+      "chat-service", "logging-service", "api-gateway", "frontend", "kafka-init", "checks",
     ])
-    error_message = "ecr_repository_urls must be keyed by the ten image names."
+    error_message = "ecr_repository_urls must be keyed by the eleven image names."
   }
   assert {
     condition     = jsondecode(aws_iam_role.github["deploy-production"].assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:AY2627S1-CS3219-P3@326464642/GrabFoc@1361285513:environment:production"

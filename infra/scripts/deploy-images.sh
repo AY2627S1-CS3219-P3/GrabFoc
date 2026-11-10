@@ -10,6 +10,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: chat-service in the app layer (chat on AWS).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: The Logging Service joins the app layer; name every repository missing the tag at once, and
+#        say how to roll back to a tag older than a service (review).
+# Author review: pending - Jian Bing owns the deployment.
 #
 # Rolls an image tag onto an environment's services, in the order Service Connect needs: the apps,
 # then the gateway, then the frontend. The images must already be in ECR (push-images.sh).
@@ -36,7 +40,7 @@ health_interval="${HEALTH_INTERVAL:-15}"
 . "$(dirname "$0")/lib/task-definition.sh"
 
 layers=(
-  "user-service supplier-service credit-service order-service notification-service chat-service"
+  "user-service supplier-service credit-service order-service notification-service chat-service logging-service"
   "api-gateway"
   "frontend"
 )
@@ -61,12 +65,26 @@ for definition in $(jq -r '.services[].taskDefinition' <<< "$current"); do
   # shellcheck disable=SC2207 # repository names contain no spaces
   repos+=($(grep -o -E '/foc/[^/:]+:' <<< "$images" | sed -E 's|^/||; s|:$||' || true))
 done
+# Every one of them, not just the first: a rollback to a tag older than a service hits this, and
+# finding that out one deploy at a time is no way to run a rollback (review).
+absent=()
 for repo in $(printf '%s\n' ${repos[@]+"${repos[@]}"} | sort -u); do
-  if ! aws ecr describe-images --region "$region" --repository-name "$repo" --image-ids imageTag="$tag" > /dev/null; then
-    echo "$repo has no image $tag. Push it first (push-images.sh); nothing was changed." >&2
-    exit 1
-  fi
+  aws ecr describe-images --region "$region" --repository-name "$repo" --image-ids imageTag="$tag" > /dev/null ||
+    absent+=("$repo")
 done
+if [ ${#absent[@]} -gt 0 ]; then
+  echo "no image $tag in: ${absent[*]}. Nothing was changed." >&2
+  echo "Push the tag first:  infra/scripts/push-images.sh $tag" >&2
+  # Rolling back past a service's own first deploy lands here: that repository holds no image from
+  # before the service existed, and there is no older build of it to find. The command above is
+  # still the answer - it skips every tag already in ECR, so it backfills only what is missing, and
+  # what it builds is the current code, which for a service that did not exist at that tag is the
+  # only thing it could be. Leaving that one service on its current image instead would record a
+  # tag that a later "terraform apply" would try to pin it to, and that image would not exist.
+  echo "Rolling back to a tag older than a service? Same command: it skips the images already" >&2
+  echo "in ECR and pushes only the one that is missing." >&2
+  exit 1
+fi
 
 roll() {
   local service arn

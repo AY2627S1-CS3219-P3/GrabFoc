@@ -11,6 +11,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: The chat-service image repository (chat on AWS).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: A tenth ECR repository, foc/logging-service (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 # AI-generated (Claude Code).
 
 # One stack per account (staging and production share the NUS-managed account, spec §6). It keeps
@@ -22,8 +25,8 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
   # AI-generated (Claude Code).
   images = [
-    "user-service", "supplier-service", "credit-service", "order-service", "notification-service", "chat-service",
-    "api-gateway", "frontend", "kafka-init", "checks",
+    "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
+    "chat-service", "logging-service", "api-gateway", "frontend", "kafka-init", "checks",
   ]
 
   # terraform plan refreshes this SecureString; its value is already in the state file plan reads.

@@ -48,6 +48,11 @@ Scope: Review: count a JSON file's entries rather than diffing them as a set. Ed
   entry made that chunk look fresh, so a change that appended nothing reported success; the entries
   beyond the old count are the appended ones.
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review-adjacent: skip a file whose working copy matches the base exactly. After this branch
+  merged main, the diff from the merge base included main's own changes, and it reported a
+  teammate's usage log as undisclosed.
+Author review: Cole Lin, read and approved.
 """
 # Lists files your branch changes that carry an AI disclosure header but gained no entry in it.
 #
@@ -234,6 +239,13 @@ def main():
         # A file this branch adds is disclosed by its whole content, which its author just wrote.
         if subprocess.run(["git", "cat-file", "-e", f"{merge_base}:{base_of[path]}"],
                           capture_output=True).returncode != 0:
+            continue
+        # A branch that has merged the base carries the base's own changes in this diff, and
+        # someone else's file is not this branch's to disclose. If the working copy matches the
+        # base exactly, nothing here came from this branch. (It flagged a teammate's usage log the
+        # first time this branch merged main.)
+        if subprocess.run(["git", "diff", "--quiet", base, "--", path],
+                          capture_output=True).returncode == 0:
             continue
         try:
             with open(path, encoding="utf-8-sig") as handle:

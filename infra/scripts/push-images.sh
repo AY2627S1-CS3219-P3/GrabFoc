@@ -12,6 +12,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: Builds and pushes the chat-service image (chat on AWS).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: the Logging Service image, which builds from the repository root (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 #
 # Builds and pushes every image to ECR; the deploy workflow runs this on each merge to main.
 #   infra/scripts/push-images.sh "$(git rev-parse --short=7 HEAD)"
@@ -35,6 +38,9 @@ images=(
   "order-service|order-service|order-service/Dockerfile"
   "notification-service|notification-service|notification-service/Dockerfile"
   "chat-service|chat-service|chat-service/Dockerfile"
+  # Its Dockerfile copies logging-service/... paths, so the context is the repository root, as in
+  # logging-service/compose.yaml (issue #52).
+  "logging-service|.|logging-service/Dockerfile"
   "api-gateway|api-gateway|api-gateway/Dockerfile"
   "frontend|frontend|frontend/Dockerfile"
   "kafka-init|infra/kafka|infra/kafka/Dockerfile.init"

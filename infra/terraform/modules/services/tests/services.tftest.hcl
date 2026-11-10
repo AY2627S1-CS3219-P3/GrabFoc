@@ -21,6 +21,15 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: Chat on AWS: expect its repository, database, migrations and service.
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: The Logging Service and its database in the layers and the image list; its settings and
+#   secret; the broker address Supplier was missing; and a memory budget for the one server, which
+#   is what adding two containers to it spends (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Review: budget the rollout peak rather than the steady state, in both environments, and
+#   expect the app services to stop before being replaced.
+# Author review: pending - Jian Bing owns the deployment.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -58,6 +67,7 @@ variables {
     "order-service"        = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/order-service"
     "notification-service" = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/notification-service"
     "chat-service"         = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/chat-service"
+    "logging-service"      = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/logging-service"
     "api-gateway"          = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/api-gateway"
     "frontend"             = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/frontend"
     "kafka-init"           = "111122223333.dkr.ecr.ap-southeast-1.amazonaws.com/foc/kafka-init"
@@ -130,24 +140,27 @@ run "staging" {
   }
   assert {
     condition = alltrue([
-      for name, folder in { "user-db" = "/data/user-db", "supplier-db" = "/data/supplier-db", "credit-db" = "/data/credit-db", "order-db" = "/data/order-db", "notification-db" = "/data/notification-db", "chat-db" = "/data/chat-db", "user-redis" = "/data/redis", "kafka" = "/data/kafka" } :
+      for name, folder in { "user-db" = "/data/user-db", "supplier-db" = "/data/supplier-db", "credit-db" = "/data/credit-db", "order-db" = "/data/order-db", "notification-db" = "/data/notification-db", "chat-db" = "/data/chat-db", "logging-db" = "/data/logging-db", "user-redis" = "/data/redis", "kafka" = "/data/kafka" } :
       one(aws_ecs_task_definition.service[name].volume).host_path == folder
     ])
     error_message = "Each data store mounts its own folder on the /data volume."
   }
   assert {
     condition = alltrue([
-      for name in ["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "user-redis", "kafka", "api-gateway", "mailpit"] :
+      for name in ["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db",
+        "logging-db", "user-redis", "kafka", "api-gateway", "mailpit",
+        "user-service", "supplier-service", "credit-service", "order-service",
+      "notification-service", "chat-service", "logging-service"] :
       local.ecs_services[name].deployment_minimum_healthy_percent == 0 && local.ecs_services[name].deployment_maximum_percent == 100
     ])
-    error_message = "Data stores, the gateway and Mailpit are stopped before being replaced: two copies must never share a folder or a host port."
+    error_message = "Everything but the frontend stops before being replaced: two copies must never share a folder or a host port, and six app tasks doubling at once does not fit the server."
   }
   # First live apply (2026-10-26): a Service Connect client only learns names that existed when its
   # deployment was created, so services are created in layers: data → apps → edge → web.
   assert {
     condition = (
-      toset(keys(aws_ecs_service.data)) == toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "user-redis", "kafka", "mailpit"]) &&
-      toset(keys(aws_ecs_service.app)) == toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service", "chat-service"]) &&
+      toset(keys(aws_ecs_service.data)) == toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "logging-db", "user-redis", "kafka", "mailpit"]) &&
+      toset(keys(aws_ecs_service.app)) == toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service", "chat-service", "logging-service"]) &&
       toset(keys(aws_ecs_service.edge)) == toset(["api-gateway"]) &&
       toset(keys(aws_ecs_service.web)) == toset(["frontend"])
     )
@@ -320,6 +333,65 @@ run "staging" {
     error_message = "Chat starts only after its migrations succeed."
   }
 
+  # AI-generated (Claude Code): the Logging Service (issue #52).
+  # Its topics are not auto-created either (KAFKA_AUTO_CREATE_TOPICS_ENABLE is false), so it waits
+  # for kafka-init like the other two consumers.
+  assert {
+    condition = toset([
+      for c in jsondecode(aws_ecs_task_definition.service["logging-service"].container_definitions) : c.name if !c.essential
+    ]) == toset(["kafka-init"])
+    error_message = "The log store's topics are created before it starts."
+  }
+  assert {
+    condition = (
+      local.logging_env["LOGGING_KAFKA_BROKERS"] == "kafka:9092" &&
+      local.logging_env["LOGGING_KAFKA_TOPIC"] == "logging.lines" &&
+      local.logging_env["LOGGING_KAFKA_DLT_TOPIC"] == "logging.lines.dlt" &&
+      local.logging_env["LOGGING_JWKS_URL"] == "http://user-service:3001/.well-known/jwks.json" &&
+      strcontains(jsondecode(aws_ecs_task_definition.service["logging-service"].container_definitions)[0].image, "foc/logging-service:abc1234")
+    )
+    error_message = "The log store consumes the shared broker's topic and verifies tokens against the User Service."
+  }
+  # Its whole connection string is a secret, unlike Credit's and Notification's: this service reads
+  # one URL and has nowhere to put a separate password.
+  assert {
+    condition = {
+      for x in jsondecode(aws_ecs_task_definition.service["logging-service"].container_definitions)[0].secrets : x.name => element(split("/", x.valueFrom), 3)
+      } == {
+      LOGGING_DATABASE_URL = "LOGGING_DATABASE_URL"
+    }
+    error_message = "The log store gets its whole connection string from SSM, password included."
+  }
+  # Every service whose log lines should reach the store needs a broker address; without one it
+  # writes to its own stdout only and leaves a gap in a deployed request's trace.
+  assert {
+    condition = alltrue([
+      for name, variable in {
+        "user-service"         = "USER_KAFKA_BROKERS"
+        "supplier-service"     = "SUPPLIER_KAFKA_BROKERS"
+        "credit-service"       = "CREDIT_KAFKA_BROKERS"
+        "order-service"        = "ORDER_KAFKA_BROKERS"
+        "notification-service" = "NOTIFICATION_KAFKA_BROKERS"
+      } : local.containers[name].env[variable] == "kafka:9092"
+    ])
+    error_message = "Every service that ships log lines has the broker address; one without it is invisible in the store."
+  }
+  # AI-generated (Claude Code): the environment is one t3.large, and ECS registers rather less than
+  # its 8192 MiB once the kernel and the agent have taken their share. local.memory_at_peak is what
+  # is placed against it while a layer is being replaced, proxies included - the steady state is
+  # not the number that matters, because that is not when a deploy runs out of room. 7000 is the
+  # budget. A service added without space for it fails to place on the server; this fails a test.
+  assert {
+    condition     = local.memory_at_peak <= 7000
+    error_message = "The rollout peak must fit one t3.large; add capacity before adding another service."
+  }
+  # The sum itself, so a change to the containers shows up here as a number rather than only as a
+  # pass. Steady state and peak are both pinned: the gap between them is the layer being replaced.
+  assert {
+    condition     = local.memory_steady == 5328 && local.memory_at_peak == 6992
+    error_message = "Staging reserves 5328 MiB running and 6992 MiB at the rollout peak; this changed."
+  }
+
   # Final review, Important 5: a container that hangs on start-up is restarted, not left "running".
   # Part 3 final review, I3: deploy-images.sh waits for HEALTHY, so the gateway needs one too.
   assert {
@@ -384,6 +456,15 @@ run "production" {
   assert {
     condition     = local.notification_env["NOTIFICATION_SMTP_HOST"] == "smtp.gmail.com" && local.notification_env["NOTIFICATION_SMTP_PORT"] == "587"
     error_message = "Production Notification sends straight to Gmail."
+  }
+  # AI-generated (Claude Code): production is the same one t3.large, with no Mailpit (review).
+  assert {
+    condition     = local.memory_at_peak <= 7000
+    error_message = "The rollout peak must fit one t3.large; add capacity before adding another service."
+  }
+  assert {
+    condition     = local.memory_steady == 5280 && local.memory_at_peak == 6880
+    error_message = "Production reserves 5280 MiB running and 6880 MiB at the rollout peak; this changed."
   }
 }
 

@@ -10,6 +10,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: Looks up the chat-service image repository (chat on AWS).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: The foc/logging-service repository among the images this environment reads (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 # The production environment: one VPC, one ECS-on-EC2 server, every container as an ECS service, and
 # CloudFront in front (spec §3). Module calls are added by later tasks.
 # AI-generated (Claude Code).
@@ -32,8 +35,8 @@ module "server" {
 data "aws_ecr_repository" "image" {
   # AI-generated (Claude Code).
   for_each = toset([
-    "user-service", "supplier-service", "credit-service", "order-service", "notification-service", "chat-service",
-    "api-gateway", "frontend", "kafka-init", "checks",
+    "user-service", "supplier-service", "credit-service", "order-service", "notification-service",
+    "chat-service", "logging-service", "api-gateway", "frontend", "kafka-init", "checks",
   ])
   name = "foc/${each.key}"
 }

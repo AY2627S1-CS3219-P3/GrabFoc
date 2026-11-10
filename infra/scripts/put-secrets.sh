@@ -15,6 +15,9 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: CHAT_POSTGRES_PASSWORD is required (chat on AWS).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: the log store's database password, and the connection string built from it (issue #52).
+# Author review: pending - Jian Bing owns the deployment.
 #
 # Loads one environment's secrets into SSM Parameter Store as SecureStrings under /foc/<env>/.
 #   infra/scripts/put-secrets.sh staging      # reads infra/secrets/staging.env (git-ignored)
@@ -34,11 +37,11 @@ root="${FOC_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 file="$root/infra/secrets/$env.env"
 [ -f "$file" ] || { echo "missing $file (copy the names from infra/secrets/README.md)" >&2; exit 1; }
 
-# Every SSM name the ECS task definitions read (infra/terraform/modules/services), except the three
+# Every SSM name the ECS task definitions read (infra/terraform/modules/services), except the four
 # built below.
 required=(
   POSTGRES_PASSWORD SUPPLIER_POSTGRES_PASSWORD CREDIT_POSTGRES_PASSWORD ORDER_DB_PASSWORD
-  NOTIFICATION_POSTGRES_PASSWORD CHAT_POSTGRES_PASSWORD
+  NOTIFICATION_POSTGRES_PASSWORD CHAT_POSTGRES_PASSWORD LOGGING_POSTGRES_PASSWORD
   USER_AES_KEY USER_EMAIL_HMAC_KEY USER_OTP_HMAC_KEY USER_JWT_PRIVATE_KEY USER_JWT_KID
   USER_SMTP_USER USER_SMTP_PASS USER_SMTP_FROM USER_BOOTSTRAP_ADMIN_EMAIL
   CREDIT_SERVICE_KEY ORDER_SERVICE_KEY USER_INTERNAL_SERVICE_KEY CHAT_TICKET_SECRET
@@ -81,6 +84,7 @@ built() {
   case "$1" in
     USER_DATABASE_URL) printf 'postgres://foc:%s@user-db:5432/users' "$(urlencode "$(get POSTGRES_PASSWORD)")" ;;
     SUPPLIER_DATABASE_URL) printf 'postgres://foc:%s@supplier-db:5432/supplier' "$(urlencode "$(get SUPPLIER_POSTGRES_PASSWORD)")" ;;
+    LOGGING_DATABASE_URL) printf 'postgres://foc:%s@logging-db:5432/logging' "$(urlencode "$(get LOGGING_POSTGRES_PASSWORD)")" ;;
     MAILPIT_SMTP_AUTH) printf '%s:%s' "$(get USER_SMTP_USER)" "$(get USER_SMTP_PASS)" ;; # staging Mailpit's login
     *) get "$1" ;;
   esac
@@ -89,7 +93,7 @@ built() {
 tmp=$(mktemp)
 chmod 600 "$tmp"
 trap 'rm -f "$tmp"' EXIT
-for name in "${required[@]}" USER_DATABASE_URL SUPPLIER_DATABASE_URL MAILPIT_SMTP_AUTH; do
+for name in "${required[@]}" USER_DATABASE_URL SUPPLIER_DATABASE_URL LOGGING_DATABASE_URL MAILPIT_SMTP_AUTH; do
   built "$name" > "$tmp"
   aws ssm put-parameter --region "$region" --name "/foc/$env/$name" --type SecureString --overwrite \
     --value "file://$tmp" > /dev/null

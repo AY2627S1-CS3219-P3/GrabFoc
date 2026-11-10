@@ -32,6 +32,15 @@
 #        service itself is deployed separately; until then GET /logs is a 503, as chat's was.
 # Author review: pending - Jian Bing owns the deployment.
 #        Re-added on 2026-11-10: the merge from main kept the env line and dropped this entry.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: The Logging Service and its database, and the broker address Supplier was missing, so its
+#        lines reach the store too (issue #52). The gateway's LOGGING_SERVICE_URL is set alongside
+#        the route file that reads it, not here, so neither change depends on the other.
+# Author review: pending - Jian Bing owns the deployment.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: Review: the app services stop before being replaced, and a memory model for the rollout
+#        peak rather than the steady state - six app tasks doubling at once did not fit the server.
+# Author review: pending - Jian Bing owns the deployment.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
@@ -57,6 +66,8 @@ locals {
       "order-db"        = { db = "orders", password = "ORDER_DB_PASSWORD" }
       "notification-db" = { db = "notification", password = "NOTIFICATION_POSTGRES_PASSWORD" }
       "chat-db"         = { db = "chat", password = "CHAT_POSTGRES_PASSWORD" } # AI-generated (Claude Code, 2026-11-09)
+      # AI-generated (Claude Code): the log store (issue #52).
+      "logging-db" = { db = "logging", password = "LOGGING_POSTGRES_PASSWORD" }
       } : name => {
       image    = "postgres:17-alpine"
       port     = 5432
@@ -153,6 +164,10 @@ locals {
       env = {
         SUPPLIER_PORT     = "3002"
         SUPPLIER_JWKS_URL = "http://user-service:3001/.well-known/jwks.json"
+        # AI-generated (Claude Code): without it this service's log lines only ever reach its own
+        # stdout, so a deployed request that touched Supplier shows a gap in the store where the
+        # other four services have a row (issue #52).
+        SUPPLIER_KAFKA_BROKERS = "kafka:9092"
       }
       secrets = { SUPPLIER_DATABASE_URL = "SUPPLIER_DATABASE_URL" }
     }
@@ -217,6 +232,20 @@ locals {
         PGPASSWORD         = "CHAT_POSTGRES_PASSWORD" # as in compose: not in the URL
         CHAT_TICKET_SECRET = "CHAT_TICKET_SECRET"     # the one Order signs tickets with
       }
+    }
+    # AI-generated (Claude Code): the log store (issue #52). Port 3006 inside its own container, the
+    # same as Notification's: in bridge mode nothing binds it on the server, and Service Connect
+    # addresses a service by name, so the two never collide. (The repo's compose files publish 3006
+    # and 3007 on a laptop only because a host port can be bound once.)
+    "logging-service" = {
+      image  = local.image["logging-service"]
+      port   = 3006
+      health = local.listening[3006]
+      memory = 192
+      env    = local.logging_env
+      # The whole URL, as for User and Supplier: this service reads one connection string and the
+      # password cannot be passed beside it.
+      secrets = { LOGGING_DATABASE_URL = "LOGGING_DATABASE_URL" }
     }
     "api-gateway" = {
       image     = local.image["api-gateway"]
@@ -302,6 +331,21 @@ locals {
     CHAT_DATABASE_URL = "postgres://foc@chat-db:5432/chat" # password from PGPASSWORD
   }
 
+  # AI-generated (Claude Code).
+  # Values match logging-service/compose.yaml, except the database URL, which is a secret: it
+  # carries the password. Retention and the purge interval are the service's own defaults, written
+  # out here so the deployed value is visible rather than implied.
+  logging_env = {
+    LOGGING_PORT                   = "3006"
+    LOGGING_JWKS_URL               = "http://user-service:3001/.well-known/jwks.json"
+    LOGGING_KAFKA_BROKERS          = "kafka:9092"
+    LOGGING_KAFKA_TOPIC            = "logging.lines"
+    LOGGING_KAFKA_GROUP_ID         = "logging-service"
+    LOGGING_KAFKA_DLT_TOPIC        = "logging.lines.dlt"
+    LOGGING_RETENTION_DAYS         = "30"
+    LOGGING_PURGE_INTERVAL_MINUTES = "60"
+  }
+
   # Node services: healthy once something listens on the port (catches a start-up that hangs).
   listening = {
     for port in [3000, 3001, 3002, 3004, 3005, 3006, 3007] : port => [
@@ -343,9 +387,31 @@ locals {
     "credit-service"       = ["kafka-init"]
     "notification-service" = ["kafka-init"]
     "chat-service"         = ["chat-migrate"]
+    # AI-generated (Claude Code): its topic and dead-letter topic are created there, and
+    # KAFKA_AUTO_CREATE_TOPICS_ENABLE is false (issue #52).
+    "logging-service" = ["kafka-init"]
   }
 
-  stops_before_replacing = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "user-redis", "kafka", "api-gateway", "mailpit"])
+  # Everything except the frontend. The data stores and the gateway are here because two copies
+  # must never share a folder or a host port; the app services are here for memory (review).
+  #
+  # deploy-images.sh updates all of the app layer and then waits, so rolling them would put a
+  # second copy of every app service on the server at once - with chat and logging that is
+  # 2,624 MiB of reservations on top of everything already running, which does not fit beside
+  # the injected Service Connect proxies (local.memory_at_peak below). And it buys nothing:
+  # api-gateway stops before being replaced, so every deploy already has a gap at the one
+  # public entry point, and a service rolled smoothly behind a gateway that is about to stop is
+  # still unreachable. The cost is that each app service is down for a few seconds during its
+  # own replacement, which the gateway answers as a 503.
+  #
+  # The alternative, if that gap ever matters, is to roll the app layer one service at a time in
+  # deploy-images.sh: then only one duplicate exists at a time and the peak stays low too.
+  stops_before_replacing = toset([
+    "user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db",
+    "logging-db", "user-redis", "kafka", "mailpit", "api-gateway",
+    "user-service", "supplier-service", "credit-service", "order-service",
+    "notification-service", "chat-service", "logging-service",
+  ])
 }
 
 # --- Shared plumbing -------------------------------------------------------------------------------
@@ -478,12 +544,47 @@ resource "aws_ecs_task_definition" "checks" {
 # stop before their replacement starts; the rest roll with a brief overlap.
 locals {
   layer = {
-    data = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "user-redis", "kafka", "mailpit"])
-    app  = toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service", "chat-service"])
+    data = toset(["user-db", "supplier-db", "credit-db", "order-db", "notification-db", "chat-db", "logging-db", "user-redis", "kafka", "mailpit"])
+    app  = toset(["user-service", "supplier-service", "credit-service", "order-service", "notification-service", "chat-service", "logging-service"])
     edge = toset(["api-gateway"])
     web  = toset(["frontend"])
   }
   ecs_services = merge(aws_ecs_service.data, aws_ecs_service.app, aws_ecs_service.edge, aws_ecs_service.web)
+
+  # AI-generated (Claude Code).
+  # What ECS places against this environment's one server, in MiB (review). Reservations are what
+  # placement counts, and a task's one-shot init containers are reserved while they run, so they
+  # count as part of that task.
+  #
+  # The steady state is not the number to check. deploy-images.sh rolls one layer and waits for it
+  # before the next, so at most one layer is ever replacing - but inside a layer every service is
+  # updated at once, and one that does not stop before being replaced has a second copy running
+  # beside the first. So the peak is everything running, plus the duplicates of whichever layer
+  # doubles the most, plus a Service Connect proxy for every task including the duplicates. AWS
+  # asks for at least 64 MiB per proxy, and the task definitions do not reserve it, so it is added
+  # here rather than left out of the sum.
+  task_memory = {
+    for name, c in local.containers : name =>
+    c.memory + sum(concat([0], [for i in lookup(local.init_containers, name, []) : local.oneoffs[i].memory]))
+  }
+  # With chat and logging both on the server the staging peak is 6,992 MiB against the 7,000 the
+  # test allows: **8 MiB of slack**. That is not a number to design around - the next service, or a
+  # bump to any reservation above, needs a larger instance or a smaller footprint somewhere else.
+  # Said here rather than only in the test, because this is where someone adds the next one.
+  proxy_memory  = 64
+  memory_steady = sum([for name in keys(local.containers) : local.task_memory[name]])
+  rolling = {
+    for name, names in local.layer : name => [
+      for service in names : service
+      if contains(keys(local.containers), service) && !contains(local.stops_before_replacing, service)
+    ]
+  }
+  memory_at_peak = max([
+    for name, services in local.rolling :
+    local.memory_steady
+    + sum(concat([0], [for service in services : local.task_memory[service]]))
+    + local.proxy_memory * (length(local.containers) + length(services))
+  ]...)
 }
 
 resource "aws_ecs_service" "data" {

@@ -10,6 +10,11 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 # Scope: Expects chat-service in the app layer (chat on AWS).
 # Author review: Pending Jian Bing's review.
+# Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+# Scope: The Logging Service in the app layer and the image list; the fake aws takes a glob, and
+#        two checks that every repository missing the tag is named with the way out (issue #52,
+#        review). Verified against the committed script: both fail, nothing else changes.
+# Author review: pending - Jian Bing owns the deployment.
 #
 # Run: infra/scripts/test/deploy-images.test.sh   (no AWS access needed; needs jq)
 # AI-generated (Claude Code).
@@ -60,8 +65,10 @@ JSON
     family=$(jq -r .family "$file"); cp "$file" "$AWS_CALLS.$family.json"
     echo "arn:aws:ecs:ap-southeast-1:1:task-definition/$family:4" ;;
   ecr\ describe-images*)
-    [ "$(arg --repository-name "$@")" = "foc/${FAKE_NO_IMAGE:-none}" ] &&
-      { echo "An error occurred (ImageNotFoundException) when calling the DescribeImages operation" >&2; exit 254; }
+    # A glob, so FAKE_NO_IMAGE='*' makes every repository miss the tag (review).
+    case "$(arg --repository-name "$@")" in
+      foc/${FAKE_NO_IMAGE:-none}) echo "An error occurred (ImageNotFoundException) when calling the DescribeImages operation" >&2; exit 254 ;;
+    esac
     echo '{"imageDetails":[{}]}' ;;
   ecs\ update-service*) touch "$AWS_CALLS.updated.$(arg --service "$@")"; echo '{}' ;;
   ecs\ wait*) case " $* " in *" ${FAKE_WAIT_FAIL:-none} "*) exit 255 ;; esac ;;
@@ -94,7 +101,8 @@ update credit-service
 update order-service
 update notification-service
 update chat-service
-wait user-service supplier-service credit-service order-service notification-service chat-service
+update logging-service
+wait user-service supplier-service credit-service order-service notification-service chat-service logging-service
 update api-gateway
 wait api-gateway
 update frontend
@@ -107,7 +115,7 @@ check "every call pins the region" '[ "$(grep -vc -- "--region ap-southeast-1" "
 check "uses the environment's cluster" 'grep -q "update-service --region ap-southeast-1 --cluster foc-staging" "$AWS_CALLS"'
 
 repos=$(grep "^ecr describe-images" "$AWS_CALLS" | sed -E 's/.*--repository-name ([^ ]+).*/\1/' | sort | tr "\n" " ")
-check "every foc image is checked on the tag" '[ "$repos" = "foc/api-gateway foc/chat-service foc/credit-service foc/frontend foc/kafka-init foc/notification-service foc/order-service foc/supplier-service foc/user-service " ]'
+check "every foc image is checked on the tag" '[ "$repos" = "foc/api-gateway foc/chat-service foc/credit-service foc/frontend foc/kafka-init foc/logging-service foc/notification-service foc/order-service foc/supplier-service foc/user-service " ]'
 check "images are checked with the tag under deploy" '[ "$(grep "^ecr describe-images" "$AWS_CALLS" | grep -vc -- "--image-ids imageTag=new1234")" = 0 ]'
 check "images are checked before any change" '[ "$(grep -n "^ecr describe-images" "$AWS_CALLS" | tail -1 | cut -d: -f1)" -lt "$(grep -n "^ecs register-task-definition" "$AWS_CALLS" | head -1 | cut -d: -f1)" ]'
 
@@ -115,6 +123,15 @@ reset
 out=$(FAKE_NO_IMAGE=frontend "$SCRIPT" production new1234 2>&1); code=$?
 check "a tag missing from one repository stops the deploy before any change" '[ $code -ne 0 ] && ! grep -q -E "register-task-definition|update-service|put-parameter" "$AWS_CALLS"'
 check "the repository without the image is named" 'grep -q "foc/frontend" <<<"$out"'
+# AI-generated (Claude Code): every missing repository at once, and the way out of a rollback to a
+# tag older than a service, which is the same failure (review).
+reset
+out=$(FAKE_NO_IMAGE='*' "$SCRIPT" production old0000 2>&1); code=$?
+check "every repository missing the tag is named at once" '[ $code -ne 0 ] &&
+  grep -q "foc/logging-service" <<<"$out" && grep -q "foc/user-service" <<<"$out" &&
+  grep -q "foc/frontend" <<<"$out"'
+check "the fix is a command, and the rollback case is called out" 'grep -q "push-images.sh old0000" <<<"$out" &&
+  grep -qi "older than a service" <<<"$out"'
 
 reset
 out=$(FAKE_WAIT_FAIL=api-gateway "$SCRIPT" staging new1234 2>&1); code=$?

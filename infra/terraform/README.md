@@ -17,6 +17,14 @@ Author review (Jian Bing, 2026-11-09): Looked through the code and think it's ok
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Merging main into #191: the first-apply restart also covers notification-service, the fifth app service.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: The first-apply restart also covers logging-service, the sixth app service (issue #52).
+Author review: pending - Jian Bing owns the deployment.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: A new image means re-applying global before any env plan can succeed - the CI plan on the
+  pull request that added one fails on the missing repository, which is the correct answer and not
+  a broken change.
+Author review: pending - Jian Bing owns the deployment.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: Replacing the server: the downtime, the refresh preferences, and why ECS managed draining is off.
 Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
@@ -48,7 +56,7 @@ on pull requests, then `terraform plan` against staging.
   `aws sts get-caller-identity`). Region `ap-southeast-1`.
 - Terraform ≥ 1.10 (CI uses 1.15) and Docker (running).
 
-## 1. Account-wide stack (once)
+## 1. Account-wide stack (once, and again whenever a service is added)
 
 ```bash
 cd infra/terraform/global
@@ -56,6 +64,20 @@ terraform init
 terraform apply -var monthly_budget_usd=50 -var 'budget_emails=["you@u.nus.edu"]'
 terraform output state_bucket          # needed below
 ```
+
+**Re-apply it whenever a service is added.** `global` owns the ECR repositories, and each
+environment reads them with `data "aws_ecr_repository" "image"` - a data source, so a repository
+that does not exist yet is an error, not something a plan creates. Until someone applies `global`,
+the pull request that added the service fails CI's staging plan with:
+
+```
+Error: reading ECR Repository (foc/<name>): couldn't find resource
+  with data.aws_ecr_repository.image["<name>"]
+```
+
+That is the right answer rather than a fault in the change: the repository has to exist before an
+environment can point a task definition at it. The order for a new service is **apply `global`**,
+then `push-images.sh <tag>`, then `put-secrets.sh <env>`, then the environment's apply.
 
 `global` keeps its state locally (`terraform.tfstate`, git-ignored): it creates the bucket the other
 stacks use. Keep that file safe, or import the resources again if it's lost.
@@ -109,7 +131,7 @@ and the gateway is created before the frontend, so some of these calls fail unti
 restarts. Once every service is running, restart them once:
 
 ```bash
-for service in user-service supplier-service credit-service order-service notification-service chat-service api-gateway; do
+for service in user-service supplier-service credit-service order-service notification-service chat-service logging-service api-gateway; do
   aws ecs update-service --cluster foc-<env> --service "$service" --force-new-deployment
 done
 ```
@@ -156,7 +178,10 @@ goes to the API, everything else to the website, and only with CloudFront's `X-O
 
 - **Shell on the server** (no SSH): `aws ssm start-session --target <instance id>` (find it in the
   EC2 console or `aws ec2 describe-instances --filters Name=tag:Name,Values=foc-staging`).
-- **Logs:** CloudWatch Logs, `/foc/<env>/<service>`, kept 14 days.
+- **Logs:** CloudWatch Logs, `/foc/<env>/<service>`, kept 14 days. Those are the containers' own
+  stdout. The services also ship their structured lines to the Centralized Logging store, which an
+  admin queries with `GET /logs` through the gateway (issue #52); it keeps them for
+  `LOGGING_RETENTION_DAYS` (30).
 - **Replacing the server** is safe, but the environment is down while it happens (about 10 to 20
   minutes; there is only one server). The old server stops first, then the new one re-attaches the
   same `/data` volume and Elastic IP and every service starts again:
@@ -182,6 +207,22 @@ goes to the API, everything else to the website, and only with CloudFront's `X-O
   ECS task (`foc-staging-checks`). They create throw-away users, and never use the admin account or
   reset a password. Their output is in the workflow log and in `/foc/staging/checks`. A pass writes
   `/foc-deploy/staging/passed-tag`.
+- **A deploy is not seamless, by design.** Every service except the frontend stops before its
+  replacement starts, so each is unreachable for a few seconds during its own step and the gateway
+  answers 503. Rolling them instead would put a second copy of every app service on the server at
+  once, which does not fit on a `t3.large` - and it would buy nothing, because `api-gateway` stops
+  too, so every deploy already has a gap at the one public entry point. If that gap ever matters,
+  roll the app layer one service at a time in `deploy-images.sh`: the peak stays low and no service
+  doubles.
+- **The server is nearly full.** With chat and logging deployed, the rollout peak is **6,992 MiB of
+  the 7,000** the module's test allows, and the steady state is 5,328. The next service added, or
+  any increase to an existing reservation, needs a larger instance - `instance_type` in the
+  environment's variables - or a smaller footprint somewhere else. The test will say so rather than
+  letting a task fail to place on the server.
+- **Rollback past a service's first deploy:** the preflight refuses a tag whose images are not all
+  in ECR, and a service added after that tag has none. Run `infra/scripts/push-images.sh <tag>`
+  once first: it skips every image already there and pushes only the missing one, built from the
+  current checkout - which for a service that did not exist at that tag is the only build there is.
 - **Rollback:** start `deploy-production.yml` with an older `tag`. To roll back staging, run
   `infra/scripts/deploy-images.sh staging <tag>` with your own login.
 - **Staging email:** Mailpit keeps every message and forwards only the addresses in
