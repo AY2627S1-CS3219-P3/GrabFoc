@@ -92,6 +92,9 @@ JSON
     fi
     cp "$(arg --body "$@")" "$AWS_CALLS.lock"; cp "$AWS_CALLS.lock" "$AWS_CALLS.body"; echo '{}' ;;
   s3api\ get-object*)
+    if [ -n "${FAKE_LOCK_READ_FAIL:-}" ] && [ -f "$AWS_CALLS.lock" ]; then
+      echo "An error occurred (AccessDenied) when calling the GetObject operation: Access Denied" >&2; exit 254
+    fi
     if [ -n "${FAKE_RELEASE_GET_FAIL:-}" ] && [ -f "$AWS_CALLS.recorded" ]; then
       echo "Could not connect to the endpoint URL" >&2; exit 255
     fi
@@ -125,7 +128,7 @@ chmod +x "$work/bin/aws"
 export PATH="$work/bin:$PATH" AWS_CALLS="$work/calls" HEALTH_INTERVAL=0 HEALTH_CHECKS=3
 reset() { rm -f "$AWS_CALLS".*; : > "$AWS_CALLS"; }
 # Someone else holds the lock: who, and since when (RFC 3339, as Terraform writes it).
-hold() { printf '{"ID":"other-id","Operation":"OperationTypeApply","Who":"%s","Created":"%s"}' "$1" "$2" > "$AWS_CALLS.lock"; }
+hold() { printf '{"ID":"other-id","Operation":"%s","Who":"%s","Created":"%s"}' "${3:-OperationTypeApply}" "$1" "$2" > "$AWS_CALLS.lock"; }
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 export LOCK_POLL=0
 
@@ -181,9 +184,9 @@ out=$(FAKE_LOCK_FREES_AFTER=2 LOCK_WAIT=60 "$SCRIPT" staging new1234 2>&1); code
 check "the deploy waits for a held lock and then runs" '[ $code -eq 0 ] && grep -q "locked by jianbing@laptop" <<<"$out" && grep -q "put-parameter .*image-tag" "$AWS_CALLS"'
 
 reset
-hold "a crashed run" "2020-01-01T00:00:00Z"
+hold "a crashed run" "2020-01-01T00:00:00Z" deploy-images
 out=$(LOCK_WAIT=0 "$SCRIPT" staging new1234 2>&1); code=$?
-check "an abandoned lock (over 3 hours) is taken over" '[ $code -eq 0 ] && grep -q "a crashed run" <<<"$out"'
+check "an abandoned deploy's lock (over 3 hours) is taken over" '[ $code -eq 0 ] && grep -q "a crashed run" <<<"$out"'
 
 reset
 out=$(FAKE_WAIT_FAIL=api-gateway "$SCRIPT" staging new1234 2>&1); code=$?
@@ -194,7 +197,7 @@ reset
 "$SCRIPT" staging new1234 > /dev/null 2>&1
 check "every delete of the lock is conditional on the copy just read" '[ "$(grep -c "^s3api delete-object" "$AWS_CALLS")" -gt 0 ] && [ "$(grep "^s3api delete-object" "$AWS_CALLS" | grep -vc -- "--if-match")" = 0 ]'
 reset
-hold "a crashed run" "2020-01-01T00:00:00Z"
+hold "a crashed run" "2020-01-01T00:00:00Z" deploy-images
 out=$(FAKE_REPLACE_ON_DELETE=1 LOCK_WAIT=0 "$SCRIPT" staging new1234 2>&1); code=$?
 check "taking over an abandoned lock never deletes a fresh one" '[ $code -ne 0 ] && grep -q fresh-id "$AWS_CALLS.lock" && grep -q "another deploy" <<<"$out"'
 reset
@@ -203,6 +206,17 @@ check "a service moved after its layer passed is caught before the tag is record
 reset
 out=$(FAKE_RELEASE_GET_FAIL=1 "$SCRIPT" staging new1234 2>&1); code=$?
 check "a lock that can't be released fails loudly, after retrying" '[ $code -ne 0 ] && grep -q "put-parameter .*image-tag" "$AWS_CALLS" && grep -q "force-unlock" <<<"$out" && [ "$(sed -n "/put-parameter/,\$p" "$AWS_CALLS" | grep -c "^s3api get-object")" -ge 3 ]'
+
+# Codex's second review on #246.
+reset
+hold "jianbing@laptop" "2020-01-01T00:00:00Z" OperationTypeApply
+out=$(LOCK_WAIT=0 "$SCRIPT" staging new1234 2>&1); code=$?
+check "a terraform apply's lock is never taken over, however old" '[ $code -ne 0 ] && grep -q other-id "$AWS_CALLS.lock" && ! grep -q "update-service" "$AWS_CALLS" && grep -q "force-unlock" <<<"$out"'
+reset
+hold "jianbing@laptop" "$(now)"
+# perl's alarm, as macOS has no timeout(1): a deploy that spins here is killed after 20 s.
+out=$(FAKE_LOCK_READ_FAIL=1 LOCK_WAIT=0 perl -e 'alarm 20; exec @ARGV' "$SCRIPT" staging new1234 2>&1); code=$?
+check "unreadable locks count toward the wait instead of spinning" '[ $code -ne 0 ] && [ $code -ne 142 ] && ! grep -q "update-service" "$AWS_CALLS"'
 
 reset
 GITHUB_RUN_ID=42 GITHUB_WORKFLOW="Deploy staging" "$SCRIPT" staging new1234 > /dev/null 2>&1

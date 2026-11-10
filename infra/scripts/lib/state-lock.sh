@@ -6,7 +6,8 @@
 #   state lock rather than add a separate one.
 # Author review: Pending Jian Bing's review.
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-11
-# Scope: Codex review on #246: every delete is conditional on the copy just read (S3 If-Match), and
+# Scope: Codex reviews on #246: every delete is conditional on the copy just read (S3 If-Match); only a
+#   deploy's lock expires by age, never a terraform apply's; unreadable locks count toward the wait; and
 #   a lock that can't be released is retried, then reported.
 # Author review: Pending Jian Bing's review.
 #
@@ -52,16 +53,26 @@ state_lock_take() {
       *PreconditionFailed* | *ConditionalRequestConflict*) ;;
       *) echo "couldn't take $env's lock: $out" >&2; rm -f "$body" "$held"; return 1 ;;
     esac
-    # Released between the two calls: just try again.
-    meta=$(aws s3api get-object --region "$region" --bucket "$lock_bucket" --key "$lock_key" "$held" 2> /dev/null) || continue
-    etag=$(jq -r '.ETag // ""' <<< "$meta")
-    who=$(jq -r '.Who // "someone"' "$held" 2>/dev/null || echo someone)
-    created=$(jq -r '.Created // ""' "$held" 2>/dev/null || echo "")
-    if [ -n "$created" ] && [ "$(lock_age "$created")" -gt "$lock_stale" ]; then
-      echo "== taking over $env's lock from $who: held since $created, over $((lock_stale / 3600)) hours, so abandoned"
-      # Only that exact copy: if another run took it over first, this is refused and the loop sees theirs.
-      aws s3api delete-object --region "$region" --bucket "$lock_bucket" --key "$lock_key" --if-match "$etag" > /dev/null 2>&1 || true
+    # Who holds it. Gone between the two calls: try again at once. Unreadable (permissions, S3): that
+    # counts toward the wait like a held lock, so this can't spin (Codex review on #246).
+    if meta=$(aws s3api get-object --region "$region" --bucket "$lock_bucket" --key "$lock_key" "$held" 2>&1); then
+      etag=$(jq -r '.ETag // ""' <<< "$meta")
+      who=$(jq -r '.Who // "someone"' "$held" 2>/dev/null || echo someone)
+      created=$(jq -r '.Created // ""' "$held" 2>/dev/null || echo "")
+      # Only a deploy's lock is ever taken over by age. A terraform apply can sit at its "yes" prompt
+      # for hours with its lock rightly held, so its lock is never expired (Codex review on #246).
+      if [ "$(jq -r '.Operation // ""' "$held" 2>/dev/null)" = deploy-images ] && [ -n "$created" ] &&
+        [ "$(lock_age "$created")" -gt "$lock_stale" ]; then
+        echo "== taking over $env's lock from $who: a deploy's, held since $created, over $((lock_stale / 3600)) hours, so abandoned"
+        # Only that exact copy: if another run took it over first, this is refused and the loop sees theirs.
+        aws s3api delete-object --region "$region" --bucket "$lock_bucket" --key "$lock_key" --if-match "$etag" > /dev/null 2>&1 || true
+        continue
+      fi
+    elif grep -q NoSuchKey <<< "$meta"; then
       continue
+    else
+      who="someone (the lock couldn't be read: $(head -1 <<< "$meta" | cut -c1-120))"
+      created="?"
     fi
     if [ "$waited" -ge "$lock_wait" ]; then
       echo "$env is locked by $who since $created (a terraform apply or another deploy). Nothing was changed." >&2

@@ -173,8 +173,9 @@ change one environment at once:
 - **An apply during a deploy** fails with "Error acquiring the state lock", and its Lock Info
   names the deploy (`Who: GitHub run …`). Add `-lock-timeout=20m` to wait for it instead.
 - **A deploy during an apply** waits up to 15 minutes, then stops without changing anything.
-- **A lock left by a crashed run** is taken over after 3 hours. To clear it sooner, run
-  `terraform force-unlock <ID>` in `envs/<env>` (the ID is in the error).
+- **A lock left by a crashed deploy** is taken over after 3 hours. A `terraform apply`'s lock never
+  expires (it may be waiting at its "yes" prompt): finish or cancel that apply. To clear any lock
+  by hand, run `terraform force-unlock <ID>` in `envs/<env>` (the ID is in the error).
 - A change that skips the lock (the ECS console, say) and moves a service mid-deploy makes the
   deploy stop at once with "<service> was moved to <revision> by another change". Run it again.
 
