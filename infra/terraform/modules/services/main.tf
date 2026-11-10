@@ -41,6 +41,9 @@
 # Scope: Review: the app services stop before being replaced, and a memory model for the rollout
 #        peak rather than the steady state - six app tasks doubling at once did not fit the server.
 # Author review: pending - Jian Bing owns the deployment.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+# Scope: SUPPLIER_IMAGE_BASE_URL for the Supplier Service (location photos on S3).
+# Author review: Pending Jian Bing's review.
 # Every container from the compose files as an ECS service on the environment's one server (spec
 # §3.1, §4, §5). Values match the compose files; anything secret comes from SSM /foc/<env>/<NAME>.
 # AI-generated (Claude Code).
@@ -168,6 +171,9 @@ locals {
         # stdout, so a deployed request that touched Supplier shows a gap in the store where the
         # other four services have a row (issue #52).
         SUPPLIER_KAFKA_BROKERS = "kafka:9092"
+        # AI-generated (Claude Code, 2026-11-10): the seed photos, served by this site's CloudFront
+        # from a private bucket (modules/edge) instead of the course template's GitHub.
+        SUPPLIER_IMAGE_BASE_URL = "${var.public_url}/images"
       }
       secrets = { SUPPLIER_DATABASE_URL = "SUPPLIER_DATABASE_URL" }
     }

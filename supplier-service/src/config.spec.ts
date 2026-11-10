@@ -13,6 +13,9 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: Added the Kafka broker and outbox poll interval cases (issue #120).
  * Author review: pending — Jie Yang to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: The SUPPLIER_IMAGE_BASE_URL cases (location photos on S3).
+ * Author review: Pending Jian Bing's review.
  */
 
 /** Evaluates src/config.ts afresh with the given environment; returns the error message, or 'ok'. */
@@ -85,4 +88,29 @@ it('refuses an outbox poll interval that is not a positive whole number', () => 
   expect(loadConfig({ ...base, SUPPLIER_OUTBOX_POLL_MS: '0' })).toMatch(/SUPPLIER_OUTBOX_POLL_MS/);
   expect(loadConfig({ ...base, SUPPLIER_OUTBOX_POLL_MS: 'soon' })).toMatch(/SUPPLIER_OUTBOX_POLL_MS/);
   expect(loadConfig({ ...base, SUPPLIER_OUTBOX_POLL_MS: '500' })).toBe('ok');
+});
+
+// AI-generated (Claude Code, 2026-11-10): the location photos' base URL on AWS (plan approved by Jian Bing).
+it('reads the photos base URL as an https URL without a trailing slash, unset when empty', () => {
+  const imageBase = (value: string) => {
+    const saved = { ...process.env };
+    Object.assign(process.env, base, { SUPPLIER_IMAGE_BASE_URL: value });
+    try {
+      let read: string | undefined = 'not read';
+      jest.isolateModules(() => {
+        read = require('./config').config.imageBaseUrl;
+      });
+      return read;
+    } finally {
+      process.env = saved;
+    }
+  };
+  expect(imageBase('')).toBeUndefined();
+  expect(imageBase('https://d1.cloudfront.net/images/')).toBe('https://d1.cloudfront.net/images');
+  expect(imageBase('https://d1.cloudfront.net/images')).toBe('https://d1.cloudfront.net/images');
+});
+
+it('refuses a photos base URL that is not https', () => {
+  expect(loadConfig({ ...base, SUPPLIER_IMAGE_BASE_URL: 'http://d1.cloudfront.net/images' })).toMatch(/SUPPLIER_IMAGE_BASE_URL/);
+  expect(loadConfig({ ...base, SUPPLIER_IMAGE_BASE_URL: 'images' })).toMatch(/SUPPLIER_IMAGE_BASE_URL/);
 });

@@ -30,6 +30,9 @@
 # Scope: Review: budget the rollout peak rather than the steady state, in both environments, and
 #   expect the app services to stop before being replaced.
 # Author review: pending - Jian Bing owns the deployment.
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+# Scope: Checks the Supplier gets SUPPLIER_IMAGE_BASE_URL (location photos on S3).
+# Author review: Pending Jian Bing's review.
 # AI-generated (Claude Code).
 
 mock_provider "aws" {
@@ -202,6 +205,11 @@ run "staging" {
       [for e in jsondecode(aws_ecs_task_definition.service["user-service"].container_definitions)[0].environment : e.value if e.name == "USER_SMTP_HOST"][0] == "mailpit"
     )
     error_message = "Staging sends mail through Mailpit."
+  }
+  # AI-generated (Claude Code, 2026-11-10): the location photos come from this site's /images/*.
+  assert {
+    condition     = [for e in jsondecode(aws_ecs_task_definition.service["supplier-service"].container_definitions)[0].environment : e.value if e.name == "SUPPLIER_IMAGE_BASE_URL"] == ["https://d111.cloudfront.net/images"]
+    error_message = "Supplier links the location photos to the site's /images."
   }
   assert {
     condition = (

@@ -156,12 +156,58 @@ Scope: Wrote the 2026-11-09 entry on Kafka's restarts during the first staging d
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 chat-on-AWS entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Wrote the 2026-11-10 location photos entry from Jian Bing's prompts, taken verbatim from the session transcript.
+Author review: pending — Jian Bing to record what he checked.
 -->
 
 # AI Usage Log — Jian Bing
 
 Jian Bing's entries for the FoC AI usage log. The template and rules are in
 [`ai/usage-log.md`](../usage-log.md). Add entries to this file only, newest first.
+
+### 2026-11-10 — Serving the location photos from S3
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** plan, generate
+**Files:** `infra/terraform/modules/edge/{main,outputs}.tf` and its test, `infra/terraform/modules/services/main.tf`
+and its test, `supplier-service/src/config.ts`, `supplier-service/src/seed/seed.service.ts` and their tests,
+`supplier-service/AGENTS.md`, `.env.example`
+
+**Scenario:** The six seed photos (2.7–5 MB each) loaded from the course template's GitHub. I asked to store them
+in S3. Claude warned that where they live and how locations point to them is an architecture and data decision
+under the AI policy, then laid out a plan, which I approved as written:
+- a private bucket per environment, read only by that environment's CloudFront at `/images/*` (Origin Access Control);
+- Terraform uploads `data/images/*.jpeg`;
+- the Supplier Service gets an optional `SUPPLIER_IMAGE_BASE_URL`, which the seed uses for the template's photos;
+- rows seeded earlier move to it once at start-up through the normal update.
+
+While building, Claude found that the plan's "history record" premise was wrong: there is no `location_changes`
+table (it's still an open item), so the rewrite only raises each row's version and logs one line per location.
+Resizing and admin uploads are out of scope.
+
+**Prompts (exact, in order):**
+> time to plan out the proces sof mstoring images currently in our frontend ofr location into an s3 bucvket
+
+> skip the questions and start, but yes jsut use the s3 bucket to sore the current gihtub raw iamges
+
+My answer to Claude's question: "Approve as written (Recommended)".
+
+**What it produced:**
+- the bucket, Origin Access Control, bucket policy, `/images/*` behavior and photo uploads in `modules/edge`;
+- `SUPPLIER_IMAGE_BASE_URL` in the services module, the Supplier config (https only), the seed mapping and the
+  start-up move;
+- the notes in `.env.example` and `supplier-service/AGENTS.md`.
+
+**What I changed or rejected:** Nothing. The plan's alternatives (one shared bucket, fixing rows by hand, resizing
+the photos) were not chosen.
+
+**Verification:** Claude watched each new test fail first, then pass:
+- Terraform: the bucket is private, OAC signs every request, `/images/*` is read-only and cached, only this
+  distribution may read, there's one object per photo, the output URL is right, and the Supplier gets the URL;
+- Supplier: the config accepts only https; seeding with the URL; the move happens once, leaving other links
+  alone; nothing changes without the URL.
+
+Supplier: 296 unit and 61 integration tests pass, and `tsc` is clean. My own check: pending.
 
 ### 2026-11-09 — Putting chat on AWS
 
