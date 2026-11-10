@@ -157,10 +157,11 @@ function changeCopy(change: EmailChange, role: RecipientRole): Copy {
     const copy = REJECTED_COPY[change.kind];
     return { subject: copy.subject, message: `${Other} rejected your request to ${copy.request(window)}. ${copy.after}` };
   }
-  // EXPIRED: only a timing change expires, when the current window ends before it is accepted.
+  // EXPIRED: only a timing change expires: the order's current window, or the proposed one, ended
+  // before it was accepted. The wording fits both.
   return {
     subject: 'Your proposed delivery window expired',
-    message: `Your proposed delivery window (${window}) was not accepted before the current window ended.`,
+    message: `Your proposed delivery window (${window}) can no longer be applied, because a window ended before it was accepted. The order's window is unchanged.`,
   };
 }
 

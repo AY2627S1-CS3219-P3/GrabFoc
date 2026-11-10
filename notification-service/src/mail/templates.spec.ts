@@ -139,9 +139,10 @@ describe('renderEmail for proposals (#186)', () => {
     expect(email.html).toContain(sentence);
   });
 
-  it('tells the proposer a timing change expired', () => {
-    expect(render('REQUESTER', { outcome: 'EXPIRED', kind: 'TIMING_CHANGE', ...window }).subject).toBe(
-      'Your proposed delivery window expired',
-    );
+  it('tells the proposer a timing change expired, in words that fit either window ending', () => {
+    const email = render('REQUESTER', { outcome: 'EXPIRED', kind: 'TIMING_CHANGE', ...window });
+    expect(email.subject).toBe('Your proposed delivery window expired');
+    expect(email.text).toContain('can no longer be applied, because a window ended before it was accepted.');
+    expect(email.text).not.toContain('current window ended');
   });
 });
