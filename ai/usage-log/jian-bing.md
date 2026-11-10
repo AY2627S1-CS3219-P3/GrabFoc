@@ -152,10 +152,14 @@ Author review (Jian Bing, 2026-11-09): Looked through the code and think it's ok
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 SoCLaaS token cap entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Wrote the 2026-11-09 entry on pinning the workflows' actions from Jian Bing's prompts, taken verbatim from the session transcript.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 entry on Kafka's restarts during the first staging deploy from Jian Bing's prompts, taken verbatim from the session transcript.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 chat-on-AWS entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Wrote the 2026-11-10 production entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
 Scope: Wrote the 2026-11-10 location photos entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Author review: pending — Jian Bing to record what he checked.
@@ -208,6 +212,30 @@ the photos) were not chosen.
   alone; nothing changes without the URL.
 
 Supplier: 296 unit and 61 integration tests pass, and `tsc` is clean. My own check: pending.
+
+### 2026-11-10 — Creating the production environment
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** plan, generate
+**Files:** `infra/terraform/envs/production/production.tfvars`
+
+**Scenario:** After chat (#236), logging (#234) and Kafka's fix (#235) were on staging and passed, I asked to
+create production. Claude checked what exists: GitHub's `production` environment (required reviewers, branch rule),
+no production secrets in SSM, and #234's memory model, which puts production's deploy peak at 6,880 MiB of the
+~7,000 MiB a t3.large leaves for containers. I chose a t3.xlarge like staging and accepted the extra cost.
+`production.tfvars` now sets it, so a later apply can't shrink (and so replace) the server.
+
+**Prompts (exact, in order):**
+> ok lets set up production env now!!!
+
+My answers to Claude's questions: "t3.xlarge, like staging (Recommended)" and "Yes, create production".
+
+**What it produced:** `instance_type = "t3.xlarge"` in `production.tfvars`, and the setup steps (secrets, plan and
+apply, record the tag, first-apply restart, checks, a first run of the production workflow).
+
+**What I changed or rejected:** The default t3.large.
+
+**Verification:** `infra/terraform/check.sh` passes. The production plan is shown before it is applied. My own
+check: pending.
 
 ### 2026-11-09 — Putting chat on AWS
 
@@ -294,6 +322,36 @@ test assertions (Kafka's timing, its CPU, and no change to other containers).
 **Verification:** Claude watched the two Kafka assertions fail first, then pass (services module 4/4 runs), and ran
 `infra/terraform/check.sh` (every stack valid, all tests pass). The live check is the next staging apply and
 deploy. My own check: pending.
+
+### 2026-11-09 — Pinning the actions that can sign in to AWS, and the staging and production URLs
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `.github/workflows/terraform.yml`, `.github/workflows/deploy-staging.yml`,
+`.github/workflows/deploy-production.yml`, `.github/dependabot.yml`, `infra/scripts/test/repo-checks.test.sh`
+
+**Scenario:** I asked which URL is staging and which is production. Claude listed the account's CloudFront
+distributions: staging is `https://d2vc4gojrvvtgk.cloudfront.net`, and production doesn't exist yet (it gets its own
+address when first created). After I merged #191, an automated security review flagged its workflows: two outside
+actions (`aws-actions/configure-aws-credentials@v6`, `hashicorp/setup-terraform@v3`) were referenced by tags their
+owners can move, in jobs that can sign in to AWS (staging deploy, production deploy, Terraform plan), and
+`terraform.yml` gave its two email-list secrets to every step of the plan job. I chose to pin both actions to full
+commit hashes (the ones `v6` and `v3` point to today, v6.3.0 and v3.1.2, so nothing that runs changes), set the
+secrets on the plan step only, and add a Dependabot config so the pins get one grouped update PR a month.
+
+**Prompts (exact, in order):**
+> tso which one is staging, whic hsi prod url
+
+> i merged 191
+
+My answer to Claude's question on the security review: "Pin + scope + Dependabot (Recommended)".
+
+**What it produced:** The pinned `uses:` lines, the plan step's `env:`, `.github/dependabot.yml` (GitHub Actions
+only, monthly, grouped), and three checks in `repo-checks.test.sh`.
+
+**What I changed or rejected:** Pinning without Dependabot (no one would bump the hashes), and leaving it as is.
+
+**Verification:** Claude watched the three new checks fail first, then pass (7/7), confirmed each tag and its
+latest release resolve to the same commit through the GitHub API, and ran `actionlint`. My own check: pending.
 
 ### 2026-11-09 — The SoCLaaS token cap cut a review short
 

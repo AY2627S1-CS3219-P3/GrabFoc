@@ -6,6 +6,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 # Scope: Job timeouts outlast the scripts' own retries (PR #191 review).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Checks that outside actions are pinned to commit hashes, the email secrets reach only the
+#   plan step, and Dependabot covers the actions (security review of #191).
+# Author review: Pending Jian Bing's review.
 #
 # Run: infra/scripts/test/repo-checks.test.sh
 # AI-generated (Claude Code).
@@ -23,6 +27,15 @@ timeout() { grep -m1 -oE "timeout-minutes: [0-9]+" "$ROOT/.github/workflows/$1" 
 check "production's job outlasts deploy-images.sh at its slowest (~132 min)" '[ "$(timeout deploy-production.yml)" -ge 140 ]'
 check "staging's job outlasts push + deploy + checks at their slowest (~187 min)" '[ "$(timeout deploy-staging.yml)" -ge 200 ]'
 check "no runbook command continues a line after a comment" '! grep -nE "\\\\[[:space:]]+#" "$ROOT/infra/terraform/README.md"'
+
+# AI-generated (Claude Code, 2026-11-09): a tag can be moved by the action's owner; a full commit
+# hash can't. Actions owned by GitHub (actions/, github/) are exempt (security review of #191).
+unpinned() { grep -hE "^[[:space:]]*-?[[:space:]]*uses:" "$ROOT"/.github/workflows/*.yml |
+  sed -E "s/^[[:space:]]*-?[[:space:]]*uses:[[:space:]]*//" | grep -vE "^(actions|github)/" | grep -vE "@[0-9a-f]{40}( |$)"; }
+check "every action not owned by GitHub is pinned to a full commit hash" '[ -z "$(unpinned)" ]'
+# Only the plan step needs the email lists; setup and sign-in steps must not see them.
+check "the email lists are set on the plan step, not the whole job" '! grep -qE "^ {0,9}TF_VAR_" "$ROOT/.github/workflows/terraform.yml" && grep -qE "^ {10}TF_VAR_alert_emails:" "$ROOT/.github/workflows/terraform.yml"'
+check "Dependabot keeps the pinned actions up to date" 'grep -qE "package-ecosystem: \"?github-actions\"?" "$ROOT/.github/dependabot.yml" 2>/dev/null'
 
 echo "$fails failed"
 [ "$fails" -eq 0 ]
