@@ -28,6 +28,10 @@ Scope: The logging section said no broker was configured and that handing the sh
   scoped instruction file, so it would have told the next change the publisher was absent
   (issue #52).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: `?building=` is a case-insensitive substring match rather than an exact one, matching
+  `?name=`. Asked for by Cole Lin, who hit the exact match while searching for locations.
+Author review: pending - Cole Lin.
 -->
 # AGENTS.md — Supplier (Location) Service
 
@@ -156,7 +160,7 @@ _Origin: Team_
 |---|---|
 | `name` | case-insensitive substring match on `name` (matches anywhere, not just the start) |
 | `type` | exact match |
-| `building` | exact match |
+| `building` | case-insensitive substring match on `building`, the same matching as `name` |
 | `time` | open at that time, in `HHMMhrs` format (rule below) |
 | `includeInactive=true` | also return `INACTIVE` locations (ADMIN only) |
 | `lat`, `lon` | the caller's coordinate in decimal degrees, as a phone's GPS reports it (e.g. `lat=1.296600&lon=103.776400`). Must be given together; they filter nothing, they add `distance_m` to each item |

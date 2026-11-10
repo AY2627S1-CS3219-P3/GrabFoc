@@ -7,6 +7,10 @@
  * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-10-19
  * Scope: Deactivation saves a SupplierDeactivated event in the same transaction (issue #120).
  * Author review: pending — Jie Yang to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+ * Scope: The `building` list filter matches like `name` - case-insensitive substring -
+ *        instead of an exact, case-sensitive match.
+ * Author review: pending - Cole Lin.
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Pool, PoolClient } from 'pg';
@@ -134,7 +138,11 @@ export class LocationsService {
       await this.assertTypeExists(query.type);
       where.push(`type = ${param(query.type)}`);
     }
-    if (query.building !== undefined) where.push(`building = ${param(query.building)}`);
+    // Matched like `name` above: case-insensitive substring. An exact, case-sensitive match
+    // meant `COM` found nothing and `com1` found nothing either, so a building could only
+    // be filtered by typing its stored spelling exactly.
+    if (query.building !== undefined)
+      where.push(`lower(building) LIKE '%' || lower(${param(query.building)}) || '%'`);
     if (query.time !== undefined) {
       const t = param(hhmmToMinutes(query.time));
       // Open at t, both ends inclusive; open_min > close_min means it closes after midnight.

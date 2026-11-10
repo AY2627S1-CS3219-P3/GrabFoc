@@ -5,6 +5,10 @@
  *        listing, filters, paging, sorting, distance, and the create/update/status rules.
  * Author review (Jian Bing): Ran `npm run test:int` against supplier-db on 2026-10-01 (51 passed)
  *        and verified each test case in this file by hand.
+ * Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+ * Scope: The building filter test asserts substring matching, where it asserted an exact,
+ *        case-sensitive match; `type` is asserted to stay exact.
+ * Author review: pending - Cole Lin.
  */
 import { Pool } from 'pg';
 import { ProblemException } from '../common/problem';
@@ -127,7 +131,7 @@ describe('list', () => {
     expect(await names({ name: 'edge' })).toEqual(['Techno Edge Canteen']);
   });
 
-  it('filters by exact type and building', async () => {
+  it('filters by exact type, and by building the way it filters by name', async () => {
     await insert(
       { name: 'Printer', type: 'Printing', building: 'COM1' },
       { name: 'Cafe', type: 'Food/Coffee', building: 'COM1' },
@@ -135,7 +139,15 @@ describe('list', () => {
     );
     expect(await names({ type: 'Food/Coffee' })).toEqual(['Cafe']);
     expect(await names({ building: 'COM1' })).toEqual(['Cafe', 'Printer']);
-    expect(await names({ building: 'COM' })).toEqual([]);
+    // `building` used to be an exact, case-sensitive match, so both of these found nothing and a
+    // building could only be filtered by typing its stored spelling exactly.
+    expect(await names({ building: 'COM' })).toEqual(['Cafe', 'Printer']);
+    expect(await names({ building: 'com1' })).toEqual(['Cafe', 'Printer']);
+    expect(await names({ building: 'library' })).toEqual(['Co-op']);
+    // Still a filter, not a match-everything.
+    expect(await names({ building: 'COM2' })).toEqual([]);
+    // `type` stays exact: it is validated against location_types, which feeds the filter chips.
+    expect(await names({ type: 'Food' })).toEqual([]);
   });
 
   it('answers 400 for an unknown type, listing the valid ones', async () => {
