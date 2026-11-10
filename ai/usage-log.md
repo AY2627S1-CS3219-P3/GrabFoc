@@ -383,6 +383,14 @@ _2026-11-09 to 2026-11-10_
 - Found why the deployed chat failed (no chat service on AWS) and planned its deployment.
 - Explained how to move location images to S3; the bucket design was left to the team and Jian Bing.
 
+### D4 presentation ✅ Human reviewed
+
+_2026-11-10_
+
+- Checked the "HTTPS & Routing at the Edge" and "Gateway" slides against the team's records, then
+  merged them into one "Edge & Gateway" slide (one request flow diagram, five points, details in the
+  speaker notes). The content is the team's existing design; the AI condensed and laid it out.
+
 ### Usage logs ✅ Human reviewed
 
 _2026-11-10_
