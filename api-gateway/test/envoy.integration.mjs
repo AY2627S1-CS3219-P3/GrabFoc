@@ -27,6 +27,12 @@ Scope: Added a chat upstream (CHAT_SERVICE_URL), the chat-ticket Order route, an
 socket path keeps the WebSocket upgrade headers while other routes still strip them and cookies
 (the chat plan).
 Author review: Reviewed by Deanson, 2026-11-09; Jie Yang (gateway owner) to approve.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Added a logging upstream (LOGGING_SERVICE_URL) and a test that GET /logs needs a token and
+reaches the log store, while nothing else of that service is routed (#52). Without the variable the
+renderer refuses to start, so every test here fails - which is what adding a route file costs the
+harness, and the unit suite's own fixture cannot catch it.
+Author review: pending - Jie Yang owns the gateway's route files.
 */
 // AI-generated; review pending. Requires the stock foc-envoy image and Docker Desktop.
 import assert from 'node:assert/strict';
@@ -116,7 +122,7 @@ chat.on('upgrade', (req, socket) => {
     `X-Saw-Path: ${req.url}\r\nX-Saw-Cookie: ${req.headers.cookie ?? 'none'}\r\n\r\n`);
   socket.pipe(socket);
 });
-const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2'), upstream('order'), upstream('credit'), frontend, chat];
+const servers = [upstream('user'), upstream('supplier-1'), upstream('supplier-2'), upstream('order'), upstream('credit'), frontend, chat, upstream('logging')];
 const containers = [];
 let ports, gateway, balanced;
 
@@ -126,6 +132,7 @@ async function startEnvoy(overrides = {}) {
     ORDER_SERVICE_URL: `http://host.docker.internal:${ports[3]}`,
     CREDIT_SERVICE_URL: `http://host.docker.internal:${ports[4]}`,
     CHAT_SERVICE_URL: `http://host.docker.internal:${ports[6]}`,
+    LOGGING_SERVICE_URL: `http://host.docker.internal:${ports[7]}`,
     USER_SERVICE_JWKS_URL: `http://host.docker.internal:${ports[0]}/.well-known/jwks.json`, ...overrides };
   const args = ['run', '-d', '--entrypoint', '/bin/sh', '--label', 'foc.task=envoy-integration', '-p', '127.0.0.1::3003',
     '-p', '127.0.0.1::8080'];
@@ -216,6 +223,26 @@ test('Credit balance and history reads need a token and reach the Credit Service
     const data = await res.json();
     assert.equal(data.instance, 'credit');
     assert.equal(data.path, path);
+  }
+});
+
+// AI-generated (Claude Code, 2026-11-09): the log store's query API (#52).
+test('the log query needs a token and reaches the Logging Service, and nothing else does', async () => {
+  const path = '/logs?service=order&level=warn&pageSize=20';
+  assert.equal((await fetch(gateway + path)).status, 401, '/logs without a token');
+  // A USER's token is enough to pass the gateway on purpose: the gateway authenticates and the
+  // service authorises, so it is the Logging Service that answers 403 to a non-admin. Asserting a
+  // 200 here is asserting that the request arrives, not that a USER may read the store.
+  const res = await fetch(gateway + path, { headers: { authorization: `Bearer ${token()}` } });
+  assert.equal(res.status, 200, path);
+  const data = await res.json();
+  assert.equal(data.instance, 'logging');
+  assert.equal(data.path, path);
+  assert.equal(data.method, 'GET');
+  // The store's ingest is Kafka and its only other paths are internal, so one route is all of it.
+  for (const [method, unrouted] of [['POST', '/logs'], ['DELETE', '/logs'], ['GET', '/logs/123'],
+    ['GET', '/internal/logs'], ['GET', '/logs/stats']]) {
+    assert.equal((await fetch(gateway + unrouted, { method })).status, 404, `${method} ${unrouted}`);
   }
 });
 

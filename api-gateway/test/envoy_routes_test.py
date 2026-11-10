@@ -32,6 +32,42 @@ Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-08
 Scope: CHAT_SERVICE_URL in the test environment; the chat-ticket Order route (19 routes); the
        "websocket" route field, WebSocket upgrades and the chat socket route (the chat plan).
 Author review: Reviewed by Deanson, 2026-11-09; Jie Yang (gateway owner) to approve.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: LOGGING_SERVICE_URL in the test environment, and a test that the log store's query API is
+       routed as one protected GET to the logging cluster and that nothing else of that service is
+       reachable (#52).
+Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: the log route takes a fixed path, so the prefix-override case is gone; a test that
+       api-gateway/.env.example works as written, which it did not; and a test that every route
+       file's urlEnv is in the deployed task definition, which only the Terraform tests checked and
+       only when infra changed.
+Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-09
+Scope: Review: no two routes may render the same matcher for one method. GATEWAY_LOCATIONS_PREFIX=
+       /logs was accepted and sent log queries to the Supplier Service, which answers 200. A second
+       round: compare what is rendered rather than whole prefix namespaces, so a prefix nested
+       under a fixed path, or landing on one under another method, still works.
+Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: the /gateway copies count in the collision check, and /gateway is reserved - a
+       prefix of /gateway/logs collided only in the copies, and /gateway alone was swallowed by a
+       regex route the duplicate check cannot see.
+Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: two routes of different services may not both match one request, compared as segment
+       lists - which covers exact-versus-regex and regex-versus-regex alike - and a route pattern
+       must stay inside the grammar that test understands.
+Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: the renderer's own GET /health and GET /gateway/health are in the overlap check, so
+       a prefix cannot be shadowed by them; and GATEWAY_AUTH_PREFIX=/health stays valid, because
+       every /auth route has a segment after the prefix.
+Author review: pending - Jie Yang owns the gateway's route files.
+Tool: Claude Code (model: Claude Opus 5), date: 2026-11-10
+Scope: Review: a bare dot in a regex is refused and the escaped form accepted, because RE2 reads a
+       bare one as any character.
+Author review: pending - Jie Yang owns the gateway's route files.
 """
 # AI-generated; review pending.
 import importlib.util
@@ -58,7 +94,8 @@ class RouteFilesTest(unittest.TestCase):
         spec.loader.exec_module(self.renderer)
         self.env = {"USER_SERVICE_URL": "http://user:3001", "SUPPLIER_SERVICE_URL": "http://supplier:3002",
                     "ORDER_SERVICE_URL": "http://order:3005", "CREDIT_SERVICE_URL": "http://credit:3004",
-                    "CHAT_SERVICE_URL": "http://chat:3007"}
+                    "CHAT_SERVICE_URL": "http://chat:3007",
+                    "LOGGING_SERVICE_URL": "http://logging:3006"}
 
     def write_service(self, definition):
         (self.root / "routes" / "30-extra.routes.json").write_text(json.dumps(definition))
@@ -308,6 +345,176 @@ class RouteFilesTest(unittest.TestCase):
         endpoint = chat["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
         self.assertEqual(endpoint["address"]["socket_address"], {"address": "chat", "port_value": 3007})
 
+    # AI-generated (Claude Code, 2026-11-09)
+    def test_log_query_is_one_protected_route_to_the_logging_cluster(self):
+        """The log store is an admin tool, so the gateway exposes exactly one read of it (#52).
+
+        It must require a token - the service's own ADMIN check is what separates a USER from an
+        admin, and that check never runs on a request the gateway has already let through
+        unauthenticated. And it must be the query API only: the store's ingest is Kafka, so there
+        is nothing else of this service a browser has any reason to reach.
+        """
+        config = self.renderer.configuration(self.env)
+        routes = [r for r in self.unprefixed(self.routes(config))
+                  if r.get("route", {}).get("cluster") == "logging"]
+        self.assertEqual(len(routes), 1)
+        self.assertEqual(routes[0]["match"]["path"], "/logs")
+        self.assertEqual(routes[0]["match"]["headers"][0]["string_match"]["exact"], "GET")
+        # Not "disabled": an unauthenticated GET /logs would reach a handler whose only defence is
+        # the role on a token that is not there.
+        self.assertEqual(routes[0]["typed_per_filter_config"][self.renderer.JWT]["requirement_name"],
+                         "user_token")
+        # The /gateway copy strips the prefix, so the service still sees /logs.
+        public = next(r for r in self.routes(config) if r["match"].get("path") == "/gateway/logs")
+        self.assertEqual(public["route"]["cluster"], "logging")
+        self.assertEqual(public["route"]["regex_rewrite"]["substitution"], "")
+        cluster = next(c for c in config["static_resources"]["clusters"] if c["name"] == "logging")
+        endpoint = cluster["load_assignment"]["endpoints"][0]["lb_endpoints"][0]["endpoint"]
+        self.assertEqual(endpoint["address"]["socket_address"], {"address": "logging", "port_value": 3006})
+        # Deliberately no prefix variable. A declared prefix renames only what Envoy matches - it
+        # is not rewritten on the way out - so moving one sends a path the upstream does not serve
+        # and every request 404s. That is a knob that looks adjustable and is not, which is worse
+        # than a fixed path for a single admin endpoint (review).
+        self.assertNotIn("logs", self.renderer.load_routes(self.env)[1])
+
+    # AI-generated (Claude Code, 2026-11-09; review)
+    def test_env_example_starts_the_gateway_as_written(self):
+        """Copy api-gateway/.env.example to .env and the gateway must come up.
+
+        load_local_env keeps a variable that is present and empty, while the renderer falls back to
+        a default only when it is absent - so an example line left blank is not a documented
+        default, it is a value the renderer has to accept. GATEWAY_LOGS_PREFIX was blank here and
+        failed the prefix check, and LOGGING_SERVICE_URL was blank and failed the origin check:
+        both broke a host run that followed the file exactly, while every test passed, because
+        every other test builds its own environment (review).
+        """
+        example = {}
+        for line in (Path(__file__).resolve().parents[1] / ".env.example").read_text(
+                encoding="utf-8-sig").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                name, _, value = line.partition("=")
+                example[name.strip()] = value.strip().strip('"').strip("'")
+        self.assertIn("LOGGING_SERVICE_URL", example)
+        config = self.renderer.configuration(example)
+        self.assertTrue(self.routes(config))
+
+    # AI-generated (Claude Code, 2026-11-09; review)
+    def test_no_two_routes_render_the_same_matcher_for_one_method(self):
+        """Two identical routes are both rendered, and Envoy answers with whichever matched first.
+
+        Filename order decides that, so the earlier file silently wins. The prefix overlap check
+        compares prefixes with one another and never looks at the paths another file fixes, so
+        GATEWAY_LOCATIONS_PREFIX=/logs was accepted: Supplier rendered `GET /logs`,
+        20-supplier.routes.json sorts before 50-logging.routes.json, and an authenticated log query
+        reached the Supplier Service, which answers 200 (first review).
+
+        The comparison is of what is rendered, per method - not of whole prefix namespaces. An
+        earlier version of this guard rejected a prefix merely nested under a fixed exact path, and
+        one that landed on a fixed path under a different method; neither can collide, and these
+        prefixes are documented as configurable (second review).
+        """
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/logs"})
+        self.assertEqual(str(caught.exception),
+                         "Two gateway routes render the same path for GET: /logs")
+        # The /gateway copies count too. Every route is rendered twice, and the unprefixed set
+        # comes first, so a prefix reaching into /gateway is taken by whichever service got there
+        # first. With /gateway/logs the unprefixed definitions were all distinct and startup
+        # succeeded, while the internal listener held three routes matching `GET /gateway/logs` -
+        # Supplier at index 26 and 27, Logging's copy at 107 (third review).
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/gateway/logs"})
+        self.assertIn("/gateway", str(caught.exception))
+        # /gateway itself is worse and invisible to the duplicate check: Supplier's
+        # `{locations}/[^/]+` then answered /gateway/logs, /gateway/orders, /gateway/mine and
+        # /gateway/health, and a regex matcher never equals an exact path, so nothing collided.
+        # Reserved by name.
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/gateway"})
+        self.assertEqual(str(caught.exception),
+                         "A gateway route prefix must not start with /gateway")
+        # The renderer's own routes count too. configuration() puts GET /health and
+        # GET /gateway/health in front of everything, and they are in no route file, so
+        # GATEWAY_LOCATIONS_PREFIX=/health was accepted while the health response at route 0
+        # answered Supplier's location-root reads (sixth review).
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/health"})
+        self.assertIn("/health", str(caught.exception))
+        # Allowed, and rejected by the first version of this check:
+        #   /users/me/auth renders /users/me/auth/login etc., which cannot match the exact
+        #     /users/me that 10-user.routes.json fixes;
+        #   /location-types collides with Supplier's fixed route only for GET, and Order's root
+        #     route there is POST.
+        # An overlap across matcher kinds, which equal tuples cannot see: with /admin, Supplier's
+        # `{locations}/[^/]+` renders as the regex `GET /admin/[^/]+`, and that matches Order's
+        # exact `GET /admin/orders`. Supplier's regex is emitted first, so the request went there -
+        # route 28 against Order's route 49 (fourth review).
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/admin"})
+        self.assertRegex(str(caught.exception), r"^A \w+ route and a \w+ route both match GET requests: ")
+        # Two regexes meeting, which comparing a regex against exact paths alone still missed:
+        # /admin/users/foo renders Supplier's `{locations}/[^/]+` as `/admin/users/foo/[^/]+`, and
+        # that meets User's `/admin/users/[^/]+/login-events` at /admin/users/foo/login-events.
+        # User is emitted first, so a Supplier location whose id is "login-events" went to User
+        # (fifth review).
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "GATEWAY_LOCATIONS_PREFIX": "/admin/users/foo"})
+        self.assertIn("login-events", str(caught.exception))
+        # Checked across services only. Order declares `GET /orders/available` beside
+        # `{orders}/[^/]+` on purpose, both reach Order, and the defaults must stay valid - the
+        # version of this check that compared whole namespaces rejected them.
+        # /gatewayish is not inside /gateway, so the reservation must not catch it either.
+        for name, value in (("GATEWAY_AUTH_PREFIX", "/users/me/auth"),
+                            ("GATEWAY_ORDERS_PREFIX", "/location-types"),
+                            ("GATEWAY_LOCATIONS_PREFIX", "/gatewayish"),
+                            # Every /auth route has a segment after the prefix, so this renders
+                            # /health/login and friends and never the bare /health. Listed so the
+                            # health check above is not mistaken for "no prefix may say health".
+                            ("GATEWAY_AUTH_PREFIX", "/health")):
+            with self.subTest(**{name: value}):
+                self.assertTrue(self.routes(self.renderer.configuration({**self.env, name: value})))
+
+    # AI-generated (Claude Code, 2026-11-09; review)
+    # AI-generated (Claude Code, 2026-11-10; review)
+    def test_route_patterns_stay_inside_the_grammar_the_overlap_test_understands(self):
+        """A matcher is `/`-separated segments, each a literal or the whole wildcard `[^/]+`.
+
+        That restriction is what makes the overlap test exact rather than best-effort, so a pattern
+        outside it is refused at startup instead of quietly skipped. A collision check with a blind
+        spot reads as a guarantee and is not one (review).
+        """
+        # A bare dot is refused: RE2 reads it as any character, so modelling `foo.json` as a
+        # literal would call this route distinct from another service's exact `/fooXjson/bar`,
+        # which it matches. Escaped, it is a dot and allowed. In an exact `path` a dot is just a
+        # dot, which is why only the regex grammar is this strict (review).
+        for pattern, expected in (("/x(a|b)", "Unsupported characters"),
+                                  ("/x/pre[^/]+post", "only use [^/]+ as a whole segment"),
+                                  ("/x/.*", "Unsupported characters"),
+                                  ("/foo.json/[^/]+", "Unsupported characters")):
+            with self.subTest(pattern=pattern):
+                self.write_service({"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",
+                                    "routes": [{"method": "GET", "regex": pattern}]})
+                with self.assertRaises(ValueError) as caught:
+                    self.renderer.configuration({**self.env, "EXTRA_SERVICE_URL": "http://extra:9000"})
+                self.assertIn(expected, str(caught.exception))
+        # The escaped form is accepted, and so is a dot in an exact path.
+        for pattern in ("/foo" + "\\" + ".json/[^/]+", "/x/[^/]+"):
+            with self.subTest(allowed=pattern):
+                self.write_service({"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",
+                                    "routes": [{"method": "GET", "regex": pattern}]})
+                config = self.renderer.configuration(
+                    {**self.env, "EXTRA_SERVICE_URL": "http://extra:9000"})
+                self.assertTrue(self.routes(config))
+
+    def test_two_route_files_cannot_render_the_same_path(self):
+        """The same collision from two files rather than from a prefix."""
+        self.write_service({"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",
+                            "routes": [{"method": "GET", "path": "/logs"}]})
+        with self.assertRaises(ValueError) as caught:
+            self.renderer.configuration({**self.env, "EXTRA_SERVICE_URL": "http://extra:9000"})
+        self.assertIn("same path for GET: /logs", str(caught.exception))
+
     def test_invalid_definitions_fail_instead_of_disabling_authentication(self):
         valid = {"service": "extra", "urlEnv": "EXTRA_SERVICE_URL",
                  "routes": [{"method": "GET", "path": "/example"}]}
@@ -366,6 +573,26 @@ class RouteFilesTest(unittest.TestCase):
 class EnvExampleTest(unittest.TestCase):
     # AI-generated (Claude Code, 2026-11-06): AGENTS.md §8 asks for every variable a
     # service reads to be in its .env.example, with a safe placeholder.
+    # AI-generated (Claude Code, 2026-11-09; review)
+    def test_route_files_urls_are_in_the_deployed_gateway(self):
+        """Every route file's urlEnv must be set on api-gateway in the ECS task definition.
+
+        The renderer reads it unconditionally, so a gateway deployed without it exits before Envoy
+        starts and takes the whole site with it. The Terraform tests assert this from their side,
+        but that workflow runs only when infra/ changes - and adding a route file does not. So the
+        check belongs here too, where adding one always runs it (review).
+        """
+        module = (Path(__file__).resolve().parents[2]
+                  / "infra/terraform/modules/services/main.tf").read_text(encoding="utf-8")
+        gateway = module[module.index('"api-gateway" = {'):]
+        gateway = gateway[:gateway.index(chr(10) + "    }")]
+        for file in sorted((Path(__file__).resolve().parents[1] / "envoy/routes").glob("*.routes.json")):
+            variable = json.loads(file.read_text(encoding="utf-8"))["urlEnv"]
+            with self.subTest(route_file=file.name):
+                self.assertRegex(gateway, chr(10) + r"\s*%s\s*=" % re.escape(variable),
+                                 f"{variable} is not set on api-gateway in the deployed task "
+                                 f"definition; the gateway would exit on startup")
+
     def test_env_example_lists_every_variable_the_gateway_reads(self):
         gateway = Path(__file__).resolve().parents[1]
         read = set(re.findall(r'env\.get\("([A-Z0-9_]+)"', (gateway / "envoy" / "render.py").read_text()))
