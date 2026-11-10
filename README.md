@@ -16,16 +16,16 @@ completion, and *released* back to the requester on cancellation.
 
 ## Team
 
-| Name | Owns |
-| --- | --- |
-| Cole Lin | Supplier Service, Notification Service, Centralized Logging |
-| Deanson | User Service, UI mockups |
-| Jian Bing | Order CRUD and listing, location browsing UI, CI and cloud deployment |
-| Jie Yang | API Gateway, order acceptance and lifecycle, containerisation, real-time chat |
-| Zi Yi | Credit Service, service integration, admin dashboard |
+| Member | Core service | Nice-to-have |
+| --- | --- | --- |
+| Cole Lin | Supplier | Logging Service |
+| Jian Bing | Supplier, Credit | Cloud deployment, CI/CD |
+| Jie Yang | Gateway, Frontend, Order | Notification Service |
+| Zi Yi | User, Order | Admin dashboard |
+| Deanson | User, Frontend | Real-time chat |
 
-Ownership follows the project plan in [`AGENTS.md`](AGENTS.md) §3, including the three
-nice-to-have reassignments recorded there. Each member stays accountable for the whole codebase.
+This is how the work was actually divided, which differs in places from the original plan in
+[`AGENTS.md`](AGENTS.md) §3. Each member stays accountable for the whole codebase.
 
 ---
 
