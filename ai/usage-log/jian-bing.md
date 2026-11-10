@@ -152,6 +152,8 @@ Author review (Jian Bing, 2026-11-09): Looked through the code and think it's ok
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 SoCLaaS token cap entry from Jian Bing's prompts, taken verbatim from the session transcript.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+Scope: Wrote the 2026-11-09 entry on pinning the workflows' actions from Jian Bing's prompts, taken verbatim from the session transcript.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 entry on Kafka's restarts during the first staging deploy from Jian Bing's prompts, taken verbatim from the session transcript.
 Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
 Scope: Wrote the 2026-11-09 chat-on-AWS entry from Jian Bing's prompts, taken verbatim from the session transcript.
@@ -248,6 +250,36 @@ test assertions (Kafka's timing, its CPU, and no change to other containers).
 **Verification:** Claude watched the two Kafka assertions fail first, then pass (services module 4/4 runs), and ran
 `infra/terraform/check.sh` (every stack valid, all tests pass). The live check is the next staging apply and
 deploy. My own check: pending.
+
+### 2026-11-09 — Pinning the actions that can sign in to AWS, and the staging and production URLs
+
+**Tool:** Claude Code (Claude Opus 5.5) · **Mode:** explain, generate
+**Files:** `.github/workflows/terraform.yml`, `.github/workflows/deploy-staging.yml`,
+`.github/workflows/deploy-production.yml`, `.github/dependabot.yml`, `infra/scripts/test/repo-checks.test.sh`
+
+**Scenario:** I asked which URL is staging and which is production. Claude listed the account's CloudFront
+distributions: staging is `https://d2vc4gojrvvtgk.cloudfront.net`, and production doesn't exist yet (it gets its own
+address when first created). After I merged #191, an automated security review flagged its workflows: two outside
+actions (`aws-actions/configure-aws-credentials@v6`, `hashicorp/setup-terraform@v3`) were referenced by tags their
+owners can move, in jobs that can sign in to AWS (staging deploy, production deploy, Terraform plan), and
+`terraform.yml` gave its two email-list secrets to every step of the plan job. I chose to pin both actions to full
+commit hashes (the ones `v6` and `v3` point to today, v6.3.0 and v3.1.2, so nothing that runs changes), set the
+secrets on the plan step only, and add a Dependabot config so the pins get one grouped update PR a month.
+
+**Prompts (exact, in order):**
+> tso which one is staging, whic hsi prod url
+
+> i merged 191
+
+My answer to Claude's question on the security review: "Pin + scope + Dependabot (Recommended)".
+
+**What it produced:** The pinned `uses:` lines, the plan step's `env:`, `.github/dependabot.yml` (GitHub Actions
+only, monthly, grouped), and three checks in `repo-checks.test.sh`.
+
+**What I changed or rejected:** Pinning without Dependabot (no one would bump the hashes), and leaving it as is.
+
+**Verification:** Claude watched the three new checks fail first, then pass (7/7), confirmed each tag and its
+latest release resolve to the same commit through the GitHub API, and ran `actionlint`. My own check: pending.
 
 ### 2026-11-09 — The SoCLaaS token cap cut a review short
 

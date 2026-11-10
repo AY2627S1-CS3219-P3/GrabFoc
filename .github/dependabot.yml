@@ -1,0 +1,20 @@
+# AI Assistance Disclosure:
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: Generated after a security review of #191: the workflows pin actions to full commit hashes,
+#   which never move on their own, so Dependabot proposes the updates (Jian Bing chose this).
+# Author review: Pending Jian Bing's review.
+#
+# Version updates for the GitHub Actions in .github/workflows only. npm security updates come from
+# the repository's Dependabot security settings and are unaffected by this file.
+# AI-generated (Claude Code).
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    # One pull request a month for every action, instead of one per action.
+    groups:
+      github-actions:
+        patterns:
+          - "*"

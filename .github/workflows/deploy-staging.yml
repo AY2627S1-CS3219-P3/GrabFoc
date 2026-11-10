@@ -5,6 +5,10 @@
 # Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-06
 # Scope: Job timeout above push + deploy + checks at their slowest (PR #191 review).
 # Author review (Jian Bing, 2026-11-09): Looked through the code and think it's okay; watched the staging dry run pass (deploy, checks, and the fixes it needed).
+# Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-09
+# Scope: configure-aws-credentials pinned to a full commit hash (security review of #191; Jian Bing
+#   chose the fix).
+# Author review: Pending Jian Bing's review.
 # Every merge to main: build the images once, roll them onto staging, and run the checks there. Only
 # a pass makes the tag available to the production workflow.
 # AI-generated (Claude Code).
@@ -35,7 +39,7 @@ jobs:
     timeout-minutes: 210
     steps:
       - uses: actions/checkout@v7
-      - uses: aws-actions/configure-aws-credentials@v6
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: arn:aws:iam::690084476135:role/foc-github-deploy-staging
           aws-region: ap-southeast-1
