@@ -43,6 +43,9 @@ Scope: Added the Logging section. This service now writes a line per request int
   Service's store and this file did not mention logging at all, which for a scoped instruction file
   means the next change here would not know it exists (issue #52).
 Author review: Cole Lin, read and approved.
+Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+Scope: Pointed the logging rule at the single ai/usage-log.md after the member logs were combined.
+Author review: Human reviewed (Jie Yang, 2026-11-10).
 -->
 
 # AGENTS.md — Order Service
@@ -229,7 +232,7 @@ _Origin: AI doc (checks derived from supplied requirements); Restated from root 
 - Verify mutual cancellation/completion, timing acknowledgement rejection/expiry and timeout cancellation using the approved details.
 - Verify history, lifecycle timestamps and successful-state event publication, plus the approved credit failure/retry behaviour.
 - Database tests use PostgreSQL 17 in Docker through `compose.test.yaml`, a separate project with temporary storage; database and plan approvals are recorded above.
-- Add disclosure headers to AI-influenced files and exact prompts/key responses to your own log under [`ai/usage-log/`](../ai/usage-log.md). Human review is required before merge.
+- Add disclosure headers to AI-influenced files and an entry in your section of [`ai/usage-log.md`](../ai/usage-log.md). Human review is required before merge.
 
 ## Logging (issue #52)
 
