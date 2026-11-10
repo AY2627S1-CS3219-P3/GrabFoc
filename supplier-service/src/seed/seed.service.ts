@@ -4,6 +4,11 @@
  * Scope: Generated the seed loader following the "Seed data" rules in supplier-service/AGENTS.md
  *        (only when empty, all-or-nothing, Windows-1252 decoding, GitHub link rewrite, null creator).
  * Author review (Cole Lin): Read in full; confirmed a fresh database seeds all 21 locations and that a restart doesn't seed again.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: With SUPPLIER_IMAGE_BASE_URL, the template's photos link to the site's /images (S3 behind
+ *        CloudFront) when seeding, and existing template links move there once on start-up (plan
+ *        approved by Jian Bing).
+ * Author review: Pending Jian Bing's review.
  */
 import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { parse } from 'csv-parse/sync';
@@ -30,10 +35,24 @@ type CsvRow = Record<
 
 const GITHUB_BLOB = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/;
 
+// AI-generated (Claude Code, 2026-11-10): a photo from the course template's data/images, as the
+// CSV gives it (github.com/.../blob/...) or as an earlier seed stored it (raw.githubusercontent.com).
+// Only the template's own photos: the bucket holds exactly those (infra/terraform/modules/edge).
+const TEMPLATE_PHOTO =
+  /^https:\/\/(?:github\.com\/CS3219-AY2627S1\/FoC-Template\/blob|raw\.githubusercontent\.com\/CS3219-AY2627S1\/FoC-Template)\/main\/data\/images\/([A-Za-z0-9._-]+)$/;
+
+/** The template photo's link under the site's /images, or null if `url` isn't one of them. */
+function servedPhoto(url: string): string | null {
+  const m = config.imageBaseUrl ? TEMPLATE_PHOTO.exec(url) : null;
+  return m ? `${config.imageBaseUrl}/${m[1]}` : null;
+}
+
 /** github.com/<owner>/<repo>/blob/<branch>/<path> -> raw.githubusercontent.com/<owner>/<repo>/<branch>/<path> */
 function toImageUrl(value: string): string | null {
   const url = value.trim();
   if (!url) return null;
+  const served = servedPhoto(url);
+  if (served) return served;
   const m = GITHUB_BLOB.exec(url);
   return m ? `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}` : url;
 }
@@ -57,6 +76,29 @@ export class SeedService implements OnApplicationBootstrap {
       await this.seed();
     } catch (err) {
       this.logger.error(`Seed aborted, nothing loaded: ${(err as Error).message}`);
+    }
+    if (config.imageBaseUrl) await this.moveTemplatePhotos();
+  }
+
+  // AI-generated (Claude Code, 2026-11-10): rows seeded before the photos were on S3 still link to
+  // GitHub. Each moves once, through the normal update (version check, version + 1); the next start
+  // finds nothing to move. A failure is logged and leaves that row as it was.
+  private async moveTemplatePhotos() {
+    const { rows } = await this.pool.query<{ id: number; image_url: string; version: number }>(
+      `SELECT id, image_url, version FROM locations
+        WHERE image_url LIKE 'https://github.com/CS3219-AY2627S1/FoC-Template/%'
+           OR image_url LIKE 'https://raw.githubusercontent.com/CS3219-AY2627S1/FoC-Template/%'
+        ORDER BY id`,
+    );
+    for (const row of rows) {
+      const served = servedPhoto(row.image_url);
+      if (!served) continue;
+      try {
+        await this.locations.update(row.id, { version: row.version, image_url: served });
+        this.logger.log(`Location ${row.id}: photo moved to ${served}`);
+      } catch (err) {
+        this.logger.error(`Location ${row.id}: photo not moved: ${(err as Error).message}`);
+      }
     }
   }
 

@@ -16,6 +16,9 @@
  *        of that file, and a config field nothing reads is worse than none (issue #52).
  * Author review: Cole Lin, read and approved.
  * Author review: pending — Jie Yang to record what he checked.
+ * Tool: Claude Code (model: Claude Opus 5.5), date: 2026-11-10
+ * Scope: SUPPLIER_IMAGE_BASE_URL, optional and https only (location photos on S3).
+ * Author review: Pending Jian Bing's review.
  */
 import { existsSync } from 'fs';
 import * as path from 'path';
@@ -54,6 +57,23 @@ if (!Number.isInteger(outboxPollMs) || outboxPollMs <= 0) {
   throw new Error('SUPPLIER_OUTBOX_POLL_MS must be a positive whole number of milliseconds.');
 }
 
+// AI-generated (Claude Code, 2026-11-10): where the seed photos are served on AWS (the site's
+// /images, a private S3 bucket behind CloudFront). Optional: unset, they stay on the course
+// template's GitHub, as in local development (plan approved by Jian Bing).
+function imageBaseUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('SUPPLIER_IMAGE_BASE_URL must be an https URL, e.g. https://d123.cloudfront.net/images.');
+  }
+  if (url.protocol !== 'https:') {
+    throw new Error('SUPPLIER_IMAGE_BASE_URL must be an https URL, e.g. https://d123.cloudfront.net/images.');
+  }
+  return value.replace(/\/+$/, '');
+}
+
 export const config = {
   port: Number(process.env.SUPPLIER_PORT || 3002),
   databaseUrl: required('SUPPLIER_DATABASE_URL'),
@@ -75,6 +95,7 @@ export const config = {
     .map((b) => b.trim())
     .filter(Boolean),
   outboxPollMs,
+  imageBaseUrl: imageBaseUrl(process.env.SUPPLIER_IMAGE_BASE_URL) as string | undefined,
 };
 
 if (config.devAuth && process.env.NODE_ENV === 'production') {
