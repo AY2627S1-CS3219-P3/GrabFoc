@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.5",
-    "next": "16.4.1",
+    "next": "16.4.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "socket.io-client": "^4.8.4",
